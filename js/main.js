@@ -44,7 +44,7 @@ import {
     initializeMasterMode
 } from './master-modes.js';
 import { initShareModal, openShareModal, checkAndLoadSharedSession, applySharedSession, updateShareButtonState } from './share-modal.js';
-import { log, logGroup, logGroupEnd } from './logger.js';
+import { log, logGroup, logGroupEnd, pm } from './logger.js';
 
 // console.groupCollapsed('📦 [MODULE] Loading');
 // console.log('✅ ALL IMPORTS COMPLETE');
@@ -55,7 +55,7 @@ const DEBUG_LOOP_FADES = true; // Enable loop fade logging
 // ===== FIRST FETCH TRACKING =====
 let hasPerformedFirstFetch = false; // Track if first fetch has been performed
 
-console.log('✅ CONSTANTS DEFINED');
+if (window.pm?.init) console.log('✅ CONSTANTS DEFINED');
 console.groupEnd();
 
 // Helper function to safely check study mode (handles cases where module isn't loaded yet)
@@ -770,7 +770,7 @@ export async function startStreaming(event, config = null) {
         window.streamingStartTime = performance.now();
         const logTime = () => `[${Math.round(performance.now() - window.streamingStartTime)}ms]`;
         
-        console.log('🎬 [0ms] Fetching CDAWeb audio data');
+        if (window.pm?.data) console.log('🎬 [0ms] Fetching CDAWeb audio data');
         
         // Get data config: direct config object OR form values
         let spacecraft, dataset, startTimeISO, endTimeISO;
@@ -805,7 +805,7 @@ export async function startStreaming(event, config = null) {
             endTimeISO = `${ed}T${et}Z`;
         }
         
-        console.log(`🛰️ ${logTime()} Fetching: ${spacecraft} ${dataset} from ${startTimeISO} to ${endTimeISO}`);
+        if (window.pm?.data) console.log(`🛰️ ${logTime()} Fetching: ${spacecraft} ${dataset} from ${startTimeISO} to ${endTimeISO}`);
         
         // Check data source selection
         const dataSourceEl = document.getElementById('dataSource');
@@ -895,10 +895,12 @@ export async function startStreaming(event, config = null) {
         // Initialize scroll-to-zoom (EMIC mode, gated by checkbox)
         initScrollZoom();
 
-        console.log(`🎉 ${logTime()} Complete!`);
-        console.log('════════════════════');
-        console.log('📌 v2.0 (2026-02-12) Three.js GPU-accelerated rendering');
-        console.log('════════════════════');
+        if (window.pm?.init) console.log(`🎉 ${logTime()} Complete!`);
+        if (window.pm?.gpu) {
+            console.log('════════════════════');
+            console.log('📌 v2.0 (2026-02-12) Three.js GPU-accelerated rendering');
+            console.log('════════════════════');
+        }
 
     } catch (error) {
         console.error('❌ Error in startStreaming:', error);
@@ -1042,6 +1044,16 @@ function injectSettingsDrawer() {
             <div class="drawer-row">
                 <label for="heightSpectrogram" class="drawer-label">Spectrogram</label>
                 <input type="number" id="heightSpectrogram" class="drawer-input" min="200" max="1200" step="1">
+            </div>
+        </div>
+        <div class="drawer-section">
+            <div class="drawer-section-title">Audio Quality</div>
+            <div class="drawer-row">
+                <label for="audioQuality" class="drawer-label">Sample format</label>
+                <select id="audioQuality" class="drawer-input" style="width: 100px; text-align: left;">
+                    <option value="16">16 Bit</option>
+                    <option value="32">32 Bit</option>
+                </select>
             </div>
         </div>
         <div class="drawer-section">
@@ -1228,7 +1240,52 @@ function injectSettingsDrawer() {
             <div class="drawer-row" style="margin-top: 6px;">
                 <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
                     <input type="checkbox" id="lockPageScroll" style="width: 16px; height: 16px; cursor: pointer;">
-                    Lock scroll during modals
+                    Lock page scroll
+                </label>
+            </div>
+        </div>
+        <div class="drawer-section">
+            <div class="drawer-section-title">Prints</div>
+            <div class="drawer-row" style="margin-top: 6px;">
+                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="printInit" style="width: 16px; height: 16px; cursor: pointer;">
+                    Initialization
+                </label>
+            </div>
+            <div class="drawer-row" style="margin-top: 4px;">
+                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="printGPU" style="width: 16px; height: 16px; cursor: pointer;">
+                    Rendering
+                </label>
+            </div>
+            <div class="drawer-row" style="margin-top: 4px;">
+                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="printMemory" style="width: 16px; height: 16px; cursor: pointer;">
+                    Memory
+                </label>
+            </div>
+            <div class="drawer-row" style="margin-top: 4px;">
+                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="printAudio" style="width: 16px; height: 16px; cursor: pointer;">
+                    Audio
+                </label>
+            </div>
+            <div class="drawer-row" style="margin-top: 4px;">
+                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="printStudy" style="width: 16px; height: 16px; cursor: pointer;">
+                    Study Flow
+                </label>
+            </div>
+            <div class="drawer-row" style="margin-top: 4px;">
+                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="printFeatures" style="width: 16px; height: 16px; cursor: pointer;">
+                    Features
+                </label>
+            </div>
+            <div class="drawer-row" style="margin-top: 4px;">
+                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="printData" style="width: 16px; height: 16px; cursor: pointer;">
+                    Data
                 </label>
             </div>
         </div>
@@ -1528,6 +1585,7 @@ function initializeAdvancedControls() {
         { id: 'levelTransition', key: 'emic_level_transition', type: 'select' },
         { id: 'crossfadePower', key: 'emic_crossfade_power', type: 'range' },
         { id: 'renderOrder', key: 'emic_render_order', type: 'select' },
+        { id: 'audioQuality', key: 'emic_audio_quality', type: 'select' },
         { id: 'tileChunkSize', key: 'emic_tile_chunk_size', type: 'select' },
         { id: 'featurePlaybackMode', key: 'emic_feature_playback_mode', type: 'select' },
         { id: 'dataSource', key: 'emic_data_source', type: 'select' },
@@ -1538,6 +1596,13 @@ function initializeAdvancedControls() {
         { id: 'tickFadeOutTime', key: 'emic_tick_fade_out', type: 'range' },
         { id: 'tickFadeInCurve', key: 'emic_tick_fade_in_curve', type: 'select' },
         { id: 'tickFadeOutCurve', key: 'emic_tick_fade_out_curve', type: 'select' },
+        { id: 'printInit', key: 'emic_print_init', type: 'checkbox' },
+        { id: 'printGPU', key: 'emic_print_gpu', type: 'checkbox' },
+        { id: 'printMemory', key: 'emic_print_memory', type: 'checkbox' },
+        { id: 'printAudio', key: 'emic_print_audio', type: 'checkbox' },
+        { id: 'printStudy', key: 'emic_print_study', type: 'checkbox' },
+        { id: 'printFeatures', key: 'emic_print_features', type: 'checkbox' },
+        { id: 'printData', key: 'emic_print_data', type: 'checkbox' },
     ];
     // Page-specific localStorage: emic_study keeps 'emic_*' keys, index.html uses 'main_*'
     const settingsPrefix = isStudyMode() ? 'emic_' : 'main_';
@@ -1564,12 +1629,37 @@ function initializeAdvancedControls() {
         }
     }
 
+    // Sync Prints checkboxes → pm flags (restore from localStorage + live toggle)
+    const printMap = { printInit: 'init', printGPU: 'gpu', printMemory: 'memory', printAudio: 'audio', printStudy: 'study', printFeatures: 'features', printData: 'data' };
+    for (const [id, pmKey] of Object.entries(printMap)) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        pm[pmKey] = el.checked;
+        if (pmKey === 'data') pm.cache = el.checked; // Data checkbox also controls cache logs
+        el.addEventListener('change', () => {
+            pm[pmKey] = el.checked;
+            // Data checkbox also controls cache logs
+            if (pmKey === 'data') pm.cache = el.checked;
+            // Forward audio debug flag to worklet/stretch threads
+            if (pmKey === 'audio') {
+                const msg = { type: 'set-debug-audio', enabled: el.checked };
+                State.workletNode?.port.postMessage(msg);
+                State.stretchNode?.port.postMessage(msg);
+                if (State.stretchNodes) {
+                    for (const node of Object.values(State.stretchNodes)) {
+                        node?.port.postMessage(msg);
+                    }
+                }
+            }
+        });
+    }
+
     // Auto-download: if enabled, click Fetch Data after a brief init delay
     if (document.getElementById('autoDownload')?.checked) {
         setTimeout(() => {
             const fetchBtn = document.getElementById('startBtn');
             if (fetchBtn && !fetchBtn.disabled) {
-                console.log('🚀 Auto-download enabled, triggering data fetch...');
+                if (window.pm?.data) console.log('🚀 Auto-download enabled, triggering data fetch...');
                 fetchBtn.click();
             }
         }, 500);
@@ -1769,6 +1859,29 @@ function initializeAdvancedControls() {
         else openSettingsDrawer();
     });
     if (drawerCloseBtn) drawerCloseBtn.addEventListener('click', closeSettingsDrawer);
+
+    // --- Lock page scroll checkbox ---
+    const lockScrollCb = document.getElementById('lockPageScroll');
+    if (lockScrollCb) {
+        lockScrollCb.addEventListener('change', () => {
+            if (lockScrollCb.checked) {
+                const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+                document.documentElement.style.overflow = 'hidden';
+                document.body.style.overflow = 'hidden';
+                document.body.style.position = 'fixed';
+                document.body.style.top = `-${scrollY}px`;
+                document.body.style.width = '100%';
+            } else {
+                const top = Math.abs(parseInt(document.body.style.top || '0', 10));
+                document.documentElement.style.overflow = '';
+                document.body.style.overflow = '';
+                document.body.style.position = '';
+                document.body.style.top = '';
+                document.body.style.width = '';
+                window.scrollTo(0, top);
+            }
+        });
+    }
 
     // --- Panel height inputs in settings drawer ---
     const heightMinimapInput = document.getElementById('heightMinimap');
@@ -2077,7 +2190,7 @@ async function initializeEmicStudyMode() {
         }
     }
 
-    console.log('🔬 EMIC Study mode initialized (skipLogin:', skipLogin, ')');
+    if (window.pm?.study) console.log('🔬 EMIC Study mode initialized (skipLogin:', skipLogin, ')');
 }
 
 /**
@@ -2197,9 +2310,9 @@ async function initializeApp() {
     const { CURRENT_MODE, AppMode } = await import('./master-modes.js');
     
     if (!isStudyMode()) {
-        console.groupCollapsed(`🎯 [MODE] ${CURRENT_MODE} Initialization`);
+        if (window.pm?.study) console.groupCollapsed(`🎯 [MODE] ${CURRENT_MODE} Initialization`);
     }
-    console.log(`🚀 Initializing app in ${CURRENT_MODE} mode`);
+    if (window.pm?.study) console.log(`🚀 Initializing app in ${CURRENT_MODE} mode`);
     
     switch (CURRENT_MODE) {
         case AppMode.PERSONAL:
@@ -2277,7 +2390,7 @@ function updateSpacecraftDropdownLabels(loadedSpacecraft, selectedSpacecraft) {
 // GitHub Action updates version.json on every push - fully automatic!
 // =============================================================================
 async function checkAppVersion() {
-    console.log('🔍 Checking for app updates...');
+    if (window.pm?.init) console.log('🔍 Checking for app updates...');
     try {
         // Fetch version.json with cache-busting
         const res = await fetch(`/version.json?_=${Date.now()}`, { cache: 'no-store' });
@@ -2300,7 +2413,7 @@ async function checkAppVersion() {
         const serverTime = versionParts
             ? new Date(Date.UTC(versionParts[1], versionParts[2]-1, versionParts[3], versionParts[4], versionParts[5], versionParts[6])).toLocaleString()
             : serverVersion;
-        console.log(`📋 Version check: Local="${localVersion || '(first visit)'}" vs Server="${serverVersion}"`);
+        if (window.pm?.init) console.log(`📋 Version check: Local="${localVersion || '(first visit)'}" vs Server="${serverVersion}"`);
 
         if (localVersion && localVersion !== serverVersion) {
             console.log('%c🔄 NEW VERSION DETECTED - Refreshing page...', 'color: #FF9800; font-weight: bold; font-size: 14px');
@@ -2310,7 +2423,7 @@ async function checkAppVersion() {
         }
 
         localStorage.setItem('app_version', serverVersion);
-        console.log(`%c✅ App is up to date (built ${serverTime})`, 'color: #4CAF50; font-weight: bold');
+        if (window.pm?.init) console.log(`%c✅ App is up to date (built ${serverTime})`, 'color: #4CAF50; font-weight: bold');
     } catch (e) {
         // Silently fail - version check is non-critical
         console.log('⚠️ Version check skipped (offline or error)', e.message);
@@ -2320,9 +2433,11 @@ async function checkAppVersion() {
 
 // Main initialization function
 async function initializeMainApp() {
-    console.log('════════════════════');
-    console.log('☀️ SOLAR AUDIFICATION PORTAL - INITIALIZING!');
-    console.log('════════════════════');
+    if (window.pm?.gpu) {
+        console.log('════════════════════');
+        console.log('☀️ SOLAR AUDIFICATION PORTAL - INITIALIZING!');
+        console.log('════════════════════');
+    }
 
     // ─── GPU Capability Detection ────────────────────────────────────────
     // Detect hardware capabilities early so the right render/compute path is chosen.
@@ -2344,14 +2459,16 @@ async function initializeMainApp() {
                 const useGPU = maxBuf >= 512 * 1024 * 1024 && !(integrated && ram < 8);
 
                 const tier = useGPU ? '🟢 GPU' : '🟡 CPU (GPU available but constrained)';
-                console.log(
-                    `%c⚡ ${tier} | ${vendor} ${arch} | maxBuffer: ${maxBufMB}MB | RAM: ${ram}GB | cores: ${cores}`,
-                    'color: #4CAF50; font-weight: bold; font-size: 13px'
-                );
-                console.log(
-                    `%c   Render: WebGPU + Three.js TSL | Compute: ${useGPU ? 'GPU zero-copy' : 'CPU worker pool'}`,
-                    'color: #90CAF9'
-                );
+                if (window.pm?.gpu) {
+                    console.log(
+                        `%c⚡ ${tier} | ${vendor} ${arch} | maxBuffer: ${maxBufMB}MB | RAM: ${ram}GB | cores: ${cores}`,
+                        'color: #4CAF50; font-weight: bold; font-size: 13px'
+                    );
+                    console.log(
+                        `%c   Render: WebGPU + Three.js TSL | Compute: ${useGPU ? 'GPU zero-copy' : 'CPU worker pool'}`,
+                        'color: #90CAF9'
+                    );
+                }
 
                 // Store decision for pyramid/renderer to read
                 window.__gpuCapability = { useGPU, vendor, arch, maxBufMB: +maxBufMB, ram, integrated };
@@ -2374,7 +2491,7 @@ async function initializeMainApp() {
     if (await checkAppVersion()) return;
 
     // Group core system initialization
-    console.groupCollapsed('🔧 [INIT] Core Systems');
+    if (window.pm?.init) console.groupCollapsed('🔧 [INIT] Core Systems');
     
     // ═══════════════════════════════════════════════════════════
     // 📏 STATUS AUTO-RESIZE - Shrink font when text overflows
@@ -2401,10 +2518,10 @@ async function initializeMainApp() {
     const { startHeartbeatTracking } = await import('./session-management.js');
     startHeartbeatTracking();
 
-    console.groupEnd(); // End Core Systems
-    
+    if (window.pm?.init) console.groupEnd(); // End Core Systems
+
     // Group UI setup
-    console.groupCollapsed('🎨 [INIT] UI Setup');
+    if (window.pm?.init) console.groupCollapsed('🎨 [INIT] UI Setup');
 
     // ─── Advanced mode: restore state + inject controls EARLY ──────────
     // Advanced mode affects layout decisions throughout init (gear icons,
@@ -2493,7 +2610,7 @@ async function initializeMainApp() {
     // Add debug key listener (only in local environment)
     if (isLocal) {
         window.addEventListener('keydown', handleDebugJumpListener);
-        console.log('🐛 DEBUG: Type "testend" to jump to study end walkthrough');
+        if (window.pm?.init) console.log('🐛 DEBUG: Type "testend" to jump to study end walkthrough');
     }
 
     // (Mode selector key listener stays active - no need to disable it)
@@ -2540,15 +2657,15 @@ async function initializeMainApp() {
         if (simulatePanel) {
             simulatePanel.style.display = 'none';
             if (CURRENT_MODE === AppMode.SOLAR_PORTAL) {
-                console.log('☀️ Solar Portal Mode: Simulate panel hidden');
+                if (window.pm?.init) console.log('☀️ Solar Portal Mode: Simulate panel hidden');
             } else {
-                console.log('🎓 Production Mode: Simulate panel hidden (surveys controlled by workflow)');
+                if (window.pm?.init) console.log('🎓 Production Mode: Simulate panel hidden (surveys controlled by workflow)');
             }
         }
         
         // Permanent overlay in Production Mode (fully controlled by modal system)
         // Modal system checks flags and decides whether to show overlay
-        console.log('🎓 Production Mode: Modal system controls overlay (based on workflow flags)');
+        if (window.pm?.init) console.log('🎓 Production Mode: Modal system controls overlay (based on workflow flags)');
     } else {
         // Hide permanent overlay in non-Study modes (Dev, Personal, TUTORIAL_END)
         const permanentOverlay = document.getElementById('permanentOverlay');
@@ -2644,7 +2761,7 @@ async function initializeMainApp() {
     // Initialize modals first (all modes need them)
     try {
         await initializeModals();
-        console.log('✅ Modals initialized successfully');
+        if (window.pm?.init) console.log('✅ Modals initialized successfully');
     } catch (error) {
         console.error('❌ CRITICAL: Failed to initialize modals:', error);
         // Don't proceed if modals failed - this will cause dark screen
@@ -2670,7 +2787,7 @@ async function initializeMainApp() {
     // Initialize oscilloscope visualization immediately (don't wait for audio)
     import('./oscilloscope-renderer.js').then(({ initOscilloscope }) => {
         initOscilloscope();
-        console.log('🎨 Oscilloscope initialized on UI load');
+        if (window.pm?.init) console.log('🎨 Oscilloscope initialized on UI load');
     });
     
     // Initialize keyboard shortcuts
@@ -2696,7 +2813,7 @@ async function initializeMainApp() {
     // Load saved spacecraft selection (or use default)
     await loadSavedSpacecraft();
     
-    console.groupEnd(); // End UI Setup
+    if (window.pm?.init) console.groupEnd(); // End UI Setup
     
     // ═══════════════════════════════════════════════════════════
     // 🎯 MODE-AWARE ROUTING
@@ -2714,7 +2831,7 @@ async function initializeMainApp() {
     }, 100);
 
     // Group event listeners setup
-    console.groupCollapsed('⌨️ [INIT] Event Listeners');
+    if (window.pm?.init) console.groupCollapsed('⌨️ [INIT] Event Listeners');
     
     // Add event listeners
     document.getElementById('spacecraft').addEventListener('change', async (e) => {
@@ -2790,11 +2907,11 @@ async function initializeMainApp() {
             });
             // Also save on input for immediate feedback
             el.addEventListener('input', () => saveDateTime());
-        } else {
+        } else if (!isEmicStudyMode()) {
             console.warn(`⚠️ Could not find element: ${id}`);
         }
     });
-    console.log('✅ Date/time persistence listeners attached');
+    if (window.pm?.init) console.log('✅ Date/time persistence listeners attached');
     document.getElementById('highpassFreq').addEventListener('change', (e) => {
         enableFetchButton();
         e.target.blur(); // Blur so spacebar can toggle play/pause
@@ -3204,6 +3321,7 @@ async function initializeMainApp() {
      * Load recent searches from IndexedDB cache and populate dropdown
      */
     async function loadRecentSearches() {
+        if (isEmicStudyMode()) return; // EMIC uses fixed dataset, no recent searches
         const dropdown = document.getElementById('recentSearches');
         if (!dropdown) return;
         
@@ -3336,14 +3454,14 @@ async function initializeMainApp() {
         e.target.blur(); // Blur so spacebar can toggle play/pause
     });
     
-    console.log('🟢 LINE 2180 - About to attach startBtn event listener');
-    
+    if (window.pm?.init) console.log('🟢 LINE 2180 - About to attach startBtn event listener');
+
     // Data Fetching
     const startBtn = document.getElementById('startBtn');
-    console.log('🟢 startBtn element:', startBtn ? 'FOUND' : 'NOT FOUND');
+    if (window.pm?.init) console.log('🟢 startBtn element:', startBtn ? 'FOUND' : 'NOT FOUND');
     if (startBtn) {
         startBtn.addEventListener('click', async (e) => {
-            console.log('🔵 Fetch Data button clicked!');
+            if (window.pm?.data) console.log('🔵 Fetch Data button clicked!');
             // Cancel any typing animation immediately
             const { cancelTyping } = await import('./tutorial-effects.js');
             cancelTyping();
@@ -3357,7 +3475,7 @@ async function initializeMainApp() {
             }
             e.target.blur(); // Blur so spacebar can toggle play/pause
         });
-        console.log('🟢 startBtn event listener attached successfully!');
+        if (window.pm?.init) console.log('🟢 startBtn event listener attached successfully!');
     } else {
         console.error('❌ startBtn NOT FOUND - cannot attach event listener!');
     }
@@ -3674,6 +3792,8 @@ async function initializeMainApp() {
             if (isEmicStudyMode()) {
                 const { EMIC_FLAGS, setEmicFlag } = await import('./emic-study-flags.js');
                 setEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_BACKGROUND);
+                const { syncEmicProgress } = await import('./data-uploader.js');
+                syncEmicProgress(localStorage.getItem('participantId'), 'questionnaire_background');
             }
             modalManager.closeModal('backgroundQuestionModal');
         });
@@ -3703,6 +3823,8 @@ async function initializeMainApp() {
             if (isEmicStudyMode()) {
                 const { EMIC_FLAGS, setEmicFlag } = await import('./emic-study-flags.js');
                 setEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_DATA_ANALYSIS);
+                const { syncEmicProgress } = await import('./data-uploader.js');
+                syncEmicProgress(localStorage.getItem('participantId'), 'questionnaire_data_analysis');
             }
             modalManager.closeModal('dataAnalysisQuestionModal');
         });
@@ -3732,6 +3854,8 @@ async function initializeMainApp() {
             if (isEmicStudyMode()) {
                 const { EMIC_FLAGS, setEmicFlag } = await import('./emic-study-flags.js');
                 setEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_MUSICAL);
+                const { syncEmicProgress } = await import('./data-uploader.js');
+                syncEmicProgress(localStorage.getItem('participantId'), 'questionnaire_musical');
             }
             modalManager.closeModal('musicalExperienceQuestionModal');
         });
@@ -3764,6 +3888,8 @@ async function initializeMainApp() {
             if (isEmicStudyMode()) {
                 const { EMIC_FLAGS, setEmicFlag } = await import('./emic-study-flags.js');
                 setEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_FEEDBACK);
+                const { syncEmicProgress } = await import('./data-uploader.js');
+                syncEmicProgress(localStorage.getItem('participantId'), 'questionnaire_feedback');
             }
             modalManager.closeModal('feedbackQuestionModal');
         });
@@ -3795,6 +3921,8 @@ async function initializeMainApp() {
             if (isEmicStudyMode()) {
                 const { EMIC_FLAGS, setEmicFlag } = await import('./emic-study-flags.js');
                 setEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_REFERRAL);
+                const { syncEmicProgress } = await import('./data-uploader.js');
+                syncEmicProgress(localStorage.getItem('participantId'), 'questionnaire_referral');
             }
             modalManager.closeModal('referralQuestionModal');
         });
@@ -4116,7 +4244,7 @@ async function initializeMainApp() {
     });
     } // End if (!window._solarAudioCleanupHandlers)
     
-    console.groupEnd(); // End Event Listeners
+    if (window.pm?.init) console.groupEnd(); // End Event Listeners
 } // End initializeMainApp
 
 // Call initialization when DOM is ready
@@ -4133,4 +4261,3 @@ if (document.readyState === 'loading') {
     initializeMainApp();
 }
 
-console.log('🟢 LINE 2545 - END OF MODULE - All code parsed successfully!');

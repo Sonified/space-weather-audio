@@ -278,8 +278,8 @@ function loadSavedDateTime(groupOpen) {
         endTime.value = savedEndTime;
     }
 
-    if (savedStartDate || savedEndDate) {
-        console.log(`Date/time: ${savedStartDate} ${savedStartTime} → ${savedEndDate} ${savedEndTime}`);
+    if ((savedStartDate || savedEndDate) && window.pm?.data) {
+        console.log(`📡 Date/time: ${savedStartDate} ${savedStartTime} → ${savedEndDate} ${savedEndTime}`);
     }
 
     // Close the preference restoration group
@@ -421,7 +421,9 @@ export function updateDatasetOptions() {
     const datasets = SPACECRAFT_DATASETS[spacecraft] || [];
 
     if (datasets.length === 0) {
-        console.warn(`No datasets configured for spacecraft: ${spacecraft}`);
+        if (CURRENT_MODE !== AppMode.EMIC_STUDY) {
+            console.warn(`No datasets configured for spacecraft: ${spacecraft}`);
+        }
         dataTypeSelect.innerHTML = '<option value="">No datasets available</option>';
         return;
     }
@@ -1016,7 +1018,9 @@ export function setupModalEventListeners() {
                 const username = participantIdInput?.value.trim();
 
                 // Register the username (claim it) - skip for local environment
-                if (username && isUsernameAvailable && !isLocalEnvironment()) {
+                // Exception: EMIC study always registers (even localhost) so heartbeats + syncs work
+                const { isEmicStudyMode: isEmic } = await import('./master-modes.js');
+                if (username && isUsernameAvailable && (!isLocalEnvironment() || isEmic())) {
                     try {
                         await registerUsername(username);
                         console.log('✅ Username registered:', username);
@@ -2083,7 +2087,7 @@ export function setupModalEventListeners() {
     toggleQuickFillButtons();
     
     modalListenersSetup = true;
-    console.log('📋 Modal event listeners attached (using ModalManager)');
+    if (window.pm?.init) console.log('📋 Modal event listeners attached (using ModalManager)');
 }
 
 /**
@@ -2427,10 +2431,14 @@ export async function closeWelcomeModal(keepOverlay = null) {
     
     console.log(`👋 Welcome modal closed (keepOverlay: ${keepOverlay})`);
     
-    // Set EMIC welcome-closed flag
+    // Set EMIC welcome-closed flag + sync to server
     if (isEmicStudyMode()) {
         import('./emic-study-flags.js').then(({ EMIC_FLAGS, setEmicFlag }) => {
             setEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME);
+        });
+        import('./data-uploader.js').then(({ syncEmicProgress }) => {
+            const pid = localStorage.getItem('participantId');
+            if (pid) syncEmicProgress(pid, 'welcome_closed');
         });
     }
 }
@@ -2944,11 +2952,14 @@ export function submitParticipantSetup() {
     if (participantId) {
         storeParticipantId(participantId);
         console.log('💾 Saved participant ID:', participantId);
-        // Set EMIC registration flag
+        // Set EMIC registration flag + sync to server
         import('./master-modes.js').then(({ isEmicStudyMode }) => {
             if (isEmicStudyMode()) {
                 import('./emic-study-flags.js').then(({ EMIC_FLAGS, setEmicFlag }) => {
                     setEmicFlag(EMIC_FLAGS.HAS_REGISTERED);
+                });
+                import('./data-uploader.js').then(({ syncEmicProgress }) => {
+                    syncEmicProgress(participantId, 'registered');
                 });
             }
         });

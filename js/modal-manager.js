@@ -289,34 +289,43 @@ class ModalManager {
     
     /**
      * Disable background scrolling when modal is open.
-     * Only applies if the "Lock scroll during modals" checkbox is checked (default: off).
+     * Skips if scroll is already locked by the user via the "Lock page scroll" checkbox.
      */
     disableBackgroundScroll() {
         const lockCb = document.getElementById('lockPageScroll');
-        if (!lockCb || !lockCb.checked) return;
+        if (lockCb && lockCb.checked) return; // Already locked by user, don't double-lock
 
         // Store current scroll position
         this.scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
+        this._modalScrollLock = true;
 
-        // Disable scrolling on both html and body
         document.documentElement.style.overflow = 'hidden';
         document.body.style.overflow = 'hidden';
         document.body.style.position = 'fixed';
         document.body.style.top = `-${this.scrollPosition}px`;
         document.body.style.width = '100%';
     }
-    
+
     /**
-     * Re-enable background scrolling when modal closes
+     * Re-enable background scrolling when modal closes.
+     * Respects the user's "Lock page scroll" preference.
      */
     enableBackgroundScroll() {
-        // Re-enable scrolling on both html and body
+        const lockCb = document.getElementById('lockPageScroll');
+        if (lockCb && lockCb.checked) {
+            this._modalScrollLock = false;
+            return; // User wants scroll locked, leave it
+        }
+        if (!this._modalScrollLock) return; // We didn't lock it, don't unlock
+
+        this._modalScrollLock = false;
+
         document.documentElement.style.overflow = '';
         document.body.style.overflow = '';
         document.body.style.position = '';
         document.body.style.top = '';
         document.body.style.width = '';
-        
+
         // Restore scroll position
         window.scrollTo(0, this.scrollPosition);
     }
