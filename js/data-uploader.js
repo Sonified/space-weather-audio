@@ -228,7 +228,10 @@ export async function uploadEmicSubmission(participantId, submissionData) {
         return { status: 'skipped', reason: 'no_participant_id' };
     }
 
-    const apiBase = window.location.origin;
+    // Use current origin on production, otherwise hit production API directly (Worker handles CORS)
+    const apiBase = window.location.hostname === 'spaceweather.now.audio'
+        ? window.location.origin
+        : 'https://spaceweather.now.audio';
     const endpoint = `${apiBase}/api/emic/participants/${encodeURIComponent(participantId)}/submit`;
 
     try {
@@ -253,6 +256,58 @@ export async function uploadEmicSubmission(participantId, submissionData) {
     } catch (error) {
         console.error('❌ EMIC upload error (server may be unreachable):', error);
         return { status: 'failed', error: error.message };
+    }
+}
+
+/**
+ * Progressive sync: upload a snapshot of current participant state at each milestone.
+ * Fire-and-forget — never blocks the participant's flow.
+ * Each call creates a new timestamped file on the server, so the full timeline is preserved.
+ * @param {string} participantId
+ * @param {string} milestone - e.g. 'registered', 'welcome_closed', 'analysis_complete', 'questionnaire_background'
+ */
+export async function syncEmicProgress(participantId, milestone) {
+    if (!participantId) return;
+    try {
+        const { getStandaloneFeatures } = await import('./region-tracker.js');
+        const { EMIC_FLAGS, getEmicFlag, getEmicFlagNumber } = await import('./emic-study-flags.js');
+
+        const standalone = getStandaloneFeatures();
+        const features = standalone.map((feat, i) => ({
+            index: i,
+            timeRange: { start: feat.startTime || '', end: feat.endTime || '' },
+            freqRange: { low: feat.lowFreq || '', high: feat.highFreq || '' },
+            type: feat.type || null,
+            repetition: feat.repetition || null,
+            notes: feat.notes || null,
+            speedFactor: feat.speedFactor ?? null,
+            drawnAt: feat.createdAt || ''
+        }));
+
+        const flags = {
+            registered: getEmicFlag(EMIC_FLAGS.HAS_REGISTERED),
+            closedWelcome: getEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME),
+            featureCount: getEmicFlagNumber(EMIC_FLAGS.ACTIVE_FEATURE_COUNT),
+            completedAnalysis: getEmicFlag(EMIC_FLAGS.HAS_COMPLETED_ANALYSIS),
+            submittedBackground: getEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_BACKGROUND),
+            submittedDataAnalysis: getEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_DATA_ANALYSIS),
+            submittedMusical: getEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_MUSICAL),
+            submittedReferral: getEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_REFERRAL),
+            submittedFeedback: getEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_FEEDBACK),
+        };
+
+        await uploadEmicSubmission(participantId, {
+            participantId,
+            milestone,
+            features,
+            featureCount: features.length,
+            flags,
+            syncedAt: new Date().toISOString(),
+            isProgressSync: true,
+        });
+        console.log(`📡 EMIC progress synced: ${milestone} (${features.length} features)`);
+    } catch (e) {
+        console.warn(`📡 EMIC progress sync failed (${milestone}):`, e.message);
     }
 }
 

@@ -29,7 +29,7 @@
 import { modalManager } from './modal-manager.js';
 import { getStandaloneFeatures } from './region-tracker.js';
 import { getParticipantId, storeParticipantId } from './qualtrics-api.js';
-import { uploadEmicSubmission } from './data-uploader.js';
+import { uploadEmicSubmission, syncEmicProgress } from './data-uploader.js';
 import { EMIC_FLAGS, setEmicFlag, clearAllEmicFlags, updateActiveFeatureCount } from './emic-study-flags.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -276,6 +276,7 @@ async function startFlow() {
         await openLoginWithTestUser(testUsername);
         studyStartTime = new Date().toISOString();
         setEmicFlag(EMIC_FLAGS.HAS_REGISTERED);
+        syncEmicProgress(testUsername, 'registered');
         flowLog('Login submitted');
 
         if (!flowActive) return;
@@ -294,6 +295,7 @@ async function startFlow() {
 
         await waitForModalToAppearAndClose('welcomeModal');
         setEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME);
+        syncEmicProgress(testUsername, 'welcome_closed');
         flowLog('Welcome dismissed, entering main interface');
 
         if (!flowActive) return;
@@ -316,6 +318,7 @@ async function startFlow() {
 
         // ─── Step 5: Confirmation ────────────────────────────────────────
         setEmicFlag(EMIC_FLAGS.HAS_COMPLETED_ANALYSIS);
+        syncEmicProgress(testUsername, 'analysis_complete');
         flowLog('Complete clicked');
         completeTime = new Date().toISOString();
         const confirmed = await showConfirmModal();
@@ -674,6 +677,7 @@ async function runQuestionnaireSequence() {
             completedAt: new Date().toISOString()
         };
         setEmicFlag(q.flag);
+        syncEmicProgress(getParticipantId(), `questionnaire_${q.key}`);
         flowLog(`Questionnaire "${q.key}" completed: ${JSON.stringify(responses)}`);
     }
 
