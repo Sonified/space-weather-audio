@@ -16,10 +16,10 @@
 
 import { zoomState } from './zoom-state.js';
 import * as State from './audio-state.js';
-import { drawWaveformFromMinMax, notifyPageTurnUserDragged } from './waveform-renderer.js';
+import { drawWaveformFromMinMax, notifyPageTurnUserDragged } from './minimap-window-renderer.js';
 import { drawWaveformXAxis } from './waveform-x-axis-renderer.js';
 import { drawSpectrogramXAxis } from './spectrogram-x-axis-renderer.js';
-import { updateSpectrogramViewportFromZoom, renderCompleteSpectrogramForRegion, setScrollZoomHiRes, notifyInteractionStart, notifyInteractionEnd } from './spectrogram-three-renderer.js';
+import { updateSpectrogramViewportFromZoom, renderCompleteSpectrogramForRegion, setScrollZoomHiRes, notifyInteractionStart, notifyInteractionEnd } from './main-window-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { updateCanvasAnnotations } from './spectrogram-renderer.js';
 import { drawSpectrogramPlayhead } from './spectrogram-playhead.js';

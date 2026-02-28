@@ -8,14 +8,14 @@ const DEBUG_LOOP_FADES = true; // Enable loop fade logging
 
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
-import { drawWaveformWithSelection, updatePlaybackIndicator, startPlaybackIndicator } from './waveform-renderer.js';
+import { drawWaveformWithSelection, updatePlaybackIndicator, startPlaybackIndicator } from './minimap-window-renderer.js';
 import { updateAxisForPlaybackSpeed } from './spectrogram-axis-renderer.js';
 import { drawSpectrogram, startVisualization, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
 import { updateActiveRegionPlayButton, getActivePlayingRegionIndex, getCurrentRegions } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 import { getCurrentPlaybackBoundaries, isAtBoundaryEnd, getRestartPosition, formatBoundaries } from './playback-boundaries.js';
 import { setPlayingState } from './oscilloscope-renderer.js';
-import { updateSpectrogramViewport } from './spectrogram-three-renderer.js';
+import { updateSpectrogramViewport } from './main-window-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { WaveletGPUCompute } from './wavelet-gpu-compute.js';
 
@@ -417,7 +417,7 @@ async function ensureWaveletGPU() {
     // Try to share device with spectrogram renderer
     let sharedDevice = null;
     try {
-        const { getWebGPUDevice } = await import('./spectrogram-three-renderer.js');
+        const { getWebGPUDevice } = await import('./main-window-renderer.js');
         sharedDevice = getWebGPUDevice();
     } catch (e) { /* no renderer available */ }
 
@@ -929,13 +929,15 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
                                || State.currentMetadata?.original_sample_rate  // Legacy fallback
                                || 1200;  // Reasonable default
     
-    console.log(`🎯 SEEK: Target=${targetPosition.toFixed(2)}s`);
-    console.log(`   samplesPerRealSecond: ${samplesPerRealSecond.toFixed(2)}`);
-    console.log(`   totalAudioDuration: ${State.totalAudioDuration.toFixed(2)}s`);
-    
+    if (window.pm?.audio) {
+        console.log(`🎯 SEEK: Target=${targetPosition.toFixed(2)}s`);
+        console.log(`   samplesPerRealSecond: ${samplesPerRealSecond.toFixed(2)}`);
+        console.log(`   totalAudioDuration: ${State.totalAudioDuration.toFixed(2)}s`);
+    }
+
     // Convert real-world seconds to playback sample index
     const targetSample = Math.floor(targetPosition * samplesPerRealSecond);
-    console.log(`   targetSample: ${targetSample.toLocaleString()} (${targetPosition.toFixed(2)}s × ${samplesPerRealSecond.toFixed(2)})`);
+    if (window.pm?.audio) console.log(`   targetSample: ${targetSample.toLocaleString()} (${targetPosition.toFixed(2)}s × ${samplesPerRealSecond.toFixed(2)})`);
     
     // Set flag to prevent race condition in region finish detection
     State.setJustSeeked(true);

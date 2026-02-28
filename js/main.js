@@ -7,9 +7,9 @@
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef, switchStretchAlgorithm, primeStretchProcessors } from './audio-player.js';
-import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator, clearWaveformRenderer } from './waveform-renderer.js';
+import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator, clearWaveformRenderer } from './minimap-window-renderer.js';
 import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection, redrawAllCanvasFeatureBoxes, clearAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
-import { clearCompleteSpectrogram, startMemoryMonitoring, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, aggressiveCleanup, setTileShaderMode, resizeRendererToDisplaySize, setLevelTransitionMode, setCrossfadePower } from './spectrogram-three-renderer.js';
+import { clearCompleteSpectrogram, startMemoryMonitoring, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, aggressiveCleanup, setTileShaderMode, resizeRendererToDisplaySize, setLevelTransitionMode, setCrossfadePower } from './main-window-renderer.js';
 import { setPyramidReduceMode, rebuildUpperLevels } from './spectrogram-pyramid.js';
 import { loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal, openParticipantInfoModal } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
@@ -852,7 +852,7 @@ export async function startStreaming(event, config = null) {
         // Check if autoPlay is enabled and start playback indicator
         const autoPlayEnabled = document.getElementById('autoPlay').checked;
         if (autoPlayEnabled && State.playbackState === PlaybackState.PLAYING) {
-            const { startPlaybackIndicator } = await import('./waveform-renderer.js');
+            const { startPlaybackIndicator } = await import('./minimap-window-renderer.js');
             // console.log(`⏱️ ${logTime()} Worklet confirmed playback`);
             startPlaybackIndicator();
         }
@@ -2039,7 +2039,7 @@ function initializeAdvancedControls() {
         tileChunkEl.addEventListener('change', () => {
             tileChunkEl.blur();
             // Re-render spectrogram with new tile duration (old stays visible during compute)
-            import('./spectrogram-three-renderer.js').then(module => {
+            import('./main-window-renderer.js').then(module => {
                 if (module.isCompleteSpectrogramRendered()) {
                     module.renderCompleteSpectrogram(false, true);
                 }
@@ -2981,7 +2981,7 @@ async function initializeMainApp() {
                 localStorage.setItem('minFreqMultiplier', value);
                 // Redraw spectrogram and axis
                 drawFrequencyAxis();
-                import('./spectrogram-three-renderer.js').then(module => {
+                import('./main-window-renderer.js').then(module => {
                     // Clear cached spectrogram to force re-render with new minFreq
                     module.resetSpectrogramState();
                     module.renderCompleteSpectrogram();

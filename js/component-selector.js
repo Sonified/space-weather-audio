@@ -267,7 +267,7 @@ export async function switchComponent(componentIndex) {
 
         // Update raw waveform backup and apply de-trend if active
         window.rawWaveformData = new Float32Array(samples);
-        const { changeWaveformFilter } = await import('./waveform-renderer.js');
+        const { changeWaveformFilter } = await import('./minimap-window-renderer.js');
         changeWaveformFilter();
 
         // 🔄 SPECTROGRAM CROSSFADE: Use same pattern as frequency scale change
@@ -276,7 +276,7 @@ export async function switchComponent(componentIndex) {
             resetSpectrogramState,
             renderCompleteSpectrogram,
             getSpectrogramViewport
-        } = await import('./spectrogram-three-renderer.js');
+        } = await import('./main-window-renderer.js');
 
         // Reset and re-render with Three.js (GPU render is instant, no crossfade needed)
         resetSpectrogramState();

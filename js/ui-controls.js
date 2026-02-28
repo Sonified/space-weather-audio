@@ -4,7 +4,7 @@
  */
 
 import * as State from './audio-state.js';
-import { drawWaveform, changeWaveformFilter } from './waveform-renderer.js';
+import { drawWaveform, changeWaveformFilter } from './minimap-window-renderer.js';
 import { updatePlaybackSpeed } from './audio-player.js';
 import { submitCombinedSurveyResponse, getSurveyResponse, getParticipantId, storeParticipantId, getParticipantIdFromURL } from './qualtrics-api.js';
 import { 
