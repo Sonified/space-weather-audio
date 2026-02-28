@@ -426,6 +426,8 @@
                         <option value="standard" selected>Standard</option>
                         <option value="advanced">Advanced</option>
                     </select>
+                    <button type="button" id="simulateFlowBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px; display: none;">Simulate Flow</button>
+                    <button type="button" id="showFlagsBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px; display: none;">Show Flags</button>
                 </div>
                 <!-- Hidden checkbox kept for JS compatibility -->
                 <input type="checkbox" id="advancedMode" style="display:none;">
@@ -502,6 +504,7 @@
                 <button type="button" id="musicalExperienceQuestionBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px;">📋 Musical Experience</button>
                 <button type="button" id="feedbackQuestionBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px;">📋 Feedback</button>
                 <button type="button" id="referralQuestionBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px;">📋 How Did You Learn?</button>
+                <button type="button" id="submissionCompleteBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px;">📋 Submission Complete</button>
                 <div id="dlAudioGroup" style="margin-left: auto; display: none; align-items: center; gap: 6px;">
                     <label style="font-size: var(--panel-label-size); font-weight: 600; color: #888; white-space: nowrap;">Download Audio:</label>
                     <button type="button" id="dlCurrentViewBtn" class="emic-btn" style="padding: 6px 12px; font-size: 13px;">Current View</button>
@@ -509,6 +512,11 @@
                     <button type="button" id="dlAllComponentsBtn" class="emic-btn" style="padding: 6px 12px; font-size: 13px;">All Components</button>
                 </div>
             </div>
+        </div>
+
+        <!-- EMIC Flags Panel (live display of study state flags) -->
+        <div class="panel" id="emicFlagsPanel" style="padding: 10px 15px; background: var(--accent-bg); border: 2px solid rgba(255, 255, 255, 0.12); display: none;">
+            <div id="emicFlagsContent" style="display: grid; grid-template-columns: auto auto; justify-content: start; gap: 4px 40px; font-family: monospace; font-size: 13px;"></div>
         </div>
 
         <!-- Metrics Panel (hidden by default) -->
@@ -974,6 +982,17 @@
             }
         });
     })();
+    </script>
+    <!-- Simulate Flow module (auto-initializes, wires both buttons) -->
+    <script type="module" src="./js/emic-simulate-flow.js"></script>
+    <!-- Flags panel (live localStorage flag display) -->
+    <script type="module">
+        import { initFlagsPanel } from './js/emic-study-flags.js';
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initFlagsPanel);
+        } else {
+            setTimeout(initFlagsPanel, 200);
+        }
     </script>
 </body>
 </html>
