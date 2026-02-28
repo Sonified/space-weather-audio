@@ -214,3 +214,45 @@ export async function uploadUserDataComplete(participantId, submissionData) {
     // Note: uploadSubmissionData already includes status update
 }
 
+/**
+ * Upload submission data to the EMIC R2 endpoint (emic-data bucket).
+ * Endpoint: POST /api/emic/participants/{id}/submit
+ * Used by both real study submissions (ui-controls.js) and simulate flow.
+ * @param {string} participantId - The participant ID
+ * @param {Object} submissionData - The submission payload
+ * @returns {Promise<Object>} - Upload result
+ */
+export async function uploadEmicSubmission(participantId, submissionData) {
+    if (!participantId) {
+        console.warn('⚠️ EMIC upload: missing participantId');
+        return { status: 'skipped', reason: 'no_participant_id' };
+    }
+
+    const apiBase = window.location.origin;
+    const endpoint = `${apiBase}/api/emic/participants/${encodeURIComponent(participantId)}/submit`;
+
+    try {
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ...submissionData,
+                isSimulation: submissionData.isSimulation ?? false,
+            }),
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            console.log('✅ EMIC submission uploaded to R2:', result);
+            return { status: 'success', ...result };
+        } else {
+            console.error('❌ EMIC upload failed:', result);
+            return { status: 'failed', error: result.error };
+        }
+    } catch (error) {
+        console.error('❌ EMIC upload error (server may be unreachable):', error);
+        return { status: 'failed', error: error.message };
+    }
+}
+
