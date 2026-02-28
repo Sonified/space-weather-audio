@@ -2426,6 +2426,13 @@ export async function closeWelcomeModal(keepOverlay = null) {
     }
     
     console.log(`👋 Welcome modal closed (keepOverlay: ${keepOverlay})`);
+    
+    // Set EMIC welcome-closed flag
+    if (isEmicStudyMode()) {
+        import('./emic-study-flags.js').then(({ EMIC_FLAGS, setEmicFlag }) => {
+            setEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME);
+        });
+    }
 }
 
 // End Modal Functions
@@ -2937,6 +2944,14 @@ export function submitParticipantSetup() {
     if (participantId) {
         storeParticipantId(participantId);
         console.log('💾 Saved participant ID:', participantId);
+        // Set EMIC registration flag
+        import('./master-modes.js').then(({ isEmicStudyMode }) => {
+            if (isEmicStudyMode()) {
+                import('./emic-study-flags.js').then(({ EMIC_FLAGS, setEmicFlag }) => {
+                    setEmicFlag(EMIC_FLAGS.HAS_REGISTERED);
+                });
+            }
+        });
     } else {
         // If empty, remove from localStorage
         localStorage.removeItem('participantId');
@@ -3466,12 +3481,73 @@ async function checkAndSubmitIfComplete(participantId) {
                     console.log('📋 Qualtrics Response ID:', qualtricsResponseId);
                 }
                 
-                // Upload submission data to R2 (backup)
+                // EMIC study mode: upload to EMIC R2 endpoint (emic-data bucket)
+                // Build submission data from what's available in this scope
                 try {
-                    const { uploadSubmissionData } = await import('./data-uploader.js');
-                    await uploadSubmissionData(participantId, jsonDump);
+                    const { isEmicStudyMode: isEmic } = await import('./master-modes.js');
+                    if (isEmic()) {
+                        const { uploadEmicSubmission } = await import('./data-uploader.js');
+                        const { getCurrentRegions } = await import('./region-tracker.js');
+
+                        // Build features in the same format as simulate flow
+                        const regions = getCurrentRegions();
+                        const features = [];
+                        regions.forEach(region => {
+                            const regionFeatures = region.features || [];
+                            if (regionFeatures.length > 0) {
+                                regionFeatures.forEach(feat => {
+                                    features.push({
+                                        index: features.length,
+                                        timeRange: { start: region.startTime || '', end: region.stopTime || '' },
+                                        freqRange: { low: feat.lowFreq || '', high: feat.highFreq || '' },
+                                        type: feat.type || null,
+                                        repetition: feat.repetition || null,
+                                        notes: feat.notes || null,
+                                        speedFactor: feat.speedFactor ?? null,
+                                        drawnAt: feat.createdAt || region.createdAt || ''
+                                    });
+                                });
+                            } else {
+                                features.push({
+                                    index: features.length,
+                                    timeRange: { start: region.startTime || '', end: region.stopTime || '' },
+                                    freqRange: { low: region.lowFreq || '', high: region.highFreq || '' },
+                                    drawnAt: region.createdAt || ''
+                                });
+                            }
+                        });
+
+                        // Build questionnaire data from combinedResponses
+                        const questionnaires = {};
+                        if (combinedResponses.pre) {
+                            questionnaires.background = { responses: combinedResponses.pre, completedAt: new Date().toISOString() };
+                        }
+                        if (combinedResponses.post) {
+                            questionnaires.post = { responses: combinedResponses.post, completedAt: new Date().toISOString() };
+                        }
+                        if (combinedResponses.awesf) {
+                            questionnaires.awesf = { responses: combinedResponses.awesf, completedAt: new Date().toISOString() };
+                        }
+                        if (combinedResponses.activityLevel) {
+                            questionnaires.activityLevel = { responses: combinedResponses.activityLevel, completedAt: new Date().toISOString() };
+                        }
+
+                        const sessionState = getSessionState(participantId);
+                        await uploadEmicSubmission(participantId, {
+                            participantId,
+                            studyStartTime: sessionState?.startedAt || '',
+                            features,
+                            questionnaires,
+                            completedAt: new Date().toISOString(),
+                            submittedAt: new Date().toISOString(),
+                            featureCount: features.length,
+                            isSimulation: false,
+                            qualtricsResponseId: qualtricsResponseId || null
+                        });
+                        console.log('✅ EMIC submission uploaded to R2 endpoint');
+                    }
                 } catch (error) {
-                    console.warn('⚠️ Could not upload submission to R2:', error);
+                    console.warn('⚠️ Could not upload EMIC submission to R2:', error);
                 }
                 
                 // Mark session as submitted with Qualtrics response ID
