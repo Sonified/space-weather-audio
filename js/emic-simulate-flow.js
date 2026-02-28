@@ -1,0 +1,900 @@
+// TODO: Audit all collected data fields:
+// - Study start time (login)
+// - Each feature identification timestamp  
+// - Complete button timestamp
+// - All questionnaire responses + timestamps
+// - Feature annotations (time/freq ranges)
+// - Total session duration
+// Server integration: uploads to Cloudflare Worker R2 via /api/emic/participants/:id/submit
+// - Per-participant JSON: emic/participants/{id}/submission_{timestamp}.json (append-only)
+// - Master participant list: emic/participants/_master.json (auto-updated)
+
+/**
+ * emic-simulate-flow.js
+ * Simulate Flow: walks through the entire participant study flow
+ * 
+ * Instead of trying to clear existing feature boxes (no exported clear function),
+ * we create a temporary test user ({username}_TEST1, _TEST2, etc.) which naturally
+ * has no features. After the flow, we switch back to the real user.
+ *
+ * Uses a monkey-patch on modalManager.closeModal to force keepOverlay:true
+ * during the flow sequence, so the dark backdrop stays persistent across
+ * all modal transitions (no flicker).
+ * 
+ * Flow: Login (test user) → Welcome → Draw Features → Complete → Confirm → 
+ *       Questionnaire Intro → Background → Data Analysis → Musical Experience →
+ *       How Did You Learn → Feedback → Submission Complete → Restore real user
+ */
+
+import { modalManager } from './modal-manager.js';
+import { getCurrentRegions } from './region-tracker.js';
+import { getParticipantId, storeParticipantId } from './qualtrics-api.js';
+import { uploadEmicSubmission } from './data-uploader.js';
+import { EMIC_FLAGS, setEmicFlag, clearAllEmicFlags, updateActiveFeatureCount } from './emic-study-flags.js';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FLOW LOGGING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function flowLog(message) {
+    const ts = new Date().toISOString().slice(11, 23); // HH:MM:SS.mmm
+    console.log(`🔬 [SimulateFlow ${ts}] ${message}`);
+}
+
+// Flow state
+let flowActive = false;
+let flowRunning = false; // Keeps button visible during flow regardless of display mode
+let savedDisplayMode = null; // Display mode before flow started
+let savedSilentDownload = null; // silentDownload checkbox state before flow
+let savedAutoDownload = null; // autoDownload checkbox state before flow
+let studyStartTime = null;
+let completeTime = null;
+let completeBtn = null;
+let featurePollInterval = null;
+let realUsername = null; // The user's actual username, restored after flow
+
+// Track whether we're in the flow's modal sequence so the overlay patch cooperates
+let inFlowSequence = false;
+
+// Monkey-patch state
+let originalCloseModal = null;
+
+/**
+ * Initialize: wire up the Simulate Flow button and display mode visibility
+ */
+export function initSimulateFlow() {
+    const btn = document.getElementById('simulateFlowBtn');
+    if (!btn) return;
+
+    btn.addEventListener('click', () => {
+        if (flowRunning) {
+            cancelFlow();
+        } else {
+            startFlow();
+        }
+    });
+
+    // Hook into display mode changes to show/hide button
+    const displayModeSelect = document.getElementById('displayMode');
+    if (displayModeSelect) {
+        const updateVisibility = () => {
+            btn.style.display = (flowRunning || displayModeSelect.value === 'participant') ? '' : 'none';
+        };
+        updateVisibility();
+        displayModeSelect.addEventListener('change', updateVisibility);
+        // Store ref for later use
+        btn._updateVisibility = updateVisibility;
+    }
+
+    // Wire up the Submission Complete preview button (questionnaires panel)
+    const previewBtn = document.getElementById('submissionCompleteBtn');
+    if (previewBtn) {
+        previewBtn.addEventListener('click', () => openSubmissionCompletePreview());
+    }
+}
+
+/**
+ * Check if simulate flow is currently active.
+ */
+export function isFlowActive() {
+    return flowActive;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OVERLAY PATCH
+// Forces keepOverlay:true on closeModal calls during the flow sequence,
+// preventing the dark backdrop from flickering between sequential modals.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function installOverlayPatch() {
+    if (originalCloseModal) return;
+    originalCloseModal = modalManager.closeModal.bind(modalManager);
+    modalManager.closeModal = async function(modalId, options = {}) {
+        if (inFlowSequence) {
+            options.keepOverlay = true;
+        }
+        return originalCloseModal(modalId, options);
+    };
+}
+
+function removeOverlayPatch() {
+    if (originalCloseModal) {
+        modalManager.closeModal = originalCloseModal;
+        originalCloseModal = null;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TEST USERNAME
+// Creates a temporary test user so the flow has a clean slate (no features).
+// Pattern: {realName}_TEST1, _TEST2, etc.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function stripTestSuffix(username) {
+    // Remove any trailing _TEST\d+ suffixes (handles stacked ones too)
+    return username.replace(/(_TEST\d+)+$/, '');
+}
+
+function generateTestUsername(baseUsername) {
+    // Strip any existing _TEST suffixes first to prevent stacking
+    const cleanBase = stripTestSuffix(baseUsername);
+
+    // Find next available TEST number.
+    // NOTE: Checks localStorage master list, not the server. This is fine for a dev tool —
+    // not worth an async server round-trip. Server is the true source of truth for production data.
+    // NOTE: Test usernames (_TEST suffix) will be registered on the production server via the
+    // existing participant modal submit handler. This is expected — they're clearly labeled.
+    let num = 1;
+    while (true) {
+        const candidate = `${cleanBase}_TEST${num}`;
+        const masterList = getEMICMasterList();
+        const exists = masterList.some(p => p.participantId === candidate);
+        if (!exists) return candidate;
+        num++;
+        if (num > 99) return `${cleanBase}_TEST${Date.now()}`; // Safety valve
+    }
+}
+
+function getEMICMasterList() {
+    try {
+        return JSON.parse(localStorage.getItem('emic_master_participant_list') || '[]');
+    } catch {
+        return [];
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN FLOW
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Cancel a running flow
+ */
+function cancelFlow() {
+    flowLog('Flow cancelled by user');
+    // Set flag — startFlow()'s async checks will see this and exit,
+    // hitting the finally block which calls cleanup().
+    // We also need to immediately close visible modals + overlay
+    // so the UI responds instantly to cancel.
+    flowActive = false;
+    
+    // Force-close any visible modals (don't await — instant visual response)
+    // Resolve any dangling _closeResolver promises so async stack frames don't leak
+    document.querySelectorAll('.modal-window').forEach(m => {
+        if (m._closeResolver) {
+            m._closeResolver(false); // false = cancelled
+            m._closeResolver = null;
+        }
+        m.style.display = 'none';
+        m.classList.remove('modal-visible');
+    });
+    // Also remove any dynamically created flow modals
+    ['simulateFlowConfirmModal', 'simulateFlowIntroModal', 'simulateFlowSubmissionModal'].forEach(id => {
+        document.getElementById(id)?.remove();
+    });
+    
+    // Immediately hide overlay
+    const overlay = document.getElementById('permanentOverlay');
+    if (overlay) { overlay.style.display = 'none'; overlay.style.opacity = ''; }
+
+    // Re-enable background scrolling (modals lock body with overflow:hidden + position:fixed)
+    modalManager.enableBackgroundScroll();
+
+    // Clear modalManager state so it doesn't think a modal is still open
+    modalManager.currentModal = null;
+    modalManager.isTransitioning = false;
+    
+    // Restore user + cleanup immediately (cleanup is idempotent —
+    // if startFlow's finally block calls it again, the null checks prevent double-restore)
+    restoreRealUser();
+    cleanup();
+}
+
+async function startFlow() {
+    if (flowActive) return;
+    flowActive = true;
+    flowRunning = true;
+    inFlowSequence = true;
+    studyStartTime = null;
+    completeTime = null;
+
+    flowLog('Study flow beginning');
+
+    // Update button to Cancel state
+    const btn = document.getElementById('simulateFlowBtn');
+    if (btn) {
+        btn.textContent = 'Cancel';
+        btn.style.backgroundColor = '#dc3545';
+        btn.style.background = '#dc3545';
+    }
+
+    // Save and switch display mode to participant
+    const displayModeSelect = document.getElementById('displayMode');
+    if (displayModeSelect) {
+        savedDisplayMode = displayModeSelect.value;
+        if (displayModeSelect.value !== 'participant') {
+            displayModeSelect.value = 'participant';
+            displayModeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }
+
+    // Save and enable silentDownload + autoDownload so data fetches happen quietly in background
+    const silentCb = document.getElementById('silentDownload');
+    const autoCb = document.getElementById('autoDownload');
+    savedSilentDownload = silentCb?.checked ?? null;
+    savedAutoDownload = autoCb?.checked ?? null;
+    if (silentCb && !silentCb.checked) {
+        silentCb.checked = true;
+        silentCb.dispatchEvent(new Event('change'));
+    }
+    if (autoCb && !autoCb.checked) {
+        autoCb.checked = true;
+        autoCb.dispatchEvent(new Event('change'));
+    }
+    flowLog('Enabled silentDownload + autoDownload for background data fetch');
+
+    // Save real username for restoration later (strip any stacked _TEST suffixes)
+    realUsername = stripTestSuffix(getParticipantId() || 'Participant');
+
+    // Generate test username
+    const testUsername = generateTestUsername(realUsername);
+    flowLog(`Resetting state, test user: ${testUsername}`);
+
+    // Install overlay patch
+    installOverlayPatch();
+
+    // Clear all EMIC flags for clean test session
+    clearAllEmicFlags();
+    setEmicFlag(EMIC_FLAGS.IS_SIMULATING, true);
+
+    // Reset questionnaire form inputs (not the user's features — those belong to real user)
+    resetQuestionnaireInputs();
+
+    try {
+        // ─── Step 2: Login Modal ─────────────────────────────────────────
+        flowLog('Login modal shown');
+        await openLoginWithTestUser(testUsername);
+        studyStartTime = new Date().toISOString();
+        setEmicFlag(EMIC_FLAGS.HAS_REGISTERED);
+        flowLog('Login submitted');
+
+        if (!flowActive) return;
+
+        // ─── Step 3: Welcome Modal ───────────────────────────────────────
+        flowLog('Welcome modal shown');
+
+        // Trigger background data download while user reads the welcome text
+        const startBtn = document.getElementById('startBtn');
+        if (startBtn && !startBtn.disabled) {
+            startBtn.click();
+            flowLog('Triggered background data fetch (startBtn clicked)');
+        } else {
+            flowLog('startBtn not available for background fetch');
+        }
+
+        await waitForModalToAppearAndClose('welcomeModal');
+        setEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME);
+        flowLog('Welcome dismissed, entering main interface');
+
+        if (!flowActive) return;
+
+        // ─── Step 4: Main Interface — draw features ──────────────────────
+        inFlowSequence = false; // Let overlay fade out naturally
+        // If overlay is still up, close it
+        const overlay = document.getElementById('permanentOverlay');
+        if (overlay && overlay.style.display !== 'none') {
+            overlay.style.transition = 'opacity 0.3s ease-out';
+            overlay.style.opacity = '0';
+            setTimeout(() => { overlay.style.display = 'none'; }, 300);
+        }
+        
+        await showCompleteButton();
+        flowLog('Complete button appeared (features detected)');
+
+        if (!flowActive) return;
+        inFlowSequence = true;
+
+        // ─── Step 5: Confirmation ────────────────────────────────────────
+        setEmicFlag(EMIC_FLAGS.HAS_COMPLETED_ANALYSIS);
+        flowLog('Complete clicked');
+        completeTime = new Date().toISOString();
+        const confirmed = await showConfirmModal();
+        flowLog(`Confirmation ${confirmed ? 'confirmed' : 'declined'}`);
+        if (!confirmed) {
+            // User went back — re-show complete button
+            inFlowSequence = false;
+            await showCompleteButton();
+            if (!flowActive) return;
+            inFlowSequence = true;
+            completeTime = new Date().toISOString();
+            const confirmed2 = await showConfirmModal();
+            flowLog(`Second confirmation ${confirmed2 ? 'confirmed' : 'declined'}`);
+            if (!confirmed2) {
+                flowLog('Flow ended (user declined twice)');
+                restoreRealUser();
+                cleanup();
+                return;
+            }
+        }
+
+        // ─── Step 6: Questionnaire intro ─────────────────────────────────
+        flowLog('Questionnaire intro shown');
+        await showIntroModal();
+
+        if (!flowActive) return;
+
+        // ─── Step 7: Questionnaire sequence ──────────────────────────────
+        const questionnaireData = await runQuestionnaireSequence();
+
+        if (!flowActive) return;
+
+        // ─── Step 8: Save + Submission Complete ──────────────────────────
+        const submissionData = buildSubmissionData(questionnaireData, testUsername);
+        saveToLocalStorage(submissionData);
+        setEmicFlag(EMIC_FLAGS.HAS_SUBMITTED);
+        flowLog('Submission saved to localStorage');
+
+        flowLog('Upload to server started');
+        await uploadToServer(submissionData);
+
+        flowLog('Submission complete modal shown');
+        await showSubmissionCompleteModal(submissionData.featureCount);
+
+        // ─── Restore real user ───────────────────────────────────────────
+        restoreRealUser();
+
+    } catch (err) {
+        console.error('❌ Simulate flow error:', err);
+        restoreRealUser();
+    } finally {
+        cleanup();
+    }
+}
+
+/**
+ * Restore the real username after flow completes
+ */
+function restoreRealUser() {
+    if (realUsername) {
+        storeParticipantId(realUsername);
+        const pidValue = document.getElementById('participantIdValue');
+        if (pidValue) pidValue.textContent = realUsername;
+        flowLog(`Real user restored: ${realUsername}`);
+        realUsername = null; // Prevent double-restore
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// STEP IMPLEMENTATIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Open the participant login modal pre-filled with the test username.
+ * Uses storeParticipantId() to properly switch the active user — this means
+ * getCurrentRegions() returns empty for the new test user (region-tracker
+ * stores by spacecraft+username key), giving a clean slate automatically.
+ * Resolves when the modal closes (user submits).
+ */
+async function openLoginWithTestUser(testUsername) {
+    const modal = document.getElementById('participantModal');
+    if (!modal) return;
+
+    // Set test user as active participant via existing infrastructure.
+    // Region-tracker uses participantId in its storage key, so switching
+    // the ID gives us a clean feature slate without clearing anything.
+    storeParticipantId(testUsername);
+
+    // Open via the REAL study flow — openParticipantModal() applies all
+    // EMIC text patching (title, instructions, placeholder, etc.)
+    const { openParticipantModal } = await import('./ui-controls.js');
+    await openParticipantModal();
+
+    // Pre-fill the input with the test username after the real function opens
+    const input = modal.querySelector('#participantId');
+    if (input) {
+        input.value = testUsername;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    // Enable the submit button (normally disabled until input validates)
+    const submitBtn = modal.querySelector('.modal-submit');
+    if (submitBtn) {
+        setTimeout(() => { submitBtn.disabled = false; }, 300);
+    }
+
+    // Wait for modal to close (user clicks submit → existing handler does
+    // registration, welcome modal, etc.)
+    return new Promise((resolve) => {
+        const observer = new MutationObserver(() => {
+            if (modal.style.display === 'none' || modal.style.display === '') {
+                observer.disconnect();
+                resolve();
+            }
+        });
+        observer.observe(modal, { attributes: true, attributeFilter: ['style'] });
+    });
+}
+
+/**
+ * Wait for a modal to appear (become visible) then wait for it to close.
+ * Used for the welcome modal which is opened by the existing participant handler.
+ */
+function waitForModalToAppearAndClose(modalId) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById(modalId);
+        if (!modal) { resolve(); return; }
+
+        // If already visible, just wait for close
+        if (modal.style.display === 'flex' || modal.style.display === 'block') {
+            waitForClose();
+            return;
+        }
+
+        // Wait for it to appear
+        const appearObserver = new MutationObserver(() => {
+            if (modal.style.display === 'flex' || modal.style.display === 'block') {
+                appearObserver.disconnect();
+                waitForClose();
+            }
+        });
+        appearObserver.observe(modal, { attributes: true, attributeFilter: ['style'] });
+
+        // Timeout fallback — if welcome doesn't appear in 3s, continue
+        setTimeout(() => {
+            appearObserver.disconnect();
+            resolve();
+        }, 3000);
+
+        function waitForClose() {
+            const closeObserver = new MutationObserver(() => {
+                if (modal.style.display === 'none' || modal.style.display === '') {
+                    closeObserver.disconnect();
+                    resolve();
+                }
+            });
+            closeObserver.observe(modal, { attributes: true, attributeFilter: ['style'] });
+        }
+    });
+}
+
+/**
+ * Reset questionnaire form inputs (not user data — just the UI state)
+ */
+function resetQuestionnaireInputs() {
+    ['backgroundQuestionModal', 'dataAnalysisQuestionModal', 'musicalExperienceQuestionModal'].forEach(id => {
+        const modal = document.getElementById(id);
+        if (!modal) return;
+        modal.querySelectorAll('input[type="radio"]').forEach(r => r.checked = false);
+        const submit = modal.querySelector('.modal-submit');
+        if (submit) submit.disabled = true;
+    });
+
+    // Reset textareas + their submit button text
+    ['feedbackQuestionModal', 'referralQuestionModal'].forEach(id => {
+        const modal = document.getElementById(id);
+        if (!modal) return;
+        const textarea = modal.querySelector('textarea');
+        if (textarea) textarea.value = '';
+        const submit = modal.querySelector('.modal-submit');
+        if (submit) submit.textContent = 'Skip';
+    });
+}
+
+/**
+ * Show the ✓ Complete button and wait for click.
+ * Button appears after user draws their first feature.
+ */
+function showCompleteButton() {
+    return new Promise((resolve) => {
+        if (!completeBtn) {
+            completeBtn = document.createElement('button');
+            completeBtn.id = 'simulateFlowCompleteBtn';
+            completeBtn.type = 'button';
+            completeBtn.textContent = '✓ Complete';
+            completeBtn.style.cssText = `
+                background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+                color: white; font-weight: 700; padding: 8px 18px; font-size: 15px;
+                border: none; border-radius: 6px; cursor: pointer;
+                margin-left: auto; display: none; white-space: nowrap;
+                transition: opacity 0.2s, transform 0.2s;
+            `;
+            completeBtn.addEventListener('mouseenter', () => { completeBtn.style.transform = 'scale(1.03)'; });
+            completeBtn.addEventListener('mouseleave', () => { completeBtn.style.transform = 'scale(1)'; });
+
+            const playbackBar = document.querySelector('.panel-playback > div');
+            if (playbackBar) playbackBar.appendChild(completeBtn);
+        }
+
+        completeBtn.style.display = 'none';
+        completeBtn.disabled = false;
+
+        const onClick = () => {
+            completeBtn.removeEventListener('click', onClick);
+            completeBtn.style.display = 'none';
+            if (featurePollInterval) { clearInterval(featurePollInterval); featurePollInterval = null; }
+            resolve();
+        };
+        completeBtn.addEventListener('click', onClick);
+
+        // Poll for features > 0, also update the flag panel count
+        if (featurePollInterval) clearInterval(featurePollInterval);
+        featurePollInterval = setInterval(() => {
+            const count = countFeatures();
+            updateActiveFeatureCount(count);
+            if (count > 0) {
+                completeBtn.style.display = '';
+                clearInterval(featurePollInterval);
+                featurePollInterval = null;
+            }
+        }, 500);
+    });
+}
+
+function countFeatures() {
+    try {
+        const regions = getCurrentRegions();
+        return regions.reduce((total, r) => total + (r.features?.length || r.featureCount || 0), 0);
+    } catch {
+        return document.querySelectorAll('.feature-box, [data-feature-index]').length;
+    }
+}
+
+/**
+ * Confirmation modal: "Are you sure you're ready to finish?"
+ */
+function showConfirmModal() {
+    return new Promise((resolve) => {
+        const modal = document.createElement('div');
+        modal.id = 'simulateFlowConfirmModal';
+        modal.className = 'modal-window';
+        modal.style.display = 'none';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 420px; text-align: center;">
+                <div class="modal-header">
+                    <h3 class="modal-title">Ready to finish?</h3>
+                </div>
+                <div class="modal-body">
+                    <p style="color: #666; margin: 0 0 24px; font-size: 16px; line-height: 1.5;">
+                        Are you sure you're ready to finish? You won't be able to go back after this.
+                    </p>
+                    <div style="display: flex; gap: 12px; justify-content: center;">
+                        <button type="button" id="sfConfirmYes" class="modal-submit" style="min-width: 140px;">Yes, I'm done</button>
+                        <button type="button" id="sfConfirmNo" class="modal-submit" style="min-width: 120px; background: #6c757d;">Go back</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        modalManager.openModal('simulateFlowConfirmModal');
+
+        requestAnimationFrame(() => {
+            document.getElementById('sfConfirmYes')?.addEventListener('click', () => {
+                modalManager.closeModal('simulateFlowConfirmModal', { keepOverlay: true }).then(() => modal.remove());
+                resolve(true);
+            });
+            document.getElementById('sfConfirmNo')?.addEventListener('click', () => {
+                modalManager.closeModal('simulateFlowConfirmModal').then(() => modal.remove());
+                resolve(false);
+            });
+        });
+    });
+}
+
+/**
+ * Questionnaire intro modal
+ */
+function showIntroModal() {
+    return new Promise((resolve) => {
+        const modal = document.createElement('div');
+        modal.id = 'simulateFlowIntroModal';
+        modal.className = 'modal-window';
+        modal.style.display = 'none';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 460px; text-align: center;">
+                <div class="modal-header">
+                    <h3 class="modal-title">📋 Post-Study Questions</h3>
+                </div>
+                <div class="modal-body">
+                    <p style="color: #666; margin: 0 0 24px; font-size: 16px; line-height: 1.6;">
+                        You will now be guided through a brief set of questions that should take 2–3 minutes.
+                    </p>
+                    <button type="button" class="modal-submit" style="min-width: 140px;">OK</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        modalManager.openModal('simulateFlowIntroModal', { keepOverlay: true });
+
+        requestAnimationFrame(() => {
+            modal.querySelector('.modal-submit')?.addEventListener('click', () => {
+                modalManager.closeModal('simulateFlowIntroModal', { keepOverlay: true }).then(() => modal.remove());
+                resolve();
+            });
+        });
+    });
+}
+
+/**
+ * Run through all 5 questionnaires in sequence.
+ * Overlay stays persistent the entire time (via the global patch).
+ * Existing submit handlers in main.js close each modal → patch forces keepOverlay.
+ */
+async function runQuestionnaireSequence() {
+    const questionnaires = [
+        { id: 'backgroundQuestionModal', key: 'background', radioName: 'backgroundLevel', flag: EMIC_FLAGS.HAS_SUBMITTED_BACKGROUND },
+        { id: 'dataAnalysisQuestionModal', key: 'dataAnalysis', radioName: 'dataAnalysisLevel', flag: EMIC_FLAGS.HAS_SUBMITTED_DATA_ANALYSIS },
+        { id: 'musicalExperienceQuestionModal', key: 'musicalExperience', radioName: 'musicalExperienceLevel', flag: EMIC_FLAGS.HAS_SUBMITTED_MUSICAL },
+        { id: 'referralQuestionModal', key: 'referral', textareaId: 'referralText', flag: EMIC_FLAGS.HAS_SUBMITTED_REFERRAL },
+        { id: 'feedbackQuestionModal', key: 'feedback', textareaId: 'feedbackText', flag: EMIC_FLAGS.HAS_SUBMITTED_FEEDBACK },
+    ];
+
+    const questionnaireData = {};
+
+    for (const q of questionnaires) {
+        const modal = document.getElementById(q.id);
+        if (!modal) {
+            console.warn(`⚠️ Questionnaire modal not found: ${q.id}, skipping`);
+            continue;
+        }
+        if (!flowActive) break;
+
+        // Open this questionnaire (swap from previous, overlay stays)
+        await modalManager.openModal(q.id, { keepOverlay: true });
+        // ↑ This promise resolves when the existing submit handler in main.js
+        //   calls modalManager.closeModal() — patched to keepOverlay:true
+
+        // Collect responses after modal closes
+        const responses = {};
+        if (q.radioName) {
+            responses[q.radioName] = document.querySelector(`input[name="${q.radioName}"]:checked`)?.value || '';
+        } else if (q.textareaId) {
+            const textarea = document.getElementById(q.textareaId);
+            responses[q.key + 'Text'] = textarea?.value?.trim() || '';
+        }
+
+        questionnaireData[q.key] = {
+            responses,
+            completedAt: new Date().toISOString()
+        };
+        setEmicFlag(q.flag);
+        flowLog(`Questionnaire "${q.key}" completed: ${JSON.stringify(responses)}`);
+    }
+
+    return questionnaireData;
+}
+
+/**
+ * Submission Complete modal
+ */
+function showSubmissionCompleteModal(featureCount) {
+    return new Promise((resolve) => {
+        const modal = createSubmissionCompleteElement(featureCount);
+        document.body.appendChild(modal);
+        modalManager.openModal('simulateFlowSubmissionModal', { keepOverlay: true });
+
+        const closeIt = () => {
+            modalManager.closeModal('simulateFlowSubmissionModal').then(() => modal.remove());
+            resolve();
+        };
+        requestAnimationFrame(() => {
+            modal.querySelector('.modal-close')?.addEventListener('click', closeIt);
+            modal.querySelector('.modal-submit')?.addEventListener('click', closeIt);
+        });
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DATA PERSISTENCE (localStorage + Cloudflare Worker R2)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function buildSubmissionData(questionnaireData, testUsername) {
+    const regions = getCurrentRegions();
+    const features = [];
+
+    regions.forEach((region) => {
+        const regionFeatures = region.features || [];
+        if (regionFeatures.length > 0) {
+            regionFeatures.forEach((feat) => {
+                features.push({
+                    index: features.length,
+                    timeRange: { start: region.startTime || '', end: region.stopTime || '' },
+                    freqRange: { low: feat.lowFreq || '', high: feat.highFreq || '' },
+                    drawnAt: feat.createdAt || region.createdAt || ''
+                });
+            });
+        } else {
+            features.push({
+                index: features.length,
+                timeRange: { start: region.startTime || '', end: region.stopTime || '' },
+                freqRange: { low: region.lowFreq || '', high: region.highFreq || '' },
+                drawnAt: region.createdAt || ''
+            });
+        }
+    });
+
+    return {
+        participantId: testUsername,
+        realUsername: realUsername || '',
+        studyStartTime: studyStartTime || '',
+        features,
+        questionnaires: questionnaireData,
+        completedAt: completeTime,
+        submittedAt: new Date().toISOString(),
+        featureCount: features.length,
+        isSimulation: true
+    };
+}
+
+function saveToLocalStorage(submissionData) {
+    const { participantId, submittedAt } = submissionData;
+
+    // Per-participant data
+    localStorage.setItem(
+        `emic_participant_${participantId}_data`,
+        JSON.stringify(submissionData)
+    );
+
+    // Master participant list
+    let masterList = getEMICMasterList();
+    const existing = masterList.findIndex(p => p.participantId === participantId);
+    const entry = { participantId, submittedAt, featureCount: submissionData.featureCount, isSimulation: true };
+    if (existing >= 0) masterList[existing] = entry;
+    else masterList.push(entry);
+    localStorage.setItem('emic_master_participant_list', JSON.stringify(masterList));
+
+    console.log('📡 EMIC submission saved to localStorage:', participantId);
+}
+
+/**
+ * Upload submission data to the EMIC R2 backend via shared uploadEmicSubmission().
+ * Falls back gracefully — localStorage is the primary store.
+ */
+async function uploadToServer(submissionData) {
+    const result = await uploadEmicSubmission(submissionData.participantId, submissionData);
+    if (result.status === 'success') {
+        flowLog('Upload to server succeeded');
+    } else {
+        flowLog(`Upload to server failed: ${result.error || result.reason || 'unknown'}`);
+    }
+    return result;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SHARED MODAL ELEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Create the Submission Complete modal element (shared by flow and preview).
+ * Returns a detached DOM element — caller is responsible for appending + opening.
+ */
+function createSubmissionCompleteElement(featureCount) {
+    const existing = document.getElementById('simulateFlowSubmissionModal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'simulateFlowSubmissionModal';
+    modal.className = 'modal-window';
+    modal.style.display = 'none';
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 480px; text-align: center; position: relative;">
+            <button type="button" class="modal-close" title="Close">&times;</button>
+            <div class="modal-header">
+                <h3 class="modal-title">📡 Submission Complete</h3>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 18px; margin: 0 0 12px; color: #333;">
+                    You have submitted <strong>${featureCount}</strong> feature${featureCount !== 1 ? 's' : ''}.
+                </p>
+                <p style="color: #666; margin: 0 0 24px; font-size: 15px; line-height: 1.5;">
+                    Your answers have been submitted. You can now close this page.
+                </p>
+                <button type="button" class="modal-submit" style="min-width: 120px;">Close</button>
+            </div>
+        </div>
+    `;
+    return modal;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PREVIEW (from questionnaires panel button)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function openSubmissionCompletePreview() {
+    const modal = createSubmissionCompleteElement(countFeatures());
+    document.body.appendChild(modal);
+    modalManager.openModal('simulateFlowSubmissionModal');
+
+    requestAnimationFrame(() => {
+        const closeIt = () => {
+            modalManager.closeModal('simulateFlowSubmissionModal').then(() => modal.remove());
+        };
+        modal.querySelector('.modal-close')?.addEventListener('click', closeIt);
+        modal.querySelector('.modal-submit')?.addEventListener('click', closeIt);
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLEANUP
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function cleanup() {
+    flowActive = false;
+    flowRunning = false;
+    inFlowSequence = false;
+    removeOverlayPatch();
+    modalManager.enableBackgroundScroll(); // Safety net — always unlock scroll on cleanup
+    if (featurePollInterval) { clearInterval(featurePollInterval); featurePollInterval = null; }
+    if (completeBtn) completeBtn.style.display = 'none';
+
+    // Restore button text and style
+    const btn = document.getElementById('simulateFlowBtn');
+    if (btn) {
+        btn.textContent = 'Simulate Flow';
+        btn.style.backgroundColor = '';
+        btn.style.background = '';
+        if (btn._updateVisibility) btn._updateVisibility();
+    }
+
+    // Restore previous display mode
+    if (savedDisplayMode !== null) {
+        const displayModeSelect = document.getElementById('displayMode');
+        if (displayModeSelect && displayModeSelect.value !== savedDisplayMode) {
+            displayModeSelect.value = savedDisplayMode;
+            displayModeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        savedDisplayMode = null;
+    }
+
+    // Restore silentDownload + autoDownload checkboxes
+    if (savedSilentDownload !== null) {
+        const silentCb = document.getElementById('silentDownload');
+        if (silentCb && silentCb.checked !== savedSilentDownload) {
+            silentCb.checked = savedSilentDownload;
+            silentCb.dispatchEvent(new Event('change'));
+        }
+        savedSilentDownload = null;
+    }
+    if (savedAutoDownload !== null) {
+        const autoCb = document.getElementById('autoDownload');
+        if (autoCb && autoCb.checked !== savedAutoDownload) {
+            autoCb.checked = savedAutoDownload;
+            autoCb.dispatchEvent(new Event('change'));
+        }
+        savedAutoDownload = null;
+    }
+
+    setEmicFlag(EMIC_FLAGS.IS_SIMULATING, false);
+    flowLog('Settings restored, flow ended');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUTO-INIT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSimulateFlow);
+} else {
+    setTimeout(initSimulateFlow, 200);
+}
