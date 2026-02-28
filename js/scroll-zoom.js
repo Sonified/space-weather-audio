@@ -105,7 +105,7 @@ async function renderHiResViewport() {
     const expandedDurationEst = viewDurationSec * 1.6; // rough estimate with 30% padding each side
     const estimatedSamples = expandedDurationEst * sampleRate;
     if (estimatedSamples <= fftSize) {
-        console.log(`🔺 Viewport too narrow for FFT (${estimatedSamples.toFixed(0)} samples < ${fftSize}) — showing existing texture`);
+        if (window.pm?.render) console.log(`🔺 Viewport too narrow for FFT (${estimatedSamples.toFixed(0)} samples < ${fftSize}) — showing existing texture`);
         return;
     }
 
@@ -116,7 +116,7 @@ async function renderHiResViewport() {
     const expandedStart = Math.max(0, startSeconds - padding);
     const expandedEnd = Math.min(dataDurationSeconds, endSeconds + padding);
 
-    console.log(`🔍 Scroll settled — hi-res render: ${viewSpanSeconds.toFixed(0)}s viewport (padded: ${(expandedEnd - expandedStart).toFixed(0)}s)`);
+    if (window.pm?.render) console.log(`🔍 Scroll settled — hi-res render: ${viewSpanSeconds.toFixed(0)}s viewport (padded: ${(expandedEnd - expandedStart).toFixed(0)}s)`);
 
     // Render in background — doesn't disrupt current display
     const success = await renderCompleteSpectrogramForRegion(expandedStart, expandedEnd, true);
