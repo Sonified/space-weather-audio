@@ -43,10 +43,22 @@ class ModalManager {
             
             // If switching modals and keeping overlay visible
             console.log(`🔧 openModal: Checking if swap needed. currentModal=${this.currentModal}, keepOverlay=${keepOverlay}`);
-            if (this.currentModal && keepOverlay) {
+            if (this.currentModal && this.currentModal !== '__overlay_active__' && keepOverlay) {
                 console.log(`🔧 openModal: SWAPPING modal (currentModal=${this.currentModal} -> ${modalId})`);
                 // Return the promise from swapModal so workflow waits for modal to close
                 return await this.swapModal(modalId, { onOpen, onClose });
+            } else if (this.currentModal === '__overlay_active__' && keepOverlay) {
+                // Overlay is already up from a previous keepOverlay close — just show the new modal
+                console.log(`🔧 openModal: OVERLAY ACTIVE, showing ${modalId} directly (no swap delay)`);
+                modal.style.display = 'flex';
+                modal.offsetHeight; // reflow
+                modal.classList.add('modal-visible');
+                this.currentModal = modalId;
+                if (onOpen) onOpen();
+                return new Promise((resolve) => {
+                    modal._closeResolver = resolve;
+                    modal._onClose = onClose;
+                });
             } else {
                 console.log(`🔧 openModal: FRESH OPEN (currentModal=${this.currentModal}, keepOverlay=${keepOverlay})`);
                 // Fresh open (with overlay fade-in)
@@ -137,7 +149,10 @@ class ModalManager {
                 this.enableBackgroundScroll();
             }
             
-            this.currentModal = keepOverlay ? targetModal : null;
+            // When keepOverlay is true, the modal is hidden but overlay stays for the next modal.
+            // Set currentModal to a sentinel so openModal knows overlay is up but won't
+            // try to swap/fade an already-hidden modal.
+            this.currentModal = keepOverlay ? '__overlay_active__' : null;
             
         } finally {
             this.isTransitioning = false;
@@ -273,12 +288,16 @@ class ModalManager {
     }
     
     /**
-     * Disable background scrolling when modal is open
+     * Disable background scrolling when modal is open.
+     * Only applies if the "Lock scroll during modals" checkbox is checked (default: off).
      */
     disableBackgroundScroll() {
+        const lockCb = document.getElementById('lockPageScroll');
+        if (!lockCb || !lockCb.checked) return;
+
         // Store current scroll position
         this.scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
-        
+
         // Disable scrolling on both html and body
         document.documentElement.style.overflow = 'hidden';
         document.body.style.overflow = 'hidden';
