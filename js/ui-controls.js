@@ -3487,35 +3487,20 @@ async function checkAndSubmitIfComplete(participantId) {
                     const { isEmicStudyMode: isEmic } = await import('./master-modes.js');
                     if (isEmic()) {
                         const { uploadEmicSubmission } = await import('./data-uploader.js');
-                        const { getCurrentRegions } = await import('./region-tracker.js');
+                        const { getStandaloneFeatures } = await import('./region-tracker.js');
 
-                        // Build features in the same format as simulate flow
-                        const regions = getCurrentRegions();
-                        const features = [];
-                        regions.forEach(region => {
-                            const regionFeatures = region.features || [];
-                            if (regionFeatures.length > 0) {
-                                regionFeatures.forEach(feat => {
-                                    features.push({
-                                        index: features.length,
-                                        timeRange: { start: region.startTime || '', end: region.stopTime || '' },
-                                        freqRange: { low: feat.lowFreq || '', high: feat.highFreq || '' },
-                                        type: feat.type || null,
-                                        repetition: feat.repetition || null,
-                                        notes: feat.notes || null,
-                                        speedFactor: feat.speedFactor ?? null,
-                                        drawnAt: feat.createdAt || region.createdAt || ''
-                                    });
-                                });
-                            } else {
-                                features.push({
-                                    index: features.length,
-                                    timeRange: { start: region.startTime || '', end: region.stopTime || '' },
-                                    freqRange: { low: region.lowFreq || '', high: region.highFreq || '' },
-                                    drawnAt: region.createdAt || ''
-                                });
-                            }
-                        });
+                        // Build features from standalone features (EMIC study uses direct canvas drawing)
+                        const standalone = getStandaloneFeatures();
+                        const features = standalone.map((feat, i) => ({
+                            index: i,
+                            timeRange: { start: feat.startTime || '', end: feat.endTime || '' },
+                            freqRange: { low: feat.lowFreq || '', high: feat.highFreq || '' },
+                            type: feat.type || null,
+                            repetition: feat.repetition || null,
+                            notes: feat.notes || null,
+                            speedFactor: feat.speedFactor ?? null,
+                            drawnAt: feat.createdAt || ''
+                        }));
 
                         // Build questionnaire data from combinedResponses
                         const questionnaires = {};

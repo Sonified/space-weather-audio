@@ -95,11 +95,37 @@ has_submitted_feedback
 
 ## What's Next (When Robert Is at Computer)
 
+---
+
+## CRITICAL: Feature Tracking Architecture
+
+**The region workflow (`getCurrentRegions()`) is DEAD CODE.** Do not use it for feature counting or data collection.
+
+In EMIC study mode (windowed), participants draw features directly onto the spectrogram canvas. These are tracked as **standalone features** in `region-tracker.js`:
+
+- `getStandaloneFeatures()` — returns the actual feature array (EXPORTED)
+- `addStandaloneFeature(data)` — adds a feature (internal, called by spectrogram drawing)
+- `deleteStandaloneFeature(index)` — removes by index (EXPORTED)
+- `saveStandaloneFeatures()` — persists to localStorage keyed by spacecraft+user (EXPORTED)
+- Storage key: `{storageKey}_standalone`
+- `updateStandaloneFeatureCount()` — fires EMIC flag update with `standaloneFeatures.length`
+
+**The simulate flow's Complete button is broken** because `countFeatures()` in `emic-simulate-flow.js` calls `getCurrentRegions()` (dead code) instead of `getStandaloneFeatures()`. The button never appears because regions are always empty.
+
+**To fix:**
+1. Import `getStandaloneFeatures` from `region-tracker.js`
+2. Replace `countFeatures()` to use `getStandaloneFeatures().length`
+3. Update `buildSubmissionData()` to build features from standalone features, not regions
+4. Same fix needed in `ui-controls.js` `checkAndSubmitIfComplete()` — the EMIC upload block currently calls `getCurrentRegions()` which will also return nothing
+
+**The `setCurrentRegions()` hook** that updates `ACTIVE_FEATURE_COUNT` via EMIC flags is also on the wrong data source — but `updateStandaloneFeatureCount()` already exists and correctly updates the flag from standalone features. So the flag system works, but `countFeatures()` in simulate flow bypasses it.
+
 ### Must do:
-1. **`sudo xcodebuild -license accept`** — unblocks git (only git on machine is Xcode shim)
-2. **Git commit + push** all changes
-3. **Browser test** the simulate flow end-to-end (nothing has been visually tested yet)
-4. **Clear test data** from EMIC_DATA R2 master before real study launch
+1. **Fix `countFeatures()` + `buildSubmissionData()`** — switch from `getCurrentRegions()` to `getStandaloneFeatures()` in both `emic-simulate-flow.js` and `ui-controls.js` EMIC upload block
+2. **`sudo xcodebuild -license accept`** — unblocks git (only git on machine is Xcode shim)
+3. **Git commit + push** all changes
+4. **Browser test** the simulate flow end-to-end (nothing has been visually tested yet)
+5. **Clear test data** from EMIC_DATA R2 master before real study launch
 
 ### Known accepted limitations:
 - Test username generation checks localStorage not server (fine for <20 users)

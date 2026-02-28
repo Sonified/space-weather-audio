@@ -27,7 +27,7 @@
  */
 
 import { modalManager } from './modal-manager.js';
-import { getCurrentRegions } from './region-tracker.js';
+import { getStandaloneFeatures } from './region-tracker.js';
 import { getParticipantId, storeParticipantId } from './qualtrics-api.js';
 import { uploadEmicSubmission } from './data-uploader.js';
 import { EMIC_FLAGS, setEmicFlag, clearAllEmicFlags, updateActiveFeatureCount } from './emic-study-flags.js';
@@ -551,12 +551,7 @@ function showCompleteButton() {
 }
 
 function countFeatures() {
-    try {
-        const regions = getCurrentRegions();
-        return regions.reduce((total, r) => total + (r.features?.length || r.featureCount || 0), 0);
-    } catch {
-        return document.querySelectorAll('.feature-box, [data-feature-index]').length;
-    }
+    return getStandaloneFeatures().length;
 }
 
 /**
@@ -710,29 +705,17 @@ function showSubmissionCompleteModal(featureCount) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function buildSubmissionData(questionnaireData, testUsername) {
-    const regions = getCurrentRegions();
-    const features = [];
-
-    regions.forEach((region) => {
-        const regionFeatures = region.features || [];
-        if (regionFeatures.length > 0) {
-            regionFeatures.forEach((feat) => {
-                features.push({
-                    index: features.length,
-                    timeRange: { start: region.startTime || '', end: region.stopTime || '' },
-                    freqRange: { low: feat.lowFreq || '', high: feat.highFreq || '' },
-                    drawnAt: feat.createdAt || region.createdAt || ''
-                });
-            });
-        } else {
-            features.push({
-                index: features.length,
-                timeRange: { start: region.startTime || '', end: region.stopTime || '' },
-                freqRange: { low: region.lowFreq || '', high: region.highFreq || '' },
-                drawnAt: region.createdAt || ''
-            });
-        }
-    });
+    const standalone = getStandaloneFeatures();
+    const features = standalone.map((feat, i) => ({
+        index: i,
+        timeRange: { start: feat.startTime || '', end: feat.endTime || '' },
+        freqRange: { low: feat.lowFreq || '', high: feat.highFreq || '' },
+        type: feat.type || null,
+        repetition: feat.repetition || null,
+        notes: feat.notes || null,
+        speedFactor: feat.speedFactor ?? null,
+        drawnAt: feat.createdAt || ''
+    }));
 
     return {
         participantId: testUsername,

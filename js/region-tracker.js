@@ -31,15 +31,28 @@ import { isStudyMode, isTutorialEndMode } from './master-modes.js';
 import { hasSeenTutorial } from './study-workflow.js';
 import { log, logGroup, logGroupEnd } from './logger.js';
 
-// Region data structure - stored per spacecraft
-// Map<spacecraftName, regions[]>
+// ⚠️ DEPRECATED: Region workflow (regionsBySpacecraft, getCurrentRegions, setCurrentRegions, etc.)
+// The region-based workflow is DEAD CODE as of Feb 2027. Regions required a multi-step
+// selection process that has been replaced by drawing features directly onto the spectrogram
+// in windowed mode. The region code is kept for now but will be removed.
+//
+// 👉 USE STANDALONE FEATURES INSTEAD:
+//   - getStandaloneFeatures() — get all features drawn on the spectrogram
+//   - addStandaloneFeature(data) — add a feature (called by spectrogram drawing)
+//   - deleteStandaloneFeature(index) — remove a feature
+//   - saveStandaloneFeatures() — persist to localStorage
+//   - Features are stored per spacecraft+user key in localStorage ({key}_standalone)
+//
+// If you're building new EMIC study features, data collection, or UI that needs
+// the participant's identified features — use getStandaloneFeatures(), NOT getCurrentRegions().
 let regionsBySpacecraft = new Map();
 let currentSpacecraft = null;
 let activeRegionIndex = null;
 let activePlayingRegionIndex = null; // Track which region is currently playing (if any)
 let regionsDelayedForCrossfade = false; // Flag to track if regions are waiting for crossfade to complete
 
-// Standalone features - exist independently of regions (used in windowed modes)
+// ✅ ACTIVE: Standalone features — drawn directly on spectrogram in windowed mode
+// This is the PRIMARY feature tracking mechanism for EMIC study participants.
 // Each feature: { type, repetition, lowFreq, highFreq, startTime, endTime, notes, speedFactor }
 let standaloneFeatures = [];
 
@@ -171,6 +184,7 @@ function getCurrentSpeedFactor() {
  * Get regions for the current spacecraft
  * Uses metadata (actual loaded data) as source of truth
  */
+/** @deprecated Use getStandaloneFeatures() instead — region workflow is dead code. See top of file. */
 export function getCurrentRegions() {
     // Always use getCurrentSpacecraft() which reads from metadata
     // Don't use the cached currentSpacecraft variable - it may be stale
@@ -274,6 +288,7 @@ function loadRegionsFromStorage(spacecraft) {
 /**
  * Get the current standalone features array
  */
+/** ✅ PRIMARY: Get all features drawn directly on the spectrogram. Use this, not getCurrentRegions(). */
 export function getStandaloneFeatures() {
     return standaloneFeatures;
 }
@@ -305,6 +320,7 @@ function loadStandaloneFeatures() {
             if (data && Array.isArray(data.features)) {
                 standaloneFeatures = data.features;
                 console.log(`📂 Loaded ${standaloneFeatures.length} standalone feature(s)`);
+                updateStandaloneFeatureCount();
                 return;
             }
         }
@@ -320,6 +336,7 @@ function loadStandaloneFeatures() {
 function addStandaloneFeature(featureData) {
     standaloneFeatures.push(featureData);
     saveStandaloneFeatures();
+    updateStandaloneFeatureCount();
     return standaloneFeatures.length - 1;
 }
 
@@ -331,6 +348,21 @@ export function deleteStandaloneFeature(featureIndex) {
     closeFeaturePopup();
     standaloneFeatures.splice(featureIndex, 1);
     saveStandaloneFeatures();
+    updateStandaloneFeatureCount();
+}
+
+/** Update EMIC active feature count from standalone features */
+function updateStandaloneFeatureCount() {
+    try {
+        if (_emicFlagsModule) {
+            _emicFlagsModule.updateActiveFeatureCount(standaloneFeatures.length);
+        } else {
+            import('./emic-study-flags.js').then(mod => {
+                _emicFlagsModule = mod;
+                mod.updateActiveFeatureCount(standaloneFeatures.length);
+            }).catch(() => {});
+        }
+    } catch {}
 }
 
 // ── End Standalone Features ──────────────────────────────────────────────
@@ -340,6 +372,7 @@ export function deleteStandaloneFeature(featureIndex) {
  * Uses currentSpacecraft if set, otherwise reads from UI
  * Also saves to localStorage for persistence
  */
+/** @deprecated Region workflow is dead code. See top of file. */
 function setCurrentRegions(newRegions) {
     // Use currentSpacecraft if available (more reliable during spacecraft switches)
     // Otherwise fall back to reading from UI
