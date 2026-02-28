@@ -257,6 +257,7 @@ let wfUMipTexHeight = null;
 let wfUMipTotalBins = null;
 let wfUMipBinSize = null;
 let wfUTransparentBg = null;
+let wfUActualSamples = null;
 
 // Grey overlay for zoomed-out mode
 let spectrogramOverlay = null;
@@ -419,6 +420,7 @@ async function initThreeScene() {
         wfUMipTotalBins = uniform(0.0);
         wfUMipBinSize = uniform(parseFloat(WF_MIP_BIN_SIZE));
         wfUTransparentBg = uniform(0.0);
+        wfUActualSamples = uniform(0.0);
 
         // Placeholder textures (replaced when audio loads)
         wfSampleTexture = new THREE.DataTexture(
@@ -491,7 +493,7 @@ async function initThreeScene() {
             }).Else(() => {
                 // Zoomed in: scan raw samples
                 const startIdx = tslFloor(tslMax(pixelStart, float(0.0)));
-                const endIdx = tslCeil(tslMin(pixelEnd, wfUTotalSamples));
+                const endIdx = tslCeil(tslMin(pixelEnd, wfUActualSamples));
                 const count = endIdx.sub(startIdx);
                 Loop(8192, ({ i }) => {
                     If(float(i).greaterThanEqual(count), () => { Break(); });
@@ -826,11 +828,12 @@ function uploadMainWaveformSamples(expectedTotalSamples = 0) {
     if (wfSampleTexNode) wfSampleTexNode.value = wfSampleTexture;
 
     wfUTotalSamples.value = parseFloat(wfTotalSamples);
+    wfUActualSamples.value = parseFloat(samples.length);
     wfUTexWidth.value = parseFloat(wfTextureWidth);
     wfUTexHeight.value = parseFloat(wfTextureHeight);
 
     // Single-level min/max mip: each bin covers WF_MIP_BIN_SIZE (256) samples
-    const numBins = Math.ceil(wfTotalSamples / WF_MIP_BIN_SIZE);
+    const numBins = Math.ceil(samples.length / WF_MIP_BIN_SIZE);
     const mipData = new Float32Array(numBins * 2);
     const actualLen = samples.length;
     for (let bin = 0; bin < numBins; bin++) {
@@ -2364,7 +2367,7 @@ export async function renderProgressiveSpectrogram(audioData, { isComplete = fal
         initScrollZoom();
 
         progressiveInitDone = true;
-        console.log(`🎨 [Progressive] Scene + pyramid initialized (${dataDurationSec.toFixed(0)}s, ${sr} sr)`);
+        if (window.pm?.render) console.log(`🎨 [Progressive] Scene + pyramid initialized (${dataDurationSec.toFixed(0)}s, ${sr} sr)`);
     }
 
     // ── Every call: update minimap FFT, waveform, and pyramid tiles ──
@@ -2430,7 +2433,7 @@ export async function renderProgressiveSpectrogram(audioData, { isComplete = fal
         (window.requestIdleCallback || (cb => setTimeout(cb, 200)))(() => {
             State.compressSamplesArray();
         });
-        console.log(`🎨 [Progressive] Complete — minimap FFT + waveform + tiles rendered`);
+        if (window.pm?.render) console.log(`🎨 [Progressive] Complete — minimap FFT + waveform + tiles rendered`);
     }
 }
 
