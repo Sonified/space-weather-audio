@@ -86,7 +86,7 @@ export function setTileDuration(mode, dataDurationSec, totalSamples) {
         const tileCount = Math.max(1, Math.round(totalSamples / TARGET_SAMPLES_PER_TILE));
         const rawDuration = dataDurationSec / tileCount;
         baseTileDurationSec = snapToNiceBoundary(rawDuration, dataDurationSec);
-        console.log(`🧩 Adaptive tile: ${rawDuration.toFixed(1)}s raw → ${baseTileDurationSec}s snapped (${(baseTileDurationSec/60).toFixed(1)} min)`);
+        if (window.pm?.gpu) console.log(`🧩 Adaptive tile: ${rawDuration.toFixed(1)}s raw → ${baseTileDurationSec}s snapped (${(baseTileDurationSec/60).toFixed(1)} min)`);
     } else {
         baseTileDurationSec = Number(mode);
     }
@@ -184,11 +184,13 @@ export function initPyramid(dataDurationSec, sampleRate) {
     }
 
     const totalTiles = pyramidLevels.reduce((sum, lvl) => sum + lvl.length, 0);
-    console.log(`🔺 Pyramid initialized: ${pyramidLevels.length} levels, ${totalTiles} total tiles, base=${baseTileDurationSec.toFixed(1)}s (${(baseTileDurationSec/60).toFixed(1)}min)`);
-    for (let i = 0; i < pyramidLevels.length; i++) {
-        const lvl = pyramidLevels[i];
-        const dur = lvl[0]?.duration || 0;
-        console.log(`   L${i}: ${lvl.length} tiles × ${(dur / 60).toFixed(1)}min = ${(dur / TILE_COLS).toFixed(2)}s/col`);
+    if (window.pm?.gpu) {
+        console.log(`🔺 Pyramid initialized: ${pyramidLevels.length} levels, ${totalTiles} total tiles, base=${baseTileDurationSec.toFixed(1)}s (${(baseTileDurationSec/60).toFixed(1)}min)`);
+        for (let i = 0; i < pyramidLevels.length; i++) {
+            const lvl = pyramidLevels[i];
+            const dur = lvl[0]?.duration || 0;
+            console.log(`   L${i}: ${lvl.length} tiles × ${(dur / 60).toFixed(1)}min = ${(dur / TILE_COLS).toFixed(2)}s/col`);
+        }
     }
 
     return pyramidLevels.length;
@@ -354,7 +356,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
                 await gpuCompute.initialize(sharedDevice);
                 computeBackend = 'gpu';
             } catch (e) {
-                console.warn('[Pyramid] WebGPU init failed, falling back to CPU workers:', e.message);
+                if (window.pm?.gpu) console.warn('[Pyramid] WebGPU init failed, falling back to CPU workers:', e.message);
                 gpuCompute = null;
                 computeBackend = 'cpu';
             }
@@ -366,7 +368,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
             await workerPool.initialize();
         }
         const zeroCopy = computeBackend === 'gpu' && isWebGPURenderer();
-        console.log(`[Pyramid] Compute backend: ${computeBackend === 'gpu' ? 'WebGPU' : `CPU worker pool (${workerPool?.numWorkers} workers)`}${zeroCopy ? ' (zero-readback)' : ''}`);
+        if (window.pm?.gpu) console.log(`[Pyramid] Compute backend: ${computeBackend === 'gpu' ? 'WebGPU' : `CPU worker pool (${workerPool?.numWorkers} workers)`}${zeroCopy ? ' (zero-readback)' : ''}`);
     }
 
     const halfFFT = Math.floor(fftSize / 2);
@@ -463,7 +465,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
 
     if (tileJobs.length === 0) {
         pyramidReady = true;
-        console.log(`🔺 All ${baseTiles.length} tiles already ready`);
+        if (window.pm?.gpu) console.log(`🔺 All ${baseTiles.length} tiles already ready`);
         if (!suppressPyramidReadyEvent) window.dispatchEvent(new Event('pyramid-ready'));
         return;
     }
@@ -471,7 +473,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
     const useZeroCopy = computeBackend === 'gpu' && isWebGPURenderer();
     const processor = computeBackend === 'gpu' ? gpuCompute : workerPool;
     const backendLabel = useZeroCopy ? 'GPU zero-copy' : (computeBackend === 'gpu' ? 'GPU' : `${workerPool?.numWorkers} workers`);
-    console.log(`🔺 Dispatching ${tileJobs.length} tiles via ${backendLabel}`);
+    if (window.pm?.gpu) console.log(`🔺 Dispatching ${tileJobs.length} tiles via ${backendLabel}`);
     const startTime = performance.now();
     let tilesComplete = alreadyReady;
     const totalTiles = baseTiles.length;
@@ -493,7 +495,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         tilesComplete++;
         const step = Math.max(1, Math.floor(totalTiles / 10));
         if (tilesComplete % step === 0 || tilesComplete === totalTiles) {
-            console.log(`🔺 Tiles: ${tilesComplete}/${totalTiles} (${((tilesComplete / totalTiles) * 100).toFixed(0)}%)`);
+            if (window.pm?.gpu) console.log(`🔺 Tiles: ${tilesComplete}/${totalTiles} (${((tilesComplete / totalTiles) * 100).toFixed(0)}%)`);
         }
         if (onProgress) onProgress(tilesComplete, totalTiles);
         if (onTileReady) onTileReady(0, tileIdx);
@@ -529,7 +531,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
             const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
             const cascadeMs = (performance.now() - cascadeStartTime).toFixed(1);
             const builtLevels = pyramidLevels.filter(lvl => lvl.some(t => t.ready)).length;
-            console.log(`🔺 All ${tileJobs.length} base tiles + ${builtLevels} pyramid levels in ${elapsed}s (${backendLabel}, cascade: ${cascadeMs}ms)`);
+            if (window.pm?.gpu) console.log(`🔺 All ${tileJobs.length} base tiles + ${builtLevels} pyramid levels in ${elapsed}s (${backendLabel}, cascade: ${cascadeMs}ms)`);
             if (!suppressPyramidReadyEvent) window.dispatchEvent(new Event('pyramid-ready'));
         }
     } else {
@@ -547,7 +549,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         if (!signal.aborted) {
             pyramidReady = true;
             const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
-            console.log(`🔺 All ${tileJobs.length} base tiles rendered in ${elapsed}s (${backendLabel})`);
+            if (window.pm?.gpu) console.log(`🔺 All ${tileJobs.length} base tiles rendered in ${elapsed}s (${backendLabel})`);
             if (!suppressPyramidReadyEvent) window.dispatchEvent(new Event('pyramid-ready'));
         }
     }
@@ -625,7 +627,7 @@ function cascadeUpwardGPU(level, tileIndex) {
     const totalInLevel = parentTiles.length;
     const readyInLevel = cascadeLevelBuilt[nextLevel];
     if (readyInLevel >= totalInLevel) {
-        console.log(`🔺 L${nextLevel} complete: ${totalInLevel} tiles, ${parent.width}×${freqBins}, ${cascadeLevelTime[nextLevel].toFixed(2)}ms`);
+        if (window.pm?.gpu) console.log(`🔺 L${nextLevel} complete: ${totalInLevel} tiles, ${parent.width}×${freqBins}, ${cascadeLevelTime[nextLevel].toFixed(2)}ms`);
     }
 
     if (onTileReady) {
@@ -720,7 +722,7 @@ function cascadeUpwardCPU(level, tileIndex) {
 
     parent.ready = true;
 
-    console.log(`🔺 Built L${nextLevel} tile ${parentIndex}: ${parent.width} cols, ${(parent.duration / 60).toFixed(1)}min`);
+    if (window.pm?.gpu) console.log(`🔺 Built L${nextLevel} tile ${parentIndex}: ${parent.width} cols, ${(parent.duration / 60).toFixed(1)}min`);
 
     if (onTileReady) {
         onTileReady(nextLevel, parentIndex);
@@ -877,7 +879,7 @@ export function disposePyramid() {
     }
     computeBackend = null;
 
-    console.log('🔺 Pyramid disposed');
+    if (window.pm?.gpu) console.log('🔺 Pyramid disposed');
 }
 
 /**
@@ -924,7 +926,7 @@ export function rebuildUpperLevels() {
     }
 
     onTileReady = savedCallback;
-    console.log(`🔺 Rebuilt upper levels (mode: ${pyramidReduceMode})`);
+    if (window.pm?.gpu) console.log(`🔺 Rebuilt upper levels (mode: ${pyramidReduceMode})`);
 }
 
 /**

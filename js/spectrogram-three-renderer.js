@@ -168,7 +168,7 @@ function processPendingGPUTextureSwaps() {
 
     if (copied > 0) {
         device.queue.submit([encoder.finish()]);
-        console.log(`%c[GPU Copy] ${copied} textures filled from compute GPUTextures`, 'color: #4CAF50');
+        if (window.pm?.gpu) console.log(`%c[GPU Copy] ${copied} textures filled from compute GPUTextures`, 'color: #4CAF50');
     }
 
     pendingGPUTextureSwaps = remaining;
@@ -434,11 +434,11 @@ async function initThreeScene() {
     // WebGPU device loss handler
     if (threeRenderer.backend?.device) {
         threeRenderer.backend.device.lost.then((info) => {
-            console.warn(`WebGPU device lost: ${info.message} (reason: ${info.reason})`);
+            if (window.pm?.gpu) console.warn(`WebGPU device lost: ${info.message} (reason: ${info.reason})`);
         });
     }
 
-    console.log(`Three.js WebGPU spectrogram renderer initialized (${canvas.width}x${canvas.height})`);
+    if (window.pm?.gpu) console.log(`Three.js WebGPU spectrogram renderer initialized (${canvas.width}x${canvas.height})`);
 }
 
 function buildColormapTexture() {
@@ -628,7 +628,7 @@ export function getCachedZoomedStatus() {
 // ─── Memory monitoring (same as original) ───────────────────────────────────
 
 function logMemory(label) {
-    if (performance.memory) {
+    if (performance.memory && window.pm?.memory) {
         const used = (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(1);
         const total = (performance.memory.totalJSHeapSize / 1024 / 1024).toFixed(1);
         const limit = (performance.memory.jsHeapSizeLimit / 1024 / 1024).toFixed(1);
@@ -659,19 +659,19 @@ function memoryHealthCheck() {
         const growth = newBaseline - oldBaseline;
         if (growth > 200) {
             trend = 'increasing';
-            console.warn(`Potential memory leak: Baseline grew ${growth.toFixed(0)}MB`);
+            if (window.pm?.memory) console.warn(`Potential memory leak: Baseline grew ${growth.toFixed(0)}MB`);
         } else if (growth > 100) {
             trend = 'rising';
         }
     }
 
     const avgPercent = (memoryHistory.reduce((sum, h) => sum + h.percent, 0) / memoryHistory.length).toFixed(1);
-    console.log(`🏥 Memory health: ${used.toFixed(0)}MB (${percent}%) | Baseline: ${memoryBaseline.toFixed(0)}MB | Avg: ${avgPercent}% | Limit: ${limit.toFixed(0)}MB | Trend: ${trend}`);
+    if (window.pm?.memory) console.log(`🏥 Memory health: ${used.toFixed(0)}MB (${percent}%) | Baseline: ${memoryBaseline.toFixed(0)}MB | Avg: ${avgPercent}% | Limit: ${limit.toFixed(0)}MB | Trend: ${trend}`);
 }
 
 export function startMemoryMonitoring() {
     if (memoryMonitorInterval) return;
-    console.log('Starting memory health monitoring (30s intervals, switching to 60s after 5 min)');
+    if (window.pm?.memory) console.log('Starting memory health monitoring (30s intervals, switching to 60s after 5 min)');
     const startTime = Date.now();
     const FIVE_MINUTES = 5 * 60 * 1000;
     memoryMonitorInterval = setInterval(() => {
@@ -691,7 +691,7 @@ export function stopMemoryMonitoring() {
         clearInterval(memoryMonitorInterval);
         memoryMonitorInterval = null;
         if (!isStudyMode()) {
-            console.log('Stopped memory health monitoring');
+            if (window.pm?.memory) console.log('Stopped memory health monitoring');
         }
     }
     memoryBaseline = null;
@@ -867,7 +867,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
             const sr = zoomState.sampleRate;
             fullTextureFirstColSec = (fftSize / 2) / sr;
             fullTextureLastColSec = ((numTimeSlices - 1) * hopSize + fftSize / 2) / sr;
-            console.log(`🎯 [RENDER] fullTex: ${fullTextureFirstColSec.toFixed(3)}s → ${fullTextureLastColSec.toFixed(3)}s | sr: ${sr} | fft: ${fftSize} | hop: ${hopSize} | slices: ${numTimeSlices} | canvas: ${width}x${height} | totalSamples: ${totalSamples}`);
+            if (window.pm?.gpu) console.log(`🎯 [RENDER] fullTex: ${fullTextureFirstColSec.toFixed(3)}s → ${fullTextureLastColSec.toFixed(3)}s | sr: ${sr} | fft: ${fftSize} | hop: ${hopSize} | slices: ${numTimeSlices} | canvas: ${width}x${height} | totalSamples: ${totalSamples}`);
 
             if (fullMagnitudeTexture) fullMagnitudeTexture.dispose();
             fullMagnitudeTexture = createMagnitudeTexture(result.data, result.width, result.height);
@@ -904,7 +904,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
             renderBaseTiles(State.completeSamplesArray, pyramidSampleRate, fftSize, viewCenterSec, (done, total) => {
                 if (done === total) {
                     const elapsed = ((performance.now() - tileStartTime) / 1000).toFixed(1);
-                    console.log(`🔺 All ${total} base tiles rendered in ${elapsed}s`);
+                    if (window.pm?.gpu) console.log(`🔺 All ${total} base tiles rendered in ${elapsed}s`);
                     (window.requestIdleCallback || (cb => setTimeout(cb, 200)))(() => {
                         State.compressSamplesArray();
                     });
@@ -936,7 +936,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
                 updateSpectrogramOverlay(progress);
             }
 
-            console.log(`🔎 [RENDER-STATE] camera: ${camera.left.toFixed(1)}→${camera.right.toFixed(1)} | mesh: ${mesh?.visible} pos=(${mesh?.position.x.toFixed(1)},${mesh?.scale.x.toFixed(1)}) | canvas: ${canvas.width}x${canvas.height} → ${canvas.offsetWidth}x${canvas.offsetHeight} | texture: ${activeTexture} ${fullMagnitudeTexture ? fullMagnitudeWidth+'x'+fullMagnitudeHeight : 'NONE'} | scene.children: ${scene?.children.length}`);
+            if (window.pm?.render) console.log(`🔎 [RENDER-STATE] camera: ${camera.left.toFixed(1)}→${camera.right.toFixed(1)} | mesh: ${mesh?.visible} pos=(${mesh?.position.x.toFixed(1)},${mesh?.scale.x.toFixed(1)}) | canvas: ${canvas.width}x${canvas.height} → ${canvas.offsetWidth}x${canvas.offsetHeight} | texture: ${activeTexture} ${fullMagnitudeTexture ? fullMagnitudeWidth+'x'+fullMagnitudeHeight : 'NONE'} | scene.children: ${scene?.children.length}`);
         };
 
         if (pyramidOnly) {
@@ -950,7 +950,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
             finalizeRender();
             startPyramid();
 
-            console.log(`🔺 Pyramid-only mode: pyramid started, computing full FFT for mini-map...`);
+            if (window.pm?.gpu) console.log(`🔺 Pyramid-only mode: pyramid started, computing full FFT for mini-map...`);
             const elapsed = performance.now() - startTime;
             if (!isStudyMode()) {
                 console.log(`Spectrogram (pyramid init) in ${elapsed.toFixed(0)}ms`);
@@ -959,7 +959,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
             // Compute full FFT in background for the mini-map
             computeFullFFT().then(ok => {
                 if (ok) {
-                    console.log(`🔺 Pyramid-only: mini-map FFT ready`);
+                    if (window.pm?.gpu) console.log(`🔺 Pyramid-only: mini-map FFT ready`);
                     window.dispatchEvent(new Event('spectrogram-ready'));
                 }
             });
@@ -2006,7 +2006,7 @@ export async function startCompleteVisualization() {
         return;
     }
 
-    console.log('Starting Three.js spectrogram visualization');
+    if (window.pm?.gpu) console.log('Starting Three.js spectrogram visualization');
     await renderCompleteSpectrogram();
 }
 

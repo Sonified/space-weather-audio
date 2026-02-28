@@ -68,11 +68,11 @@ export function cancelAllRAFLoops() {
  * This is THE function for starting/resuming playback
  */
 export async function startPlayback() {
-    console.log(`🔊 [startPlayback] ENTER - AudioContext state: ${State.audioContext?.state}, workletNode: ${State.workletNode ? 'exists' : 'null'}`);
+    if (window.pm?.audio) console.log(`🔊 [startPlayback] ENTER - AudioContext state: ${State.audioContext?.state}, workletNode: ${State.workletNode ? 'exists' : 'null'}`);
 
     State.setPlaybackState(PlaybackState.PLAYING);
 
-    console.log('▶️ Starting playback');
+    if (window.pm?.audio) console.log('▶️ Starting playback');
 
     // 🔥 Notify oscilloscope that playback started (for flame effect fade)
     setPlayingState(true);
@@ -96,15 +96,15 @@ export async function startPlayback() {
     // 🔗 FIX: Resume AudioContext BEFORE telling worklet to play
     // audioContext.resume() is async - must await it or worklet won't process!
     if (State.audioContext?.state === 'suspended') {
-        console.log('🔊 [startPlayback] AudioContext is SUSPENDED - awaiting resume...');
+        if (window.pm?.audio) console.log('🔊 [startPlayback] AudioContext is SUSPENDED - awaiting resume...');
         await State.audioContext.resume();
-        console.log(`🔊 [startPlayback] AudioContext RESUMED - state: ${State.audioContext.state}`);
+        if (window.pm?.audio) console.log(`🔊 [startPlayback] AudioContext RESUMED - state: ${State.audioContext.state}`);
     } else {
-        console.log(`🔊 [startPlayback] AudioContext already running - state: ${State.audioContext?.state}`);
+        if (window.pm?.audio) console.log(`🔊 [startPlayback] AudioContext already running - state: ${State.audioContext?.state}`);
     }
 
     // 🏎️ AUTONOMOUS: Just tell worklet/stretch to play - it handles fade-in automatically
-    console.log('🔊 [startPlayback] Sending play message to worklet');
+    if (window.pm?.audio) console.log('🔊 [startPlayback] Sending play message to worklet');
     if (State.stretchActive && State.stretchNode) {
         State.stretchNode.port.postMessage({ type: 'play' });
         State.setStretchStartTime(State.audioContext.currentTime);
@@ -136,7 +136,7 @@ export async function startPlayback() {
         }, 2000);
     }
 
-    console.log('🔊 [startPlayback] EXIT');
+    if (window.pm?.audio) console.log('🔊 [startPlayback] EXIT');
 }
 
 /**
@@ -447,7 +447,7 @@ async function waveletComputeCWT(samples) {
         waveletCWTReady = true;
         return true;
     } catch (err) {
-        console.warn(`[Wavelet GPU] CWT pre-cache failed (${samples.length} samples) — will use chunked processing:`, err.message);
+        if (window.pm?.audio) console.warn(`[Wavelet GPU] CWT pre-cache failed (${samples.length} samples) — will use chunked processing:`, err.message);
         waveletCWTReady = false;
         return false;
     }
@@ -537,7 +537,7 @@ function createStretchNode(algorithm) {
     node.port.onmessage = (event) => {
         const { type } = event.data;
         if (type === 'loaded') {
-            console.log(`🎛️ Stretch [${algorithm}]: audio loaded (primed)`);
+            if (window.pm?.audio) console.log(`🎛️ Stretch [${algorithm}]: audio loaded (primed)`);
             node._ready = true;
             // If there's a pending resume (engage was called before prime finished), handle it
             if (node._pendingResume) {
@@ -585,11 +585,11 @@ function createStretchNode(algorithm) {
  */
 export function primeStretchProcessors(samples) {
     if (!State.audioContext || !State.stretchGainNode) {
-        console.log('🎛️ Cannot prime stretch processors: audio context not ready');
+        if (window.pm?.audio) console.log('🎛️ Cannot prime stretch processors: audio context not ready');
         return;
     }
 
-    console.log(`🎛️ Priming stretch processors with ${samples.length} samples...`);
+    if (window.pm?.audio) console.log(`🎛️ Priming stretch processors with ${samples.length} samples...`);
 
     // Clean up old primed nodes — release audio buffers for GC
     const oldNodes = State.stretchNodes;
@@ -638,9 +638,9 @@ export function primeStretchProcessors(samples) {
     // Long files will fail CWT pre-cache — that's OK, waveletStretchAndLoad falls back to chunked
     waveletComputeCWT(samples).then(ok => {
         if (ok) {
-            console.log('🎛️ Wavelet CWT cached on GPU — ready for instant stretch');
+            if (window.pm?.audio) console.log('🎛️ Wavelet CWT cached on GPU — ready for instant stretch');
         } else {
-            console.log('🎛️ Wavelet will use chunked GPU processing for this file');
+            if (window.pm?.audio) console.log('🎛️ Wavelet will use chunked GPU processing for this file');
         }
     }).catch(err => {
         console.warn('🎛️ Wavelet GPU CWT failed:', err.message);
@@ -999,9 +999,9 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
 
             // 🔗 FIX: Resume AudioContext BEFORE telling worklet to play!
             if (State.audioContext?.state === 'suspended') {
-                console.log('🔊 [seekToPosition] AudioContext SUSPENDED - resuming...');
+                if (window.pm?.audio) console.log('🔊 [seekToPosition] AudioContext SUSPENDED - resuming...');
                 State.audioContext.resume().then(() => {
-                    console.log('🔊 [seekToPosition] AudioContext RESUMED, sending play');
+                    if (window.pm?.audio) console.log('🔊 [seekToPosition] AudioContext RESUMED, sending play');
                     if (State.stretchActive && State.stretchNode) {
                         State.stretchNode.port.postMessage({ type: 'play' });
                         State.setStretchStartTime(State.audioContext.currentTime);
@@ -1010,7 +1010,7 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
                     }
                 });
             } else {
-                console.log('🔊 [seekToPosition] AudioContext already running, sending play');
+                if (window.pm?.audio) console.log('🔊 [seekToPosition] AudioContext already running, sending play');
                 if (State.stretchActive && State.stretchNode) {
                     State.stretchNode.port.postMessage({ type: 'play' });
                     State.setStretchStartTime(State.audioContext.currentTime);

@@ -62,7 +62,7 @@ export function setupStatusAutoResize() {
     statusResizeHandler = () => autoResizeStatusText(statusEl);
     window.addEventListener('resize', statusResizeHandler);
 
-    console.log('✅ Status auto-resize enabled');
+    if (window.pm?.init) console.log('✅ Status auto-resize enabled');
 }
 
 /**

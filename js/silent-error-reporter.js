@@ -218,6 +218,6 @@ export async function reportSessionStateInconsistency(issue, sessionState, respo
  */
 export function initSilentErrorReporter() {
     captureConsoleLogs();
-    console.log('✅ Silent error reporter initialized (metadata mismatch tracking)');
+    if (window.pm?.init) console.log('✅ Silent error reporter initialized (metadata mismatch tracking)');
 }
 

@@ -206,15 +206,20 @@ export function setCompressedSamplesBuffer(value) { compressedSamplesBuffer = va
  */
 export function compressSamplesArray() {
     if (!completeSamplesArray || compressedSamplesBuffer) return;
+
+    // Respect Audio Quality setting — skip compression in 32-bit mode
+    const prefix = location.pathname.includes('emic') ? 'emic' : 'main';
+    const quality = localStorage.getItem(`${prefix}_audio_quality`) || '16';
+    if (quality === '32') return;
     
-    console.log(`🗜️ Compressing ${completeSamplesArray.length.toLocaleString()} samples (${(completeSamplesArray.byteLength / 1024 / 1024).toFixed(1)} MB Float32)...`);
+    if (window.pm?.audio) console.log(`🗜️ Compressing ${completeSamplesArray.length.toLocaleString()} Audio samples (${(completeSamplesArray.byteLength / 1024 / 1024).toFixed(1)} MB Float32)...`);
     const start = performance.now();
     
     compressedSamplesBuffer = compressToInt16(completeSamplesArray);
     
     const elapsed = performance.now() - start;
     const savedMB = (completeSamplesArray.byteLength - compressedSamplesBuffer.data.byteLength) / 1024 / 1024;
-    console.log(`🗜️ Compressed in ${elapsed.toFixed(0)}ms — saved ${savedMB.toFixed(1)} MB (${(compressedSamplesBuffer.data.byteLength / 1024 / 1024).toFixed(1)} MB Int16)`);
+    if (window.pm?.audio) console.log(`🗜️ Compressed Audio in ${elapsed.toFixed(0)}ms — saved ${savedMB.toFixed(1)} MB (${(compressedSamplesBuffer.data.byteLength / 1024 / 1024).toFixed(1)} MB Int16)`);
     
     // Release the Float32 array
     completeSamplesArray = null;

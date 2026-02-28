@@ -278,7 +278,7 @@ export function initErrorSystem(flameEngineRef) {
         }
     });
     
-    console.log('✅ Core error system initialized');
+    if (window.pm?.init) console.log('✅ Core error system initialized');
 
     // Expose globally for app layer to use
     window.coreErrorSystem = {

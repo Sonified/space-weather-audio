@@ -74,7 +74,7 @@ export function initOscilloscope() {
     // Start rendering loop
     startRendering();
 
-    console.log('🎨 Oscilloscope initialized');
+    if (window.pm?.init) console.log('🎨 Oscilloscope initialized');
     return true;
 }
 

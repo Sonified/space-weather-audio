@@ -18,7 +18,7 @@ let minFreqMultiplier = 3.8;
 export function setMinFreqMultiplier(value) {
     minFreqMultiplier = value;
     lastLoggedMinFreq = null; // Force re-log on next call
-    console.log(`📊 Min frequency multiplier set to: ${value}`);
+    if (window.pm?.init) console.log(`📊 Min frequency multiplier set to: ${value}`);
 }
 
 export function getMinFreqMultiplier() {
@@ -36,7 +36,7 @@ export function getMinDisplayFrequency() {
 
         // Log when value changes (avoid spam)
         if (minFreq !== lastLoggedMinFreq) {
-            console.log(`📊 Y-axis min frequency: ${minFreq.toFixed(4)} Hz (samplingRate=${samplingRate.toFixed(2)}, fftSize=${fftSize}, multiplier=${minFreqMultiplier})`);
+            if (window.pm?.gpu) console.log(`📊 Y-axis min frequency: ${minFreq.toFixed(4)} Hz (samplingRate=${samplingRate.toFixed(2)}, fftSize=${fftSize}, multiplier=${minFreqMultiplier})`);
             lastLoggedMinFreq = minFreq;
         }
 
@@ -124,7 +124,7 @@ export function drawFrequencyAxis() {
     
     // 🎯 LOG: Show what we're using for Y-axis max
     if (!window._yAxisMaxLogged) {
-        console.log(`📊 ⭐ Y-AXIS MAX FREQUENCY: ${originalNyquist.toFixed(2)} Hz (Nyquist frequency)`);
+        if (window.pm?.init) console.log(`📊 ⭐ Y-AXIS MAX FREQUENCY: ${originalNyquist.toFixed(2)} Hz (Nyquist frequency)`);
         window._yAxisMaxLogged = true; // Only log once to avoid spam
     }
     

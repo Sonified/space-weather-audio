@@ -215,12 +215,12 @@ function tryInitOscilloscope() {
  * Initialize flame engine (called early)
  */
 export function initFlameEngine() {
-    console.log('🔥 Flame engine initialized (ready for overheat)');
+    if (window.pm?.init) console.log('🔥 Flame engine initialized (ready for overheat)');
 
     // Try to initialize oscilloscope immediately
     tryInitOscilloscope();
     if (oscilloscopeReady) {
-        console.log('🎨 Oscilloscope connected to flame engine (CORE)');
+        if (window.pm?.init) console.log('🎨 Oscilloscope connected to flame engine (CORE)');
     }
     
     // If not ready, retry when DOM is loaded

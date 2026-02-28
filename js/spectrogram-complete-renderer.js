@@ -163,7 +163,7 @@ function memoryHealthCheck() {
         
         if (growth > 200) {
             trend = '📈 increasing';
-            console.warn(`🚨 POTENTIAL MEMORY LEAK: Baseline grew ${growth.toFixed(0)}MB (${oldBaseline.toFixed(0)}MB → ${newBaseline.toFixed(0)}MB)`);
+            if (window.pm?.memory) console.warn(`🚨 POTENTIAL MEMORY LEAK: Baseline grew ${growth.toFixed(0)}MB (${oldBaseline.toFixed(0)}MB → ${newBaseline.toFixed(0)}MB)`);
         } else if (growth > 100) {
             trend = '📈 rising';
         }
@@ -171,7 +171,7 @@ function memoryHealthCheck() {
     
     const avgPercent = (memoryHistory.reduce((sum, h) => sum + h.percent, 0) / memoryHistory.length).toFixed(1);
     // Only log in dev/personal modes, not study mode
-    if (!isStudyMode()) {
+    if (!isStudyMode() && window.pm?.memory) {
         console.log(`🏥 Memory health: ${used.toFixed(0)}MB (${percent}%) | Baseline: ${memoryBaseline.toFixed(0)}MB | Avg: ${avgPercent}% | Limit: ${limit.toFixed(0)}MB | Trend: ${trend}`);
     }
 }
@@ -183,7 +183,7 @@ export function startMemoryMonitoring() {
     if (memoryMonitorInterval) return;
     
     // Only log in dev/personal modes, not study mode
-    if (!isStudyMode()) {
+    if (!isStudyMode() && window.pm?.memory) {
         console.log('🏥 Starting memory health monitoring (every 30 seconds)');
     }
     memoryMonitorInterval = setInterval(memoryHealthCheck, 30000);
@@ -197,7 +197,7 @@ export function stopMemoryMonitoring() {
     if (memoryMonitorInterval) {
         clearInterval(memoryMonitorInterval);
         memoryMonitorInterval = null;
-        console.log('🏥 Stopped memory health monitoring');
+        if (window.pm?.memory) console.log('🏥 Stopped memory health monitoring');
     }
 }
 

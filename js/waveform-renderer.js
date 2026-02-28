@@ -337,7 +337,7 @@ void main() {
         }
     });
 
-    console.log(`Three.js waveform renderer initialized (${wfCachedWidth}x${wfCachedHeight})`);
+    if (window.pm?.gpu) console.log(`Three.js waveform renderer initialized (${wfCachedWidth}x${wfCachedHeight})`);
 }
 
 function buildWaveformColormapTexture() {
@@ -505,7 +505,7 @@ export function uploadWaveformSamples(samples, expectedTotalSamples = 0) {
     wfMaterial.uniforms.uMipTotalBins.value = parseFloat(mipBins);
 
     wfLastUploadedSamples = samples;
-    console.log(`Waveform uploaded: ${wfTotalSamples.toLocaleString()} samples (${wfTextureWidth}x${wfTextureHeight}), mip: ${mipBins.toLocaleString()} bins (${mipTexWidth}x${mipTexHeight})`);
+    if (window.pm?.gpu) console.log(`Waveform uploaded: ${wfTotalSamples.toLocaleString()} samples (${wfTextureWidth}x${wfTextureHeight}), mip: ${mipBins.toLocaleString()} bins (${mipTexWidth}x${mipTexHeight})`);
 }
 
 /**
@@ -837,7 +837,7 @@ function initMainWaveformOverlay() {
     });
     mwResizeObserver.observe(spectrogramCanvas);
 
-    console.log(`Main window waveform overlay initialized (${mwCachedWidth}x${mwCachedHeight})`);
+    if (window.pm?.gpu) console.log(`Main window waveform overlay initialized (${mwCachedWidth}x${mwCachedHeight})`);
 }
 
 /**
@@ -913,7 +913,7 @@ export function uploadMainWaveformData(samples, expectedTotalSamples = 0) {
     mwMaterial.uniforms.uMipTextureHeight.value = parseFloat(mipTexHeight);
     mwMaterial.uniforms.uMipTotalBins.value = parseFloat(mipBins);
 
-    console.log(`Main waveform overlay uploaded: ${mwTotalSamples.toLocaleString()} samples, mip: ${mipBins.toLocaleString()} bins`);
+    if (window.pm?.gpu) console.log(`Main waveform overlay uploaded: ${mwTotalSamples.toLocaleString()} samples, mip: ${mipBins.toLocaleString()} bins`);
 }
 
 /**

@@ -538,7 +538,7 @@ export function startHeartbeatTracking() {
 
     // Then check every minute
     heartbeatInterval = setInterval(sendHeartbeatIfActive, HEARTBEAT_INTERVAL_MS);
-    console.log('💓 Heartbeat tracking started (1 min interval)');
+    if (window.pm?.init) console.log('💓 Heartbeat tracking started (1 min interval)');
 }
 
 /**

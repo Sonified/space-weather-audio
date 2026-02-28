@@ -326,7 +326,7 @@ export function setupComponentSelectorListener() {
         }
     });
 
-    console.log('📊 Component selector listener attached');
+    if (window.pm?.init) console.log('📊 Component selector listener attached');
 }
 
 /**

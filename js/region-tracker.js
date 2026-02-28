@@ -252,7 +252,6 @@ function loadRegionsFromStorage(spacecraft) {
         const stored = localStorage.getItem(storageKey);
 
         if (!stored) {
-            console.log(`📂 No saved regions found for key: ${storageKey}`);
             return null;
         }
 
@@ -319,7 +318,7 @@ function loadStandaloneFeatures() {
             const data = JSON.parse(stored);
             if (data && Array.isArray(data.features)) {
                 standaloneFeatures = data.features;
-                console.log(`📂 Loaded ${standaloneFeatures.length} standalone feature(s)`);
+                if (window.pm?.features) console.log(`📂 Loaded ${standaloneFeatures.length} standalone feature(s)`);
                 updateStandaloneFeatureCount();
                 return;
             }
@@ -557,7 +556,7 @@ export function loadRegionsAfterDataFetch() {
     const pendingSharedRegions = sessionStorage.getItem('pendingSharedRegions');
 
     // Start region loading group (will be closed after all loading logs)
-    const regionGroupOpen = logGroup('regions', `Loading regions for ${spacecraft}`);
+    const regionGroupOpen = logGroup('features', `Loading regions for ${spacecraft}`);
 
     if (pendingSharedRegions) {
         try {
@@ -670,7 +669,6 @@ export function loadRegionsAfterDataFetch() {
         // Update button states
         updateCompleteButtonState();
     } else {
-        console.log(`📂 No saved regions found`);
         if (regionGroupOpen) logGroupEnd();
 
         // Load standalone features BEFORE rebuilding canvas boxes
@@ -793,7 +791,7 @@ export function initRegionTracker() {
  * This just prepares the button element, actual selection is handled by waveform-renderer.js
  */
 function setupWaveformSelection() {
-    console.log('🎯 Waveform selection for region creation ready');
+    if (window.pm?.init) console.log('🎯 Waveform selection for region creation ready');
 }
 
 /**

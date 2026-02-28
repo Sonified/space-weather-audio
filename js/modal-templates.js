@@ -1205,23 +1205,23 @@ export async function initializeModals() {
                 // Store it for future use
                 const { storeParticipantId } = await import('./qualtrics-api.js');
                 storeParticipantId(urlId);
-                console.log('🔗 Pre-populated participant ID from Qualtrics URL:', urlId);
+                if (window.pm?.init) console.log('🔗 Pre-populated participant ID from Qualtrics URL:', urlId);
             } else {
                 // Fall back to localStorage
                 savedParticipantId = localStorage.getItem('participantId');
                 if (savedParticipantId) {
-                    console.log('💾 Pre-populated participant ID from localStorage:', savedParticipantId);
+                    if (window.pm?.init) console.log('💾 Pre-populated participant ID from localStorage:', savedParticipantId);
                 }
             }
         } catch (error) {
             // If import fails, fall back to localStorage
             savedParticipantId = localStorage.getItem('participantId');
             if (savedParticipantId) {
-                console.log('💾 Pre-populated participant ID from localStorage:', savedParticipantId);
+                if (window.pm?.init) console.log('💾 Pre-populated participant ID from localStorage:', savedParticipantId);
             }
         }
     } else {
-        console.log('🧹 Study Clean Mode: Not pre-populating participant ID');
+        if (window.pm?.init) console.log('🧹 Study Clean Mode: Not pre-populating participant ID');
     }
     
     const participantIdInput = document.getElementById('participantId');

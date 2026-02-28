@@ -399,6 +399,6 @@ export function initErrorReporter() {
         }
     });
 
-    console.log('✅ Error reporter initialized');
+    if (window.pm?.init) console.log('✅ Error reporter initialized');
 }
 

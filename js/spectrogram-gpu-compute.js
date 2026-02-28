@@ -251,7 +251,7 @@ export class SpectrogramGPUCompute {
                     256 * 1024 * 1024
                 );
             } else {
-                console.warn(`[GPU Compute] Shared device has insufficient workgroup storage ` +
+                if (window.pm?.gpu) console.warn(`[GPU Compute] Shared device has insufficient workgroup storage ` +
                     `(${externalDevice.limits.maxComputeWorkgroupStorageSize} < ${neededWorkgroupStorage}), creating own device`);
                 externalDevice = null; // fall through to create own device
             }
@@ -290,7 +290,7 @@ export class SpectrogramGPUCompute {
         }
 
         this.device.lost.then((info) => {
-            console.warn(`[GPU Compute] Device lost: ${info.message}`);
+            if (window.pm?.gpu) console.warn(`[GPU Compute] Device lost: ${info.message}`);
             this.initialized = false;
         });
 
@@ -304,7 +304,7 @@ export class SpectrogramGPUCompute {
             if (message.type === 'error') {
                 throw new Error(`WGSL compile error: ${message.message} (line ${message.lineNum})`);
             }
-            if (message.type === 'warning') {
+            if (message.type === 'warning' && window.pm?.gpu) {
                 console.warn(`[GPU Compute] WGSL warning: ${message.message}`);
             }
         }
@@ -344,7 +344,7 @@ export class SpectrogramGPUCompute {
 
         this.initialized = true;
 
-        if (!isStudyMode()) {
+        if (!isStudyMode() && window.pm?.gpu) {
             if (externalDevice) {
                 console.log(
                     `%c[GPU Compute] Initialized (shared device from renderer)`,
@@ -420,10 +420,9 @@ export class SpectrogramGPUCompute {
             await this._processBatch(batchTiles, numTiles, numSlices, freqBins, onTileComplete, signal);
         }
 
-        // Always log total (need this data!)
         const elapsed = (performance.now() - t0).toFixed(1);
         const numBatches = Math.ceil(tiles.length / maxTilesPerBatch);
-        console.log(
+        if (window.pm?.gpu) console.log(
             `%c[GPU Compute] ${tiles.length} tiles in ${elapsed}ms ` +
             `(${numBatches} batches of ≤${maxTilesPerBatch}, ` +
             `${(tiles.length * numSlices * freqBins / 1024 / 1024).toFixed(1)}M values)`,
@@ -556,7 +555,7 @@ export class SpectrogramGPUCompute {
         const splitMs = (tSplitDone - tSplitStart).toFixed(1);
         const audioMB = (megaAudio.byteLength / 1024 / 1024).toFixed(1);
         const outputMB = (outputByteSize / 1024 / 1024).toFixed(1);
-        console.log(
+        if (window.pm?.gpu) console.log(
             `%c  [GPU batch] ${numTiles} tiles: ` +
             `${concatMs}ms concat (${audioMB}MB) + ` +
             `${uploadMs}ms upload + ` +
@@ -624,7 +623,7 @@ export class SpectrogramGPUCompute {
         let batchCount = 0;
 
         const numBatches = Math.ceil(tiles.length / maxTilesPerBatch);
-        console.log(
+        if (window.pm?.gpu) console.log(
             `%c[GPU Zero-Copy] ${tiles.length} tiles → ${numBatches} batches (${maxTilesPerBatch}/batch)`,
             'color: #FF9800; font-weight: bold'
         );
@@ -648,7 +647,7 @@ export class SpectrogramGPUCompute {
 
         const submitElapsed = (performance.now() - t0).toFixed(1);
         const totalEncodeMs = batchEncodeTimes.reduce((a, b) => a + b, 0).toFixed(1);
-        console.log(
+        if (window.pm?.gpu) console.log(
             `%c[GPU Zero-Copy] All ${batchCount} batches submitted in ${submitElapsed}ms ` +
             `(encode: ${totalEncodeMs}ms) — GPUTextures ready, cascade via GPU render passes`,
             'color: #FF9800; font-weight: bold'
@@ -658,7 +657,7 @@ export class SpectrogramGPUCompute {
         return Promise.all(allGpuDonePromises).then(gpuTimes => {
             const maxGpu = Math.max(...gpuTimes).toFixed(1);
             const minGpu = Math.min(...gpuTimes).toFixed(1);
-            console.log(
+            if (window.pm?.gpu) console.log(
                 `%c[GPU Zero-Copy] GPU compute done: ${maxGpu}ms (range: ${minGpu}–${maxGpu}ms across ${batchCount} batches)`,
                 'color: #80d0ff; font-weight: bold'
             );
@@ -944,7 +943,7 @@ export class SpectrogramGPUCompute {
         this.initialized = false;
         this.hannUploaded = false;
 
-        if (!isStudyMode()) {
+        if (!isStudyMode() && window.pm?.gpu) {
             console.log('[GPU Compute] Terminated');
         }
     }

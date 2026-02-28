@@ -62,7 +62,7 @@ export function applyAdminModeUI() {
         // Set default values for user mode
         setUserModeDefaults();
         
-        console.log('👤 User mode: Admin controls hidden');
+        if (window.pm?.init) console.log('👤 User mode: Admin controls hidden');
     }
 }
 

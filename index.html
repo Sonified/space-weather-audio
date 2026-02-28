@@ -466,25 +466,24 @@
     <!-- CORE SYSTEM: Loads first, always works, never breaks -->
     <!-- ═══════════════════════════════════════════════════════════ -->
     <script type="module">
-        console.groupCollapsed('🔥 [CORE] Core Systems Initialization');
+        if (window.pm?.init) console.groupCollapsed('🔥 [CORE] Core Systems Initialization');
         import { initFlameEngine } from './js/core/flame-engine.js';
         import { initErrorSystem } from './js/core/error-system.js';
-        
+
         // Initialize core systems early
         const flame = initFlameEngine();
         const errorSystem = initErrorSystem(flame);
-        
+
         // Expose overheat mode globally for debugging/testing
         window.enterOverheatMode = () => {
             flame.enterOverheatMode();
         };
-        
+
         window.exitOverheatMode = () => {
             flame.exitOverheatMode();
         };
-        
-        console.log('🔥 Core systems initialized (flame engine + error system)');
-        console.groupEnd();
+
+        if (window.pm?.init) { console.log('🔥 Core systems initialized (flame engine + error system)'); console.groupEnd(); }
     </script>
     
     <!-- Pre-set viewing mode to show all data on initial load -->

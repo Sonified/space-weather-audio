@@ -275,7 +275,7 @@ export function clearAllCanvasFeatureBoxes() {
         spectrogramOverlayCtx.clearRect(0, 0, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
     }
 
-    console.log('🧹 Cleared all canvas feature boxes');
+    if (window.pm?.features) console.log('🧹 Cleared all canvas feature boxes');
 }
 
 /**
@@ -1469,12 +1469,12 @@ let featureBoxPendingUntilSpectrogram = false;
 export function redrawAllCanvasFeatureBoxes() {
     // Don't draw feature boxes until pyramid tiles have rendered
     if (!featureBoxReadyToShow) {
-        console.log(`📦 [FEAT-BOX] redrawAll called but NOT ready (pending=${featureBoxPendingUntilSpectrogram})`);
+        if (window.pm?.features) console.log(`📦 [FEAT-BOX] redrawAll called but NOT ready (pending=${featureBoxPendingUntilSpectrogram})`);
         if (!featureBoxPendingUntilSpectrogram) {
             featureBoxPendingUntilSpectrogram = true;
-            console.log(`📦 [FEAT-BOX] Registering pyramid-ready listener`);
+            if (window.pm?.gpu) console.log(`📦 [FEAT-BOX] Registering pyramid-ready listener`);
             window.addEventListener('pyramid-ready', () => {
-                console.log(`📦 [FEAT-BOX] pyramid-ready FIRED! Starting fade-in`);
+                if (window.pm?.gpu) console.log(`📦 [FEAT-BOX] pyramid-ready FIRED! Starting fade-in`);
                 featureBoxPendingUntilSpectrogram = false;
                 featureBoxReadyToShow = true;
                 featureBoxOpacity = 0; // start fade from zero
@@ -1497,7 +1497,7 @@ export function updateCanvasAnnotations() {
 
     // DEBUG: Print once to verify function is running
     if (debugFrameCounter === 1) {
-        console.log(`🎬 updateCanvasAnnotations() IS RUNNING! First call.`);
+        if (window.pm?.gpu) console.log(`🎬 updateCanvasAnnotations() IS RUNNING! First call.`);
     }
 
 
@@ -1748,7 +1748,7 @@ export function loadFrequencyScale() {
         if (validValues.includes(savedValue)) {
             select.value = savedValue;
             State.setFrequencyScale(savedValue);
-            console.log(`📊 Loaded saved frequency scale: ${savedValue}`);
+            if (window.pm?.init) console.log(`📊 Loaded saved frequency scale: ${savedValue}`);
         }
     } else {
         // No saved value, use default (logarithmic for space physics) and save it
@@ -1773,7 +1773,7 @@ export function loadColormap() {
             select.value = savedValue;
             setColormap(savedValue);
             updateAccentColors();
-            console.log(`🎨 Loaded saved colormap: ${savedValue}`);
+            if (window.pm?.init) console.log(`🎨 Loaded saved colormap: ${savedValue}`);
         }
     } else {
         // No saved value, use default (inferno) and save it
@@ -1941,7 +1941,7 @@ export function loadFftSize() {
             if (select) {
                 select.value = value.toString();
             }
-            console.log(`📐 Loaded saved FFT size: ${value}`);
+            if (window.pm?.init) console.log(`📐 Loaded saved FFT size: ${value}`);
         }
     }
 }
@@ -2103,7 +2103,7 @@ export function setupSpectrogramSelection() {
         return;
     }
 
-    console.log('✅ [SETUP] Setting up spectrogram selection (first time)');
+    if (window.pm?.init) console.log('✅ [SETUP] Setting up spectrogram selection (first time)');
 
     const canvas = document.getElementById('spectrogram');
     if (!canvas) {
@@ -2186,7 +2186,7 @@ export function setupSpectrogramSelection() {
     };
     document.addEventListener('visibilitychange', spectrogramRepositionOnVisibility);
     
-    console.log('✅ Created spectrogram selection overlay canvas:', {
+    if (window.pm?.init) console.log('✅ Created spectrogram selection overlay canvas:', {
         left: spectrogramOverlayCanvas.style.left,
         top: spectrogramOverlayCanvas.style.top,
         width: spectrogramOverlayCanvas.width,

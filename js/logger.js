@@ -25,6 +25,9 @@ const emoji = {
     render: '🎨',
     ui: '👆',
     zoom: '🔍',
+    gpu: '🔺',
+    study: '🔬',
+    features: '📦',
     memory: '🏥',
     cache: '💾',
     error: '❌'
@@ -35,16 +38,19 @@ const emoji = {
  */
 const pm = {
     // === Category Flags (set directly: pm.data = true) ===
-    init: true,      // App initialization, module loading
-    data: true,      // Data fetching, caching, decoding
+    init: false,     // App initialization, module loading
+    data: false,     // Data fetching, caching, decoding
     audio: false,    // Audio worklet, playback (noisy)
     regions: true,   // Region/feature operations
     share: true,     // Share link operations
     render: false,   // Spectrogram/waveform rendering (noisy)
     ui: false,       // User interactions
     zoom: false,     // Zoom state changes
+    gpu: false,      // GPU compute, pyramid, zero-copy pipeline
+    study: false,    // EMIC study flow, mode initialization
+    features: false, // Feature boxes, regions, standalone features
     memory: false,   // Memory health monitoring
-    cache: true,     // IndexedDB cache operations
+    cache: false,    // IndexedDB cache operations
     error: true,     // Errors (keep on)
 
     // === Methods ===

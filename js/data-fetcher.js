@@ -117,13 +117,13 @@ const DATASET_VARIABLES = {
  */
 // ✅ ACTIVE PATH - This is the primary data fetching function used for CDAWeb audio
 export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) {
-    console.log(`🛰️ Fetching CDAWeb audio: ${spacecraft} ${dataset} ${startTime} to ${endTime}`);
+    if (window.pm?.data) console.log(`🛰️ Fetching CDAWeb audio: ${spacecraft} ${dataset} ${startTime} to ${endTime}`);
     
     // Check if user wants to bypass local cache
     const bypassLocalCache = document.getElementById('drawerBypassCache')?.checked;
 
     // Check cache first (unless bypass is enabled)
-    console.log(`🔍 Checking cache for: ${spacecraft} ${dataset} ${startTime} → ${endTime}${bypassLocalCache ? ' (BYPASSED)' : ''}`);
+    if (window.pm?.data) console.log(`🔍 Checking cache for: ${spacecraft} ${dataset} ${startTime} → ${endTime}${bypassLocalCache ? ' (BYPASSED)' : ''}`);
     const cached = !bypassLocalCache ? await getAudioData(spacecraft, dataset, startTime, endTime) : null;
     if (cached) {
         const expectedComponents = cached.metadata?.allFileUrls?.length || 1;
@@ -149,11 +149,13 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
             // Fall through to fetch fresh data - don't use incomplete cache
         } else {
             // Cache is complete, use it
-            console.groupCollapsed(`🎵 [DECODE] WAV from cache`);
+            if (window.pm?.audio) console.groupCollapsed(`🎵 [DECODE] WAV from cache`);
             const decoded = await decodeWAVBlob(cached.wavBlob, cached);
-            console.log(`✅ Cache load complete: ${decoded.playback.totalSamples.toLocaleString()} samples decoded`);
-            console.log(`📊 Decoded allFileUrls:`, decoded.allFileUrls);
-            console.groupEnd();
+            if (window.pm?.audio) {
+                console.log(`✅ Cache load complete: ${decoded.playback.totalSamples.toLocaleString()} samples decoded`);
+                console.log(`📊 Decoded allFileUrls:`, decoded.allFileUrls);
+                console.groupEnd();
+            }
             return decoded;
         }
     }
@@ -344,7 +346,7 @@ async function downloadRemainingComponentsInBackground(spacecraft, dataset, star
  * @returns {Promise<Object>} Decoded audio data with domain separation
  */
 async function decodeWAVBlob(wavBlob, cacheEntry) {
-    console.log(`🎵 Decoding WAV file (${(wavBlob.size / 1024).toFixed(2)} KB)...`);
+    if (window.pm?.audio) console.log(`🎵 Decoding WAV file (${(wavBlob.size / 1024).toFixed(2)} KB)...`);
     
     const decodeStartTime = performance.now();
     const arrayBuffer = await wavBlob.arrayBuffer();
@@ -358,7 +360,7 @@ async function decodeWAVBlob(wavBlob, cacheEntry) {
     const bitsPerSample = headerView.getUint16(34, true);
     const targetSampleRate = 44100;
     if (origSampleRate !== targetSampleRate) {
-        console.log(`🔧 Patching WAV header: ${origSampleRate} Hz → ${targetSampleRate} Hz (prevents browser resampling)`);
+        if (window.pm?.audio) console.log(`🔧 Patching WAV header: ${origSampleRate} Hz → ${targetSampleRate} Hz (prevents browser resampling)`);
         headerView.setUint32(24, targetSampleRate, true);  // sample rate
         headerView.setUint32(28, targetSampleRate * numChannels * (bitsPerSample / 8), true);  // byte rate
     }
@@ -371,7 +373,7 @@ async function decodeWAVBlob(wavBlob, cacheEntry) {
         const audioBuffer = await offlineContext.decodeAudioData(arrayBuffer);
         
         const decodeTime = performance.now() - decodeStartTime;
-        console.log(`✅ WAV decoded in ${decodeTime.toFixed(0)}ms`);
+        if (window.pm?.audio) console.log(`✅ WAV decoded in ${decodeTime.toFixed(0)}ms`);
         
         // Extract samples (already at 44.1kHz)
         const samples = audioBuffer.getChannelData(0);
@@ -505,15 +507,15 @@ function toBasicISO8601(isoString) {
 export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, endTimeISO) {
     const logTime = () => `[${Math.round(performance.now() - window.streamingStartTime)}ms]`;
 
-    console.log(`📡 [DATA] Fetching & Loading: ${spacecraft} ${dataset}`);
+    if (window.pm?.data) console.log(`📡 [DATA] Fetching & Loading: ${spacecraft} ${dataset}`);
     
     try {
-        console.log(`📡 ${logTime()} Fetching CDAWeb audio data...`);
+        if (window.pm?.data) console.log(`📡 ${logTime()} Fetching CDAWeb audio data...`);
         
         // Fetch and decode audio from CDAWeb (includes caching)
         const audioData = await fetchCDAWebAudio(spacecraft, dataset, startTimeISO, endTimeISO);
         
-        console.log(`✅ ${logTime()} Audio decoded: ${audioData.playback.totalSamples.toLocaleString()} samples`);
+        if (window.pm?.data) console.log(`✅ ${logTime()} Audio decoded: ${audioData.playback.totalSamples.toLocaleString()} samples`);
         
         // ============================================
         // SET METADATA WITH CLEAN DOMAIN SEPARATION
@@ -542,12 +544,14 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             dataset: dataset,
         });
         
-        console.log(`📋 Metadata set:`);
-        console.log(`   spacecraft: ${spacecraft}`);
-        console.log(`   dataset: ${dataset}`);
-        console.log(`   playback_samples_per_real_second: ${audioData.playback.samplesPerRealSecond.toFixed(2)}`);
-        console.log(`   instrument_sampling_rate: ${(audioData.instrument.nyquist * 2).toFixed(4)} Hz`);
-        console.log(`   instrument_nyquist: ${audioData.instrument.nyquist.toFixed(4)} Hz (for Y-axis)`);
+        if (window.pm?.data) {
+            console.log(`📋 Metadata set:`);
+            console.log(`   spacecraft: ${spacecraft}`);
+            console.log(`   dataset: ${dataset}`);
+            console.log(`   playback_samples_per_real_second: ${audioData.playback.samplesPerRealSecond.toFixed(2)}`);
+            console.log(`   instrument_sampling_rate: ${(audioData.instrument.nyquist * 2).toFixed(4)} Hz`);
+            console.log(`   instrument_nyquist: ${audioData.instrument.nyquist.toFixed(4)} Hz (for Y-axis)`);
+        }
         
         // Set state
         State.setCompleteSamplesArray(audioData.samples);
@@ -583,10 +587,10 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         }
         
         // Initialize component selector if multiple files available
-        console.groupCollapsed(`🔍 [COMPONENT SELECTOR] ${audioData.allFileUrls?.length || 0} files`);
-        console.log(`allFileUrls:`, audioData.allFileUrls);
+        if (window.pm?.data) console.groupCollapsed(`🔍 [COMPONENT SELECTOR] ${audioData.allFileUrls?.length || 0} files`);
+        if (window.pm?.data) console.log(`allFileUrls:`, audioData.allFileUrls);
         if (audioData.allFileUrls && audioData.allFileUrls.length > 1) {
-            console.log(`Multiple files detected - initializing selector`);
+            if (window.pm?.data) console.log(`Multiple files detected - initializing selector`);
             const { initializeComponentSelector } = await import('./component-selector.js');
             // Pass metadata so component selector can look up cached blobs
             initializeComponentSelector(audioData.allFileUrls, {
@@ -596,11 +600,11 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
                 endTime: endTimeISO
             });
         } else {
-            console.log(`Single file - hiding selector`);
+            if (window.pm?.data) console.log(`Single file - hiding selector`);
             const { hideComponentSelector } = await import('./component-selector.js');
             hideComponentSelector();
         }
-        console.groupEnd();
+        if (window.pm?.data) console.groupEnd();
         
         // Show download button after audio loads
         const downloadContainer = document.getElementById('downloadAudioContainer');
@@ -642,7 +646,7 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         zoomState.applyInitialViewport();
 
         // Draw waveform
-        console.log(`🎨 ${logTime()} Drawing waveform...`);
+        if (window.pm?.gpu) console.log(`🎨 ${logTime()} Drawing waveform...`);
         positionWaveformAxisCanvas();
         drawWaveformAxis();
         drawWaveform();
@@ -658,7 +662,7 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         drawFrequencyAxis();
 
         // Start complete visualization (spectrogram)
-        console.log(`📊 ${logTime()} Starting spectrogram visualization...`);
+        if (window.pm?.gpu) console.log(`📊 ${logTime()} Starting spectrogram visualization...`);
         await startCompleteVisualization();
 
         // Load regions after data fetch (if any)
@@ -718,10 +722,12 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
                 sampleRate: audioData.playback.samplesPerRealSecond  // ⭐ THE KEY FIX
             });
             
-            console.groupCollapsed(`📤 ${logTime()} data-complete sent`);
-            console.log(`totalSamples: ${audioData.playback.totalSamples.toLocaleString()}`);
-            console.log(`sampleRate: ${audioData.playback.samplesPerRealSecond.toFixed(2)} (playback samples per real second)`);
-            console.groupEnd();
+            if (window.pm?.data) {
+                console.groupCollapsed(`📤 ${logTime()} data-complete sent`);
+                console.log(`totalSamples: ${audioData.playback.totalSamples.toLocaleString()}`);
+                if (window.pm?.audio) console.log(`sampleRate: ${audioData.playback.samplesPerRealSecond.toFixed(2)} (playback samples per real second)`);
+                console.groupEnd();
+            }
             
             // Update playback speed (needed for worklet)
             updatePlaybackSpeed();
@@ -792,7 +798,7 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             // console.warn(`⚠️ [PIPELINE] Cannot send samples to worklet: workletNode=${!!State.workletNode}, audioContext=${!!State.audioContext}`);
         }
         
-        console.log(`✅ ${logTime()} CDAWeb data loaded and visualized!`);
+        if (window.pm?.gpu) console.log(`✅ ${logTime()} CDAWeb data loaded and visualized!`);
 
         // Stop the pulsing animation on Fetch Data button after first successful fetch
         const startBtn = document.getElementById('startBtn');
