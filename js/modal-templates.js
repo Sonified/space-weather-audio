@@ -5,6 +5,9 @@ import { isStudyMode } from './master-modes.js';
 // 🔥 FIX: Track if modals have been initialized to prevent duplicate initialization
 let modalsInitialized = false;
 
+// NOTE: This welcome modal template is for the live spaceweather.now.audio site (volcano/solar portal).
+// For the EMIC study, the text is dynamically patched by openWelcomeModal() in ui-controls.js
+// when welcomeMode === 'participant'. Do not confuse these — this is NOT the EMIC study welcome.
 export function createWelcomeModal() {
     const modal = document.createElement('div');
     modal.id = 'welcomeModal';
@@ -337,6 +340,9 @@ export function createMissingStudyIdModal() {
     return modal;
 }
 
+// NOTE: This participant/login modal template is for the live spaceweather.now.audio site.
+// For the EMIC study, the text is dynamically patched by openParticipantModal() in ui-controls.js
+// when welcomeMode === 'participant'. Do not confuse these — this is NOT the EMIC study login.
 export function createParticipantModal() {
     const modal = document.createElement('div');
     modal.id = 'participantModal';
