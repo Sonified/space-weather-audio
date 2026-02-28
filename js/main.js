@@ -1036,6 +1036,13 @@ function injectSettingsDrawer() {
             </div>
         </div>
         <div class="drawer-section">
+            <div class="drawer-section-title">Layout</div>
+            <div class="drawer-row">
+                <label for="minUIWidth" class="drawer-label">Min Width (px)</label>
+                <input type="number" id="minUIWidth" class="drawer-input" min="0" max="3000" step="50">
+            </div>
+        </div>
+        <div class="drawer-section">
             <div class="drawer-section-title">Panel Heights (px)</div>
             <div class="drawer-row">
                 <label for="heightMinimap" class="drawer-label">Minimap</label>
@@ -1913,6 +1920,23 @@ function initializeAdvancedControls() {
     if (heightSpectrogramInput) {
         heightSpectrogramInput.addEventListener('change', () =>
             applyPanelHeight(heightSpectrogramInput, 'spectrogram', 'spectrogram-axis', null));
+    }
+
+    // Min UI width
+    const MIN_UI_WIDTH_DEFAULT = 1200;
+    const minUIWidthInput = document.getElementById('minUIWidth');
+    const containerEl = document.querySelector('.container');
+    if (minUIWidthInput && containerEl) {
+        const saved = localStorage.getItem('minUIWidth');
+        const val = saved ? parseInt(saved) : MIN_UI_WIDTH_DEFAULT;
+        minUIWidthInput.value = val;
+        if (val > 0) containerEl.style.minWidth = val + 'px';
+        minUIWidthInput.addEventListener('change', () => {
+            const v = parseInt(minUIWidthInput.value);
+            if (isNaN(v) || v < 0) return;
+            containerEl.style.minWidth = v > 0 ? v + 'px' : '';
+            localStorage.setItem('minUIWidth', v);
+        });
     }
 
     // Position gear icons over their respective canvases (top-right corner)

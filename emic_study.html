@@ -245,7 +245,21 @@
             display: none;
         }
 
-        /* Questionnaires panel: visible horizontal scroll */
+        /* Questionnaires panel: thin dark scrollbar */
+        #questionnairesPanel > div {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+        }
+        #questionnairesPanel > div::-webkit-scrollbar {
+            height: 3px;
+        }
+        #questionnairesPanel > div::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #questionnairesPanel > div::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 2px;
+        }
 
         /* Bottom viz-controls bar — compact styling */
         .viz-controls {
