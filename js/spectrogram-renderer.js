@@ -2262,7 +2262,7 @@ export function setupSpectrogramSelection() {
 
     canvas.addEventListener('mousedown', (e) => {
         // 🔍 DEBUG: Log zoom state when clicking on canvas
-        console.log('🖱️ [MOUSEDOWN] Canvas clicked - checking zoom state:', {
+        if (window.pm?.interaction) console.log('🖱️ [MOUSEDOWN] Canvas clicked - checking zoom state:', {
             zoomStateInitialized: zoomState.isInitialized(),
             isInRegion: zoomState.isInitialized() ? zoomState.isInRegion() : 'N/A (not initialized)',
             zoomMode: zoomState.isInitialized() ? zoomState.mode : 'N/A',
@@ -2769,7 +2769,7 @@ export function cancelSpectrogramSelection() {
         for (const box of completedSelectionBoxes) {
             drawSavedBox(spectrogramOverlayCtx, box);
         }
-        console.log(`🧹 Canceled current drag, kept ${completedSelectionBoxes.length} completed boxes`);
+        if (window.pm?.interaction) console.log(`🧹 Canceled current drag, kept ${completedSelectionBoxes.length} completed boxes`);
     }
     
     // DEPRECATED: Legacy DOM box cleanup (kept for transition period)

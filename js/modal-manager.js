@@ -42,14 +42,14 @@ class ModalManager {
             }
             
             // If switching modals and keeping overlay visible
-            console.log(`🔧 openModal: Checking if swap needed. currentModal=${this.currentModal}, keepOverlay=${keepOverlay}`);
+            if (window.pm?.interaction) console.log(`🔧 openModal: Checking if swap needed. currentModal=${this.currentModal}, keepOverlay=${keepOverlay}`);
             if (this.currentModal && this.currentModal !== '__overlay_active__' && keepOverlay) {
-                console.log(`🔧 openModal: SWAPPING modal (currentModal=${this.currentModal} -> ${modalId})`);
+                if (window.pm?.interaction) console.log(`🔧 openModal: SWAPPING modal (currentModal=${this.currentModal} -> ${modalId})`);
                 // Return the promise from swapModal so workflow waits for modal to close
                 return await this.swapModal(modalId, { onOpen, onClose });
             } else if (this.currentModal === '__overlay_active__' && keepOverlay) {
                 // Overlay is already up from a previous keepOverlay close — just show the new modal
-                console.log(`🔧 openModal: OVERLAY ACTIVE, showing ${modalId} directly (no swap delay)`);
+                if (window.pm?.interaction) console.log(`🔧 openModal: OVERLAY ACTIVE, showing ${modalId} directly (no swap delay)`);
                 modal.style.display = 'flex';
                 modal.offsetHeight; // reflow
                 modal.classList.add('modal-visible');
@@ -60,7 +60,7 @@ class ModalManager {
                     modal._onClose = onClose;
                 });
             } else {
-                console.log(`🔧 openModal: FRESH OPEN (currentModal=${this.currentModal}, keepOverlay=${keepOverlay})`);
+                if (window.pm?.interaction) console.log(`🔧 openModal: FRESH OPEN (currentModal=${this.currentModal}, keepOverlay=${keepOverlay})`);
                 // Fresh open (with overlay fade-in)
                 await this.closeAllModals(false); // Don't re-enable scroll, we're about to open a modal
                 
@@ -77,14 +77,16 @@ class ModalManager {
                 if (onOpen) onOpen();
 
                 // Return promise that resolves when modal closes
-                console.log(`🔧 openModal: Creating promise for ${modalId}`);
-                console.log(`🔧 openModal: Modal element:`, modal);
-                console.log(`🔧 openModal: Current modal state:`, this.currentModal);
+                if (window.pm?.interaction) {
+                    console.log(`🔧 openModal: Creating promise for ${modalId}`);
+                    console.log(`🔧 openModal: Modal element:`, modal);
+                    console.log(`🔧 openModal: Current modal state:`, this.currentModal);
+                }
                 return new Promise((resolve) => {
-                    console.log(`🔧 openModal: Setting _closeResolver for ${modalId}`);
+                    if (window.pm?.interaction) console.log(`🔧 openModal: Setting _closeResolver for ${modalId}`);
                     modal._closeResolver = resolve;
                     modal._onClose = onClose;
-                    console.log(`🔧 openModal: Resolver set! modal._closeResolver exists:`, !!modal._closeResolver);
+                    if (window.pm?.interaction) console.log(`🔧 openModal: Resolver set! modal._closeResolver exists:`, !!modal._closeResolver);
                 });
             }
             
@@ -117,11 +119,13 @@ class ModalManager {
                 return;
             }
             
-            console.log(`🔧 closeModal: Modal element found:`, modal);
-            console.log(`🔧 closeModal: Current modal state:`, this.currentModal);
-            console.log(`🔧 closeModal: Modal ID attribute:`, modal.id);
-            console.log(`🔧 closeModal: Checking _closeResolver for ${targetModal}:`, !!modal._closeResolver);
-            console.log(`🔧 closeModal: Modal keys:`, Object.keys(modal).filter(k => k.startsWith('_')));
+            if (window.pm?.interaction) {
+                console.log(`🔧 closeModal: Modal element found:`, modal);
+                console.log(`🔧 closeModal: Current modal state:`, this.currentModal);
+                console.log(`🔧 closeModal: Modal ID attribute:`, modal.id);
+                console.log(`🔧 closeModal: Checking _closeResolver for ${targetModal}:`, !!modal._closeResolver);
+                console.log(`🔧 closeModal: Modal keys:`, Object.keys(modal).filter(k => k.startsWith('_')));
+            }
             
             // Call onClose callback if exists
             if (modal._onClose) {
@@ -130,7 +134,7 @@ class ModalManager {
             
             // Resolve the waiting promise
             if (modal._closeResolver) {
-                console.log(`✅ closeModal: Resolving promise for ${targetModal}`);
+                if (window.pm?.interaction) console.log(`✅ closeModal: Resolving promise for ${targetModal}`);
                 modal._closeResolver(true);
                 modal._closeResolver = null;
             } else {

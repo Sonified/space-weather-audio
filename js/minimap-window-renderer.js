@@ -2650,12 +2650,12 @@ export function changeWaveformFilter() {
     if (window.rawWaveformData && window.rawWaveformData.length > 0) {
         const removeDC = document.getElementById('removeDCOffset').checked;
         
-        console.log(`🎛️ changeWaveformFilter called: removeDC=${removeDC}, alpha=${alpha.toFixed(4)}`);
+        if (window.pm?.audio) console.log(`🎛️ changeWaveformFilter called: removeDC=${removeDC}, alpha=${alpha.toFixed(4)}`);
         
         let processedData = window.rawWaveformData;
         
         if (removeDC) {
-            console.log(`🎛️ Removing drift with alpha=${alpha.toFixed(4)}...`);
+            if (window.pm?.audio) console.log(`🎛️ Removing drift with alpha=${alpha.toFixed(4)}...`);
             processedData = removeDCOffset(processedData, alpha);
             
             let minProc = processedData[0], maxProc = processedData[0];
@@ -2663,9 +2663,9 @@ export function changeWaveformFilter() {
                 if (processedData[i] < minProc) minProc = processedData[i];
                 if (processedData[i] > maxProc) maxProc = processedData[i];
             }
-            console.log(`  📊 Drift-removed range: [${minProc.toFixed(1)}, ${maxProc.toFixed(1)}]`);
+            if (window.pm?.audio) console.log(`  📊 Drift-removed range: [${minProc.toFixed(1)}, ${maxProc.toFixed(1)}]`);
         } else {
-            console.log(`🎛️ No drift removal (showing raw data)`);
+            if (window.pm?.audio) console.log(`🎛️ No drift removal (showing raw data)`);
         }
         
         const normalized = normalize(processedData);
@@ -2684,16 +2684,16 @@ export function changeWaveformFilter() {
                 { type: 'swap-buffer', samples: copy },
                 [copy.buffer]
             );
-            console.log(`  🔄 Swapped AudioProcessor buffer with detrended audio`);
+            if (window.pm?.audio) console.log(`  🔄 Swapped AudioProcessor buffer with detrended audio`);
         }
 
-        console.log(`  🎨 Redrawing waveform...`);
+        if (window.pm?.render) console.log(`  🎨 Redrawing waveform...`);
         drawWaveform();
 
         // Re-render spectrogram pyramid tiles from de-trended samples
         // Only if spectrogram was already rendered (avoid interfering with initial load)
         if (State.spectrogramInitialized) {
-            console.log(`  🔺 Rebuilding spectrogram from de-trended data...`);
+            if (window.pm?.render) console.log(`  🔺 Rebuilding spectrogram from de-trended data...`);
             import('./spectrogram-pyramid.js').then(({ disposePyramid }) => {
                 import('./main-window-renderer.js').then(({ resetSpectrogramState, renderCompleteSpectrogram }) => {
                     disposePyramid();
