@@ -27,11 +27,13 @@
  * THE SOFTWARE.
  */
 
+let DEBUG_AUDIO = false;
+
 class PaulStretchProcessor extends AudioWorkletProcessor {
     constructor(options) {
         super();
 
-        console.log('🎛️ PaulStretchProcessor constructor called');
+        if (DEBUG_AUDIO) console.log('🎛️ PaulStretchProcessor constructor called');
 
         // Parameters
         this.winSize = options.processorOptions?.windowSize || 4096;
@@ -306,7 +308,7 @@ class PaulStretchProcessor extends AudioWorkletProcessor {
 
             switch (type) {
                 case 'load-audio':
-                    console.log(`📨 Paul: Loading audio: ${data.samples.length} samples`);
+                    if (DEBUG_AUDIO) console.log(`📨 Paul: Loading audio: ${data.samples.length} samples`);
                     // Hard stop any in-progress playback/fades before loading new audio
                     this.isPlaying = false;
                     this.pendingPause = false;
@@ -321,13 +323,13 @@ class PaulStretchProcessor extends AudioWorkletProcessor {
                     break;
 
                 case 'play':
-                    console.log('▶️ Paul: PLAY');
+                    if (DEBUG_AUDIO) console.log('▶️ Paul: PLAY');
                     this.isPlaying = true;
                     this.fadeInRemaining = this.fadeInLength;
                     break;
 
                 case 'pause':
-                    console.log('⏸️ Paul: PAUSE');
+                    if (DEBUG_AUDIO) console.log('⏸️ Paul: PAUSE');
                     if (this.isPlaying) {
                         this.fadeOutRemaining = this.fadeOutLength;
                         this.pendingSeekPosition = null;
@@ -345,30 +347,30 @@ class PaulStretchProcessor extends AudioWorkletProcessor {
                         // Fade out first, then seek when fade completes
                         this.fadeOutRemaining = this.fadeOutLength;
                         this.pendingSeekPosition = targetPos;
-                        console.log(`⏩ Paul: Seek requested while playing, fading out first. Target: ${targetPos}`);
+                        if (DEBUG_AUDIO) console.log(`⏩ Paul: Seek requested while playing, fading out first. Target: ${targetPos}`);
                     } else {
                         // Not playing, seek immediately
                         this.sourcePosition = targetPos;
                         this.resetBuffers();
                         this.fadeInRemaining = this.fadeInLength;
-                        console.log(`⏩ Paul: Seek to ${this.sourcePosition}`);
+                        if (DEBUG_AUDIO) console.log(`⏩ Paul: Seek to ${this.sourcePosition}`);
                     }
                     break;
 
                 case 'set-stretch':
                     this.ratio = data.factor;
                     this.samplesIn.setDisplacePos((this.winSize * 0.5) / this.ratio);
-                    console.log(`🔄 Paul: Stretch factor: ${this.ratio}`);
+                    if (DEBUG_AUDIO) console.log(`🔄 Paul: Stretch factor: ${this.ratio}`);
                     break;
 
                 case 'set-window-size':
                     this.reinitialize(data.size);
-                    console.log(`📐 Paul: Window size: ${this.winSize}`);
+                    if (DEBUG_AUDIO) console.log(`📐 Paul: Window size: ${this.winSize}`);
                     break;
 
                 case 'set-overlap':
                     // Their algorithm doesn't have configurable overlap - it's fixed at 50%
-                    console.log(`🔀 Paul: Overlap ignored (fixed at 50%)`);
+                    if (DEBUG_AUDIO) console.log(`🔀 Paul: Overlap ignored (fixed at 50%)`);
                     break;
 
                 case 'set-position':
@@ -382,6 +384,10 @@ class PaulStretchProcessor extends AudioWorkletProcessor {
                         ));
                         this.samplesIn.clear();
                     }
+                    break;
+
+                case 'set-debug-audio':
+                    DEBUG_AUDIO = data?.enabled ?? event.data.enabled;
                     break;
             }
         };
@@ -511,7 +517,7 @@ class PaulStretchProcessor extends AudioWorkletProcessor {
                         this.pendingSeekPosition = null;
                         this.resetBuffers();
                         this.fadeInRemaining = this.fadeInLength;
-                        console.log(`⏩ Paul: Fade-out complete, seeking to: ${this.sourcePosition}`);
+                        if (DEBUG_AUDIO) console.log(`⏩ Paul: Fade-out complete, seeking to: ${this.sourcePosition}`);
                         // Fill rest with silence and return - next frame will have fresh audio
                         for (let j = i; j < channel.length; j++) {
                             channel[j] = 0;

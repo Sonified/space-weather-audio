@@ -11,6 +11,7 @@
  */
 
 // ===== DEBUG FLAGS =====
+let DEBUG_AUDIO = false;    // Toggled by UI checkbox via 'set-debug-audio' message
 const DEBUG_WORKLET = true; // Enable verbose worklet logging
 const DEBUG_MESSAGES = true; // Log all incoming messages
 const DEBUG_PROCESS = false; // Log process() calls every 100 frames
@@ -176,7 +177,7 @@ class AudioProcessor extends AudioWorkletProcessor {
                         // 🐛 FIX: Don't reset readIndex here - it may have been set by a seek!
                         // If user clicked on waveform, seekToPositionInstant already set readIndex.
                         // Only log the state change.
-                        console.log(`🔗 WORKLET: Manual start (shared session) - hasStarted=true, readIndex=${this.readIndex}`);
+                        if (DEBUG_AUDIO) console.log(`🔗 WORKLET: Manual start (shared session) - hasStarted=true, readIndex=${this.readIndex}`);
                     }
 
                     this.isPlaying = true;
@@ -187,7 +188,7 @@ class AudioProcessor extends AudioWorkletProcessor {
                         this.startFade(+1, fadeTime);
 
                         if (this.firstPlayAfterDataLoad) {
-                            console.log(`🎚️ WORKLET: FIRST PLAY after data load - using LONG ${fadeTime}ms fade-in to prevent click`);
+                            if (DEBUG_AUDIO) console.log(`🎚️ WORKLET: FIRST PLAY after data load - using LONG ${fadeTime}ms fade-in to prevent click`);
                             this.firstPlayAfterDataLoad = false; // Clear flag after using it
                         } else {
                             if (DEBUG_MESSAGES) console.log(`▶️ WORKLET: Starting playback with ${fadeTime}ms fade-in`);
@@ -206,7 +207,7 @@ class AudioProcessor extends AudioWorkletProcessor {
                 // 🏎️ AUTONOMOUS: Worklet decides how to seek based on current state
                 const { position } = event.data;
                 const targetSample = Math.floor(position * this.sampleRate);
-                console.log(`🎯 WORKLET SEEK: position=${position.toFixed(2)}s, this.sampleRate=${this.sampleRate} Hz, targetSample=${targetSample.toLocaleString()}`);
+                if (DEBUG_AUDIO) console.log(`🎯 WORKLET SEEK: position=${position.toFixed(2)}s, this.sampleRate=${this.sampleRate} Hz, targetSample=${targetSample.toLocaleString()}`);
                 
                 if (this.isPlaying) {
                     // Crossfade seek: fade out → jump → fade in
@@ -232,7 +233,7 @@ class AudioProcessor extends AudioWorkletProcessor {
                 // Set sample rate early (before data-complete) so position reports are correct
                 if (event.data.sampleRate) {
                     this.sampleRate = event.data.sampleRate;
-                    console.log(`🎵 WORKLET: Sample rate set to ${this.sampleRate} Hz (early, before data-complete)`);
+                    if (DEBUG_AUDIO) console.log(`🎵 WORKLET: Sample rate set to ${this.sampleRate} Hz (early, before data-complete)`);
                 }
             } else if (type === 'data-complete') {
                 // 🔥 CRITICAL: Set actual sample rate from metadata!
@@ -260,7 +261,9 @@ class AudioProcessor extends AudioWorkletProcessor {
                 this.samplesInBuffer = 0;
                 this.writeIndex = 0;
                 // Don't reset readIndex or totalSamplesConsumed - we want to maintain position
-                console.log(`🗑️ WORKLET: Buffer cleared`);
+                if (DEBUG_AUDIO) console.log(`🗑️ WORKLET: Buffer cleared`);
+            } else if (type === 'set-debug-audio') {
+                DEBUG_AUDIO = event.data.enabled;
             }
         };
     }
@@ -274,7 +277,7 @@ class AudioProcessor extends AudioWorkletProcessor {
     
     setAntiAliasing(enabled) {
         this.enableAntiAliasing = enabled;
-        console.log('🎛️ Anti-aliasing filter: ' + (enabled ? 'ON' : 'OFF'));
+        if (DEBUG_AUDIO) console.log('🎛️ Anti-aliasing filter: ' + (enabled ? 'ON' : 'OFF'));
         if (!enabled) {
             this.resetFilterState();
         }
@@ -291,7 +294,7 @@ class AudioProcessor extends AudioWorkletProcessor {
         // 🎚️ Only start a new fade if we're NOT already fading in
         // This prevents the autoPlay 'start-immediately' from interrupting the initial 250ms fade
         if (this.fadeState.isFading && this.fadeState.fadeDirection === 1) {
-            console.log(`🎚️ WORKLET: start-immediately called but fade-in already in progress - keeping existing fade`);
+            if (DEBUG_AUDIO) console.log(`🎚️ WORKLET: start-immediately called but fade-in already in progress - keeping existing fade`);
             return;
         }
 
@@ -301,10 +304,10 @@ class AudioProcessor extends AudioWorkletProcessor {
         this.startFade(+1, fadeTime);
 
         if (this.firstPlayAfterDataLoad) {
-            console.log(`🎚️ WORKLET: FIRST PLAY after data load - using LONG ${fadeTime}ms fade-in to prevent click`);
+            if (DEBUG_AUDIO) console.log(`🎚️ WORKLET: FIRST PLAY after data load - using LONG ${fadeTime}ms fade-in to prevent click`);
             this.firstPlayAfterDataLoad = false; // Clear flag after using it
         } else {
-            console.log(`🚀 WORKLET: Forced immediate start with ${fadeTime}ms fade-in! minBuffer=0, hasStarted=true, isPlaying=true`);
+            if (DEBUG_AUDIO) console.log(`🚀 WORKLET: Forced immediate start with ${fadeTime}ms fade-in! minBuffer=0, hasStarted=true, isPlaying=true`);
         }
     }
     
@@ -348,18 +351,18 @@ class AudioProcessor extends AudioWorkletProcessor {
      * @param {number} newSampleRate - Sample rate of new component (should match current)
      */
     handleSwapBuffer(samples, newSampleRate) {
-        console.log(`🔄 WORKLET SWAP-BUFFER: Received ${samples.length.toLocaleString()} samples for crossfade`);
+        if (DEBUG_AUDIO) console.log(`🔄 WORKLET SWAP-BUFFER: Received ${samples.length.toLocaleString()} samples for crossfade`);
 
         // Update sample rate if provided
         if (newSampleRate && newSampleRate !== this.sampleRate) {
-            console.log(`🔄 WORKLET: Sample rate changing from ${this.sampleRate} to ${newSampleRate} Hz`);
+            if (DEBUG_AUDIO) console.log(`🔄 WORKLET: Sample rate changing from ${this.sampleRate} to ${newSampleRate} Hz`);
             this.sampleRate = newSampleRate;
         }
 
         // Allocate pending buffer if needed (or resize)
         if (!this.pendingBuffer || this.pendingBuffer.length < samples.length) {
             this.pendingBuffer = new Float32Array(Math.max(samples.length, this.maxBufferSize));
-            console.log(`🔄 WORKLET: Allocated pending buffer: ${this.pendingBuffer.length.toLocaleString()} samples`);
+            if (DEBUG_AUDIO) console.log(`🔄 WORKLET: Allocated pending buffer: ${this.pendingBuffer.length.toLocaleString()} samples`);
         }
 
         // Copy samples to pending buffer
@@ -372,8 +375,10 @@ class AudioProcessor extends AudioWorkletProcessor {
         this.swapFadeSamples = 0;
         this.isSwapping = true;
 
-        console.log(`🔄 WORKLET: Starting ${this.swapFadeTimeMs}ms crossfade (${this.swapFadeTotalSamples} output samples)`);
-        console.log(`🔄 WORKLET: Current position: ${this.totalSamplesConsumed.toLocaleString()} / ${this.samplesInBuffer.toLocaleString()} samples`);
+        if (DEBUG_AUDIO) {
+            console.log(`🔄 WORKLET: Starting ${this.swapFadeTimeMs}ms crossfade (${this.swapFadeTotalSamples} output samples)`);
+            console.log(`🔄 WORKLET: Current position: ${this.totalSamplesConsumed.toLocaleString()} / ${this.samplesInBuffer.toLocaleString()} samples`);
+        }
 
         // Notify main thread that swap started
         this.port.postMessage({
@@ -387,7 +392,7 @@ class AudioProcessor extends AudioWorkletProcessor {
      * Makes pending buffer the primary, clears old buffer for reuse
      */
     completeBufferSwap() {
-        console.log(`🔄 WORKLET SWAP COMPLETE: Crossfade finished`);
+        if (DEBUG_AUDIO) console.log(`🔄 WORKLET SWAP COMPLETE: Crossfade finished`);
 
         // Swap buffers: pending becomes primary
         const oldBuffer = this.buffer;
@@ -414,8 +419,10 @@ class AudioProcessor extends AudioWorkletProcessor {
         // Mark data as complete
         this.dataLoadingComplete = true;
 
-        console.log(`🔄 WORKLET: New buffer active: ${this.samplesInBuffer.toLocaleString()} samples`);
-        console.log(`🔄 WORKLET: Playback position: ${this.totalSamplesConsumed.toLocaleString()}, readIndex adjusted to ${this.readIndex.toLocaleString()}`);
+        if (DEBUG_AUDIO) {
+            console.log(`🔄 WORKLET: New buffer active: ${this.samplesInBuffer.toLocaleString()} samples`);
+            console.log(`🔄 WORKLET: Playback position: ${this.totalSamplesConsumed.toLocaleString()}, readIndex adjusted to ${this.readIndex.toLocaleString()}`);
+        }
 
         // Notify main thread that swap is complete
         this.port.postMessage({
@@ -467,7 +474,7 @@ class AudioProcessor extends AudioWorkletProcessor {
                 return true;
             } else {
                 // Sample not in buffer - need refill
-                console.warn(`⚠️ SEEK OUT OF BUFFER: Target ${targetSample.toLocaleString()} >= samplesInBuffer ${this.samplesInBuffer.toLocaleString()}`);
+                if (DEBUG_AUDIO) console.warn(`⚠️ SEEK OUT OF BUFFER: Target ${targetSample.toLocaleString()} >= samplesInBuffer ${this.samplesInBuffer.toLocaleString()}`);
                 const wasPlaying = this.isPlaying;
                 this.isPlaying = false;
                 
@@ -514,7 +521,7 @@ class AudioProcessor extends AudioWorkletProcessor {
         const sampleRate = 44100; // AudioWorklet sample rate
         const RC = 1.0 / (2 * Math.PI * this.highPassCutoff);
         this.highPassAlpha = RC / (RC + 1 / sampleRate);
-        console.log('🎛️ High-pass filter updated: cutoff=' + this.highPassCutoff + 'Hz, alpha=' + this.highPassAlpha.toFixed(6));
+        if (DEBUG_AUDIO) console.log('🎛️ High-pass filter updated: cutoff=' + this.highPassCutoff + 'Hz, alpha=' + this.highPassAlpha.toFixed(6));
     }
     
     updateAntiAliasingFilter() {
@@ -581,7 +588,7 @@ class AudioProcessor extends AudioWorkletProcessor {
         this.readIndex = 0;
         this.writeIndex = this.samplesInBuffer;
         
-        console.log('📏 Expanded buffer to ' + (newSize / this.sampleRate / 60).toFixed(1) + ' minutes');
+        if (DEBUG_AUDIO) console.log('📏 Expanded buffer to ' + (newSize / this.sampleRate / 60).toFixed(1) + ' minutes');
     }
     
     writeSamples(samples) {
@@ -624,7 +631,7 @@ class AudioProcessor extends AudioWorkletProcessor {
             this.startFade(+1, fadeTime);
 
             if (this.firstPlayAfterDataLoad) {
-                console.log(`🎚️ WORKLET THRESHOLD: FIRST PLAY after data load - using ${fadeTime}ms fade-in to prevent click`);
+                if (DEBUG_AUDIO) console.log(`🎚️ WORKLET THRESHOLD: FIRST PLAY after data load - using ${fadeTime}ms fade-in to prevent click`);
                 this.firstPlayAfterDataLoad = false; // Clear flag after using it
             } else {
                 // console.log(`🎚️ WORKLET THRESHOLD: Started ${fadeTime}ms fade-in (firstPlayAfterDataLoad was false)`);
@@ -703,14 +710,14 @@ class AudioProcessor extends AudioWorkletProcessor {
                 // }
                 
                 if (samplesToEnd <= FADE_SAMPLES_INPUT) {
-                    console.log(`🔄 LOOP FADE-OUT: samplesToEnd=${samplesToEnd}, fadeTime=${fadeTime}ms, isLooping=${this.isLooping}, isFullFileLoop=${isFullFileLoop}`);
+                    if (DEBUG_AUDIO) console.log(`🔄 LOOP FADE-OUT: samplesToEnd=${samplesToEnd}, fadeTime=${fadeTime}ms, isLooping=${this.isLooping}, isFullFileLoop=${isFullFileLoop}`);
                     this.startFade(-1, fadeTime); // Fade out
 
                     // 🏎️ AUTONOMOUS: Set pending seek for loop (will be handled when fade completes)
                     if (this.isLooping) {
                         const loopTargetSample = isFullFileLoop ? 0 : Math.floor(this.selectionStart * this.sampleRate);
                         this.pendingSeekSample = loopTargetSample;
-                        console.log(`🔄 WORKLET: Starting fade-out for loop (${fadeTime}ms, ${FADE_SAMPLES_INPUT} input samples @ ${this.speed.toFixed(2)}x), will jump to ${loopTargetSample.toLocaleString()} when fade completes`);
+                        if (DEBUG_AUDIO) console.log(`🔄 WORKLET: Starting fade-out for loop (${fadeTime}ms, ${FADE_SAMPLES_INPUT} input samples @ ${this.speed.toFixed(2)}x), will jump to ${loopTargetSample.toLocaleString()} when fade completes`);
                     }
                 }
             }
@@ -803,7 +810,7 @@ class AudioProcessor extends AudioWorkletProcessor {
             // 🔥 FIX: Only log stopped warning once to prevent spam
             // The worklet's process() continues to be called even after playback stops
             // This is normal behavior - we just output silence
-            if (DEBUG_WORKLET && this.hasStarted && !this.stoppedWarningLogged) {
+            if (DEBUG_AUDIO && this.hasStarted && !this.stoppedWarningLogged) {
                 console.warn(`⚠️ WORKLET process(): isPlaying=FALSE - outputting silence! (readIndex=${this.readIndex}, samplesInBuffer=${this.samplesInBuffer})`);
                 this.stoppedWarningLogged = true;
             }
@@ -850,9 +857,9 @@ class AudioProcessor extends AudioWorkletProcessor {
         // CRITICAL HOT PATH: Buffer reading (kept inline for performance)
         if (this.samplesInBuffer < samplesToRead) {
             // Underrun case - log it!
-            console.warn(`⚠️ BUFFER UNDERRUN: only ${this.samplesInBuffer} samples available, need ${samplesToRead} (readIndex=${this.readIndex})`);
+            if (DEBUG_AUDIO) console.warn(`⚠️ BUFFER UNDERRUN: only ${this.samplesInBuffer} samples available, need ${samplesToRead} (readIndex=${this.readIndex})`);
             if (this.hasStarted && this.samplesInBuffer > 0) {
-                console.warn(`⚠️ UNDERRUN DETAILS: hasStarted=true, playing partial buffer`);
+                if (DEBUG_AUDIO) console.warn(`⚠️ UNDERRUN DETAILS: hasStarted=true, playing partial buffer`);
             }
             const availableForOutput = Math.min(this.samplesInBuffer, channel.length);
             for (let i = 0; i < availableForOutput; i++) {
@@ -900,9 +907,9 @@ class AudioProcessor extends AudioWorkletProcessor {
                     // Report buffer health
                     const bufferSeconds = this.minBufferSeen / this.sampleRate;
                     if (this.minBufferSeen < this.sampleRate) {
-                        console.warn(`⚠️ Buffer health: Minimum buffer was ${this.minBufferSeen.toLocaleString()} samples (${bufferSeconds.toFixed(2)}s) - DANGEROUSLY LOW!`);
+                        if (DEBUG_AUDIO) console.warn(`⚠️ Buffer health: Minimum buffer was ${this.minBufferSeen.toLocaleString()} samples (${bufferSeconds.toFixed(2)}s) - DANGEROUSLY LOW!`);
                     } else {
-                        console.log(`✅ Buffer health: Minimum buffer was ${this.minBufferSeen.toLocaleString()} samples (${bufferSeconds.toFixed(2)}s)`);
+                        if (DEBUG_AUDIO) console.log(`✅ Buffer health: Minimum buffer was ${this.minBufferSeen.toLocaleString()} samples (${bufferSeconds.toFixed(2)}s)`);
                     }
                 }
                 channel.fill(0);
@@ -1038,7 +1045,7 @@ class AudioProcessor extends AudioWorkletProcessor {
                                     if (this.isLooping) {
                                         // Loop: jump to start and fade in
                                         const loopTargetSample = isFullFileLoop ? 0 : Math.floor(this.selectionStart * this.sampleRate);
-                                        console.log(`🔄 LOOP AT BOUNDARY (mono): looping to ${loopTargetSample.toLocaleString()}, fade in ${this.fadeTimeMs}ms`);
+                                        if (DEBUG_AUDIO) console.log(`🔄 LOOP AT BOUNDARY (mono): looping to ${loopTargetSample.toLocaleString()}, fade in ${this.fadeTimeMs}ms`);
                                         if (this.seekToPositionInstant(loopTargetSample)) {
                                             this.startFade(+1, this.fadeTimeMs);
                                             this.loopWarningShown = false;
@@ -1053,7 +1060,7 @@ class AudioProcessor extends AudioWorkletProcessor {
                                             type: 'selection-end-reached',
                                             position: stopPosition
                                         });
-                                        if (DEBUG_WORKLET) console.log('⏹️ WORKLET: Fade-out complete at boundary, stopped');
+                                        if (DEBUG_AUDIO) console.log('⏹️ WORKLET: Fade-out complete at boundary, stopped');
                                     }
                                 } else {
                                     // No pending seek, not at boundary - must be pause
@@ -1243,7 +1250,7 @@ class AudioProcessor extends AudioWorkletProcessor {
                                             type: 'selection-end-reached',
                                             position: stopPosition
                                         });
-                                        if (DEBUG_WORKLET) console.log('⏹️ WORKLET: Fade-out complete at boundary, stopped');
+                                        if (DEBUG_AUDIO) console.log('⏹️ WORKLET: Fade-out complete at boundary, stopped');
                                     }
                                 } else {
                                     // No pending seek, not at boundary - must be pause

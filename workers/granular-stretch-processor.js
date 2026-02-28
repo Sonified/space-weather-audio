@@ -11,11 +11,13 @@
  * preserves transients and original character differently.
  */
 
+let DEBUG_AUDIO = false;
+
 class GranularStretchProcessor extends AudioWorkletProcessor {
     constructor(options) {
         super();
 
-        console.log('🌾 GranularStretchProcessor constructor called');
+        if (DEBUG_AUDIO) console.log('🌾 GranularStretchProcessor constructor called');
 
         // Parameters
         this.stretchFactor = options.processorOptions?.stretchFactor || 8.0;
@@ -65,7 +67,7 @@ class GranularStretchProcessor extends AudioWorkletProcessor {
     setupMessageHandler() {
         this.port.onmessage = (event) => {
             const { type, data } = event.data;
-            console.log(`🌾 Granular received: ${type}`);
+            if (DEBUG_AUDIO) console.log(`🌾 Granular received: ${type}`);
 
             switch (type) {
                 case 'load-audio':
@@ -122,14 +124,14 @@ class GranularStretchProcessor extends AudioWorkletProcessor {
                     this.grainInterval = Math.floor(this.grainSize * (1 - this.overlap));
                     this.grainWindow = new Float32Array(this.grainSize);
                     this.updateGrainWindow();
-                    console.log(`🌾 Grain size: ${this.grainSize}, grainInterval: ${this.grainInterval}`);
+                    if (DEBUG_AUDIO) console.log(`🌾 Grain size: ${this.grainSize}, grainInterval: ${this.grainInterval}`);
                     break;
 
                 case 'set-overlap':
                     this.overlap = data.overlap;
                     this.grainInterval = Math.floor(this.grainSize * (1 - this.overlap));
                     this.grainGain = Math.sqrt((1 - this.overlap) * 2);
-                    console.log(`🌾 Overlap: ${this.overlap}, grainInterval: ${this.grainInterval}, grainGain: ${this.grainGain.toFixed(3)}`);
+                    if (DEBUG_AUDIO) console.log(`🌾 Overlap: ${this.overlap}, grainInterval: ${this.grainInterval}, grainGain: ${this.grainGain.toFixed(3)}`);
                     break;
 
                 case 'set-scatter':
@@ -147,6 +149,10 @@ class GranularStretchProcessor extends AudioWorkletProcessor {
                     }
                     break;
             }
+
+                if (type === 'set-debug-audio') {
+                    DEBUG_AUDIO = data?.enabled ?? event.data.enabled;
+                }
         };
     }
 

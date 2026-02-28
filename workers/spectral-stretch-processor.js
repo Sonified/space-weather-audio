@@ -11,19 +11,21 @@
  * This creates smooth, ambient time-stretching without pitch change.
  */
 
+let DEBUG_AUDIO = false;
+
 class SpectralStretchProcessor extends AudioWorkletProcessor {
     constructor(options) {
         super();
 
-        console.log('🎛️ SpectralStretchProcessor constructor called');
-        console.log('🎛️ Options:', JSON.stringify(options));
+        if (DEBUG_AUDIO) console.log('🎛️ SpectralStretchProcessor constructor called');
+        if (DEBUG_AUDIO) console.log('🎛️ Options:', JSON.stringify(options));
 
         // Default parameters
         this.windowSize = options.processorOptions?.windowSize || 4096;
         this.stretchFactor = options.processorOptions?.stretchFactor || 8.0;
         this.overlap = options.processorOptions?.overlap || 0.9; // 90% overlap for smooth output
 
-        console.log(`🎛️ Window size: ${this.windowSize}, Stretch factor: ${this.stretchFactor}, Overlap: ${this.overlap}`);
+        if (DEBUG_AUDIO) console.log(`🎛️ Window size: ${this.windowSize}, Stretch factor: ${this.stretchFactor}, Overlap: ${this.overlap}`);
 
         // Derived values
         // For time-stretching: read input SLOWLY, write output at normal rate
@@ -32,7 +34,7 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
         this.outputHop = Math.max(1, Math.floor(this.windowSize * (1 - this.overlap))); // e.g., 87.5% overlap = hop of windowSize/8
         this.inputHop = Math.max(1, Math.floor(this.outputHop / this.stretchFactor)); // Read input even slower
 
-        console.log(`🎛️ inputHop: ${this.inputHop}, outputHop: ${this.outputHop}`);
+        if (DEBUG_AUDIO) console.log(`🎛️ inputHop: ${this.inputHop}, outputHop: ${this.outputHop}`);
 
         // Buffers
         this.inputBuffer = new Float32Array(this.windowSize);
@@ -84,14 +86,14 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
     }
 
     setupMessageHandler() {
-        console.log('🎛️ Setting up message handler');
+        if (DEBUG_AUDIO) console.log('🎛️ Setting up message handler');
         this.port.onmessage = (event) => {
             const { type, data } = event.data;
-            console.log(`📨 Worklet received message: ${type}`, data ? JSON.stringify(data).slice(0, 100) : '');
+            if (DEBUG_AUDIO) console.log(`📨 Worklet received message: ${type}`, data ? JSON.stringify(data).slice(0, 100) : '');
 
             switch (type) {
                 case 'load-audio':
-                    console.log(`📨 Loading audio: ${data.samples.length} samples`);
+                    if (DEBUG_AUDIO) console.log(`📨 Loading audio: ${data.samples.length} samples`);
                     // Hard stop any in-progress playback/fades before loading new audio
                     this.isPlaying = false;
                     this.pendingSeekPosition = null;
@@ -100,24 +102,24 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                     this.sourceBuffer = new Float32Array(data.samples);
                     this.sourcePosition = 0;
                     this.resetBuffers();
-                    console.log(`📨 Source buffer created. First 5 samples: ${Array.from(this.sourceBuffer.slice(0, 5))}`);
-                    console.log(`📨 Sample rate: ${sampleRate}`);
+                    if (DEBUG_AUDIO) console.log(`📨 Source buffer created. First 5 samples: ${Array.from(this.sourceBuffer.slice(0, 5))}`);
+                    if (DEBUG_AUDIO) console.log(`📨 Sample rate: ${sampleRate}`);
                     this.port.postMessage({ type: 'loaded', duration: data.samples.length / sampleRate });
                     break;
 
                 case 'play':
-                    console.log('▶️ PLAY command received');
+                    if (DEBUG_AUDIO) console.log('▶️ PLAY command received');
                     this.isPlaying = true;
                     // Pre-roll if starting fresh (buffers are empty)
                     if (this.outputWritePos === this.outputReadPos) {
                         this.preRollRemaining = this.getPreRollBlocks();
                     }
                     this.fadeInRemaining = this.fadeInLength;
-                    console.log(`▶️ isPlaying = ${this.isPlaying}, preRoll: ${this.preRollRemaining}`);
+                    if (DEBUG_AUDIO) console.log(`▶️ isPlaying = ${this.isPlaying}, preRoll: ${this.preRollRemaining}`);
                     break;
 
                 case 'pause':
-                    console.log('⏸️ PAUSE command received');
+                    if (DEBUG_AUDIO) console.log('⏸️ PAUSE command received');
                     this.isPlaying = false;
                     break;
 
@@ -132,7 +134,7 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                         // Fade out first, then seek when fade completes
                         this.fadeOutRemaining = this.fadeOutLength;
                         this.pendingSeekPosition = targetPos;
-                        console.log(`⏩ Seek requested while playing, fading out first. Target: ${targetPos}`);
+                        if (DEBUG_AUDIO) console.log(`⏩ Seek requested while playing, fading out first. Target: ${targetPos}`);
                     } else {
                         // Not playing, seek immediately
                         this.sourcePosition = targetPos;
@@ -141,14 +143,14 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                         // Pre-roll to warm up overlap-add before outputting
                         this.preRollRemaining = this.getPreRollBlocks();
                         this.fadeInRemaining = this.fadeInLength;
-                        console.log(`⏩ Seek to position: ${this.sourcePosition}, preRoll: ${this.preRollRemaining}`);
+                        if (DEBUG_AUDIO) console.log(`⏩ Seek to position: ${this.sourcePosition}, preRoll: ${this.preRollRemaining}`);
                     }
                     break;
 
                 case 'set-stretch':
                     this.stretchFactor = data.factor;
                     this.inputHop = Math.max(1, Math.floor(this.outputHop / this.stretchFactor));
-                    console.log(`🔄 Stretch factor: ${this.stretchFactor}, inputHop: ${this.inputHop}, outputHop: ${this.outputHop}`);
+                    if (DEBUG_AUDIO) console.log(`🔄 Stretch factor: ${this.stretchFactor}, inputHop: ${this.inputHop}, outputHop: ${this.outputHop}`);
                     break;
 
                 case 'set-window-size':
@@ -158,14 +160,14 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                     this.outputHop = Math.max(1, Math.floor(this.windowSize * (1 - this.overlap)));
                     this.inputHop = Math.max(1, Math.floor(this.outputHop / this.stretchFactor));
                     this.reinitializeBuffers();
-                    console.log(`📐 Window size: ${this.windowSize}, inputHop: ${this.inputHop}, outputHop: ${this.outputHop}`);
+                    if (DEBUG_AUDIO) console.log(`📐 Window size: ${this.windowSize}, inputHop: ${this.inputHop}, outputHop: ${this.outputHop}`);
                     break;
 
                 case 'set-overlap':
                     this.overlap = data.overlap;
                     this.outputHop = Math.max(1, Math.floor(this.windowSize * (1 - this.overlap)));
                     this.inputHop = Math.max(1, Math.floor(this.outputHop / this.stretchFactor));
-                    console.log(`🔀 Overlap: ${this.overlap}, outputHop: ${this.outputHop}`);
+                    if (DEBUG_AUDIO) console.log(`🔀 Overlap: ${this.overlap}, outputHop: ${this.outputHop}`);
                     break;
 
                 case 'set-position':
@@ -180,6 +182,10 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                         this.inputBuffer.fill(0);
                         this.inputWritePos = 0;
                     }
+                    break;
+
+                case 'set-debug-audio':
+                    DEBUG_AUDIO = data?.enabled ?? event.data.enabled;
                     break;
             }
         };
