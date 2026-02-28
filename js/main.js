@@ -1216,6 +1216,21 @@ function injectSettingsDrawer() {
                     Silent download
                 </label>
             </div>
+            <div class="drawer-row" style="margin-top: 6px;">
+                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="autoDownload" style="width: 16px; height: 16px; cursor: pointer;">
+                    Auto download
+                </label>
+            </div>
+        </div>
+        <div class="drawer-section">
+            <div class="drawer-section-title">Page Scroll</div>
+            <div class="drawer-row" style="margin-top: 6px;">
+                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="lockPageScroll" style="width: 16px; height: 16px; cursor: pointer;">
+                    Lock scroll during modals
+                </label>
+            </div>
         </div>
     `;
     document.body.appendChild(drawer);
@@ -1518,6 +1533,7 @@ function initializeAdvancedControls() {
         { id: 'dataSource', key: 'emic_data_source', type: 'select' },
         { id: 'drawerBypassCache', key: 'emic_bypass_cache', type: 'checkbox' },
         { id: 'silentDownload', key: 'emic_silent_download', type: 'checkbox' },
+        { id: 'autoDownload', key: 'emic_auto_download', type: 'checkbox' },
         { id: 'tickFadeInTime', key: 'emic_tick_fade_in', type: 'range' },
         { id: 'tickFadeOutTime', key: 'emic_tick_fade_out', type: 'range' },
         { id: 'tickFadeInCurve', key: 'emic_tick_fade_in_curve', type: 'select' },
@@ -1546,6 +1562,17 @@ function initializeAdvancedControls() {
                 el.blur();
             });
         }
+    }
+
+    // Auto-download: if enabled, click Fetch Data after a brief init delay
+    if (document.getElementById('autoDownload')?.checked) {
+        setTimeout(() => {
+            const fetchBtn = document.getElementById('startBtn');
+            if (fetchBtn && !fetchBtn.disabled) {
+                console.log('🚀 Auto-download enabled, triggering data fetch...');
+                fetchBtn.click();
+            }
+        }, 500);
     }
 
     // Page-specific defaults (applied only when no saved value exists)
@@ -3641,9 +3668,13 @@ async function initializeMainApp() {
             bgClose.addEventListener('click', () => modalManager.closeModal('backgroundQuestionModal'));
         }
 
-        bgSubmit.addEventListener('click', () => {
+        bgSubmit.addEventListener('click', async () => {
             const value = document.querySelector('input[name="backgroundLevel"]:checked')?.value;
             console.log('📋 Background level:', value);
+            if (isEmicStudyMode()) {
+                const { EMIC_FLAGS, setEmicFlag } = await import('./emic-study-flags.js');
+                setEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_BACKGROUND);
+            }
             modalManager.closeModal('backgroundQuestionModal');
         });
     }
@@ -3666,9 +3697,13 @@ async function initializeMainApp() {
             daClose.addEventListener('click', () => modalManager.closeModal('dataAnalysisQuestionModal'));
         }
 
-        daSubmit.addEventListener('click', () => {
+        daSubmit.addEventListener('click', async () => {
             const value = document.querySelector('input[name="dataAnalysisLevel"]:checked')?.value;
             console.log('📋 Data analysis level:', value);
+            if (isEmicStudyMode()) {
+                const { EMIC_FLAGS, setEmicFlag } = await import('./emic-study-flags.js');
+                setEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_DATA_ANALYSIS);
+            }
             modalManager.closeModal('dataAnalysisQuestionModal');
         });
     }
@@ -3691,9 +3726,13 @@ async function initializeMainApp() {
             meClose.addEventListener('click', () => modalManager.closeModal('musicalExperienceQuestionModal'));
         }
 
-        meSubmit.addEventListener('click', () => {
+        meSubmit.addEventListener('click', async () => {
             const value = document.querySelector('input[name="musicalExperienceLevel"]:checked')?.value;
             console.log('📋 Musical experience level:', value);
+            if (isEmicStudyMode()) {
+                const { EMIC_FLAGS, setEmicFlag } = await import('./emic-study-flags.js');
+                setEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_MUSICAL);
+            }
             modalManager.closeModal('musicalExperienceQuestionModal');
         });
     }
@@ -3719,9 +3758,13 @@ async function initializeMainApp() {
             fbClose.addEventListener('click', () => modalManager.closeModal('feedbackQuestionModal'));
         }
 
-        fbSubmit.addEventListener('click', () => {
+        fbSubmit.addEventListener('click', async () => {
             const value = fbTextarea.value.trim();
             console.log('📋 Feedback:', value || '(skipped)');
+            if (isEmicStudyMode()) {
+                const { EMIC_FLAGS, setEmicFlag } = await import('./emic-study-flags.js');
+                setEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_FEEDBACK);
+            }
             modalManager.closeModal('feedbackQuestionModal');
         });
     }
@@ -3746,9 +3789,13 @@ async function initializeMainApp() {
             refClose.addEventListener('click', () => modalManager.closeModal('referralQuestionModal'));
         }
 
-        refSubmit.addEventListener('click', () => {
+        refSubmit.addEventListener('click', async () => {
             const value = refTextarea.value.trim();
             console.log('📋 Referral:', value || '(skipped)');
+            if (isEmicStudyMode()) {
+                const { EMIC_FLAGS, setEmicFlag } = await import('./emic-study-flags.js');
+                setEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_REFERRAL);
+            }
             modalManager.closeModal('referralQuestionModal');
         });
     }
