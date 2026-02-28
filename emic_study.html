@@ -122,43 +122,7 @@
             flex-wrap: wrap;
         }
         
-        .emic-btn-group {
-            display: flex;
-            gap: 4px;
-            align-items: center;
-        }
-        
-        .emic-btn-group label {
-            font-size: var(--panel-label-size);
-            font-weight: 600;
-            color: #444;
-            margin-right: 4px;
-            white-space: nowrap;
-        }
-        
-        .emic-btn {
-            padding: 6px 12px;
-            font-size: 13px;
-            font-weight: 600;
-            border-radius: 4px;
-            border: 1px solid #555;
-            background: rgba(60, 60, 60, 0.9);
-            color: #ccc;
-            cursor: pointer;
-            transition: all 0.15s;
-            white-space: nowrap;
-        }
-        
-        .emic-btn:hover {
-            background: rgba(80, 80, 80, 0.9);
-            color: #fff;
-        }
-        
-        .emic-btn.active {
-            background: rgba(102, 126, 234, 0.8);
-            border-color: rgba(102, 126, 234, 0.9);
-            color: #fff;
-        }
+        /* .emic-btn styles moved to styles.css */
         
         .emic-placeholder-note {
             font-size: 11px;
@@ -301,13 +265,13 @@
                 <span style="font-weight: 700; font-size: 15px; color: #8af;">Data Viewer</span>
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <label for="dvUserSelect" style="font-size: 13px; font-weight: 600; color: #aaa;">User:</label>
-                    <select id="dvUserSelect" style="padding: 4px 8px; font-size: 13px; border-radius: 4px; border: 1px solid #555; background: rgba(40,40,60,0.9); color: #ddd; cursor: pointer; min-width: 180px;">
+                    <select id="dvUserSelect" style="min-width: 180px;">
                         <option value="">-- select user --</option>
                     </select>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <label for="dvSessionSelect" style="font-size: 13px; font-weight: 600; color: #aaa;">Session:</label>
-                    <select id="dvSessionSelect" style="padding: 4px 8px; font-size: 13px; border-radius: 4px; border: 1px solid #555; background: rgba(40,40,60,0.9); color: #ddd; cursor: pointer; min-width: 280px;">
+                    <select id="dvSessionSelect" style="min-width: 280px;">
                         <option value="">-- select session --</option>
                     </select>
                 </div>
@@ -318,14 +282,14 @@
         <!-- EMIC Study Controls: Stretch Algorithm + Speed -->
         <div class="panel" style="padding: 8px 15px;">
             <div class="emic-controls-bar">
-                <button type="button" id="startBtn" style="padding: 6px 14px; font-size: 14px;">📡 Fetch Data</button>
+                <button type="button" id="startBtn" class="btn-action" style="padding: 6px 14px; font-size: 14px;">📡 Fetch Data</button>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 8px;"></div>
-                <div id="componentSelectorContainer" style="display: flex; align-items: center; gap: 6px; padding: 0 8px; opacity: 0.4; pointer-events: none;">
+                <div id="componentSelectorContainer" style="display: flex; align-items: center; gap: 6px; padding: 0 8px; opacity: 0.4; pointer-events: none; min-height: 30px;">
                     <label for="componentSelector" style="font-size: var(--panel-label-size); font-weight: 600; color: #666; white-space: nowrap;">Component:</label>
-                    <select id="componentSelector" style="padding: 6px 10px; font-size: 14px; border-radius: 4px; border: 1px solid #555; background: white; color: #333; cursor: pointer; height: 32px;">
-                        <option value="0">br (Radial)</option>
-                        <option value="1">bt (Tangential)</option>
-                        <option value="2">bn (Normal)</option>
+                    <select id="componentSelector">
+                        <option value="0">Bx (GSE)</option>
+                        <option value="1">By (GSE)</option>
+                        <option value="2">Bz (GSE)</option>
                     </select>
                 </div>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 4px;"></div>
@@ -349,12 +313,12 @@
         <div class="panel panel-cache" id="cachePanel" style="padding: 15px 20px; display: none;">
             <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
                 <label style="font-weight: 700; font-size: 16px; color: #333; margin: 0;">Cache:</label>
-                <button type="button" id="purgeCacheBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">🗑️ Purge CDN Cache</button>
+                <button type="button" id="purgeCacheBtn" class="btn-action" style="padding: 10px 20px; font-size: 14px; min-width: auto;">🗑️ Purge CDN Cache</button>
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <input type="checkbox" id="bypassCache" style="width: 20px; height: 20px; cursor: pointer;">
                     <label for="bypassCache" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 14px; color: #333;">Bypass CDN Cache</label>
                 </div>
-                <button type="button" id="downloadBtn" disabled style="padding: 10px 20px; font-size: 14px; min-width: auto;">💾 Download Audio File</button>
+                <button type="button" id="downloadBtn" class="btn-action" disabled style="padding: 10px 20px; font-size: 14px; min-width: auto;">💾 Download Audio File</button>
             </div>
         </div>
         
@@ -373,7 +337,7 @@
                     </div>
                     <div class="control-group">
                         <select id="recentSearches"><option value="">-- Select Recent Search --</option></select>
-                        <button type="button" id="shareBtn" disabled style="display:none;">Share</button>
+                        <button type="button" id="shareBtn" class="btn-action" disabled style="display:none;">Share</button>
                     </div>
                 </div>
                 <div class="control-group" id="stationControlGroup" style="display: none;">
@@ -382,17 +346,14 @@
                 <div class="control-group" id="durationControlGroup" style="display: none;">
                     <select id="duration"><option value="24" selected>24 hours</option></select>
                 </div>
-                <div class="control-group" style="display: none;">
-                    <input type="checkbox" id="autoPlay" checked>
-                </div>
                 <div class="control-group" id="forceIrisControlGroup" style="display: none;">
-                    <button type="button" id="forceIrisBtn">🌐 Force IRIS Fetch: OFF</button>
+                    <button type="button" id="forceIrisBtn" class="btn-action">🌐 Force IRIS Fetch: OFF</button>
                 </div>
                 <div class="control-group" style="display: none;">
                     <select id="baseSampleRate"><option value="44100" selected>44.1 kHz</option></select>
                 </div>
                 <div class="control-group" style="display: none;">
-                    <button type="button" id="antiAliasingBtn" class="loop-active">🎛️ Anti-Alias: ON</button>
+                    <button type="button" id="antiAliasingBtn" class="btn-action loop-active">🎛️ Anti-Alias: ON</button>
                 </div>
                 <div class="control-group" style="display: none;">
                     <select id="highpassFreq"><option value="0.02" selected>0.02 Hz</option></select>
@@ -406,8 +367,8 @@
         <!-- Playback Controls -->
         <div class="panel panel-playback">
             <div style="display: flex; gap: 10px; align-items: center; flex-wrap: nowrap; width: 100%; box-sizing: border-box;">
-                <button type="button" id="playPauseBtn" disabled style="width: 135px; min-width: 135px;">⏸️ Pause</button>
-                <button type="button" id="loopBtn" disabled style="width: 135px; min-width: 135px;">🔁 Loop</button>
+                <button type="button" id="playPauseBtn" class="btn-action" disabled style="width: 135px; min-width: 135px;">⏸️ Pause</button>
+                <button type="button" id="loopBtn" class="btn-action" disabled style="width: 135px; min-width: 135px;">🔁 Loop</button>
                 <div style="display: none; align-items: center; flex: 1 1 auto; min-width: 180px; max-width: min(450px, 100%); gap: 10px; padding: 0 15px;">
                     <label for="playbackSpeed" id="speedLabel" style="font-weight: 600; white-space: nowrap; font-size: var(--panel-label-size); flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0x">Speed: <span id="speedValue">1.0x</span></label>
                     <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="667" style="flex: 1; min-width: 0;">
@@ -463,8 +424,8 @@
                     </div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px; white-space: nowrap;">
-                    <label for="displayMode" style="font-size: 14px; font-weight: 700; color: #ffe8d0; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); user-select: none;">Display:</label>
-                    <select id="displayMode" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: rgba(255, 255, 255, 0.95); cursor: pointer;">
+                    <label for="displayMode" style="font-size: 14px; font-weight: 700; color: #e8e8ff; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); user-select: none;">Display:</label>
+                    <select id="displayMode">
                         <option value="participant">Participant View</option>
                         <option value="standard" selected>Standard</option>
                         <option value="advanced">Advanced</option>
@@ -479,8 +440,8 @@
                         <input type="checkbox" id="playOnClick" checked>
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <label for="annotationMode" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #ffe8d0; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Annotations:</label>
-                        <select id="annotationMode" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: rgba(255, 255, 255, 0.95); cursor: pointer;">
+                        <label for="annotationMode" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #e8e8ff; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Annotations:</label>
+                        <select id="annotationMode">
                             <option value="none">None</option>
                             <option value="persistent">Persistent</option>
                             <option value="live" selected>Live</option>
@@ -488,7 +449,7 @@
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <label for="fftSize" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #e8e8ff; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">FFT:</label>
-                        <select id="fftSize" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: rgba(255, 255, 255, 0.95); cursor: pointer;">
+                        <select id="fftSize">
                             <option value="512">512</option>
                             <option value="1024">1024</option>
                             <option value="2048" selected>2048</option>
@@ -498,7 +459,7 @@
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <label for="colormap" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #e8e8ff; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Color Map:</label>
-                        <select id="colormap" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: rgba(255, 255, 255, 0.95); cursor: pointer;">
+                        <select id="colormap">
                             <option value="inferno" selected>Inferno</option>
                             <option value="solar">Solar</option>
                             <option value="aurora">Aurora</option>
@@ -510,7 +471,7 @@
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <label for="frequencyScale" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #e8e8ff; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Frequency Scale:</label>
-                        <select id="frequencyScale" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: rgba(255, 255, 255, 0.95); cursor: pointer;">
+                        <select id="frequencyScale">
                             <option value="logarithmic" selected>Logarithmic</option>
                             <option value="sqrt">Square Root</option>
                             <option value="linear">Linear</option>
@@ -576,15 +537,15 @@
         <!-- Simulate Row (hidden for EMIC study) -->
         <div class="panel panel-simulate" style="padding: 15px 20px; display: none;">
             <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-                <button type="button" id="participantModalBtn" style="display:none;">👤 Participant Setup</button>
-                <button type="button" id="welcomeModalBtn" style="display:none;">👋 Welcome</button>
-                <button type="button" id="preSurveyModalBtn" style="display:none;">📊 Pre-Survey</button>
-                <button type="button" id="activityLevelModalBtn" style="display:none;">🌋 Activity Level</button>
-                <button type="button" id="awesfModalBtn" style="display:none;">✨ AWE-SF</button>
-                <button type="button" id="postSurveyModalBtn" style="display:none;">📊 Post-Survey</button>
-                <button type="button" id="endModalBtn" style="display:none;">🎉 End</button>
-                <button type="button" id="submitBtn" style="display:none;">📤 Submit to Qualtrics</button>
-                <button type="button" id="adminModeBtn" style="display:none;">👑 Admin Mode: OFF</button>
+                <button type="button" id="participantModalBtn" class="btn-action" style="display:none;">👤 Participant Setup</button>
+                <button type="button" id="welcomeModalBtn" class="btn-action" style="display:none;">👋 Welcome</button>
+                <button type="button" id="preSurveyModalBtn" class="btn-action" style="display:none;">📊 Pre-Survey</button>
+                <button type="button" id="activityLevelModalBtn" class="btn-action" style="display:none;">🌋 Activity Level</button>
+                <button type="button" id="awesfModalBtn" class="btn-action" style="display:none;">✨ AWE-SF</button>
+                <button type="button" id="postSurveyModalBtn" class="btn-action" style="display:none;">📊 Post-Survey</button>
+                <button type="button" id="endModalBtn" class="btn-action" style="display:none;">🎉 End</button>
+                <button type="button" id="submitBtn" class="btn-action" style="display:none;">📤 Submit to Qualtrics</button>
+                <button type="button" id="adminModeBtn" class="btn-action" style="display:none;">👑 Admin Mode: OFF</button>
             </div>
         </div>
     </div>

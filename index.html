@@ -107,7 +107,7 @@
         <div class="top-header-bar" style="display: flex; align-items: flex-end; margin-bottom: 6px; margin-top: 0px; position: relative; z-index: 1001;">
             <div id="modeSelectorContainer" style="flex: 1; display: flex; align-items: center; gap: 8px; visibility: hidden; opacity: 0; transition: opacity 0.3s;">
                 <label for="modeSelector" style="font-size: 13px; font-weight: 600; color: #aaa; white-space: nowrap; user-select: none;">Mode:</label>
-                <select id="modeSelector" style="padding: 4px 8px; font-size: 13px; font-weight: 600; border-radius: 4px; border: 1px solid #555; background: rgba(60, 60, 60, 0.9); color: #ddd; cursor: pointer; min-width: 120px;">
+                <select id="modeSelector" style="min-width: 120px;">
                     <option value="production">🎓 Production</option>
                     <option value="personal" selected>👤 Personal</option>
                     <option value="dev">🔧 Dev</option>
@@ -136,12 +136,12 @@
         <div class="panel panel-cache" id="cachePanel" style="padding: 15px 20px; display: none;">
             <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
                 <label style="font-weight: 700; font-size: 16px; color: #333; margin: 0;">Cache:</label>
-                <button type="button" id="purgeCacheBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">🗑️ Purge CDN Cache</button>
+                <button type="button" id="purgeCacheBtn" class="btn-action" style="padding: 10px 20px; font-size: 14px; min-width: auto;">🗑️ Purge CDN Cache</button>
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <input type="checkbox" id="bypassCache" style="width: 20px; height: 20px; cursor: pointer;">
                     <label for="bypassCache" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 14px; color: #333;">Bypass CDN Cache</label>
                 </div>
-                <button type="button" id="downloadBtn" disabled style="padding: 10px 20px; font-size: 14px; min-width: auto;">💾 Download Audio File</button>
+                <button type="button" id="downloadBtn" class="btn-action" disabled style="padding: 10px 20px; font-size: 14px; min-width: auto;">💾 Download Audio File</button>
             </div>
         </div>
         
@@ -150,7 +150,7 @@
                 <div class="controls-row-1">
                     <div class="control-group" style="flex-direction: row; align-items: center; gap: 8px; flex-shrink: 1; min-width: 230px;">
                         <label for="spacecraft" style="margin-bottom: 0; white-space: nowrap;">Spacecraft:</label>
-                        <select id="spacecraft" style="background: rgba(255, 255, 255, 0.85); width: 204px; min-width: 130px; flex-shrink: 1;">
+                        <select id="spacecraft" style="width: 204px; min-width: 130px; flex-shrink: 1;">
                             <option value="PSP">Parker Solar Probe (PSP)</option>
                             <option value="Wind">Wind</option>
                             <option value="MMS">MMS (Magnetospheric Multiscale)</option>
@@ -168,7 +168,7 @@
 
                     <div class="control-group" style="flex-direction: row; align-items: center; gap: 8px; flex-shrink: 1; min-width: 210px;">
                         <label for="dataType" style="margin-bottom: 0; white-space: nowrap;">Data:</label>
-                        <select id="dataType" style="background: rgba(255, 255, 255, 0.85); width: 248px; min-width: 150px; flex-shrink: 1;">
+                        <select id="dataType" style="width: 248px; min-width: 150px; flex-shrink: 1;">
                             <option value="PSP_FLD_L2_MAG_RTN">PSP_FLD_L2_MAG_RTN (Full Cadence)</option>
                             <option value="PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC">PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC (4 Samples/Cycle)</option>
                         </select>
@@ -183,7 +183,7 @@
 
                     <div class="control-group" style="flex-direction: row; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 1; min-width: 0;">
                         <label for="recentSearches" style="margin-bottom: 0; font-size: 13px; white-space: nowrap;">Recent:</label>
-                        <select id="recentSearches" style="padding: 8px 12px; font-size: 13px; color: #888; border: 2px solid #e0e0e0; border-radius: 8px; background: rgba(255, 255, 255, 0.85); cursor: pointer; width: 300px; min-width: 100px; flex-shrink: 1; text-align: left;">
+                        <select id="recentSearches" style="width: 300px; min-width: 100px; flex-shrink: 1;">
                             <option value="">-- Select Recent Search --</option>
                         </select>
                         <button type="button" id="shareBtn" disabled style="padding: 8px 16px; font-size: 13px; font-weight: 600; color: white; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; border-radius: 8px; cursor: pointer; white-space: nowrap; transition: opacity 0.2s, transform 0.1s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'" onmousedown="this.style.transform='scale(0.98)'" onmouseup="this.style.transform='scale(1)'">Share</button>
@@ -197,7 +197,7 @@
                     <label for="endDate" style="margin-bottom: 0; margin-left: 8px;">End:</label>
                     <input type="date" id="endDate" value="2021-04-29" max="2025-12-31" style="padding: 8px 12px; font-size: 14px; border: 2px solid #e0e0e0; border-radius: 8px; background: rgba(255, 255, 255, 0.85); height: 34px; box-sizing: border-box;">
                     <input type="text" id="endTime" value="08:20:00.000" placeholder="HH:MM:SS.mmm" style="padding: 8px 12px; font-size: 14px; border: 2px solid #e0e0e0; border-radius: 8px; background: rgba(255, 255, 255, 0.85); width: 110px; height: 38px; box-sizing: border-box;">
-                    <button type="button" id="startBtn" style="min-width: 150px; padding: 10px 20px; font-size: 16px; margin-left: 15px;">📡 Fetch Data</button>
+                    <button type="button" id="startBtn" class="btn-action" style="min-width: 150px; padding: 10px 20px; font-size: 16px; margin-left: 15px;">📡 Fetch Data</button>
                     <div class="status info" id="status" style="margin-top: 0; padding: 10px 15px; flex: 1; min-width: 200px; margin-left: 15px;">
                     </div>
                 </div>
@@ -222,13 +222,8 @@
                     </select>
                 </div>
                 
-                <div class="control-group" style="display: none;">
-                    <input type="checkbox" id="autoPlay" checked style="width: 20px; height: 20px; cursor: pointer;">
-                    <label for="autoPlay" style="margin-bottom: 0; cursor: pointer; font-weight: 600; font-size: 18px; color: #333;">Auto Play</label>
-                </div>
-                
                 <div class="control-group" id="forceIrisControlGroup" style="margin-left: auto; display: none;">
-                    <button type="button" id="forceIrisBtn" style="padding: 8px 16px; font-size: 14px; min-width: auto; background: #6c757d; border-color: #6c757d;">🌐 Force IRIS Fetch: OFF</button>
+                    <button type="button" id="forceIrisBtn" class="btn-action" style="padding: 8px 16px; font-size: 14px; min-width: auto; background: #6c757d; border-color: #6c757d;">🌐 Force IRIS Fetch: OFF</button>
                 </div>
                 
                 <div class="control-group" style="display: none;">
@@ -246,7 +241,7 @@
                 </div>
                 
                 <div class="control-group" style="display: none;">
-                    <button type="button" id="antiAliasingBtn" class="loop-active" style="padding: 8px 16px; font-size: 14px; min-width: auto;">🎛️ Anti-Alias: ON</button>
+                    <button type="button" id="antiAliasingBtn" class="btn-action loop-active" style="padding: 8px 16px; font-size: 14px; min-width: auto;">🎛️ Anti-Alias: ON</button>
                 </div>
                 
                 <div class="control-group" style="display: none;">
@@ -268,15 +263,15 @@
         
         <div class="panel panel-playback">
             <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap; width: 100%; box-sizing: border-box;">
-                <button type="button" id="playPauseBtn" disabled style="width: 135px; min-width: 135px;">⏸️ Pause</button>
-                <button type="button" id="loopBtn" disabled style="width: 135px; min-width: 135px;">🔁 Loop</button>
+                <button type="button" id="playPauseBtn" class="btn-action" disabled style="width: 135px; min-width: 135px;">⏸️ Pause</button>
+                <button type="button" id="loopBtn" class="btn-action" disabled style="width: 135px; min-width: 135px;">🔁 Loop</button>
                 <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 180px; max-width: min(450px, 100%); gap: 10px; padding: 0 15px 0 15px; box-sizing: border-box;">
                     <label for="playbackSpeed" id="speedLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0x">Speed: <span id="speedValue">1.0x</span></label>
                     <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="667" style="flex: 1; min-width: 0;">
                 </div>
                 <div id="stretchAlgorithmContainer" style="display: flex; align-items: center; gap: 8px; padding: 0 5px;">
                     <label for="stretchAlgorithm" style="font-weight: 600; white-space: nowrap; font-size: 16px; flex-shrink: 0;">Stretch:</label>
-                    <select id="stretchAlgorithm" style="padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; background: white; cursor: pointer; min-width: 120px;">
+                    <select id="stretchAlgorithm" style="min-width: 120px;">
                         <option value="resample">Resample</option>
                         <option value="granular">Granular</option>
                         <option value="paul" selected>Paul Stretch</option>
@@ -289,7 +284,7 @@
                 </div>
                 <div id="componentSelectorContainer" style="display: none; align-items: center; gap: 8px; padding: 0 15px 0 5px;">
                     <label for="componentSelector" style="font-weight: 600; white-space: nowrap; font-size: 16px; flex-shrink: 0;">Component:</label>
-                    <select id="componentSelector" style="padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; background: white; cursor: pointer; min-width: 120px;">
+                    <select id="componentSelector" style="min-width: 120px;">
                         <option value="0">br (Radial)</option>
                         <option value="1">bt (Tangential)</option>
                         <option value="2">bn (Normal)</option>
@@ -335,7 +330,7 @@
                         </div>
                     </div>
                 </div>
-                <label id="advancedToggle" style="display: none; align-items: center; gap: 5px; cursor: pointer; user-select: none; font-size: 14px; font-weight: 700; color: #ffe8d0; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap;">
+                <label id="advancedToggle" style="display: none; align-items: center; gap: 5px; cursor: pointer; user-select: none; font-size: 14px; font-weight: 700; color: #e8e8ff; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap;">
                     Advanced
                     <input type="checkbox" id="advancedMode" style="width: 16px; height: 16px; cursor: pointer; accent-color: #80d0ff;">
                 </label>
@@ -345,8 +340,8 @@
                         <label for="playOnClick" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 14px; color: #ffe8e8; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap;">Play on Click</label>
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <label for="annotationMode" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #ffe8d0; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Annotations:</label>
-                        <select id="annotationMode" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: rgba(255, 255, 255, 0.95); cursor: pointer;">
+                        <label for="annotationMode" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #e8e8ff; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Annotations:</label>
+                        <select id="annotationMode">
                             <option value="none">None</option>
                             <option value="persistent">Persistent</option>
                             <option value="live" selected>Live</option>
@@ -354,7 +349,7 @@
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
                     <label for="fftSize" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #e8e8ff; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">FFT:</label>
-                    <select id="fftSize" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: rgba(255, 255, 255, 0.95); cursor: pointer;">
+                    <select id="fftSize">
                         <option value="512">512</option>
                         <option value="1024">1024</option>
                         <option value="2048" selected>2048</option>
@@ -364,7 +359,7 @@
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
                     <label for="colormap" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #e8e8ff; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Color Map:</label>
-                    <select id="colormap" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: rgba(255, 255, 255, 0.95); cursor: pointer;">
+                    <select id="colormap">
                         <option value="inferno" selected>Inferno</option>
                         <option value="solar">Solar</option>
                         <option value="aurora">Aurora</option>
@@ -376,7 +371,7 @@
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
                     <label for="frequencyScale" style="font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; color: #e8e8ff; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);">Frequency Scale:</label>
-                    <select id="frequencyScale" style="padding: 4px 8px; font-size: 14px; font-weight: 600; border-radius: 4px; border: 1px solid #ccc; background: rgba(255, 255, 255, 0.95); cursor: pointer;">
+                    <select id="frequencyScale">
                         <option value="linear">Linear (C)</option>
                         <option value="sqrt">Square Root (V)</option>
                         <option value="logarithmic" selected>Logarithmic (B)</option>
@@ -443,15 +438,15 @@
         <div class="panel panel-simulate" style="padding: 15px 20px; display: none;">
             <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
                 <label style="font-weight: 700; font-size: 16px; color: #333; margin: 0;">Simulate:</label>
-                <button type="button" id="participantModalBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">👤 Participant Setup</button>
-                <button type="button" id="welcomeModalBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">👋 Welcome</button>
-                <button type="button" id="preSurveyModalBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">📊 Pre-Survey</button>
-                <button type="button" id="activityLevelModalBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">🌋 Activity Level</button>
-                <button type="button" id="awesfModalBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">✨ AWE-SF</button>
-                <button type="button" id="postSurveyModalBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">📊 Post-Survey</button>
-                <button type="button" id="endModalBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto;">🎉 End</button>
-                <button type="button" id="submitBtn" style="padding: 10px 20px; font-size: 14px; min-width: auto; background: #28a745; border-color: #28a745; color: white; font-weight: 600;">📤 Submit to Qualtrics</button>
-                <button type="button" id="adminModeBtn" style="margin-left: auto; padding: 10px 20px; font-size: 14px; min-width: auto; background: #6c757d; border-color: #6c757d; color: white;">👑 Admin Mode: OFF</button>
+                <button type="button" id="participantModalBtn" class="btn-action" style="padding: 10px 20px; font-size: 14px; min-width: auto;">👤 Participant Setup</button>
+                <button type="button" id="welcomeModalBtn" class="btn-action" style="padding: 10px 20px; font-size: 14px; min-width: auto;">👋 Welcome</button>
+                <button type="button" id="preSurveyModalBtn" class="btn-action" style="padding: 10px 20px; font-size: 14px; min-width: auto;">📊 Pre-Survey</button>
+                <button type="button" id="activityLevelModalBtn" class="btn-action" style="padding: 10px 20px; font-size: 14px; min-width: auto;">🌋 Activity Level</button>
+                <button type="button" id="awesfModalBtn" class="btn-action" style="padding: 10px 20px; font-size: 14px; min-width: auto;">✨ AWE-SF</button>
+                <button type="button" id="postSurveyModalBtn" class="btn-action" style="padding: 10px 20px; font-size: 14px; min-width: auto;">📊 Post-Survey</button>
+                <button type="button" id="endModalBtn" class="btn-action" style="padding: 10px 20px; font-size: 14px; min-width: auto;">🎉 End</button>
+                <button type="button" id="submitBtn" class="btn-action" style="padding: 10px 20px; font-size: 14px; min-width: auto; background: #28a745; border-color: #28a745; color: white; font-weight: 600;">📤 Submit to Qualtrics</button>
+                <button type="button" id="adminModeBtn" class="btn-action" style="margin-left: auto; padding: 10px 20px; font-size: 14px; min-width: auto; background: #6c757d; border-color: #6c757d; color: white;">👑 Admin Mode: OFF</button>
             </div>
         </div>
     </div>

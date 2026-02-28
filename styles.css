@@ -465,7 +465,7 @@ label {
     color: #333;
 }
 
-select, input {
+input {
     padding: 6px 10px;
     border: 2px solid rgba(102, 126, 234, 0.3);
     border-radius: 6px;
@@ -474,7 +474,19 @@ select, input {
     opacity: 0.9;
 }
 
-select:focus, input:focus {
+select {
+    background: #353545;
+    color: #ddd;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 13px;
+    cursor: pointer;
+    min-height: 28px;
+    box-sizing: border-box;
+}
+
+input:focus {
     outline: none;
     border-color: #667eea;
     background: rgba(255, 255, 255, 0.9);
@@ -708,11 +720,18 @@ input[type="range"]::-moz-range-thumb:hover {
 
 
 button {
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    background: transparent;
+    color: inherit;
+    padding: 0;
+}
+
+.btn-action {
     padding: 9px 18px;
     font-size: 16px;
-    border: none;
     border-radius: 6px;
-    cursor: pointer;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: #ffffff;
     font-weight: 600;
@@ -727,7 +746,7 @@ button {
     border: 1px solid rgba(102, 126, 234, 0.3);
 }
 
-button:hover:not(:disabled) {
+.btn-action:hover:not(:disabled) {
     transform: translateY(-1px);
     box-shadow: 0 5px 12px rgba(102, 126, 234, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15);
     background: linear-gradient(135deg, #7a8ef0 0%, #8a5fb5 100%);
@@ -825,7 +844,7 @@ button.pulse-attention {
     }
 }
 
-button:disabled {
+.btn-action:disabled {
     background: linear-gradient(135deg, #666 0%, #555 100%) !important;
     cursor: not-allowed !important;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
@@ -884,12 +903,12 @@ button.play-active:hover:not(:disabled) {
 }
 
 /* Loop button ON state - vibrant purple (original) */
-button.loop-active {
+.btn-action.loop-active {
     background: linear-gradient(135deg, #9b6bc9 0%, #7a4ba9 100%);
     box-shadow: 0 0 8px rgba(155, 107, 201, 0.4);
 }
 
-button.loop-active:hover:not(:disabled) {
+.btn-action.loop-active:hover:not(:disabled) {
     background: linear-gradient(135deg, #ab7bd9 0%, #8a5bb9 100%);
     box-shadow: 0 0 12px rgba(155, 107, 201, 0.5);
 }
@@ -3450,20 +3469,220 @@ body.drawer-open .hamburger-btn {
     cursor: pointer;
     accent-color: #80d0ff;
 }
-.drawer-input {
-    width: 70px;
-    padding: 4px 8px;
-    background: #2a2a2a;
+/* After CustomSelect upgrades a <select>, hide the native element */
+select.csel-native {
+    display: none;
+}
+
+/* ─── Custom Dropdown (csel) ─── */
+.csel {
+    position: relative;
+    display: inline-block;
+    min-width: 70px;
+}
+.csel-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background: #353545;
     border: 1px solid #555;
     border-radius: 4px;
+    padding: 4px 8px;
     color: #ddd;
     font-size: 13px;
-    font-family: monospace;
-    text-align: right;
-}
-.drawer-input:focus {
+    font-weight: normal;
+    cursor: pointer;
     outline: none;
-    border-color: #80d0ff;
+    transition: border-color 0.15s, background 0.15s;
+    white-space: nowrap;
+    user-select: none;
+    min-height: 28px;
+}
+.csel-trigger:hover {
+    border-color: #777;
+    background: #3e3e50;
+}
+.csel-trigger:focus-visible {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px var(--accent-glow);
+}
+.csel.open .csel-trigger {
+    border-color: var(--accent-color);
+}
+.csel-arrow {
+    flex-shrink: 0;
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 4px solid #888;
+    transition: transform 0.15s;
+}
+.csel.open .csel-arrow {
+    transform: rotate(180deg);
+}
+.csel-menu {
+    position: fixed;
+    max-height: 280px;
+    overflow-y: auto;
+    background: #2c2c3c;
+    border: 1px solid var(--accent-border);
+    border-radius: 5px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+    z-index: 99999;
+    padding: 4px 0;
+    opacity: 0;
+    transform: translateY(-4px);
+    pointer-events: none;
+    transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+}
+.csel-menu.open {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+.csel-option {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    color: #bbb;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+    white-space: nowrap;
+    border-left: 2px solid transparent;
+}
+.csel-option:hover,
+.csel-option.highlighted {
+    background: var(--accent-soft);
+    color: #ddd;
+}
+.csel-option.selected {
+    color: var(--accent-color);
+    border-left-color: var(--accent-color);
+}
+.csel-option.selected.highlighted {
+    background: rgba(var(--accent-rgb), 0.15);
+}
+.csel-group-label {
+    padding: 6px 10px 3px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: #666;
+    pointer-events: none;
+    user-select: none;
+}
+.csel-group-label:not(:first-child) {
+    margin-top: 4px;
+    border-top: 1px solid #333;
+    padding-top: 8px;
+}
+.csel-menu::-webkit-scrollbar {
+    width: 6px;
+}
+.csel-menu::-webkit-scrollbar-track {
+    background: transparent;
+}
+.csel-menu::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 3px;
+}
+
+/* ─── Number Spinner ─── */
+.drawer-spinner {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    border: 1px solid #555;
+    border-radius: 4px;
+    overflow: hidden;
+    background: #2a2a2a;
+}
+.spinner-btn {
+    width: 26px;
+    height: 28px;
+    background: #3a3a3a;
+    color: #aaa;
+    font-size: 15px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    line-height: 1;
+    border-radius: 0;
+}
+.spinner-btn:hover {
+    background: #4a4a4a;
+    color: #ddd;
+}
+.spinner-btn:active {
+    background: #555;
+}
+.spinner-value {
+    width: 52px;
+    height: 28px;
+    background: #2a2a2a;
+    color: #ddd;
+    border: none;
+    border-left: 1px solid #444;
+    border-right: 1px solid #444;
+    font-size: 13px;
+    font-family: monospace;
+    text-align: center;
+    padding: 0;
+    outline: none;
+}
+.spinner-value:focus {
+    background: #333;
+}
+
+/* ─── EMIC Buttons ─── */
+.emic-btn-group {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+.emic-btn-group label {
+    font-size: var(--panel-label-size, 15px);
+    font-weight: 600;
+    color: #444;
+    margin-right: 4px;
+    white-space: nowrap;
+}
+.emic-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 4px;
+    border: 1px solid #555;
+    background: rgba(60, 60, 60, 0.9);
+    color: #ccc;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    height: 38px;
+    line-height: 20px;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.emic-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 12px rgba(102, 126, 234, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    background: linear-gradient(135deg, #7a8ef0 0%, #8a5fb5 100%);
+    color: #fff;
+}
+.emic-btn.active {
+    background: rgba(102, 126, 234, 0.8);
+    border-color: rgba(102, 126, 234, 0.9);
+    color: #fff;
 }
 
 /* ─── Panel Gear Icons & Popovers ─── */
