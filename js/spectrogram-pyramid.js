@@ -16,7 +16,7 @@ import { zoomState } from './zoom-state.js';
 import { SpectrogramWorkerPool } from './spectrogram-worker-pool.js';
 import { SpectrogramGPUCompute } from './spectrogram-gpu-compute.js';
 import { isStudyMode } from './master-modes.js';
-import { getWebGPUDevice, isWebGPURenderer, queueGPUTextureSwap } from './spectrogram-three-renderer.js';
+import { getWebGPUDevice, isWebGPURenderer, queueGPUTextureSwap } from './main-window-renderer.js';
 
 // ─── Compression stubs (BC4 removed — Three.js lacks RGTC format support) ──
 

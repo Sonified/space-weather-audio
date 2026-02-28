@@ -17,13 +17,14 @@ import { zoomState } from './zoom-state.js';
 import { hideTutorialOverlay, setStatusText } from './tutorial.js';
 import { isStudyMode } from './master-modes.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
-import { restoreViewportState, updateSpectrogramViewportFromZoom, getFullMagnitudeTexture, getSpectrogramParams, notifyInteractionStart, notifyInteractionEnd } from './spectrogram-three-renderer.js';
+import { restoreViewportState, updateSpectrogramViewportFromZoom, getFullMagnitudeTexture, getSpectrogramParams, notifyInteractionStart, notifyInteractionEnd } from './main-window-renderer.js';
 import { drawDayMarkers } from './day-markers.js';
 import { getColorLUT } from './colormaps.js';
 import { updateLiveAnnotations } from './spectrogram-live-annotations.js';
 import { updateCanvasAnnotations, isFeaturePopupOpen, isFeatureBoxReadyToShow } from './spectrogram-renderer.js';
 import { getYPositionForFrequencyScaled } from './spectrogram-axis-renderer.js';
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.webgpu.js';
+import { texture as tslTexture, vec2, vec4, uniform, float, select, uv, Fn, Loop, If, Break, min as tslMin, max as tslMax, floor as tslFloor, ceil as tslCeil, clamp as tslClamp, abs as tslAbs, log2 as tslLog2, pow as tslPow } from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.webgpu.js';
 
 // Debug flag for waveform logs (set to true to enable detailed logging)
 const DEBUG_WAVEFORM = false;
@@ -42,138 +43,58 @@ let wfTotalSamples = 0;
 let wfTextureWidth = 0;
 let wfTextureHeight = 0;
 const WF_MIP_BIN_SIZE = 256;  // Each mip texel covers 256 raw samples
+const WF_MIP_FACTOR = 1.3;   // ← THE KNOB: pyramid step factor (1.3 = fine, 2 = medium, 4 = coarse)
 let wfOverlayCanvas = null;
 let wfOverlayCtx = null;
 let wfCachedWidth = 0;   // Cached device-pixel dimensions (avoid offsetWidth in render path)
 let wfCachedHeight = 0;
 let wfResizeObserver = null;
 let wfOverlayResizeObserver = null;
-let wfOnContextLost = null;
-let wfOnContextRestored = null;
 
-// ─── Minimap spectrogram (second GPU pass) ───────────────────────────────────
+// ─── Minimap spectrogram (second mesh in same WebGPU scene) ─────────────────
 let wfSpectroMaterial = null;
 let wfSpectroMesh = null;
 
-const wfVertexShader = /* glsl */ `
-varying vec2 vUv;
-void main() {
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`;
+// TSL uniform nodes for minimap waveform shader
+let wfUViewportStart = null;
+let wfUViewportEnd = null;
+let wfUTotalSamples = null;
+let wfUCanvasWidth = null;
+let wfUCanvasHeight = null;
+let wfUTexWidth = null;
+let wfUTexHeight = null;
+let wfUMipTexWidth = null;
+let wfUMipTexHeight = null;
+let wfUMipTotalBins = null;
+let wfUMipBinSize = null;
+let wfUTransparentBg = null;
+// Hierarchical mip chain — level metadata stored in a tiny texture
+let wfUMipNumLevels = null;
+let wfUMipFactor = null;
+let wfMipMetaTexture = null;
+let wfMipMetaTexNode = null;
+let wfUBgR = null;
+let wfUBgG = null;
+let wfUBgB = null;
+// TSL texture nodes
+let wfSampleTexNode = null;
+let wfMipTexNode = null;
+let wfCmapTexNode = null;
+// Minimap spectrogram TSL nodes
+let wfSpectroMagTexNode = null;
+let wfSpectroCmapTexNode = null;
+let wfSpectroUViewportStart = null;
+let wfSpectroUViewportEnd = null;
+let wfSpectroUStretch = null;
+let wfSpectroUFreqScale = null;
+let wfSpectroUMinFreq = null;
+let wfSpectroUMaxFreq = null;
+let wfSpectroUDbFloor = null;
+let wfSpectroUDbRange = null;
 
-const wfFragmentShader = /* glsl */ `
-uniform sampler2D uSamples;
-uniform sampler2D uMipMinMax;
-uniform sampler2D uColormap;
-uniform float uTotalSamples;
-uniform float uTextureWidth;
-uniform float uTextureHeight;
-uniform float uMipTextureWidth;
-uniform float uMipTextureHeight;
-uniform float uMipTotalBins;
-uniform float uMipBinSize;
-uniform float uViewportStart;
-uniform float uViewportEnd;
-uniform float uCanvasWidth;
-uniform float uCanvasHeight;
-uniform vec3 uBackgroundColor;
-uniform float uTransparentBg;
+let wfInitPromise = null; // WebGPU renderer init is async
 
-varying vec2 vUv;
-
-float getSample(float index) {
-    float row = floor(index / uTextureWidth);
-    float col = index - row * uTextureWidth;
-    vec2 uv = vec2(
-        (col + 0.5) / uTextureWidth,
-        (row + 0.5) / uTextureHeight
-    );
-    return texture2D(uSamples, uv).r;
-}
-
-vec2 getMipBin(float index) {
-    float row = floor(index / uMipTextureWidth);
-    float col = index - row * uMipTextureWidth;
-    vec2 uv = vec2(
-        (col + 0.5) / uMipTextureWidth,
-        (row + 0.5) / uMipTextureHeight
-    );
-    return texture2D(uMipMinMax, uv).rg;
-}
-
-void main() {
-    float viewStartSample = uViewportStart * uTotalSamples;
-    float viewEndSample = uViewportEnd * uTotalSamples;
-    float samplesPerPixel = (viewEndSample - viewStartSample) / uCanvasWidth;
-
-    float pixelStart = viewStartSample + vUv.x * (viewEndSample - viewStartSample);
-    float pixelEnd = pixelStart + samplesPerPixel;
-
-    float minVal = 1.0;
-    float maxVal = -1.0;
-
-    if (samplesPerPixel > uMipBinSize && uMipTotalBins > 0.0) {
-        // Zoomed out: use pre-computed min/max bins
-        float binStart = floor(max(pixelStart / uMipBinSize, 0.0));
-        float binEnd = ceil(min(pixelEnd / uMipBinSize, uMipTotalBins));
-        float binCount = binEnd - binStart;
-
-        for (int i = 0; i < 512; i++) {
-            if (float(i) >= binCount) break;
-            vec2 mm = getMipBin(binStart + float(i));
-            minVal = min(minVal, mm.r);
-            maxVal = max(maxVal, mm.g);
-        }
-    } else {
-        // Zoomed in: scan raw samples
-        float startIdx = floor(max(pixelStart, 0.0));
-        float endIdx = ceil(min(pixelEnd, uTotalSamples));
-        float count = endIdx - startIdx;
-
-        for (int i = 0; i < 8192; i++) {
-            if (float(i) >= count) break;
-            float s = getSample(startIdx + float(i));
-            minVal = min(minVal, s);
-            maxVal = max(maxVal, s);
-        }
-    }
-
-    // Y mapping: vUv.y 0=bottom, 1=top → amplitude -1 to +1
-    float amplitude = (vUv.y - 0.5) * 2.0;
-
-    float yMin = minVal * 0.9;
-    float yMax = maxVal * 0.9;
-
-    // Enforce minimum band thickness so the waveform doesn't vanish when zoomed in
-    // (when minVal == maxVal, the band is zero pixels wide)
-    float minThickness = 2.0 / uCanvasHeight;
-    if (yMax - yMin < minThickness) {
-        float center = (yMin + yMax) * 0.5;
-        yMin = center - minThickness * 0.5;
-        yMax = center + minThickness * 0.5;
-    }
-
-    // Center line (~1px thick)
-    float centerThickness = 1.0 / uCanvasHeight;
-    if (abs(vUv.y - 0.5) < centerThickness) {
-        gl_FragColor = vec4(0.4, 0.4, 0.4, uTransparentBg > 0.5 ? 0.6 : 1.0);
-        return;
-    }
-
-    if (amplitude >= yMin && amplitude <= yMax) {
-        float peakAmplitude = max(abs(minVal), abs(maxVal));
-        float normalized = clamp(peakAmplitude, 0.0, 1.0);
-        vec3 color = texture2D(uColormap, vec2(normalized, 0.5)).rgb;
-        gl_FragColor = vec4(color, 1.0);
-    } else {
-        gl_FragColor = vec4(uBackgroundColor, uTransparentBg > 0.5 ? 0.0 : 1.0);
-    }
-}
-`;
-
-function initWaveformThreeScene() {
+async function initWaveformThreeScene() {
     if (wfRenderer) return;
 
     const canvas = document.getElementById('waveform');
@@ -184,109 +105,220 @@ function initWaveformThreeScene() {
     canvas.width = wfCachedWidth;
     canvas.height = wfCachedHeight;
 
-    wfRenderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: true });
+    wfRenderer = new THREE.WebGPURenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: true });
     wfRenderer.setSize(wfCachedWidth, wfCachedHeight, false);
+    await wfRenderer.init();
 
     wfCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 10);
     wfCamera.position.z = 1;
 
     wfScene = new THREE.Scene();
 
-    // Build waveform colormap texture (brightened version)
+    // ─── TSL uniform nodes ────────────────────────────────────────────────
+    wfUViewportStart = uniform(0.0);
+    wfUViewportEnd = uniform(1.0);
+    wfUTotalSamples = uniform(0.0);
+    wfUCanvasWidth = uniform(parseFloat(wfCachedWidth));
+    wfUCanvasHeight = uniform(parseFloat(wfCachedHeight));
+    wfUTexWidth = uniform(4096.0);
+    wfUTexHeight = uniform(1.0);
+    wfUMipTexWidth = uniform(4096.0);
+    wfUMipTexHeight = uniform(1.0);
+    wfUMipTotalBins = uniform(0.0);
+    wfUMipBinSize = uniform(parseFloat(WF_MIP_BIN_SIZE));
+    wfUTransparentBg = uniform(0.0);
+    wfUMipNumLevels = uniform(1.0);
+    wfUMipFactor = uniform(parseFloat(WF_MIP_FACTOR));
+    const lut = getColorLUT();
+    wfUBgR = uniform(lut ? lut[0] / 255 : 0);
+    wfUBgG = uniform(lut ? lut[1] / 255 : 0);
+    wfUBgB = uniform(lut ? lut[2] / 255 : 0);
+
+    // ─── Placeholder textures ─────────────────────────────────────────────
+    wfSampleTexture = new THREE.DataTexture(
+        new Float32Array(1), 1, 1, THREE.RedFormat, THREE.FloatType
+    );
+    wfSampleTexture.minFilter = THREE.NearestFilter;
+    wfSampleTexture.magFilter = THREE.NearestFilter;
+    wfSampleTexture.needsUpdate = true;
+
+    wfMipTexture = new THREE.DataTexture(
+        new Float32Array(2), 1, 1, THREE.RGFormat, THREE.FloatType
+    );
+    wfMipTexture.minFilter = THREE.NearestFilter;
+    wfMipTexture.magFilter = THREE.NearestFilter;
+    wfMipTexture.needsUpdate = true;
+
+    // Level metadata texture placeholder
+    wfMipMetaTexture = new THREE.DataTexture(
+        new Float32Array(4), 1, 1, THREE.RGBAFormat, THREE.FloatType
+    );
+    wfMipMetaTexture.minFilter = THREE.NearestFilter;
+    wfMipMetaTexture.magFilter = THREE.NearestFilter;
+    wfMipMetaTexture.needsUpdate = true;
+
     wfColormapTexture = buildWaveformColormapTexture();
 
-    const lut = getColorLUT();
-    const bgR = lut ? lut[0] / 255 : 0;
-    const bgG = lut ? lut[1] / 255 : 0;
-    const bgB = lut ? lut[2] / 255 : 0;
+    // TSL texture nodes
+    wfSampleTexNode = tslTexture(wfSampleTexture);
+    wfMipTexNode = tslTexture(wfMipTexture);
+    wfCmapTexNode = tslTexture(wfColormapTexture);
+    wfMipMetaTexNode = tslTexture(wfMipMetaTexture);
 
-    wfMaterial = new THREE.ShaderMaterial({
-        uniforms: {
-            uSamples: { value: null },
-            uMipMinMax: { value: null },
-            uColormap: { value: wfColormapTexture },
-            uTotalSamples: { value: 0.0 },
-            uTextureWidth: { value: 1.0 },
-            uTextureHeight: { value: 1.0 },
-            uMipTextureWidth: { value: 1.0 },
-            uMipTextureHeight: { value: 1.0 },
-            uMipTotalBins: { value: 0.0 },
-            uMipBinSize: { value: parseFloat(WF_MIP_BIN_SIZE) },
-            uViewportStart: { value: 0.0 },
-            uViewportEnd: { value: 1.0 },
-            uCanvasWidth: { value: parseFloat(wfCachedWidth) },
-            uCanvasHeight: { value: parseFloat(wfCachedHeight) },
-            uBackgroundColor: { value: new THREE.Vector3(bgR, bgG, bgB) },
-            uTransparentBg: { value: 0.0 }
-        },
-        vertexShader: wfVertexShader,
-        fragmentShader: wfFragmentShader,
-        transparent: true
+    // ─── TSL waveform shader (same logic as spectrogram-three-renderer) ───
+    const getSampleTSL = Fn(([index]) => {
+        const row = tslFloor(index.div(wfUTexWidth));
+        const col = index.sub(row.mul(wfUTexWidth));
+        const sUV = vec2(col.add(0.5).div(wfUTexWidth), row.add(0.5).div(wfUTexHeight));
+        return wfSampleTexNode.uv(sUV).r;
     });
 
-    const geometry = new THREE.PlaneGeometry(2, 2);
-    wfMesh = new THREE.Mesh(geometry, wfMaterial);
+    const getMipBinTSL = Fn(([index]) => {
+        const row = tslFloor(index.div(wfUMipTexWidth));
+        const col = index.sub(row.mul(wfUMipTexWidth));
+        const mUV = vec2(col.add(0.5).div(wfUMipTexWidth), row.add(0.5).div(wfUMipTexHeight));
+        return wfMipTexNode.uv(mUV);
+    });
+
+    const waveformColorFn = Fn(() => {
+        const vuv = uv();
+        const viewStart = wfUViewportStart.mul(wfUTotalSamples);
+        const viewEnd = wfUViewportEnd.mul(wfUTotalSamples);
+        const spp = viewEnd.sub(viewStart).div(wfUCanvasWidth);
+        const pixelStart = viewStart.add(vuv.x.mul(viewEnd.sub(viewStart)));
+        const pixelEnd = pixelStart.add(spp);
+
+        const minVal = float(1.0).toVar();
+        const maxVal = float(-1.0).toVar();
+
+        If(spp.greaterThan(wfUMipBinSize), () => {
+            // Pick best mip level from metadata texture
+            const idealLevel = tslFloor(tslLog2(spp.div(wfUMipBinSize)).div(tslLog2(wfUMipFactor)));
+            const level = tslClamp(idealLevel, float(0.0), wfUMipNumLevels.sub(1.0)).toVar();
+
+            // Read (offset, binSize, binCount) from metadata texture
+            const metaUV = vec2(level.add(0.5).div(wfUMipNumLevels), float(0.5));
+            const meta = wfMipMetaTexNode.uv(metaUV);
+            const levelOffset = meta.r;
+            const levelBinSize = meta.g;
+            const levelBinCount = meta.b;
+
+            const binStart = tslFloor(tslMax(pixelStart.div(levelBinSize), float(0.0))).toVar();
+            const binEnd = tslCeil(tslMin(pixelEnd.div(levelBinSize), levelBinCount)).toVar();
+            const binCount = binEnd.sub(binStart);
+            Loop(16, ({ i }) => {
+                If(float(i).greaterThanEqual(binCount), () => { Break(); });
+                const globalBin = levelOffset.add(binStart).add(float(i));
+                const mm = getMipBinTSL(globalBin);
+                minVal.assign(tslMin(minVal, mm.r));
+                maxVal.assign(tslMax(maxVal, mm.g));
+            });
+        }).Else(() => {
+            // Zoomed in: scan raw samples directly
+            const startIdx = tslFloor(tslMax(pixelStart, float(0.0))).toVar();
+            const endIdx = tslCeil(tslMin(pixelEnd, wfUTotalSamples)).toVar();
+            const count = endIdx.sub(startIdx);
+            Loop(256, ({ i }) => {
+                If(float(i).greaterThanEqual(count), () => { Break(); });
+                const s = getSampleTSL(startIdx.add(float(i)));
+                minVal.assign(tslMin(minVal, s));
+                maxVal.assign(tslMax(maxVal, s));
+            });
+        });
+
+        const amplitude = vuv.y.sub(0.5).mul(2.0);
+        const yMin = minVal.mul(0.9).toVar();
+        const yMax = maxVal.mul(0.9).toVar();
+
+        const minThickness = float(2.0).div(wfUCanvasHeight);
+        If(yMax.sub(yMin).lessThan(minThickness), () => {
+            const center = yMin.add(yMax).mul(0.5);
+            yMin.assign(center.sub(minThickness.mul(0.5)));
+            yMax.assign(center.add(minThickness.mul(0.5)));
+        });
+
+        const centerThickness = float(1.0).div(wfUCanvasHeight);
+        const isCenterLine = tslAbs(vuv.y.sub(0.5)).lessThan(centerThickness);
+        const centerAlpha = select(wfUTransparentBg.greaterThan(0.5), float(0.6), float(1.0));
+
+        const inBand = amplitude.greaterThanEqual(yMin).and(amplitude.lessThanEqual(yMax));
+        const peakAmp = tslMax(tslAbs(minVal), tslAbs(maxVal));
+        const normalized = tslClamp(peakAmp, 0, 1);
+        const cmapColor = wfCmapTexNode.uv(vec2(normalized, float(0.5)));
+
+        const bgAlpha = select(wfUTransparentBg.greaterThan(0.5), float(0.0), float(1.0));
+        const bgColor = vec4(wfUBgR, wfUBgG, wfUBgB, bgAlpha);
+
+        return select(isCenterLine,
+            vec4(float(0.4), float(0.4), float(0.4), centerAlpha),
+            select(inBand,
+                vec4(cmapColor.r, cmapColor.g, cmapColor.b, float(1.0)),
+                bgColor
+            )
+        );
+    });
+
+    wfMaterial = new THREE.MeshBasicNodeMaterial();
+    wfMaterial.transparent = true;
+    wfMaterial.colorNode = waveformColorFn();
+    wfMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), wfMaterial);
+    wfMesh.renderOrder = 1;
     wfScene.add(wfMesh);
 
-    // Spectrogram material for minimap mode (reuses magnitude texture from main spectrogram)
+    // ─── Minimap spectrogram TSL material ─────────────────────────────────
     wfSpectroColormapTexture = buildSpectroColormapTexture();
-    wfSpectroMaterial = new THREE.ShaderMaterial({
-        uniforms: {
-            uMagnitudes: { value: null },
-            uColormap: { value: wfSpectroColormapTexture },
-            uViewportStart: { value: 0.0 },
-            uViewportEnd: { value: 1.0 },
-            uStretchFactor: { value: 1.0 },
-            uFrequencyScale: { value: 0 },
-            uMinFreq: { value: 0.1 },
-            uMaxFreq: { value: 50.0 },
-            uDbFloor: { value: -100.0 },
-            uDbRange: { value: 100.0 },
-            uBackgroundColor: { value: new THREE.Vector3(bgR, bgG, bgB) }
-        },
-        vertexShader: wfVertexShader,
-        fragmentShader: /* glsl */ `
-uniform sampler2D uMagnitudes;
-uniform sampler2D uColormap;
-uniform float uViewportStart;
-uniform float uViewportEnd;
-uniform float uStretchFactor;
-uniform int uFrequencyScale;
-uniform float uMinFreq;
-uniform float uMaxFreq;
-uniform float uDbFloor;
-uniform float uDbRange;
-uniform vec3 uBackgroundColor;
-varying vec2 vUv;
-void main() {
-    float effectiveY = vUv.y / uStretchFactor;
-    if (effectiveY > 1.0) {
-        gl_FragColor = vec4(uBackgroundColor, 1.0);
-        return;
-    }
-    float freq;
-    if (uFrequencyScale == 0) {
-        freq = uMinFreq + effectiveY * (uMaxFreq - uMinFreq);
-    } else if (uFrequencyScale == 1) {
-        float normalized = effectiveY * effectiveY;
-        freq = uMinFreq + normalized * (uMaxFreq - uMinFreq);
-    } else {
-        float logMin = log2(max(uMinFreq, 0.001)) / log2(10.0);
-        float logMax = log2(uMaxFreq) / log2(10.0);
-        float logFreq = logMin + effectiveY * (logMax - logMin);
-        freq = pow(10.0, logFreq);
-    }
-    float texV = clamp(freq / uMaxFreq, 0.0, 1.0);
-    float texU = uViewportStart + vUv.x * (uViewportEnd - uViewportStart);
-    float magnitude = texture2D(uMagnitudes, vec2(texU, texV)).r;
-    float db = 20.0 * log(magnitude + 1.0e-10) / log(10.0);
-    float normalized = clamp((db - uDbFloor) / uDbRange, 0.0, 1.0);
-    vec3 color = texture2D(uColormap, vec2(normalized, 0.5)).rgb;
-    gl_FragColor = vec4(color, 1.0);
-}
-`
+
+    const magPlaceholder = new THREE.DataTexture(
+        new Float32Array(1), 1, 1, THREE.RedFormat, THREE.FloatType
+    );
+    magPlaceholder.needsUpdate = true;
+
+    wfSpectroUViewportStart = uniform(0.0);
+    wfSpectroUViewportEnd = uniform(1.0);
+    wfSpectroUStretch = uniform(1.0);
+    wfSpectroUFreqScale = uniform(0.0);
+    wfSpectroUMinFreq = uniform(0.1);
+    wfSpectroUMaxFreq = uniform(50.0);
+    wfSpectroUDbFloor = uniform(-100.0);
+    wfSpectroUDbRange = uniform(100.0);
+    wfSpectroMagTexNode = tslTexture(magPlaceholder);
+    wfSpectroCmapTexNode = tslTexture(wfSpectroColormapTexture);
+
+    const spectroColorFn = Fn(() => {
+        const vuv = uv();
+        const effectiveY = vuv.y.div(wfSpectroUStretch);
+        const freqRange = wfSpectroUMaxFreq.sub(wfSpectroUMinFreq);
+
+        // Frequency scale remapping (linear / sqrt / log)
+        const texVLinear = wfSpectroUMinFreq.add(effectiveY.mul(freqRange))
+            .div(wfSpectroUMaxFreq).clamp(0, 1);
+        const texVSqrt = wfSpectroUMinFreq.add(effectiveY.mul(effectiveY).mul(freqRange))
+            .div(wfSpectroUMaxFreq).clamp(0, 1);
+        const LOG2_10 = float(Math.log2(10));
+        const logMin = tslLog2(wfSpectroUMinFreq.max(0.001)).div(LOG2_10);
+        const logMax = tslLog2(wfSpectroUMaxFreq).div(LOG2_10);
+        const logFreq = logMin.add(effectiveY.mul(logMax.sub(logMin)));
+        const texVLog = tslPow(float(10.0), logFreq).div(wfSpectroUMaxFreq).clamp(0, 1);
+
+        const texV = select(wfSpectroUFreqScale.lessThan(0.5), texVLinear,
+                     select(wfSpectroUFreqScale.lessThan(1.5), texVSqrt, texVLog));
+
+        const texU = wfSpectroUViewportStart.add(vuv.x.mul(wfSpectroUViewportEnd.sub(wfSpectroUViewportStart)));
+        const mag = wfSpectroMagTexNode.uv(vec2(texU, texV)).r;
+
+        const db = tslLog2(mag.add(1e-10)).div(LOG2_10).mul(20.0);
+        const normalized = db.sub(wfSpectroUDbFloor).div(wfSpectroUDbRange).clamp(0, 1);
+        const color = wfSpectroCmapTexNode.uv(vec2(normalized, float(0.5)));
+
+        const bgColor = vec4(wfUBgR, wfUBgG, wfUBgB, float(1.0));
+        return select(effectiveY.greaterThan(1.0), bgColor,
+            vec4(color.r, color.g, color.b, float(1.0)));
     });
+
+    wfSpectroMaterial = new THREE.MeshBasicNodeMaterial();
+    wfSpectroMaterial.colorNode = spectroColorFn();
     wfSpectroMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), wfSpectroMaterial);
+    wfSpectroMesh.renderOrder = 0;
     wfSpectroMesh.visible = false;
     wfScene.add(wfSpectroMesh);
 
@@ -305,31 +337,6 @@ void main() {
     });
     wfResizeObserver.observe(canvas);
 
-    // WebGL context loss/restore handlers (Chromium can drop contexts under GPU pressure)
-    if (wfOnContextLost) canvas.removeEventListener('webglcontextlost', wfOnContextLost);
-    if (wfOnContextRestored) canvas.removeEventListener('webglcontextrestored', wfOnContextRestored);
-
-    wfOnContextLost = (e) => {
-        e.preventDefault();
-        console.warn('Waveform WebGL context lost — will restore on next render');
-    };
-    wfOnContextRestored = () => {
-        console.log('Waveform WebGL context restored — re-uploading textures');
-        if (wfColormapTexture) wfColormapTexture.dispose();
-        wfColormapTexture = buildWaveformColormapTexture();
-        if (wfMaterial) wfMaterial.uniforms.uColormap.value = wfColormapTexture;
-        if (wfSampleTexture && wfMaterial) {
-            wfSampleTexture.needsUpdate = true;
-            wfMaterial.uniforms.uSamples.value = wfSampleTexture;
-        }
-        if (wfMipTexture && wfMaterial) {
-            wfMipTexture.needsUpdate = true;
-            wfMaterial.uniforms.uMipMinMax.value = wfMipTexture;
-        }
-    };
-    canvas.addEventListener('webglcontextlost', wfOnContextLost);
-    canvas.addEventListener('webglcontextrestored', wfOnContextRestored);
-
     // Re-render minimap when spectrogram texture becomes available
     window.addEventListener('spectrogram-ready', () => {
         if (getMinimapMode() !== 'linePlot') {
@@ -337,7 +344,7 @@ void main() {
         }
     });
 
-    if (window.pm?.gpu) console.log(`Three.js waveform renderer initialized (${wfCachedWidth}x${wfCachedHeight})`);
+    if (window.pm?.gpu) console.log(`Three.js WebGPU waveform renderer initialized (${wfCachedWidth}x${wfCachedHeight})`);
 }
 
 function buildWaveformColormapTexture() {
@@ -430,13 +437,14 @@ function createWaveformOverlay(waveformCanvas) {
  */
 let wfLastUploadedSamples = null; // Track last uploaded array to skip redundant uploads
 
-export function uploadWaveformSamples(samples, expectedTotalSamples = 0) {
+export async function uploadWaveformSamples(samples, expectedTotalSamples = 0) {
     if (!samples || samples.length === 0) return;
 
     // Skip re-upload if the same sample array is already on the GPU
     if (samples === wfLastUploadedSamples && wfSampleTexture) return;
 
-    initWaveformThreeScene();
+    if (!wfInitPromise) wfInitPromise = initWaveformThreeScene();
+    await wfInitPromise;
     if (!wfMaterial) return;
 
     // Use expected total if provided (progressive loading: allocate for full duration)
@@ -458,38 +466,73 @@ export function uploadWaveformSamples(samples, expectedTotalSamples = 0) {
     wfSampleTexture.wrapT = THREE.ClampToEdgeWrapping;
     wfSampleTexture.needsUpdate = true;
 
-    wfMaterial.uniforms.uSamples.value = wfSampleTexture;
-    wfMaterial.uniforms.uTotalSamples.value = parseFloat(wfTotalSamples);
-    wfMaterial.uniforms.uTextureWidth.value = parseFloat(wfTextureWidth);
-    wfMaterial.uniforms.uTextureHeight.value = parseFloat(wfTextureHeight);
+    if (wfSampleTexNode) wfSampleTexNode.value = wfSampleTexture;
+    wfUTotalSamples.value = parseFloat(wfTotalSamples);
+    wfUTexWidth.value = parseFloat(wfTextureWidth);
+    wfUTexHeight.value = parseFloat(wfTextureHeight);
 
-    // Build min/max mip texture: each bin covers WF_MIP_BIN_SIZE raw samples
-    // Stored as RG float pairs: .r = min, .g = max
-    const mipBins = Math.ceil(wfTotalSamples / WF_MIP_BIN_SIZE);
-    const mipTexWidth = 4096;
-    const mipTexHeight = Math.ceil(mipBins / mipTexWidth);
-    const mipPadded = mipTexWidth * mipTexHeight;
-    const mipData = new Float32Array(mipPadded * 2); // 2 channels: RG
-
+    // Build hierarchical min/max mip pyramid (factor = WF_MIP_FACTOR)
+    const mipT0 = performance.now();
     const actualSampleCount = samples.length;
-    for (let bin = 0; bin < mipBins; bin++) {
-        const start = bin * WF_MIP_BIN_SIZE;
-        const end = Math.min(start + WF_MIP_BIN_SIZE, actualSampleCount);
-        if (start >= actualSampleCount) {
-            // Beyond actual data — leave as zero (silence)
-            mipData[bin * 2]     = 0;
-            mipData[bin * 2 + 1] = 0;
-            continue;
+
+    const numLevels = Math.max(1, Math.ceil(Math.log(wfTotalSamples / WF_MIP_BIN_SIZE) / Math.log(WF_MIP_FACTOR)) + 1);
+    const levels = [];
+
+    for (let lv = 0; lv < numLevels; lv++) {
+        const binSize = Math.round(WF_MIP_BIN_SIZE * Math.pow(WF_MIP_FACTOR, lv));
+        if (binSize >= wfTotalSamples && lv > 0) break;
+        const numBins = Math.ceil(wfTotalSamples / binSize);
+
+        const data = new Float32Array(numBins * 2);
+        if (lv === 0) {
+            for (let bin = 0; bin < numBins; bin++) {
+                const start = bin * binSize;
+                const end = Math.min(start + binSize, actualSampleCount);
+                if (start >= actualSampleCount) { data[bin * 2] = 0; data[bin * 2 + 1] = 0; continue; }
+                let mn = Infinity, mx = -Infinity;
+                for (let j = start; j < end; j++) {
+                    const v = samples[j];
+                    if (v < mn) mn = v;
+                    if (v > mx) mx = v;
+                }
+                data[bin * 2] = mn;
+                data[bin * 2 + 1] = mx;
+            }
+        } else {
+            const prev = levels[lv - 1];
+            const ratio = binSize / prev.binSize;
+            for (let bin = 0; bin < numBins; bin++) {
+                const prevStart = Math.floor(bin * ratio);
+                const prevEnd = Math.min(Math.ceil((bin + 1) * ratio), prev.numBins);
+                let mn = Infinity, mx = -Infinity;
+                for (let j = prevStart; j < prevEnd; j++) {
+                    if (prev.data[j * 2] < mn) mn = prev.data[j * 2];
+                    if (prev.data[j * 2 + 1] > mx) mx = prev.data[j * 2 + 1];
+                }
+                data[bin * 2] = mn === Infinity ? 0 : mn;
+                data[bin * 2 + 1] = mx === -Infinity ? 0 : mx;
+            }
         }
-        let mn = Infinity, mx = -Infinity;
-        for (let j = start; j < end; j++) {
-            const v = samples[j];
-            if (v < mn) mn = v;
-            if (v > mx) mx = v;
-        }
-        mipData[bin * 2]     = mn; // .r = min
-        mipData[bin * 2 + 1] = mx; // .g = max
+        levels.push({ binSize, numBins, data });
     }
+
+    let totalBins = 0;
+    const offsets = [];
+    for (const lv of levels) { offsets.push(totalBins); totalBins += lv.numBins; }
+
+    const mipBinData = new Float32Array(totalBins * 2);
+    for (let i = 0; i < levels.length; i++) {
+        mipBinData.set(levels[i].data, offsets[i] * 2);
+    }
+
+    const mipT1 = performance.now();
+    console.log(`⏱️ Minimap mip: ${levels.length} levels (factor ${WF_MIP_FACTOR}), ${totalBins.toLocaleString()} total bins, ${(mipT1 - mipT0).toFixed(1)}ms (CPU)`);
+
+    const mipTexWidth = 4096;
+    const mipTexHeight = Math.ceil(totalBins / mipTexWidth);
+    const mipPadded = mipTexWidth * mipTexHeight;
+    const mipData = new Float32Array(mipPadded * 2);
+    mipData.set(mipBinData);
 
     if (wfMipTexture) wfMipTexture.dispose();
     wfMipTexture = new THREE.DataTexture(mipData, mipTexWidth, mipTexHeight, THREE.RGFormat, THREE.FloatType);
@@ -499,19 +542,35 @@ export function uploadWaveformSamples(samples, expectedTotalSamples = 0) {
     wfMipTexture.wrapT = THREE.ClampToEdgeWrapping;
     wfMipTexture.needsUpdate = true;
 
-    wfMaterial.uniforms.uMipMinMax.value = wfMipTexture;
-    wfMaterial.uniforms.uMipTextureWidth.value = parseFloat(mipTexWidth);
-    wfMaterial.uniforms.uMipTextureHeight.value = parseFloat(mipTexHeight);
-    wfMaterial.uniforms.uMipTotalBins.value = parseFloat(mipBins);
+    // Level metadata texture
+    const metaData = new Float32Array(levels.length * 4);
+    for (let i = 0; i < levels.length; i++) {
+        metaData[i * 4] = offsets[i];
+        metaData[i * 4 + 1] = levels[i].binSize;
+        metaData[i * 4 + 2] = levels[i].numBins;
+        metaData[i * 4 + 3] = 0;
+    }
+    if (wfMipMetaTexture) wfMipMetaTexture.dispose();
+    wfMipMetaTexture = new THREE.DataTexture(metaData, levels.length, 1, THREE.RGBAFormat, THREE.FloatType);
+    wfMipMetaTexture.minFilter = THREE.NearestFilter;
+    wfMipMetaTexture.magFilter = THREE.NearestFilter;
+    wfMipMetaTexture.needsUpdate = true;
+    if (wfMipMetaTexNode) wfMipMetaTexNode.value = wfMipMetaTexture;
+
+    if (wfMipTexNode) wfMipTexNode.value = wfMipTexture;
+    wfUMipTexWidth.value = parseFloat(mipTexWidth);
+    wfUMipTexHeight.value = parseFloat(mipTexHeight);
+    wfUMipTotalBins.value = parseFloat(totalBins);
+    wfUMipNumLevels.value = parseFloat(levels.length);
 
     wfLastUploadedSamples = samples;
-    if (window.pm?.gpu) console.log(`Waveform uploaded: ${wfTotalSamples.toLocaleString()} samples (${wfTextureWidth}x${wfTextureHeight}), mip: ${mipBins.toLocaleString()} bins (${mipTexWidth}x${mipTexHeight})`);
+    if (window.pm?.gpu) console.log(`Waveform uploaded: ${wfTotalSamples.toLocaleString()} samples (${wfTextureWidth}x${wfTextureHeight}), mip: ${totalBins.toLocaleString()} bins`);
 }
 
 /**
- * Render waveform via GPU with current viewport
+ * Render waveform via WebGPU with current viewport
  */
-function renderWaveformGPU(viewportStart = 0.0, viewportEnd = 1.0) {
+async function renderWaveformGPU(viewportStart = 0.0, viewportEnd = 1.0) {
     if (!wfRenderer || !wfScene || !wfCamera || !wfSampleTexture) return;
 
     // Handle canvas resize using cached dimensions (no layout-forcing offsetWidth reads)
@@ -521,25 +580,26 @@ function renderWaveformGPU(viewportStart = 0.0, viewportEnd = 1.0) {
         canvas.width = wfCachedWidth;
         canvas.height = wfCachedHeight;
         wfRenderer.setSize(wfCachedWidth, wfCachedHeight, false);
-        wfMaterial.uniforms.uCanvasWidth.value = parseFloat(wfCachedWidth);
-        wfMaterial.uniforms.uCanvasHeight.value = parseFloat(wfCachedHeight);
-        // Resize overlay to match
+        wfUCanvasWidth.value = parseFloat(wfCachedWidth);
+        wfUCanvasHeight.value = parseFloat(wfCachedHeight);
         if (wfOverlayCanvas) {
             wfOverlayCanvas.width = wfCachedWidth;
             wfOverlayCanvas.height = wfCachedHeight;
         }
     }
 
-    wfMaterial.uniforms.uViewportStart.value = viewportStart;
-    wfMaterial.uniforms.uViewportEnd.value = viewportEnd;
+    wfUViewportStart.value = viewportStart;
+    wfUViewportEnd.value = viewportEnd;
 
     // Update background color from colormap
     const lut = getColorLUT();
     if (lut) {
-        wfMaterial.uniforms.uBackgroundColor.value.set(lut[0] / 255, lut[1] / 255, lut[2] / 255);
+        wfUBgR.value = lut[0] / 255;
+        wfUBgG.value = lut[1] / 255;
+        wfUBgB.value = lut[2] / 255;
     }
 
-    wfRenderer.render(wfScene, wfCamera);
+    await wfRenderer.renderAsync(wfScene, wfCamera);
 }
 
 /**
@@ -548,7 +608,7 @@ function renderWaveformGPU(viewportStart = 0.0, viewportEnd = 1.0) {
  * - linePlot: render waveform amplitude pass only (existing GPU shader)
  * - both: render spectrogram first, then waveform on top with transparent background
  */
-function renderMinimapWithMode(mode, viewportStart, viewportEnd) {
+async function renderMinimapWithMode(mode, viewportStart, viewportEnd) {
     if (!wfRenderer || !wfScene || !wfCamera) return;
 
     const showSpectrogram = (mode === 'spectrogram' || mode === 'both');
@@ -558,22 +618,26 @@ function renderMinimapWithMode(mode, viewportStart, viewportEnd) {
     if (showSpectrogram && wfSpectroMaterial) {
         const magData = getFullMagnitudeTexture();
         if (magData) {
-            wfSpectroMaterial.uniforms.uMagnitudes.value = magData.texture;
-            wfSpectroMaterial.uniforms.uViewportStart.value = viewportStart;
-            wfSpectroMaterial.uniforms.uViewportEnd.value = viewportEnd;
+            // The minimap's WebGPU renderer can't directly share the main renderer's texture.
+            // Create a new DataTexture from the same Float32Array data.
+            if (wfSpectroMagTexNode) wfSpectroMagTexNode.value = magData.texture;
+            wfSpectroUViewportStart.value = viewportStart;
+            wfSpectroUViewportEnd.value = viewportEnd;
 
             // Sync frequency scale params from main spectrogram
             const params = getSpectrogramParams();
-            wfSpectroMaterial.uniforms.uFrequencyScale.value = params.frequencyScale;
-            wfSpectroMaterial.uniforms.uMinFreq.value = params.minFreq;
-            wfSpectroMaterial.uniforms.uMaxFreq.value = params.maxFreq;
-            wfSpectroMaterial.uniforms.uDbFloor.value = params.dbFloor;
-            wfSpectroMaterial.uniforms.uDbRange.value = params.dbRange;
-            wfSpectroMaterial.uniforms.uStretchFactor.value = 1.0; // minimap always 1x
+            wfSpectroUFreqScale.value = params.frequencyScale;
+            wfSpectroUMinFreq.value = params.minFreq;
+            wfSpectroUMaxFreq.value = params.maxFreq;
+            wfSpectroUDbFloor.value = params.dbFloor;
+            wfSpectroUDbRange.value = params.dbRange;
+            wfSpectroUStretch.value = 1.0; // minimap always 1x
 
             const lut = getColorLUT();
             if (lut) {
-                wfSpectroMaterial.uniforms.uBackgroundColor.value.set(lut[0] / 255, lut[1] / 255, lut[2] / 255);
+                wfUBgR.value = lut[0] / 255;
+                wfUBgG.value = lut[1] / 255;
+                wfUBgB.value = lut[2] / 255;
             }
         }
         wfSpectroMesh.visible = !!magData;
@@ -584,20 +648,18 @@ function renderMinimapWithMode(mode, viewportStart, viewportEnd) {
     // Configure waveform mesh
     if (showWaveform && wfSampleTexture) {
         wfMesh.visible = true;
-        wfMaterial.uniforms.uTransparentBg.value = mode === 'both' ? 1.0 : 0.0;
-        wfMaterial.uniforms.uViewportStart.value = viewportStart;
-        wfMaterial.uniforms.uViewportEnd.value = viewportEnd;
+        wfUTransparentBg.value = mode === 'both' ? 1.0 : 0.0;
+        wfUViewportStart.value = viewportStart;
+        wfUViewportEnd.value = viewportEnd;
         const lut = getColorLUT();
         if (lut) {
-            wfMaterial.uniforms.uBackgroundColor.value.set(lut[0] / 255, lut[1] / 255, lut[2] / 255);
+            wfUBgR.value = lut[0] / 255;
+            wfUBgG.value = lut[1] / 255;
+            wfUBgB.value = lut[2] / 255;
         }
     } else {
         wfMesh.visible = false;
     }
-
-    // Render order: spectrogram behind, waveform in front
-    if (wfSpectroMesh) wfSpectroMesh.renderOrder = 0;
-    wfMesh.renderOrder = 1;
 
     // Handle canvas resize
     const canvas = wfRenderer.domElement;
@@ -606,15 +668,15 @@ function renderMinimapWithMode(mode, viewportStart, viewportEnd) {
         canvas.width = wfCachedWidth;
         canvas.height = wfCachedHeight;
         wfRenderer.setSize(wfCachedWidth, wfCachedHeight, false);
-        wfMaterial.uniforms.uCanvasWidth.value = parseFloat(wfCachedWidth);
-        wfMaterial.uniforms.uCanvasHeight.value = parseFloat(wfCachedHeight);
+        wfUCanvasWidth.value = parseFloat(wfCachedWidth);
+        wfUCanvasHeight.value = parseFloat(wfCachedHeight);
         if (wfOverlayCanvas) {
             wfOverlayCanvas.width = wfCachedWidth;
             wfOverlayCanvas.height = wfCachedHeight;
         }
     }
 
-    wfRenderer.render(wfScene, wfCamera);
+    await wfRenderer.renderAsync(wfScene, wfCamera);
 }
 
 /**
@@ -623,16 +685,11 @@ function renderMinimapWithMode(mode, viewportStart, viewportEnd) {
 export function rebuildWaveformColormapTexture() {
     if (wfColormapTexture) wfColormapTexture.dispose();
     wfColormapTexture = buildWaveformColormapTexture();
-    if (wfMaterial) {
-        wfMaterial.uniforms.uColormap.value = wfColormapTexture;
-    }
-    if (wfSpectroMaterial) {
-        if (wfSpectroColormapTexture) wfSpectroColormapTexture.dispose();
-        wfSpectroColormapTexture = buildSpectroColormapTexture();
-        wfSpectroMaterial.uniforms.uColormap.value = wfSpectroColormapTexture;
-    }
-    // Also rebuild main window waveform overlay colormap
-    rebuildMainWaveformColormap();
+    if (wfCmapTexNode) wfCmapTexNode.value = wfColormapTexture;
+
+    if (wfSpectroColormapTexture) wfSpectroColormapTexture.dispose();
+    wfSpectroColormapTexture = buildSpectroColormapTexture();
+    if (wfSpectroCmapTexNode) wfSpectroCmapTexNode.value = wfSpectroColormapTexture;
 }
 
 /**
@@ -643,6 +700,7 @@ export function clearWaveformRenderer() {
     // Dispose textures
     if (wfSampleTexture) { wfSampleTexture.dispose(); wfSampleTexture = null; }
     if (wfMipTexture) { wfMipTexture.dispose(); wfMipTexture = null; }
+    if (wfMipMetaTexture) { wfMipMetaTexture.dispose(); wfMipMetaTexture = null; }
     if (wfColormapTexture) { wfColormapTexture.dispose(); wfColormapTexture = null; }
 
     // Dispose scene objects
@@ -665,14 +723,6 @@ export function clearWaveformRenderer() {
     // Disconnect observers
     if (wfResizeObserver) { wfResizeObserver.disconnect(); wfResizeObserver = null; }
     if (wfOverlayResizeObserver) { wfOverlayResizeObserver.disconnect(); wfOverlayResizeObserver = null; }
-
-    // Remove WebGL context handlers
-    if (wfRenderer && wfOnContextLost) {
-        wfRenderer.domElement.removeEventListener('webglcontextlost', wfOnContextLost);
-        wfRenderer.domElement.removeEventListener('webglcontextrestored', wfOnContextRestored);
-        wfOnContextLost = null;
-        wfOnContextRestored = null;
-    }
 
     // Remove overlay canvas from DOM
     if (wfOverlayCanvas) {
@@ -699,11 +749,9 @@ export function clearWaveformRenderer() {
     wfCachedWidth = 0;
     wfCachedHeight = 0;
     wfLastUploadedSamples = null;
-    // Null renderer so initWaveformThreeScene can re-create on next load
+    // Null renderer + init promise so initWaveformThreeScene can re-create on next load
     wfRenderer = null;
-
-    // Also dispose main window waveform overlay
-    disposeMainWaveform();
+    wfInitPromise = null;
 }
 
 /**
@@ -720,280 +768,8 @@ export function getWaveformOverlayCanvas() {
     return wfOverlayCanvas;
 }
 
-// ─── Main window waveform WebGL overlay ──────────────────────────────────────
-// Separate WebGL canvas overlaid on the spectrogram, using the same GLSL shader
-// as the minimap waveform. Independent from the WebGPU spectrogram renderer.
+// Main window waveform now rendered via TSL in spectrogram-three-renderer.js
 
-let mwRenderer = null;
-let mwScene = null;
-let mwCamera = null;
-let mwMaterial = null;
-let mwMesh = null;
-let mwSampleTexture = null;
-let mwMipTexture = null;
-let mwColormapTexture = null;
-let mwCanvas = null;
-let mwTotalSamples = 0;
-let mwTextureWidth = 0;
-let mwTextureHeight = 0;
-let mwResizeObserver = null;
-let mwCachedWidth = 0;
-let mwCachedHeight = 0;
-
-function initMainWaveformOverlay() {
-    if (mwRenderer) return;
-
-    const spectrogramCanvas = document.getElementById('spectrogram');
-    if (!spectrogramCanvas) return;
-
-    // Create overlay canvas
-    mwCanvas = document.createElement('canvas');
-    mwCanvas.id = 'main-waveform-overlay';
-    mwCanvas.style.position = 'absolute';
-    mwCanvas.style.pointerEvents = 'none';
-    mwCanvas.style.zIndex = '2';
-    mwCanvas.style.background = 'transparent';
-    mwCanvas.style.display = 'none'; // Hidden until needed
-
-    const dpr = window.devicePixelRatio || 1;
-    mwCanvas.style.left = (spectrogramCanvas.offsetLeft + spectrogramCanvas.clientLeft) + 'px';
-    mwCanvas.style.top = (spectrogramCanvas.offsetTop + spectrogramCanvas.clientTop) + 'px';
-    mwCanvas.style.width = spectrogramCanvas.clientWidth + 'px';
-    mwCanvas.style.height = spectrogramCanvas.clientHeight + 'px';
-    mwCachedWidth = Math.round(spectrogramCanvas.clientWidth * dpr);
-    mwCachedHeight = Math.round(spectrogramCanvas.clientHeight * dpr);
-    mwCanvas.width = mwCachedWidth;
-    mwCanvas.height = mwCachedHeight;
-
-    spectrogramCanvas.parentElement.appendChild(mwCanvas);
-
-    // Create WebGL renderer with transparent background
-    mwRenderer = new THREE.WebGLRenderer({
-        canvas: mwCanvas,
-        antialias: false,
-        alpha: true,
-        premultipliedAlpha: false,
-        preserveDrawingBuffer: true
-    });
-    mwRenderer.setSize(mwCachedWidth, mwCachedHeight, false);
-    mwRenderer.setClearColor(0x000000, 0);
-
-    mwCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 10);
-    mwCamera.position.z = 1;
-
-    mwScene = new THREE.Scene();
-
-    // Build colormap texture (brightness-boosted)
-    mwColormapTexture = buildWaveformColormapTexture();
-
-    const lut = getColorLUT();
-    const bgR = lut ? lut[0] / 255 : 0;
-    const bgG = lut ? lut[1] / 255 : 0;
-    const bgB = lut ? lut[2] / 255 : 0;
-
-    // Same GLSL shader as minimap waveform
-    mwMaterial = new THREE.ShaderMaterial({
-        uniforms: {
-            uSamples: { value: null },
-            uMipMinMax: { value: null },
-            uColormap: { value: mwColormapTexture },
-            uTotalSamples: { value: 0.0 },
-            uTextureWidth: { value: 1.0 },
-            uTextureHeight: { value: 1.0 },
-            uMipTextureWidth: { value: 1.0 },
-            uMipTextureHeight: { value: 1.0 },
-            uMipTotalBins: { value: 0.0 },
-            uMipBinSize: { value: parseFloat(WF_MIP_BIN_SIZE) },
-            uViewportStart: { value: 0.0 },
-            uViewportEnd: { value: 1.0 },
-            uCanvasWidth: { value: parseFloat(mwCachedWidth) },
-            uCanvasHeight: { value: parseFloat(mwCachedHeight) },
-            uBackgroundColor: { value: new THREE.Vector3(bgR, bgG, bgB) },
-            uTransparentBg: { value: 0.0 }
-        },
-        vertexShader: wfVertexShader,
-        fragmentShader: wfFragmentShader,
-        transparent: true
-    });
-
-    const geometry = new THREE.PlaneGeometry(2, 2);
-    mwMesh = new THREE.Mesh(geometry, mwMaterial);
-    mwScene.add(mwMesh);
-
-    // Track spectrogram canvas resizes
-    mwResizeObserver = new ResizeObserver(() => {
-        if (!mwCanvas || !spectrogramCanvas) return;
-        const rdpr = window.devicePixelRatio || 1;
-        mwCanvas.style.left = (spectrogramCanvas.offsetLeft + spectrogramCanvas.clientLeft) + 'px';
-        mwCanvas.style.top = (spectrogramCanvas.offsetTop + spectrogramCanvas.clientTop) + 'px';
-        mwCanvas.style.width = spectrogramCanvas.clientWidth + 'px';
-        mwCanvas.style.height = spectrogramCanvas.clientHeight + 'px';
-        const w = Math.round(spectrogramCanvas.clientWidth * rdpr);
-        const h = Math.round(spectrogramCanvas.clientHeight * rdpr);
-        if (w > 0 && h > 0) {
-            mwCachedWidth = w;
-            mwCachedHeight = h;
-        }
-    });
-    mwResizeObserver.observe(spectrogramCanvas);
-
-    if (window.pm?.gpu) console.log(`Main window waveform overlay initialized (${mwCachedWidth}x${mwCachedHeight})`);
-}
-
-/**
- * Upload audio samples to the main window waveform overlay (WebGL).
- * Creates sample texture and mip min/max texture, same as minimap.
- */
-export function uploadMainWaveformData(samples, expectedTotalSamples = 0) {
-    if (!samples || samples.length === 0) return;
-
-    initMainWaveformOverlay();
-    if (!mwMaterial) return;
-
-    // Use expected total if provided (progressive loading: allocate for full duration)
-    const effectiveTotal = expectedTotalSamples > samples.length ? expectedTotalSamples : samples.length;
-    mwTotalSamples = effectiveTotal;
-    mwTextureWidth = 4096;
-    mwTextureHeight = Math.ceil(mwTotalSamples / mwTextureWidth);
-
-    const paddedLength = mwTextureWidth * mwTextureHeight;
-    const data = new Float32Array(paddedLength); // zeros = silence for unfilled portion
-    data.set(samples);
-
-    if (mwSampleTexture) mwSampleTexture.dispose();
-    mwSampleTexture = new THREE.DataTexture(data, mwTextureWidth, mwTextureHeight, THREE.RedFormat, THREE.FloatType);
-    mwSampleTexture.minFilter = THREE.NearestFilter;
-    mwSampleTexture.magFilter = THREE.NearestFilter;
-    mwSampleTexture.wrapS = THREE.ClampToEdgeWrapping;
-    mwSampleTexture.wrapT = THREE.ClampToEdgeWrapping;
-    mwSampleTexture.needsUpdate = true;
-
-    mwMaterial.uniforms.uSamples.value = mwSampleTexture;
-    mwMaterial.uniforms.uTotalSamples.value = parseFloat(mwTotalSamples);
-    mwMaterial.uniforms.uTextureWidth.value = parseFloat(mwTextureWidth);
-    mwMaterial.uniforms.uTextureHeight.value = parseFloat(mwTextureHeight);
-
-    // Build min/max mip texture
-    const mipBins = Math.ceil(mwTotalSamples / WF_MIP_BIN_SIZE);
-    const mipTexWidth = 4096;
-    const mipTexHeight = Math.ceil(mipBins / mipTexWidth);
-    const mipPadded = mipTexWidth * mipTexHeight;
-    const mipData = new Float32Array(mipPadded * 2);
-
-    const actualSampleCount = samples.length;
-    for (let bin = 0; bin < mipBins; bin++) {
-        const start = bin * WF_MIP_BIN_SIZE;
-        const end = Math.min(start + WF_MIP_BIN_SIZE, actualSampleCount);
-        if (start >= actualSampleCount) {
-            // Beyond actual data — leave as zero (silence)
-            mipData[bin * 2]     = 0;
-            mipData[bin * 2 + 1] = 0;
-            continue;
-        }
-        let mn = Infinity, mx = -Infinity;
-        for (let j = start; j < end; j++) {
-            const v = samples[j];
-            if (v < mn) mn = v;
-            if (v > mx) mx = v;
-        }
-        mipData[bin * 2]     = mn;
-        mipData[bin * 2 + 1] = mx;
-    }
-
-    if (mwMipTexture) mwMipTexture.dispose();
-    mwMipTexture = new THREE.DataTexture(mipData, mipTexWidth, mipTexHeight, THREE.RGFormat, THREE.FloatType);
-    mwMipTexture.minFilter = THREE.NearestFilter;
-    mwMipTexture.magFilter = THREE.NearestFilter;
-    mwMipTexture.wrapS = THREE.ClampToEdgeWrapping;
-    mwMipTexture.wrapT = THREE.ClampToEdgeWrapping;
-    mwMipTexture.needsUpdate = true;
-
-    mwMaterial.uniforms.uMipMinMax.value = mwMipTexture;
-    mwMaterial.uniforms.uMipTextureWidth.value = parseFloat(mipTexWidth);
-    mwMaterial.uniforms.uMipTextureHeight.value = parseFloat(mipTexHeight);
-    mwMaterial.uniforms.uMipTotalBins.value = parseFloat(mipBins);
-
-    if (window.pm?.gpu) console.log(`Main waveform overlay uploaded: ${mwTotalSamples.toLocaleString()} samples, mip: ${mipBins.toLocaleString()} bins`);
-}
-
-/**
- * Render the main window waveform overlay.
- * @param {number} viewportStart - Normalized 0-1 start of visible range
- * @param {number} viewportEnd - Normalized 0-1 end of visible range
- * @param {boolean} transparentBg - true for combination mode (overlay on spectrogram)
- */
-export function renderMainWaveform(viewportStart, viewportEnd, transparentBg = false) {
-    if (!mwRenderer || !mwScene || !mwCamera || !mwSampleTexture) return;
-
-    // Handle resize
-    const canvas = mwRenderer.domElement;
-    if (mwCachedWidth > 0 && mwCachedHeight > 0 &&
-        (canvas.width !== mwCachedWidth || canvas.height !== mwCachedHeight)) {
-        canvas.width = mwCachedWidth;
-        canvas.height = mwCachedHeight;
-        mwRenderer.setSize(mwCachedWidth, mwCachedHeight, false);
-    }
-
-    mwMaterial.uniforms.uViewportStart.value = viewportStart;
-    mwMaterial.uniforms.uViewportEnd.value = viewportEnd;
-    mwMaterial.uniforms.uCanvasWidth.value = parseFloat(mwCachedWidth);
-    mwMaterial.uniforms.uCanvasHeight.value = parseFloat(mwCachedHeight);
-    mwMaterial.uniforms.uTransparentBg.value = transparentBg ? 1.0 : 0.0;
-
-    const lut = getColorLUT();
-    if (lut) {
-        mwMaterial.uniforms.uBackgroundColor.value.set(lut[0] / 255, lut[1] / 255, lut[2] / 255);
-    }
-
-    // Show canvas and render
-    if (mwCanvas) mwCanvas.style.display = '';
-    mwRenderer.render(mwScene, mwCamera);
-}
-
-/**
- * Hide the main window waveform overlay (spectrogram-only mode).
- */
-export function hideMainWaveform() {
-    if (mwCanvas) mwCanvas.style.display = 'none';
-}
-
-/**
- * Rebuild main waveform colormap (call after colormap change).
- */
-export function rebuildMainWaveformColormap() {
-    if (!mwMaterial) return;
-    if (mwColormapTexture) mwColormapTexture.dispose();
-    mwColormapTexture = buildWaveformColormapTexture();
-    mwMaterial.uniforms.uColormap.value = mwColormapTexture;
-}
-
-/**
- * Dispose all main window waveform overlay resources.
- */
-export function disposeMainWaveform() {
-    if (mwSampleTexture) { mwSampleTexture.dispose(); mwSampleTexture = null; }
-    if (mwMipTexture) { mwMipTexture.dispose(); mwMipTexture = null; }
-    if (mwColormapTexture) { mwColormapTexture.dispose(); mwColormapTexture = null; }
-    if (mwMesh) { mwMesh.geometry.dispose(); if (mwScene) mwScene.remove(mwMesh); mwMesh = null; }
-    if (mwMaterial) { mwMaterial.dispose(); mwMaterial = null; }
-    if (mwResizeObserver) { mwResizeObserver.disconnect(); mwResizeObserver = null; }
-    if (mwCanvas) { mwCanvas.remove(); mwCanvas = null; }
-    if (mwRenderer) { mwRenderer.dispose(); mwRenderer = null; }
-    mwScene = null;
-    mwCamera = null;
-    mwTotalSamples = 0;
-    mwTextureWidth = 0;
-    mwTextureHeight = 0;
-    mwCachedWidth = 0;
-    mwCachedHeight = 0;
-}
-
-/**
- * Check if main window waveform has data uploaded.
- */
-export function isMainWaveformReady() {
-    return !!(mwRenderer && mwSampleTexture);
-}
 
 /**
  * Check if we're in an EMIC windowed mode (scroll or page-turn, NOT region creation)
@@ -1538,7 +1314,7 @@ function normalize(data) {
     return normalized;
 }
 
-export function drawWaveform() {
+export async function drawWaveform() {
     const samplesLength = State.getCompleteSamplesLength();
     if (samplesLength === 0) {
         console.log(`⚠️ drawWaveform() aborted: no data`);
@@ -1561,12 +1337,12 @@ export function drawWaveform() {
 
     // Upload samples to GPU texture (the shader handles everything)
     const samples = State.completeSamplesArray || State.getCompleteSamplesArray();
-    uploadWaveformSamples(samples);
+    await uploadWaveformSamples(samples);
 
     // Compute viewport from zoom state and render with current minimap mode
     const viewport = getWaveformViewport();
     const mode = getMinimapMode();
-    renderMinimapWithMode(mode, viewport.start, viewport.end);
+    await renderMinimapWithMode(mode, viewport.start, viewport.end);
 
     // Draw axes
     positionWaveformAxisCanvas();
@@ -1588,19 +1364,19 @@ export function drawWaveform() {
     showMobileTapHint();
 }
 
-export function drawWaveformFromMinMax() {
+export async function drawWaveformFromMinMax() {
     // GPU path: just re-render with current viewport
     if (!wfRenderer || !wfSampleTexture) {
         // Fallback: if GPU not initialized yet, trigger full drawWaveform
         if (State.getCompleteSamplesLength() > 0) {
-            drawWaveform();
+            await drawWaveform();
         }
         return;
     }
 
     const viewport = getWaveformViewport();
     const mode = getMinimapMode();
-    renderMinimapWithMode(mode, viewport.start, viewport.end);
+    await renderMinimapWithMode(mode, viewport.start, viewport.end);
 
     // Draw axes
     positionWaveformAxisCanvas();
@@ -1622,7 +1398,7 @@ export function drawWaveformFromMinMax() {
  * Draw waveform with smooth zoom interpolation during transitions.
  * GPU path: compute interpolated viewport from timestamp range, render.
  */
-export function drawInterpolatedWaveform() {
+export async function drawInterpolatedWaveform() {
     if (!wfRenderer || !wfSampleTexture) return;
     if (!State.dataStartTime || !State.dataEndTime) return;
 
@@ -1642,7 +1418,7 @@ export function drawInterpolatedWaveform() {
     const viewportEnd = (interpEndMs - dataStartMs) / dataDurationMs;
 
     const mode = getMinimapMode();
-    renderMinimapWithMode(mode, viewportStart, viewportEnd);
+    await renderMinimapWithMode(mode, viewportStart, viewportEnd);
 
     // Overlays track the same interpolated range
     drawWaveformOverlays();
@@ -3005,7 +2781,7 @@ export function changeWaveformFilter() {
         if (State.spectrogramInitialized) {
             console.log(`  🔺 Rebuilding spectrogram from de-trended data...`);
             import('./spectrogram-pyramid.js').then(({ disposePyramid }) => {
-                import('./spectrogram-three-renderer.js').then(({ resetSpectrogramState, renderCompleteSpectrogram }) => {
+                import('./main-window-renderer.js').then(({ resetSpectrogramState, renderCompleteSpectrogram }) => {
                     disposePyramid();
                     resetSpectrogramState();
                     renderCompleteSpectrogram();

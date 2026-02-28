@@ -7,13 +7,13 @@ import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate, getYPositionForFrequencyScaled, getScaleTransitionState, getLogScaleMinFreq } from './spectrogram-axis-renderer.js';
 import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions, getStandaloneFeatures, saveStandaloneFeatures, startFrequencySelection, zoomToRegion, getFlatFeatureNumber, deleteRegion, deleteStandaloneFeature, deleteSpecificFeature, renderStandaloneFeaturesList, updateFeature } from './region-tracker.js';
-import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, resetSpectrogramState, updateElasticFriendInBackground, onColormapChanged, setScrollZoomHiRes } from './spectrogram-three-renderer.js';
+import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, resetSpectrogramState, updateElasticFriendInBackground, onColormapChanged, setScrollZoomHiRes } from './main-window-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { isStudyMode } from './master-modes.js';
 import { getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { animateScaleTransition } from './spectrogram-axis-renderer.js';
-import { startPlaybackIndicator, buildWaveformColorLUT, drawWaveformFromMinMax, rebuildWaveformColormapTexture } from './waveform-renderer.js';
+import { startPlaybackIndicator, buildWaveformColorLUT, drawWaveformFromMinMax, rebuildWaveformColormapTexture } from './minimap-window-renderer.js';
 import { seekToPosition, pausePlayback, getCurrentPosition } from './audio-player.js';
 import { setColormap, getCurrentColormap, updateAccentColors } from './colormaps.js';
 
@@ -2342,7 +2342,7 @@ export function setupSpectrogramSelection() {
                 Promise.all([
                     import('./audio-player.js'),
                     import('./spectrogram-playhead.js'),
-                    import('./waveform-renderer.js')
+                    import('./minimap-window-renderer.js')
                 ]).then(([audioPlayer, playhead, waveform]) => {
                     audioPlayer.seekToPosition(clamped, true);
                     playhead.drawSpectrogramPlayhead();
@@ -2653,7 +2653,7 @@ export function setupSpectrogramSelection() {
                     Promise.all([
                         import('./audio-player.js'),
                         import('./spectrogram-playhead.js'),
-                        import('./waveform-renderer.js')
+                        import('./minimap-window-renderer.js')
                     ]).then(([audioPlayer, playhead, waveform]) => {
                         audioPlayer.seekToPosition(clamped, true);
                         playhead.drawSpectrogramPlayhead();

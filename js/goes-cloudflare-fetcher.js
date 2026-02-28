@@ -11,14 +11,14 @@
 
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
-import { updatePlaybackIndicator, drawWaveform, startPlaybackIndicator } from './waveform-renderer.js';
+import { updatePlaybackIndicator, drawWaveform, startPlaybackIndicator } from './minimap-window-renderer.js';
 import { updatePlaybackSpeed } from './audio-player.js';
 import { updatePlaybackDuration } from './ui-controls.js';
 import { drawFrequencyAxis, positionAxisCanvas, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
 import { drawWaveformAxis, positionWaveformAxisCanvas } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
 import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas } from './spectrogram-x-axis-renderer.js';
-import { renderProgressiveSpectrogram, resetProgressiveSpectrogram } from './spectrogram-three-renderer.js';
+import { renderProgressiveSpectrogram, resetProgressiveSpectrogram } from './main-window-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { updateCompleteButtonState, loadRegionsAfterDataFetch } from './region-tracker.js';
 import { isTutorialActive } from './tutorial-state.js';

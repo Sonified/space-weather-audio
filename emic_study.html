@@ -764,7 +764,7 @@
         const tileCompressionSelect = document.getElementById('tileCompression');
         if (tileCompressionSelect) {
             window.addEventListener('spectrogram-ready', async () => {
-                const { isTileBC4Supported, getTileCompression, setTileCompression } = await import('./js/spectrogram-three-renderer.js');
+                const { isTileBC4Supported, getTileCompression, setTileCompression } = await import('./js/main-window-renderer.js');
                 if (!isTileBC4Supported()) {
                     const bc4Option = tileCompressionSelect.querySelector('option[value="bc4"]');
                     if (bc4Option) {

@@ -5,8 +5,8 @@
 
 import * as State from './audio-state.js';
 import { zoomState } from './zoom-state.js';
-import { drawInterpolatedWaveform, drawWaveformWithSelection } from './waveform-renderer.js';
-import { drawInterpolatedSpectrogram, updateSpectrogramViewport, cancelActiveRender } from './spectrogram-three-renderer.js';
+import { drawInterpolatedWaveform, drawWaveformWithSelection } from './minimap-window-renderer.js';
+import { drawInterpolatedSpectrogram, updateSpectrogramViewport, cancelActiveRender } from './main-window-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { drawSpectrogramPlayhead } from './spectrogram-playhead.js';
 import { redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';

@@ -14,11 +14,11 @@
 
 import * as State from './audio-state.js';
 import { isTouchDevice, isMobileScreen } from './audio-state.js';
-import { drawWaveformWithSelection, updatePlaybackIndicator, drawWaveformFromMinMax } from './waveform-renderer.js';
+import { drawWaveformWithSelection, updatePlaybackIndicator, drawWaveformFromMinMax } from './minimap-window-renderer.js';
 import { togglePlayPause, seekToPosition, updateWorkletSelection } from './audio-player.js';
 import { zoomState } from './zoom-state.js';
 import { getCurrentPlaybackBoundaries } from './playback-boundaries.js';
-import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState, cacheFullSpectrogram, clearCachedFullSpectrogram, cacheZoomedSpectrogram, clearCachedZoomedSpectrogram, updateSpectrogramViewport, restoreInfiniteCanvasFromCache, cancelActiveRender, shouldCancelActiveRender, clearSmartRenderBounds, activateRegionTexture } from './spectrogram-three-renderer.js';
+import { renderCompleteSpectrogramForRegion, renderCompleteSpectrogram, resetSpectrogramState, cacheFullSpectrogram, clearCachedFullSpectrogram, cacheZoomedSpectrogram, clearCachedZoomedSpectrogram, updateSpectrogramViewport, restoreInfiniteCanvasFromCache, cancelActiveRender, shouldCancelActiveRender, clearSmartRenderBounds, activateRegionTexture } from './main-window-renderer.js';
 import { animateZoomTransition, getInterpolatedTimeRange, getRegionOpacityProgress, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange, drawWaveformXAxis } from './waveform-x-axis-renderer.js';
 import { drawSpectrogramXAxis } from './spectrogram-x-axis-renderer.js';
 import { initButtonsRenderer } from './waveform-buttons-renderer.js';
@@ -1108,7 +1108,7 @@ export { drawRegionButtons, positionWaveformButtonsCanvas, resizeWaveformButtons
 
 /**
  * Draw region highlights on waveform canvas (NO buttons - buttons are on separate overlay)
- * Called from waveform-renderer after drawing waveform
+ * Called from minimap-window-renderer after drawing waveform
  * Uses EXACT same approach as yellow selection box
  */
 export function drawRegionHighlights(ctx, canvasWidth, canvasHeight) {
