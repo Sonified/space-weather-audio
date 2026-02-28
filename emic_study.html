@@ -235,33 +235,19 @@
             border-color: #007bff;
         }
 
-        /* ── Thinner, darker toolbars for EMIC ── */
-        .panel-playback {
-            background: rgba(30, 30, 45, 0.85) !important;
-            border: 1px solid rgba(255, 255, 255, 0.08) !important;
-            border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.3) !important;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
-            padding: 5px 12px !important;
-            backdrop-filter: blur(8px);
+        /* Playback bar: hidden-scrollbar horizontal scroll */
+        .panel-playback > div {
+            overflow-x: auto;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
         }
-        .panel-playback::before {
-            display: none; /* Kill the heavy gradient overlay */
-        }
-        .panel-playback label {
-            font-size: 13px;
-            color: #c0c0d0;
-        }
-        .panel-playback button {
-            font-size: 13px;
-            padding: 4px 10px;
-        }
-        .panel-playback select,
-        .panel-playback input[type="range"] {
-            font-size: 13px;
+        .panel-playback > div::-webkit-scrollbar {
+            display: none;
         }
 
-        /* Bottom viz-controls bar */
+        /* Questionnaires panel: visible horizontal scroll */
+
+        /* Bottom viz-controls bar — compact styling */
         .viz-controls {
             gap: 18px !important;
         }
@@ -276,26 +262,6 @@
             color: #e0e0e8;
             border: 1px solid rgba(255, 255, 255, 0.15) !important;
             border-radius: 3px;
-        }
-
-        /* Thin subtle scrollbars for both bars */
-        .panel-playback > div::-webkit-scrollbar,
-        .viz-controls::-webkit-scrollbar {
-            height: 3px;
-        }
-        .panel-playback > div::-webkit-scrollbar-track,
-        .viz-controls::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        .panel-playback > div::-webkit-scrollbar-thumb,
-        .viz-controls::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.15);
-            border-radius: 2px;
-        }
-        .panel-playback > div,
-        .viz-controls {
-            scrollbar-width: thin;
-            scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
         }
     </style>
 </head>
@@ -425,7 +391,7 @@
         
         <!-- Playback Controls -->
         <div class="panel panel-playback">
-            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: nowrap; width: 100%; box-sizing: border-box; overflow-x: auto;">
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: nowrap; width: 100%; box-sizing: border-box;">
                 <button type="button" id="playPauseBtn" disabled style="width: 135px; min-width: 135px;">⏸️ Pause</button>
                 <button type="button" id="loopBtn" disabled style="width: 135px; min-width: 135px;">🔁 Loop</button>
                 <div style="display: none; align-items: center; flex: 1 1 auto; min-width: 180px; max-width: min(450px, 100%); gap: 10px; padding: 0 15px;">
@@ -475,7 +441,7 @@
 
             <!-- Main Window gear (content injected by main.js) -->
             <div class="panel-gear" id="mainWindowGear"></div>
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 30px; margin-top: 8px; padding-top: 4px; padding-bottom: 0; padding-left: 8px; padding-right: 40px; flex-wrap: nowrap; overflow-x: auto;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px 30px; margin-top: 8px; padding-top: 4px; padding-bottom: 0; padding-left: 8px; padding-right: 40px; flex-wrap: wrap;">
                 <div id="oscilloscope-panel" style="display: block; pointer-events: none;">
                     <div style="position: relative; border-radius: 5px; padding: 4px; background: linear-gradient(135deg, rgba(40, 40, 70, 0.85) 0%, rgba(25, 25, 55, 0.8) 100%); box-shadow: 0 0 5px rgba(102, 126, 234, 0.2), inset 0 0 20px rgba(80, 90, 130, 0.5);">
                         <canvas id="oscilloscope" width="106" height="28" style="display: block; width: 106px; height: 28px; border-radius: 2px; background: rgba(3, 3, 8, 0.98);"></canvas>
@@ -494,7 +460,7 @@
                 </div>
                 <!-- Hidden checkbox kept for JS compatibility -->
                 <input type="checkbox" id="advancedMode" style="display:none;">
-                <div class="viz-controls" style="display: flex; align-items: center; gap: 30px; margin-left: auto; flex-wrap: nowrap; overflow-x: auto;">
+                <div class="viz-controls" style="display: flex; align-items: center; gap: 18px; margin-left: auto; flex-wrap: wrap;">
                     <div style="display: none;">
                         <input type="checkbox" id="playOnClick" checked>
                     </div>
@@ -560,19 +526,19 @@
         
         <!-- Questionnaires Panel -->
         <div class="panel" id="questionnairesPanel" style="padding: 10px 15px; background: var(--accent-bg); border: 2px solid rgba(255, 255, 255, 0.12); display: none;">
-            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; overflow-x: auto;">
                 <label style="font-size: var(--panel-label-size); font-weight: 600; color: #888; white-space: nowrap;">Questionnaires:</label>
-                <button type="button" id="backgroundQuestionBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px;">📋 Background</button>
-                <button type="button" id="dataAnalysisQuestionBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px;">📋 Data Analysis Experience</button>
-                <button type="button" id="musicalExperienceQuestionBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px;">📋 Musical Experience</button>
-                <button type="button" id="feedbackQuestionBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px;">📋 Feedback</button>
-                <button type="button" id="referralQuestionBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px;">📋 How Did You Learn?</button>
-                <button type="button" id="submissionCompleteBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px;">📋 Submission Complete</button>
+                <button type="button" id="backgroundQuestionBtn" class="emic-btn" style="padding: 4px 12px; font-size: 12px;">📋 Background</button>
+                <button type="button" id="dataAnalysisQuestionBtn" class="emic-btn" style="padding: 4px 12px; font-size: 12px;">📋 Data Analysis Experience</button>
+                <button type="button" id="musicalExperienceQuestionBtn" class="emic-btn" style="padding: 4px 12px; font-size: 12px;">📋 Musical Experience</button>
+                <button type="button" id="feedbackQuestionBtn" class="emic-btn" style="padding: 4px 12px; font-size: 12px;">📋 Feedback</button>
+                <button type="button" id="referralQuestionBtn" class="emic-btn" style="padding: 4px 12px; font-size: 12px;">📋 How Did You Learn?</button>
+                <button type="button" id="submissionCompleteBtn" class="emic-btn" style="padding: 4px 12px; font-size: 12px;">📋 Submission Complete</button>
                 <div id="dlAudioGroup" style="margin-left: auto; display: none; align-items: center; gap: 6px;">
                     <label style="font-size: var(--panel-label-size); font-weight: 600; color: #888; white-space: nowrap;">Download Audio:</label>
-                    <button type="button" id="dlCurrentViewBtn" class="emic-btn" style="padding: 6px 12px; font-size: 13px;">Current View</button>
-                    <button type="button" id="dlCurrentComponentBtn" class="emic-btn" style="padding: 6px 12px; font-size: 13px;">Current Component</button>
-                    <button type="button" id="dlAllComponentsBtn" class="emic-btn" style="padding: 6px 12px; font-size: 13px;">All Components</button>
+                    <button type="button" id="dlCurrentViewBtn" class="emic-btn" style="padding: 4px 10px; font-size: 11px;">Current View</button>
+                    <button type="button" id="dlCurrentComponentBtn" class="emic-btn" style="padding: 4px 10px; font-size: 11px;">Current Component</button>
+                    <button type="button" id="dlAllComponentsBtn" class="emic-btn" style="padding: 4px 10px; font-size: 11px;">All Components</button>
                 </div>
             </div>
         </div>
