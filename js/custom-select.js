@@ -29,10 +29,6 @@ class CustomSelect {
     _build() {
         const sel = this.select;
 
-        // Hide native select (keep in DOM for form/value compat)
-        sel.classList.add('csel-native');
-        sel.inert = true;
-
         // Wrapper
         this.wrapper = document.createElement('div');
         this.wrapper.className = 'csel';
@@ -67,9 +63,6 @@ class CustomSelect {
         this.options = [];
         this._buildOptions();
 
-        this.wrapper.appendChild(this.trigger);
-        document.body.appendChild(this.menu);
-
         // Transfer inline width from native select to wrapper
         const inlineWidth = sel.style.width;
         if (inlineWidth) {
@@ -78,12 +71,30 @@ class CustomSelect {
             this.wrapper.style.minWidth = inlineWidth;
         }
 
-        // Insert wrapper after select
-        sel.parentNode.insertBefore(this.wrapper, sel.nextSibling);
-        // Move native select inside wrapper (for positioning context)
-        this.wrapper.appendChild(sel);
+        // Also transfer min-width
+        const inlineMinWidth = sel.style.minWidth;
+        if (inlineMinWidth) {
+            this.wrapper.style.minWidth = inlineMinWidth;
+        }
 
         this._syncLabel();
+
+        // Assemble the complete wrapper off-DOM, then swap in one mutation
+        sel.classList.add('csel-native');
+        sel.inert = true;
+        this.wrapper.appendChild(this.trigger);
+
+        // Capture position before moving sel out of the DOM
+        const parent = sel.parentNode;
+        const next = sel.nextSibling;
+
+        // Build complete tree off-DOM (sel moves into wrapper)
+        this.wrapper.appendChild(sel);
+
+        // Single DOM insertion: place the fully-assembled wrapper
+        parent.insertBefore(this.wrapper, next);
+
+        document.body.appendChild(this.menu);
     }
 
     _getLabel() {

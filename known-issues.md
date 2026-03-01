@@ -8,6 +8,23 @@ The spectrogram rendering does not align temporally with the time series wavefor
 
 Edges of spectrogram tiles are not aligning correctly, causing visible seams or discontinuities.
 
+## CustomSelect: layout jiggle on page load (FOUC)
+
+When the page loads, native `<select>` elements render first, then `upgradeAllSelects()` swaps each one into a `CustomSelect` wrapper. Despite matching the native select's dimensions (`appearance: none`, `height: 28px`, SVG arrow) and using a single-mutation DOM swap (`insertBefore` with pre-assembled wrapper), there is still a visible jiggle — labels like "Component:" and the de-trend checkbox shift vertically during the upgrade.
+
+**Root cause**: The CustomSelect swap involves removing the native select from the flow and inserting a wrapper div + trigger button in its place. Even as a single DOM mutation, the browser re-computes flex layout for the row, and subtle differences (inline-block wrapper vs replaced element select, button baseline vs select baseline) cause a 1-2px vertical shift.
+
+**Attempted fixes that did not resolve**:
+- Matching native `select` height/padding/font/arrow to `.csel-trigger` exactly
+- `appearance: none` + custom SVG arrow on native select
+- `min-height` on the parent flex container
+- Single-mutation DOM swap (build wrapper off-DOM, `insertBefore` once)
+
+**Possible future approaches**:
+- Render CustomSelect server-side / in HTML (no JS swap at all)
+- Use CSS `contain: layout` on the parent row to prevent reflow propagation
+- Hide the entire controls bar until `upgradeAllSelects()` completes, then fade in
+
 ---
 
 ## Resolved
