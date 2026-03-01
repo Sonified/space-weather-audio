@@ -30,7 +30,7 @@ import { modalManager } from './modal-manager.js';
 import { getStandaloneFeatures } from './region-tracker.js';
 import { getParticipantId, storeParticipantId } from './qualtrics-api.js';
 import { uploadEmicSubmission, syncEmicProgress } from './data-uploader.js';
-import { EMIC_FLAGS, setEmicFlag, clearAllEmicFlags, updateActiveFeatureCount } from './emic-study-flags.js';
+import { EMIC_FLAGS, getEmicFlag, setEmicFlag, clearAllEmicFlags, updateActiveFeatureCount } from './emic-study-flags.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FLOW LOGGING
@@ -73,6 +73,15 @@ export function initSimulateFlow() {
             startFlow();
         }
     });
+
+    // If the page was refreshed mid-flow, restore Cancel Flow button state
+    if (getEmicFlag(EMIC_FLAGS.IS_SIMULATING)) {
+        flowRunning = true;
+        btn.textContent = 'Cancel Flow';
+        btn.style.backgroundColor = '#dc3545';
+        btn.style.background = '#dc3545';
+        flowLog('Restored Cancel Flow button after page refresh');
+    }
 
     // Hook into display mode changes to show/hide button
     const displayModeSelect = document.getElementById('displayMode');
@@ -223,7 +232,7 @@ async function startFlow() {
     // Update button to Cancel state
     const btn = document.getElementById('simulateFlowBtn');
     if (btn) {
-        btn.textContent = 'Cancel';
+        btn.textContent = 'Cancel Flow';
         btn.style.backgroundColor = '#dc3545';
         btn.style.background = '#dc3545';
     }
@@ -271,8 +280,25 @@ async function startFlow() {
     resetQuestionnaireInputs();
 
     try {
+        // Disable auto-play so audio doesn't start during simulation
+        const autoPlayCb = document.getElementById('autoPlay');
+        if (autoPlayCb && autoPlayCb.checked) {
+            autoPlayCb.checked = false;
+            autoPlayCb.dispatchEvent(new Event('change'));
+        }
+
         // ─── Step 2: Login Modal ─────────────────────────────────────────
         flowLog('Login modal shown');
+
+        // Fire off the data download immediately while user reads the login modal
+        const startBtn = document.getElementById('startBtn');
+        if (startBtn && !startBtn.disabled) {
+            startBtn.click();
+            flowLog('Triggered background data fetch (startBtn clicked)');
+        } else {
+            flowLog('startBtn not available for background fetch');
+        }
+
         await openLoginWithTestUser(testUsername);
         studyStartTime = new Date().toISOString();
         setEmicFlag(EMIC_FLAGS.HAS_REGISTERED);
@@ -283,15 +309,6 @@ async function startFlow() {
 
         // ─── Step 3: Welcome Modal ───────────────────────────────────────
         flowLog('Welcome modal shown');
-
-        // Trigger background data download while user reads the welcome text
-        const startBtn = document.getElementById('startBtn');
-        if (startBtn && !startBtn.disabled) {
-            startBtn.click();
-            flowLog('Triggered background data fetch (startBtn clicked)');
-        } else {
-            flowLog('startBtn not available for background fetch');
-        }
 
         await waitForModalToAppearAndClose('welcomeModal');
         setEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME);
@@ -461,12 +478,6 @@ function waitForModalToAppearAndClose(modalId) {
             }
         });
         appearObserver.observe(modal, { attributes: true, attributeFilter: ['style'] });
-
-        // Timeout fallback — if welcome doesn't appear in 3s, continue
-        setTimeout(() => {
-            appearObserver.disconnect();
-            resolve();
-        }, 3000);
 
         function waitForClose() {
             const closeObserver = new MutationObserver(() => {
