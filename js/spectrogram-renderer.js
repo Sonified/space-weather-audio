@@ -2202,7 +2202,7 @@ export function setupSpectrogramSelection() {
     spectrogramVisibilityHandler = () => {
         if (document.visibilityState === 'visible') {
             // 🔍 DEBUG: Log zoom state after sleep/wake
-            console.log('👁️ [SLEEP WAKE] Page visible again - checking zoom state:', {
+            if (window.pm?.render) console.log('👁️ [SLEEP WAKE] Page visible again - checking zoom state:', {
                 zoomStateInitialized: zoomState.isInitialized(),
                 isInRegion: zoomState.isInitialized() ? zoomState.isInRegion() : 'N/A (not initialized)',
                 zoomMode: zoomState.isInitialized() ? zoomState.mode : 'N/A',
@@ -2212,13 +2212,13 @@ export function setupSpectrogramSelection() {
             
             // Just became visible (e.g., woke from sleep) - clean up immediately!
             if (spectrogramSelectionActive || spectrogramSelectionBox) {
-                console.log('👁️ Page visible again - cleaning up any stuck selection state');
+                if (window.pm?.render) console.log('👁️ Page visible again - cleaning up any stuck selection state');
                 cancelSpectrogramSelection();
             }
             // 🔥 SLEEP FIX: Also reset any stale mouse coordinates that might break tracking
             // After sleep, browser mouse events can be in a weird state
             if (!spectrogramSelectionActive && (spectrogramStartX !== null || spectrogramCurrentX !== null)) {
-                console.log('👁️ Page visible again - resetting stale mouse coordinates after sleep');
+                if (window.pm?.render) console.log('👁️ Page visible again - resetting stale mouse coordinates after sleep');
                 spectrogramStartX = null;
                 spectrogramStartY = null;
                 spectrogramCurrentX = null;
@@ -2356,7 +2356,7 @@ export function setupSpectrogramSelection() {
         // Don't cancel and return - just clean up silently and start fresh
         let wasCleaningUp = false;
         if (spectrogramSelectionActive || spectrogramSelectionBox) {
-            console.log('🧹 Cleaning up stale selection state before starting new one');
+            if (window.pm?.interaction) console.log('🧹 Cleaning up stale selection state before starting new one');
             wasCleaningUp = true;
 
             // Clear any existing timeout

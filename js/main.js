@@ -4320,13 +4320,13 @@ async function initializeMainApp() {
                 const visibilityChangeHandler = () => {
                     if (document.hidden) {
                         // Aggressive cleanup when hidden - save memory, stop animations
-                        console.log('💤 Page hidden - aggressive cleanup');
+                        if (window.pm?.render) console.log('💤 Page hidden - aggressive cleanup');
                         audioPlayerModule.cancelAllRAFLoops();
                         axisModule.cancelScaleTransitionRAF();
                         cleanupSpectrogramSelection(); // Destroy canvas overlay
                     } else {
                         // Page visible again - recreate everything and restore state
-                        console.log('👁️ Page visible again - recreating canvas and restoring state');
+                        if (window.pm?.render) console.log('👁️ Page visible again - recreating canvas and restoring state');
                         
                         // Recreate spectrogram selection canvas
                         setupSpectrogramSelection();

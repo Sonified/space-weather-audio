@@ -941,7 +941,7 @@ export function startMemoryMonitoring() {
         if (Date.now() - startTime >= FIVE_MINUTES && memoryMonitorInterval) {
             clearInterval(memoryMonitorInterval);
             memoryMonitorInterval = setInterval(memoryHealthCheck, 60000);
-            console.log('Memory monitoring: switching to 60s interval');
+            if (window.pm?.memory) console.log('Memory monitoring: switching to 60s interval');
         }
     }, 30000);
     memoryHealthCheck();
