@@ -1019,15 +1019,12 @@ export function setupModalEventListeners() {
 
                 // Register the username (claim it) - skip for local environment
                 // Exception: EMIC study always registers (even localhost) so heartbeats + syncs work
+                // Fire-and-forget: don't block modal close on network round-trip
                 const { isEmicStudyMode: isEmic } = await import('./master-modes.js');
                 if (username && isUsernameAvailable && (!isLocalEnvironment() || isEmic())) {
-                    try {
-                        await registerUsername(username);
-                        console.log('✅ Username registered:', username);
-                    } catch (error) {
-                        // If registration fails (e.g., race condition), still proceed
-                        console.warn('Username registration failed (may already be taken):', error);
-                    }
+                    registerUsername(username)
+                        .then(() => console.log('✅ Username registered:', username))
+                        .catch(error => console.warn('Username registration failed (may already be taken):', error));
                 } else if (username && isLocalEnvironment()) {
                     console.log('🏠 Local mode: username stored locally only (not registered to production)');
                 }
