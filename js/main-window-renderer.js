@@ -9,7 +9,7 @@
  */
 
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.webgpu.js';
-import { texture as tslTexture, vec2, vec4, uniform, float, select, uv, log2 as tslLog2, pow as tslPow, Fn, Loop, If, Break, min as tslMin, max as tslMax, floor as tslFloor, ceil as tslCeil, clamp as tslClamp, abs as tslAbs, int } from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.webgpu.js';
+import { texture as tslTexture, vec2, vec4, uniform, float, select, uv, log2 as tslLog2, pow as tslPow, Fn, Loop, If, Break, min as tslMin, max as tslMax, floor as tslFloor, ceil as tslCeil, clamp as tslClamp, abs as tslAbs, int, fwidth, smoothstep } from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.webgpu.js';
 
 import * as State from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, initializeAxisPlaybackRate, getLogScaleMinFreq } from './spectrogram-axis-renderer.js';
@@ -227,6 +227,20 @@ let crossfadePower = 1.0;             // 1=linear (trilinear), 2=S-curve, 4+=sha
 
 export function setLevelTransitionMode(mode) { levelTransitionMode = mode; }
 export function setCrossfadePower(power) { crossfadePower = power; }
+// Pending catmull settings (applied when uniforms are created)
+let pendingCatmull = { enabled: false, threshold: 128, core: 1.0, feather: 1.0 };
+export function setCatmullSettings({ enabled, threshold, core, feather }) {
+    if (enabled !== undefined) pendingCatmull.enabled = enabled;
+    if (threshold !== undefined) pendingCatmull.threshold = parseFloat(threshold);
+    if (core !== undefined) pendingCatmull.core = parseFloat(core);
+    if (feather !== undefined) pendingCatmull.feather = parseFloat(feather);
+    if (wfUCatmullEnabled) wfUCatmullEnabled.value = pendingCatmull.enabled ? 1.0 : 0.0;
+    if (wfUCatmullThreshold) wfUCatmullThreshold.value = pendingCatmull.threshold;
+    if (wfUCatmullCore) wfUCatmullCore.value = pendingCatmull.core;
+    if (wfUCatmullFeather) wfUCatmullFeather.value = pendingCatmull.feather;
+    // Re-render so the change is visible immediately
+    if (wfUCatmullEnabled) renderFrame();
+}
 
 // Waveform (time series) — TSL material renders on same WebGPU canvas as spectrogram
 let waveformMesh = null;
@@ -258,6 +272,11 @@ let wfUMipTotalBins = null;
 let wfUMipBinSize = null;
 let wfUTransparentBg = null;
 let wfUActualSamples = null;
+// Catmull-Rom smooth curve uniforms (controlled by hamburger menu)
+let wfUCatmullEnabled = null;   // 0.0 = off (default), 1.0 = on
+let wfUCatmullThreshold = null; // spp threshold to switch to smooth curve
+let wfUCatmullCore = null;      // solid core radius in pixels
+let wfUCatmullFeather = null;   // feather radius in pixels
 
 // Grey overlay for zoomed-out mode
 let spectrogramOverlay = null;
@@ -421,6 +440,10 @@ async function initThreeScene() {
         wfUMipBinSize = uniform(parseFloat(WF_MIP_BIN_SIZE));
         wfUTransparentBg = uniform(0.0);
         wfUActualSamples = uniform(0.0);
+        wfUCatmullEnabled = uniform(pendingCatmull.enabled ? 1.0 : 0.0);
+        wfUCatmullThreshold = uniform(pendingCatmull.threshold);
+        wfUCatmullCore = uniform(pendingCatmull.core);
+        wfUCatmullFeather = uniform(pendingCatmull.feather);
 
         // Placeholder textures (replaced when audio loads)
         wfSampleTexture = new THREE.DataTexture(
@@ -462,6 +485,29 @@ async function initThreeScene() {
             return wfMipTexNode.uv(mUV);
         });
 
+        // ─── Catmull-Rom interpolation for smooth waveform curves ─────────
+        const catmullRomTSL = Fn(([samplePos]) => {
+            const lastIdx = wfUActualSamples.sub(1.0);
+            const idx = tslFloor(tslClamp(samplePos, float(0.0), lastIdx));
+            const frac = tslClamp(samplePos.sub(idx), float(0.0), float(1.0));
+
+            const s0 = getSampleTSL(tslClamp(idx.sub(1.0), float(0.0), lastIdx));
+            const s1 = getSampleTSL(tslClamp(idx,          float(0.0), lastIdx));
+            const s2 = getSampleTSL(tslClamp(idx.add(1.0), float(0.0), lastIdx));
+            const s3 = getSampleTSL(tslClamp(idx.add(2.0), float(0.0), lastIdx));
+
+            const t = frac;
+            const t2 = t.mul(t);
+            const t3 = t2.mul(t);
+
+            return float(0.5).mul(
+                float(2.0).mul(s1)
+                .add(s2.sub(s0).mul(t))
+                .add(s0.mul(2.0).sub(s1.mul(5.0)).add(s2.mul(4.0)).sub(s3).mul(t2))
+                .add(s0.negate().add(s1.mul(3.0)).sub(s2.mul(3.0)).add(s3).mul(t3))
+            );
+        });
+
         // ─── TSL waveform fragment shader ─────────────────────────────────
         // Per-pixel min/max: mip bins when zoomed out, raw samples when zoomed in.
         const waveformColorFn = Fn(() => {
@@ -477,9 +523,17 @@ async function initThreeScene() {
             const minVal = float(1.0).toVar();
             const maxVal = float(-1.0).toVar();
 
-            If(spp.greaterThan(wfUMipBinSize).and(wfUMipTotalBins.greaterThan(0.0)), () => {
+            // When Catmull-Rom enabled: MIP above threshold, smooth curve below
+            // When disabled: original behavior (MIP + raw scan all the way down)
+            const useCatmull = wfUCatmullEnabled.greaterThan(0.5).and(spp.lessThanEqual(wfUCatmullThreshold));
+            If(useCatmull, () => {
+                // Catmull-Rom smooth curve
+                const pixelCenter = pixelStart.add(spp.mul(0.5));
+                const curveVal = catmullRomTSL(pixelCenter);
+                minVal.assign(curveVal);
+                maxVal.assign(curveVal);
+            }).ElseIf(spp.greaterThan(wfUMipBinSize).and(wfUMipTotalBins.greaterThan(0.0)), () => {
                 // Zoomed out: read pre-computed min/max bins
-                // round (not ceil) so bins only included when pixel overlaps by ≥ half
                 const binStart = tslFloor(tslMax(pixelStart.div(wfUMipBinSize).add(0.5), float(0.0)));
                 const binEnd = tslMax(binStart.add(1.0), tslFloor(pixelEnd.div(wfUMipBinSize).add(0.5)));
                 const binEndClamped = tslMin(binEnd, wfUMipTotalBins);
@@ -491,7 +545,7 @@ async function initThreeScene() {
                     maxVal.assign(tslMax(maxVal, mm.g));
                 });
             }).Else(() => {
-                // Zoomed in: scan raw samples
+                // Raw sample scan (original fallback)
                 const startIdx = tslFloor(tslMax(pixelStart, float(0.0)));
                 const endIdx = tslCeil(tslMin(pixelEnd, wfUActualSamples));
                 const count = endIdx.sub(startIdx);
@@ -504,6 +558,19 @@ async function initThreeScene() {
             });
 
             const amplitude = vuv.y.sub(0.5).mul(2.0);
+
+            const peakAmp = tslMax(tslAbs(minVal), tslAbs(maxVal));
+            const normalized = tslClamp(peakAmp, 0, 1);
+            const cmapColor = wfCmapTexNode.uv(vec2(normalized, float(0.5)));
+            const wfColor = vec4(cmapColor.r, cmapColor.g, cmapColor.b, float(1.0));
+
+            const centerThickness = float(1.0).div(wfUCanvasHeight);
+            const isCenterLine = tslAbs(vuv.y.sub(0.5)).lessThan(centerThickness);
+            const centerAlpha = select(wfUTransparentBg.greaterThan(0.5), float(0.6), float(1.0));
+            const bgAlpha = select(wfUTransparentBg.greaterThan(0.5), float(0.0), float(1.0));
+            const bgColor = vec4(uBgR, uBgG, uBgB, bgAlpha);
+
+            // Filled-band rendering (MIP + raw scan)
             const yMin = minVal.mul(0.9).toVar();
             const yMax = maxVal.mul(0.9).toVar();
 
@@ -516,24 +583,28 @@ async function initThreeScene() {
             });
 
             const inBand = amplitude.greaterThanEqual(yMin).and(amplitude.lessThanEqual(yMax));
+            const bandAlpha = select(inBand, float(1.0), float(0.0));
 
-            const peakAmp = tslMax(tslAbs(minVal), tslAbs(maxVal));
-            const normalized = tslClamp(peakAmp, 0, 1);
-            const cmapColor = wfCmapTexNode.uv(vec2(normalized, float(0.5)));
+            // Catmull-Rom path: smooth anti-aliased line
+            // amplitude spans -1 to 1 over canvasHeight pixels, so 1px = 2/canvasHeight
+            const curveY = minVal.add(maxVal).mul(0.5).mul(0.9);
+            const dist = tslAbs(amplitude.sub(curveY));
+            const px = float(2.0).div(wfUCanvasHeight);
+            const lineAlpha = float(1.0).sub(smoothstep(px.mul(wfUCatmullCore), px.mul(wfUCatmullCore.add(wfUCatmullFeather)), dist));
 
-            const centerThickness = float(1.0).div(wfUCanvasHeight);
-            const isCenterLine = tslAbs(vuv.y.sub(0.5)).lessThan(centerThickness);
-            const centerAlpha = select(wfUTransparentBg.greaterThan(0.5), float(0.6), float(1.0));
+            // Use smooth line when Catmull-Rom is active, filled band otherwise
+            const renderAlpha = select(useCatmull, lineAlpha, bandAlpha);
 
-            const bgAlpha = select(wfUTransparentBg.greaterThan(0.5), float(0.0), float(1.0));
-            const bgColor = vec4(uBgR, uBgG, uBgB, bgAlpha);
+            // Blend waveform with background
+            const blendedR = wfColor.r.mul(renderAlpha).add(bgColor.r.mul(float(1.0).sub(renderAlpha)));
+            const blendedG = wfColor.g.mul(renderAlpha).add(bgColor.g.mul(float(1.0).sub(renderAlpha)));
+            const blendedB = wfColor.b.mul(renderAlpha).add(bgColor.b.mul(float(1.0).sub(renderAlpha)));
+            const blendedA = tslMax(renderAlpha, bgAlpha);
+            const blendedColor = vec4(blendedR, blendedG, blendedB, blendedA);
 
             return select(isCenterLine,
                 vec4(float(0.4), float(0.4), float(0.4), centerAlpha),
-                select(inBand,
-                    vec4(cmapColor.r, cmapColor.g, cmapColor.b, float(1.0)),
-                    bgColor
-                )
+                blendedColor
             );
         });
 
@@ -783,6 +854,17 @@ async function renderFrame() {
                 wfUCanvasHeight.value = parseFloat(canvas.height);
 
                 wfUTransparentBg.value = (mode === 'both') ? 1.0 : 0.0;
+
+                // DEBUG: log samples-per-pixel to verify Catmull-Rom branch
+                if (!window._sppLogThrottle || performance.now() - window._sppLogThrottle > 2000) {
+                    const viewSpan = wfUViewportEnd.value - wfUViewportStart.value;
+                    const sppCPU = (viewSpan * wfUTotalSamples.value) / canvas.width;
+                    const catEnabled = wfUCatmullEnabled?.value > 0.5;
+                    const catThresh = wfUCatmullThreshold?.value || 128;
+                    const branch = catEnabled && sppCPU <= catThresh ? 'CATMULL-ROM' : sppCPU > 256 ? 'MIP' : 'RAW';
+                    console.log(`🎵 Waveform spp=${sppCPU.toFixed(3)} | branch=${branch}`);
+                    window._sppLogThrottle = performance.now();
+                }
             }
         }
 

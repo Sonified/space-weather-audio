@@ -16,6 +16,8 @@
 
 - Test the whole pipeline with the Qualtrics back end
 
+- (Low priority) Waveform: switch from bin-rounded rectangles to a drawn line (lineTo path) when zoomed in far enough to avoid jagged appearance
+
 ## Completed
 
 - ✅ Circular buffer for AudioWorklet (got it working, sticking with circular buffer)

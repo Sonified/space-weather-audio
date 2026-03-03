@@ -162,6 +162,32 @@ async function initWaveformThreeScene() {
         return wfMipTexNode.uv(mUV);
     });
 
+    // ─── Catmull-Rom interpolation for smooth waveform curves ───────────
+    // Evaluates waveform amplitude at a fractional sample position using
+    // 4-point cubic spline (passes through every sample, smooth between them)
+    const catmullRomTSL = Fn(([samplePos]) => {
+        const lastIdx = wfUTotalSamples.sub(1.0);
+        const idx = tslFloor(tslClamp(samplePos, float(0.0), lastIdx));
+        const frac = tslClamp(samplePos.sub(idx), float(0.0), float(1.0));
+
+        const s0 = getSampleTSL(tslClamp(idx.sub(1.0), float(0.0), lastIdx));
+        const s1 = getSampleTSL(tslClamp(idx,          float(0.0), lastIdx));
+        const s2 = getSampleTSL(tslClamp(idx.add(1.0), float(0.0), lastIdx));
+        const s3 = getSampleTSL(tslClamp(idx.add(2.0), float(0.0), lastIdx));
+
+        const t = frac;
+        const t2 = t.mul(t);
+        const t3 = t2.mul(t);
+
+        // Catmull-Rom: 0.5 * ((2·s1) + (-s0+s2)·t + (2·s0-5·s1+4·s2-s3)·t² + (-s0+3·s1-3·s2+s3)·t³)
+        return float(0.5).mul(
+            float(2.0).mul(s1)
+            .add(s2.sub(s0).mul(t))
+            .add(s0.mul(2.0).sub(s1.mul(5.0)).add(s2.mul(4.0)).sub(s3).mul(t2))
+            .add(s0.negate().add(s1.mul(3.0)).sub(s2.mul(3.0)).add(s3).mul(t3))
+        );
+    });
+
     const waveformColorFn = Fn(() => {
         const vuv = uv();
         const viewStart = wfUViewportStart.mul(wfUTotalSamples);
@@ -174,6 +200,7 @@ async function initWaveformThreeScene() {
         const maxVal = float(-1.0).toVar();
 
         If(spp.greaterThan(wfUMipBinSize).and(wfUMipTotalBins.greaterThan(0.0)), () => {
+            // Zoomed out: use pre-computed min/max mip bins
             const binStart = tslFloor(tslMax(pixelStart.div(wfUMipBinSize).add(0.5), float(0.0)));
             const binEnd = tslMax(binStart.add(1.0), tslFloor(pixelEnd.div(wfUMipBinSize).add(0.5)));
             const binEndClamped = tslMin(binEnd, wfUMipTotalBins);
@@ -184,7 +211,8 @@ async function initWaveformThreeScene() {
                 minVal.assign(tslMin(minVal, mm.r));
                 maxVal.assign(tslMax(maxVal, mm.g));
             });
-        }).Else(() => {
+        }).ElseIf(spp.greaterThan(float(2.0)), () => {
+            // Medium zoom: scan raw samples in pixel range
             const startIdx = tslFloor(tslMax(pixelStart, float(0.0)));
             const endIdx = tslCeil(tslMin(pixelEnd, wfUTotalSamples));
             const count = endIdx.sub(startIdx);
@@ -194,6 +222,13 @@ async function initWaveformThreeScene() {
                 minVal.assign(tslMin(minVal, s));
                 maxVal.assign(tslMax(maxVal, s));
             });
+        }).Else(() => {
+            // Zoomed in (< 2 spp): Catmull-Rom smooth curve
+            // Interpolate at pixel left & right edges → min/max covers the curve segment
+            const valLeft = catmullRomTSL(pixelStart);
+            const valRight = catmullRomTSL(pixelEnd);
+            minVal.assign(tslMin(valLeft, valRight));
+            maxVal.assign(tslMax(valLeft, valRight));
         });
 
         const amplitude = vuv.y.sub(0.5).mul(2.0);

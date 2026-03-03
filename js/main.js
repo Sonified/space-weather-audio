@@ -9,7 +9,7 @@ import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef, switchStretchAlgorithm, primeStretchProcessors } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator, clearWaveformRenderer } from './minimap-window-renderer.js';
 import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection, redrawAllCanvasFeatureBoxes, clearAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
-import { clearCompleteSpectrogram, startMemoryMonitoring, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, aggressiveCleanup, setTileShaderMode, resizeRendererToDisplaySize, setLevelTransitionMode, setCrossfadePower } from './main-window-renderer.js';
+import { clearCompleteSpectrogram, startMemoryMonitoring, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, aggressiveCleanup, setTileShaderMode, resizeRendererToDisplaySize, setLevelTransitionMode, setCrossfadePower, setCatmullSettings } from './main-window-renderer.js';
 import { setPyramidReduceMode, rebuildUpperLevels } from './spectrogram-pyramid.js';
 import { loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal, openParticipantInfoModal } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
@@ -868,7 +868,7 @@ export async function startStreaming(event, config = null) {
                 statusDiv.textContent = '🎧 Ready! Click PLAY or press the SPACE BAR to start playback.';
                 statusDiv.className = 'status';
             } else if (userHasClickedWaveformOnce) {
-                statusDiv.textContent = 'Scroll to zoom, drag to pan, arrow keys to navigate';
+                statusDiv.textContent = 'Scroll to zoom, drag to pan, arrow keys to navigate, click and drag to draw a feature box';
                 statusDiv.className = 'status info';
             } else {
                 statusDiv.textContent = 'Click the waveform to jump to a new location.';
@@ -1178,7 +1178,7 @@ function injectSettingsDrawer() {
                 <span class="drawer-label">Blend curve:</span>
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">smooth</span>
-                    <input type="range" id="crossfadePower" class="drawer-input" min="0.5" max="6" step="0.5" value="1" style="flex: 1; margin: 0; padding: 0;">
+                    <input type="range" id="crossfadePower" class="drawer-input" min="0.5" max="6" step="0.5" value="1" style="width: 80px; flex: none; margin: 0; padding: 0;">
                     <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">sharp</span>
                     <span id="crossfadePowerLabel" style="font-size: 11px; color: #888; margin-left: 2px; min-width: 24px;">2.0</span>
                 </div>
@@ -1192,6 +1192,42 @@ function injectSettingsDrawer() {
                     <option value="all-then-pyramid">All → Pyramid</option>
                     <option value="pyramid-only" selected>Pyramid Only</option>
                 </select>
+            </div>
+        </div>
+        <div class="drawer-section">
+            <div class="drawer-section-title">Waveform Zoom</div>
+            <div class="drawer-row">
+                <label for="catmullMode" class="drawer-label">Zoomed-in style</label>
+                <select id="catmullMode" class="drawer-input" style="width: 110px; text-align: left;">
+                    <option value="default" selected>Rounded bins</option>
+                    <option value="smooth">Smooth curve</option>
+                </select>
+            </div>
+            <div id="catmullSubControls" style="display: none;">
+                <div class="drawer-row">
+                    <label for="catmullThreshold" class="drawer-label">Transition (spp)</label>
+                    <select id="catmullThreshold" class="drawer-input" style="width: 70px; text-align: left;">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="4">4</option>
+                        <option value="8">8</option>
+                        <option value="16">16</option>
+                        <option value="32">32</option>
+                        <option value="64">64</option>
+                        <option value="128" selected>128</option>
+                        <option value="256">256</option>
+                    </select>
+                </div>
+                <div class="drawer-row drawer-slider-row">
+                    <label for="catmullCore" class="drawer-label" style="flex: 0 0 62px;">Thickness</label>
+                    <input type="range" id="catmullCore" min="0.01" max="1.0" step="0.01" value="1.0" style="flex: 1;">
+                    <span id="catmullCoreLabel" class="drawer-slider-value">1.00</span>
+                </div>
+                <div class="drawer-row drawer-slider-row">
+                    <label for="catmullFeather" class="drawer-label" style="flex: 0 0 62px;">Feather</label>
+                    <input type="range" id="catmullFeather" min="0.1" max="5.0" step="0.1" value="1.0" style="flex: 1;">
+                    <span id="catmullFeatherLabel" class="drawer-slider-value">1.0</span>
+                </div>
             </div>
         </div>
         <div class="drawer-section">
@@ -1624,6 +1660,10 @@ function initializeAdvancedControls() {
         { id: 'mainWindowZoomOut', key: 'emic_zoom_out_mode', type: 'select' },
         { id: 'levelTransition', key: 'emic_level_transition', type: 'select' },
         { id: 'crossfadePower', key: 'emic_crossfade_power', type: 'range' },
+        { id: 'catmullMode', key: 'emic_catmull_mode', type: 'select' },
+        { id: 'catmullThreshold', key: 'emic_catmull_threshold', type: 'select' },
+        { id: 'catmullCore', key: 'emic_catmull_core', type: 'range' },
+        { id: 'catmullFeather', key: 'emic_catmull_feather', type: 'range' },
         { id: 'renderOrder', key: 'emic_render_order', type: 'select' },
         { id: 'audioQuality', key: 'emic_audio_quality', type: 'select' },
         { id: 'tileChunkSize', key: 'emic_tile_chunk_size', type: 'select' },
@@ -1660,7 +1700,12 @@ function initializeAdvancedControls() {
         } else {
             if (saved !== null) {
                 el.value = saved;
-                if (el.value !== saved) {
+                if (ctrl.type === 'range') {
+                    // Range inputs normalize values (e.g. "0.50" → "0.5"), so compare as numbers
+                    if (Math.abs(parseFloat(el.value) - parseFloat(saved)) > 1e-9) {
+                        localStorage.removeItem(storageKey);
+                    }
+                } else if (el.value !== saved) {
                     localStorage.removeItem(storageKey);
                     el.selectedIndex = 0;
                 }
@@ -1669,6 +1714,9 @@ function initializeAdvancedControls() {
                 localStorage.setItem(storageKey, el.value);
                 el.blur();
             });
+            if (ctrl.type === 'range') {
+                el.addEventListener('input', () => localStorage.setItem(storageKey, el.value));
+            }
         }
     }
 
@@ -1806,10 +1854,12 @@ function initializeAdvancedControls() {
     function openSettingsDrawer() {
         if (drawerEl) drawerEl.classList.add('open');
         document.body.classList.add('drawer-open');
+        setTimeout(() => window.dispatchEvent(new Event('resize')), 260);
     }
     function closeSettingsDrawer() {
         if (drawerEl) drawerEl.classList.remove('open');
         document.body.classList.remove('drawer-open');
+        setTimeout(() => window.dispatchEvent(new Event('resize')), 260);
     }
 
     // --- Advanced mode toggle: controls visibility of gear icons ---
@@ -2155,6 +2205,59 @@ function initializeAdvancedControls() {
         });
         setCrossfadePower(parseFloat(powerSlider.value));
         if (powerLabel) powerLabel.textContent = parseFloat(powerSlider.value).toFixed(1);
+    }
+
+    // Wire Catmull-Rom smooth curve controls
+    const catmullModeEl = document.getElementById('catmullMode');
+    const catmullSubControls = document.getElementById('catmullSubControls');
+    const catmullThresholdEl = document.getElementById('catmullThreshold');
+    const catmullCoreEl = document.getElementById('catmullCore');
+    const catmullCoreLabel = document.getElementById('catmullCoreLabel');
+    const catmullFeatherEl = document.getElementById('catmullFeather');
+    const catmullFeatherLabel = document.getElementById('catmullFeatherLabel');
+
+    function applyCatmullSettings() {
+        const prefix = isStudyMode() ? 'emic_' : 'main_';
+        const enabled = (localStorage.getItem(prefix + 'catmull_mode') || catmullModeEl?.value || 'default') === 'smooth';
+        const threshold = localStorage.getItem(prefix + 'catmull_threshold') || catmullThresholdEl?.value || 128;
+        const core = localStorage.getItem(prefix + 'catmull_core') || catmullCoreEl?.value || 1.0;
+        const feather = localStorage.getItem(prefix + 'catmull_feather') || catmullFeatherEl?.value || 1.0;
+        setCatmullSettings({ enabled, threshold, core, feather });
+    }
+
+    function updateCatmullSubControls() {
+        if (catmullSubControls) {
+            const prefix = isStudyMode() ? 'emic_' : 'main_';
+            const mode = localStorage.getItem(prefix + 'catmull_mode') || catmullModeEl?.value || 'default';
+            catmullSubControls.style.display = mode === 'smooth' ? 'block' : 'none';
+        }
+    }
+
+    if (catmullModeEl) {
+        catmullModeEl.addEventListener('change', () => {
+            updateCatmullSubControls();
+            applyCatmullSettings();
+            catmullModeEl.blur();
+        });
+        updateCatmullSubControls();
+        applyCatmullSettings();
+    }
+    if (catmullThresholdEl) {
+        catmullThresholdEl.addEventListener('change', () => { applyCatmullSettings(); catmullThresholdEl.blur(); });
+    }
+    if (catmullCoreEl) {
+        catmullCoreEl.addEventListener('input', () => {
+            if (catmullCoreLabel) catmullCoreLabel.textContent = parseFloat(catmullCoreEl.value).toFixed(2);
+            applyCatmullSettings();
+        });
+        if (catmullCoreLabel) catmullCoreLabel.textContent = parseFloat(catmullCoreEl.value).toFixed(2);
+    }
+    if (catmullFeatherEl) {
+        catmullFeatherEl.addEventListener('input', () => {
+            if (catmullFeatherLabel) catmullFeatherLabel.textContent = parseFloat(catmullFeatherEl.value).toFixed(1);
+            applyCatmullSettings();
+        });
+        if (catmullFeatherLabel) catmullFeatherLabel.textContent = parseFloat(catmullFeatherEl.value).toFixed(1);
     }
 
     // Wire Display on Load: show/hide hours row

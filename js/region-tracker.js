@@ -4101,7 +4101,7 @@ export function zoomToFull() {
                 const regions = getCurrentRegions();
                 if (regions.length > 0) {
                     statusEl.className = 'status info';
-                    statusEl.textContent = `Scroll to zoom, drag to pan, arrow keys to navigate`;
+                    statusEl.textContent = `Scroll to zoom, drag to pan, arrow keys to navigate, click and drag to draw a feature box`;
                 }
             }
         }
