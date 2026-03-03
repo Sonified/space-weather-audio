@@ -691,8 +691,10 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
 
             // Check if this is a shared session BEFORE sending data
             // For shared sessions, disable auto-resume so worklet doesn't auto-start
+            // Also respect the autoPlay checkbox — if user turned it off, don't let the worklet auto-start
             const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
-            const shouldAutoResume = !isSharedSession;
+            const autoPlayChecked = document.getElementById('autoPlay')?.checked || false;
+            const shouldAutoResume = !isSharedSession && autoPlayChecked;
             // console.log(`🔗 [SHARED SESSION DEBUG] isSharedSession=${isSharedSession}, shouldAutoResume=${shouldAutoResume}`);
 
             for (let i = 0; i < audioData.samples.length; i += WORKLET_CHUNK_SIZE) {
