@@ -1061,6 +1061,32 @@ function injectSettingsDrawer() {
             </div>
         </div>
         <div class="drawer-section">
+            <div class="drawer-section-title">Feature Box Annotations</div>
+            <div class="drawer-row">
+                <label for="annotationAlignment" class="drawer-label">Align</label>
+                <select id="annotationAlignment" class="drawer-input" style="width: 100px; text-align: left;">
+                    <option value="center" selected>Center</option>
+                    <option value="left">Left</option>
+                </select>
+            </div>
+            <div class="drawer-row">
+                <label for="annotationWidth" class="drawer-label">Width</label>
+                <div class="drawer-spinner">
+                    <button class="spinner-btn spinner-dec" data-for="annotationWidth">−</button>
+                    <input type="text" id="annotationWidth" class="spinner-value" inputmode="numeric" data-min="100" data-max="800" data-step="25">
+                    <button class="spinner-btn spinner-inc" data-for="annotationWidth">+</button>
+                </div>
+            </div>
+            <div class="drawer-row">
+                <label for="annotationFontSize" class="drawer-label">Font Size</label>
+                <div class="drawer-spinner">
+                    <button class="spinner-btn spinner-dec" data-for="annotationFontSize">−</button>
+                    <input type="text" id="annotationFontSize" class="spinner-value" inputmode="numeric" data-min="8" data-max="28" data-step="1">
+                    <button class="spinner-btn spinner-inc" data-for="annotationFontSize">+</button>
+                </div>
+            </div>
+        </div>
+        <div class="drawer-section">
             <div class="drawer-section-title">Display on Load</div>
             <div class="drawer-row">
                 <label for="displayOnLoad" class="drawer-label">Initial View</label>
@@ -2055,6 +2081,30 @@ function initializeAdvancedControls() {
             if (isNaN(v) || v < 0) return;
             containerEl.style.minWidth = v > 0 ? v + 'px' : '';
             localStorage.setItem('minUIWidth', v);
+        });
+    }
+
+    // --- Annotation width spinner ---
+    const annotWidthInput = document.getElementById('annotationWidth');
+    if (annotWidthInput) {
+        const saved = localStorage.getItem('annotationWidth');
+        annotWidthInput.value = saved ? parseInt(saved) : 325;
+        annotWidthInput.addEventListener('change', () => {
+            const v = parseInt(annotWidthInput.value);
+            if (isNaN(v) || v < 100) return;
+            localStorage.setItem('annotationWidth', v);
+        });
+    }
+
+    // --- Annotation font size spinner ---
+    const annotFontInput = document.getElementById('annotationFontSize');
+    if (annotFontInput) {
+        const saved = localStorage.getItem('annotationFontSize');
+        annotFontInput.value = saved ? parseInt(saved) : 13;
+        annotFontInput.addEventListener('change', () => {
+            const v = parseInt(annotFontInput.value);
+            if (isNaN(v) || v < 8) return;
+            localStorage.setItem('annotationFontSize', v);
         });
     }
 

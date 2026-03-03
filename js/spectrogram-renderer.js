@@ -120,6 +120,41 @@ let boxDragState = null;
 let hoveredBoxInteraction = null; // current hover result for cursor + handle drawing
 let hoveredBoxKey = null; // "regionIndex-featureIndex" of mouse-hovered box (all modes)
 
+/**
+ * Single source of truth for hover tracking.
+ * Call with CSS coordinates to update, or null to clear (mouseleave).
+ * Returns the box result from getBoxAtPoint (or null).
+ */
+let _hoverFadeRAF = null;
+function updateHoveredBox(cssX, cssY) {
+    const box = (cssX !== null) ? getBoxAtPoint(cssX, cssY) : null;
+    const newKey = box ? `${box.regionIndex}-${box.featureIndex}` : null;
+    if (newKey !== hoveredBoxKey) {
+        console.log(`🔍 [HOVER] ${hoveredBoxKey} → ${newKey}`);
+        hoveredBoxKey = newKey;
+        redrawCanvasBoxes();
+        // Drive the annotation fade animation — redrawCanvasBoxes runs the
+        // timing state machine but we need repeated frames for the fade.
+        // Use redrawCanvasBoxes (not updateCanvasAnnotations) to avoid
+        // re-triggering the featureBoxOpacity fade-in.
+        if (!_hoverFadeRAF) {
+            const pumpFade = () => {
+                redrawCanvasBoxes();
+                const hasFading = [...annotationTimingState.values()].some(
+                    t => t.state === 'fading-in' || t.state === 'fading-out'
+                );
+                if (hasFading) {
+                    _hoverFadeRAF = requestAnimationFrame(pumpFade);
+                } else {
+                    _hoverFadeRAF = null;
+                }
+            };
+            _hoverFadeRAF = requestAnimationFrame(pumpFade);
+        }
+    }
+    return box;
+}
+
 // Annotation fade timing (matches DOM approach)
 const ANNOTATION_FADE_IN_MS = 400;
 const ANNOTATION_FADE_OUT_MS = 600;
@@ -311,27 +346,30 @@ function hideStuckStateMessage() {
  * Check if a click point is within any canvas feature box
  * Returns {regionIndex, featureIndex} if clicked, null otherwise
  */
-function getClickedBox(x, y) {
-    if (!spectrogramOverlayCanvas || !State.dataStartTime || !State.dataEndTime || !zoomState.isInitialized()) {
-        return null;
-    }
+/**
+ * Hit-test: is there a feature box at this point (CSS px)?
+ * Used for both click handling and hover detection.
+ * Returns { regionIndex, featureIndex, screenRect } or null.
+ */
+function getBoxAtPoint(x, y) {
+    if (!spectrogramOverlayCanvas) return null;
 
     const canvas = document.getElementById('spectrogram');
     if (!canvas) return null;
 
-    // Convert click coordinates (CSS px) to overlay device pixels
     const scale = getCSSToDeviceScale();
     const x_device = x * scale.x;
     const y_device = y * scale.y;
 
-    // Check each box using getBoxDeviceRect (single source of truth)
+    // Match getBoxInteraction tolerance so hover doesn't flicker at edges
+    const hitTol = 5;
     for (let i = 0; i < completedSelectionBoxes.length; i++) {
         const box = completedSelectionBoxes[i];
         const rect = getBoxDeviceRect(box);
         if (!rect) continue;
 
-        if (x_device >= rect.x && x_device <= rect.x + rect.w &&
-            y_device >= rect.y && y_device <= rect.y + rect.h) {
+        if (x_device >= rect.x - hitTol && x_device <= rect.x + rect.w + hitTol &&
+            y_device >= rect.y - hitTol && y_device <= rect.y + rect.h + hitTol) {
             const canvasRect = canvas.getBoundingClientRect();
             return {
                 regionIndex: box.regionIndex,
@@ -579,7 +617,7 @@ function handleBoxDragDown(e, canvas) {
 
     // Check interaction (edges, corners, interior) — this has tolerance that extends outside box
     const interaction = getBoxInteraction(clickX, clickY);
-    const clickedBox = getClickedBox(clickX, clickY);
+    const clickedBox = getBoxAtPoint(clickX, clickY);
 
     if (!interaction && !clickedBox) return false;
 
@@ -682,21 +720,12 @@ function handleBoxDragMove(e, canvas) {
     const interaction = isWindowed ? getBoxInteraction(mouseX, mouseY) : null;
     hoveredBoxInteraction = interaction;
 
-    // Track hovered box for brightness highlight (windowed mode)
+    // Update hover state via single source of truth
+    updateHoveredBox(mouseX, mouseY);
+
     if (interaction) {
-        const box = completedSelectionBoxes[interaction.boxIndex];
-        const newKey = box ? `${box.regionIndex}-${box.featureIndex}` : null;
-        if (newKey !== hoveredBoxKey) {
-            hoveredBoxKey = newKey;
-            redrawCanvasBoxes();
-        }
         canvas.style.cursor = interaction.mode === 'move' ? 'pointer' : getCursorForMode(interaction.mode);
         return true;
-    }
-    // Clear hover when mouse leaves all boxes
-    if (hoveredBoxKey !== null) {
-        hoveredBoxKey = null;
-        redrawCanvasBoxes();
     }
     return false;
 }
@@ -1357,10 +1386,10 @@ function showFeaturePopup(box) {
             const canvas = document.getElementById('spectrogram');
             if (canvas && canvas.contains(e.target)) {
                 const rect = canvas.getBoundingClientRect();
-                // getClickedBox expects CSS pixels (it scales internally)
+                // getBoxAtPoint expects CSS pixels (it scales internally)
                 const clickX = e.clientX - rect.left;
                 const clickY = e.clientY - rect.top;
-                if (getClickedBox(clickX, clickY)) return;
+                if (getBoxAtPoint(clickX, clickY)) return;
             }
             // "Stay open" mode: only close via X button or Save
             if ((localStorage.getItem('feature_popup_canvas_click') || 'stay-open') === 'stay-open') return;
@@ -1477,7 +1506,7 @@ export function redrawAllCanvasFeatureBoxes() {
                 if (window.pm?.gpu) console.log(`📦 [FEAT-BOX] pyramid-ready FIRED! Starting fade-in`);
                 featureBoxPendingUntilSpectrogram = false;
                 featureBoxReadyToShow = true;
-                featureBoxOpacity = 0; // start fade from zero
+                featureBoxOpacity = 1; // show immediately — no rAF loop to drive a fade
                 rebuildCanvasBoxesFromFeatures();
                 // Redraw minimap so its feature boxes appear at the same time
                 drawWaveformFromMinMax();
@@ -2309,7 +2338,7 @@ export function setupSpectrogramSelection() {
         // Box drag/resize handler (self-contained — claims event if on a box)
         if (!spectrogramSelectionActive && handleBoxDragDown(e, canvas)) return;
 
-        const clickedBox = getClickedBox(clickX, clickY);
+        const clickedBox = getBoxAtPoint(clickX, clickY);
         if (clickedBox && !spectrogramSelectionActive) {
             if (!zoomState.isInRegion()) {
                 console.log(`🔍 Clicked feature box while zoomed out - zooming to region ${clickedBox.regionIndex + 1}`);
@@ -2510,15 +2539,8 @@ export function setupSpectrogramSelection() {
         const canvasRect = canvas.getBoundingClientRect();
         const hoverX = e.clientX - canvasRect.left;
         const hoverY = e.clientY - canvasRect.top;
-        const hoveredBox = getClickedBox(hoverX, hoverY);
+        const hoveredBox = updateHoveredBox(hoverX, hoverY);
         const hoveredClose = getClickedCloseButton(hoverX, hoverY);
-
-        // Track hovered box for brightness highlight
-        const newHoveredKey = hoveredBox ? `${hoveredBox.regionIndex}-${hoveredBox.featureIndex}` : null;
-        if (newHoveredKey !== hoveredBoxKey) {
-            hoveredBoxKey = newHoveredKey;
-            redrawCanvasBoxes();
-        }
 
         if (hoveredClose && !spectrogramSelectionActive) {
             canvas.style.cursor = 'pointer';
@@ -2586,12 +2608,8 @@ export function setupSpectrogramSelection() {
     // This prevents stuck state when mouseup never fires (e.g., mouse leaves window)
     canvas.addEventListener('mouseleave', () => {
         cancelBoxDrag();
-        if (hoveredBoxKey !== null) {
-            hoveredBoxKey = null;
-            redrawCanvasBoxes();
-        }
+        updateHoveredBox(null, null);
         if (spectrogramSelectionActive) {
-            console.log('🖱️ Mouse left spectrogram canvas during selection - canceling');
             cancelSpectrogramSelection();
         }
     });
@@ -3041,48 +3059,45 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
             annotationTimingState.set(key, timing);
         }
 
-        if (liveMode && State.totalAudioDuration && State.totalAudioDuration > 0 && zoomState.isInitialized() && State.dataStartTime && State.dataEndTime) {
-            // Convert timestamps to sample indices (progress through dataset)
-            const dataStartMs = State.dataStartTime.getTime();
-            const dataEndMs = State.dataEndTime.getTime();
-            const totalSamples = zoomState.totalSamples;
-
-            const startTimestampMs = new Date(box.startTime).getTime();
-            const endTimestampMs = new Date(box.endTime).getTime();
-
-            const startProgress = (startTimestampMs - dataStartMs) / (dataEndMs - dataStartMs);
-            const endProgress = (endTimestampMs - dataStartMs) / (dataEndMs - dataStartMs);
-
-            const featureStartSample = startProgress * totalSamples;
-            const featureEndSample = endProgress * totalSamples;
-
-            // Convert current audio position to sample
-            const currentSample = zoomState.timeToSample(State.currentAudioPosition);
-
-            // WORKLET-STYLE LOGIC: Calculate samples until feature
-            const samplesToFeature = featureStartSample - currentSample;
-            const featureDurationSamples = featureEndSample - featureStartSample;
-
-            // WORKLET-STYLE: Calculate lead time in SAMPLES (1 WALL-CLOCK second before feature)
-            const playbackRate = State.currentPlaybackRate || 1.0;
-            // EXACT worklet formula: fadeTime * 44.1 * speed
-            const LEAD_SAMPLES_OUTPUT = Math.floor(ANNOTATION_LEAD_TIME_MS * 44.1);
-            const leadTimeSamples = Math.floor(LEAD_SAMPLES_OUTPUT * playbackRate);
-
-            // WORKLET-STYLE: Trigger when samplesToFeature <= leadTimeSamples
-            // Also show when mouse hovers over this feature box
-            const playheadNear = samplesToFeature <= leadTimeSamples && samplesToFeature > -featureDurationSamples;
-            const shouldShow = playheadNear || hoveredBoxKey === key;
-
+        if (liveMode) {
+            // Hover works regardless of audio/zoom state
             const isHovered = hoveredBoxKey === key;
+
+            // Playhead proximity needs audio state
+            let playheadNear = false;
+            if (State.totalAudioDuration > 0 && zoomState.isInitialized() && State.dataStartTime && State.dataEndTime) {
+                const dataStartMs = State.dataStartTime.getTime();
+                const dataEndMs = State.dataEndTime.getTime();
+                const totalSamples = zoomState.totalSamples;
+
+                const startTimestampMs = new Date(box.startTime).getTime();
+                const endTimestampMs = new Date(box.endTime).getTime();
+
+                const startProgress = (startTimestampMs - dataStartMs) / (dataEndMs - dataStartMs);
+                const endProgress = (endTimestampMs - dataStartMs) / (dataEndMs - dataStartMs);
+
+                const featureStartSample = startProgress * totalSamples;
+                const featureEndSample = endProgress * totalSamples;
+
+                const currentSample = zoomState.timeToSample(State.currentAudioPosition);
+                const samplesToFeature = featureStartSample - currentSample;
+                const featureDurationSamples = featureEndSample - featureStartSample;
+
+                const playbackRate = State.currentPlaybackRate || 1.0;
+                const LEAD_SAMPLES_OUTPUT = Math.floor(ANNOTATION_LEAD_TIME_MS * 44.1);
+                const leadTimeSamples = Math.floor(LEAD_SAMPLES_OUTPUT * playbackRate);
+
+                playheadNear = samplesToFeature <= leadTimeSamples && samplesToFeature > -featureDurationSamples;
+            }
+
+            const shouldShow = playheadNear || isHovered;
+
             if (shouldShow && timing.state !== 'fading-in' && timing.state !== 'visible') {
-                // Start showing
                 timing.showTime = now;
                 timing.hideTime = null;
                 timing.state = 'fading-in';
                 timing.hoveredOnly = isHovered && !playheadNear;
             } else if (!shouldShow && timing.state !== 'fading-out' && timing.state !== 'hidden') {
-                // Start hiding — skip min display time for hover-only annotations
                 const timeSinceShow = now - timing.showTime;
                 if (timing.hoveredOnly || timeSinceShow > ANNOTATION_MIN_DISPLAY_MS) {
                     timing.state = 'fading-out';
@@ -3123,15 +3138,19 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
 
             ctx.save();
 
-            // Set font first for measurement
-            ctx.font = '600 13px Arial, sans-serif';
+            // Set font from settings
+            const fontSizeInput = document.getElementById('annotationFontSize');
+            const annotFontSize = fontSizeInput ? parseInt(fontSizeInput.value) || 13 : 13;
+            ctx.font = `600 ${annotFontSize}px Arial, sans-serif`;
 
-            // Check if text has changed - only re-wrap if needed
-            const lineHeight = 16; // Define BEFORE if/else
+            // Check if text/settings changed - only re-wrap if needed
+            const lineHeight = Math.round(annotFontSize * 1.23); // ~1.23 ratio like 13→16
             let lines, textWidth, halfWidth, totalHeight;
-            if (timing.cachedText !== box.notes) {
-                // Text changed! Re-wrap and recalculate dimensions
-                const maxWidth = 325;
+            const widthInput = document.getElementById('annotationWidth');
+            const annotMaxWidth = widthInput ? parseInt(widthInput.value) || 325 : 325;
+            if (timing.cachedText !== box.notes || timing.cachedMaxWidth !== annotMaxWidth || timing.cachedFontSize !== annotFontSize) {
+                // Text or width changed! Re-wrap and recalculate dimensions
+                const maxWidth = annotMaxWidth;
                 lines = wrapText(ctx, box.notes, maxWidth);
                 textWidth = Math.max(...lines.map(line => ctx.measureText(line).width));
                 halfWidth = textWidth / 2;
@@ -3139,6 +3158,8 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
 
                 // Cache for next frame
                 timing.cachedText = box.notes;
+                timing.cachedMaxWidth = annotMaxWidth;
+                timing.cachedFontSize = annotFontSize;
                 timing.cachedLines = lines;
                 timing.cachedHalfWidth = halfWidth;
                 timing.cachedTotalHeight = totalHeight;
@@ -3232,17 +3253,24 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
             ctx.scale(1 / xStretchFactor, 1);
             ctx.translate(-textX, -textY);
 
+            // Annotation alignment: 'center' (default) or 'left'
+            const alignSelect = document.getElementById('annotationAlignment');
+            const annotAlign = alignSelect ? alignSelect.value : 'center';
+
             ctx.globalAlpha = opacity;
             ctx.fillStyle = '#fff';
-            ctx.textAlign = 'center';
+            ctx.textAlign = annotAlign;
             ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
             ctx.shadowBlur = 6;
             ctx.shadowOffsetX = 1;
             ctx.shadowOffsetY = 1;
 
+            // For left-align, draw from left edge of text block (textX is center)
+            const drawX = annotAlign === 'left' ? textX - halfWidth : textX;
+
             // Draw each line
             lines.forEach((line, i) => {
-                ctx.fillText(line, textX, textY + (i * lineHeight));
+                ctx.fillText(line, drawX, textY + (i * lineHeight));
             });
 
             ctx.restore();
