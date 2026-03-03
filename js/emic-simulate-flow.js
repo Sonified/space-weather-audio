@@ -81,6 +81,35 @@ export function initSimulateFlow() {
         btn.style.backgroundColor = '#dc3545';
         btn.style.background = '#dc3545';
         flowLog('Restored Cancel Flow button after page refresh');
+
+        // If user closed welcome but hasn't completed analysis, re-show the complete button immediately
+        // (skip feature polling — they already had features before reload)
+        if (getEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME) && !getEmicFlag(EMIC_FLAGS.HAS_COMPLETED_ANALYSIS)) {
+            flowLog('Restoring Complete button after page refresh (immediate show)');
+            if (!completeBtn) {
+                completeBtn = document.createElement('button');
+                completeBtn.id = 'simulateFlowCompleteBtn';
+                completeBtn.type = 'button';
+                completeBtn.textContent = '✓ Complete';
+                completeBtn.style.cssText = `
+                    background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+                    color: white; font-weight: 700; padding: 8px 18px; font-size: 15px;
+                    border: none; border-radius: 6px; cursor: pointer;
+                    margin-left: auto; white-space: nowrap;
+                    transition: opacity 0.2s, transform 0.2s;
+                `;
+                completeBtn.addEventListener('mouseenter', () => { completeBtn.style.transform = 'scale(1.03)'; });
+                completeBtn.addEventListener('mouseleave', () => { completeBtn.style.transform = 'scale(1)'; });
+                const playbackBar = document.querySelector('.panel-playback > div');
+                if (playbackBar) playbackBar.appendChild(completeBtn);
+            }
+            completeBtn.style.display = '';
+            completeBtn.addEventListener('click', () => {
+                completeBtn.style.display = 'none';
+                setEmicFlag(EMIC_FLAGS.HAS_COMPLETED_ANALYSIS);
+                flowLog('Complete button clicked after refresh-restore');
+            }, { once: true });
+        }
     }
 
     // Hook into display mode changes to show/hide button

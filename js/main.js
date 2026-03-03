@@ -1872,6 +1872,9 @@ function initializeAdvancedControls() {
         const isParticipant = mode === 'participant';
         const isDataViewer = mode === 'dataviewer';
 
+        // Sync data-display-mode attribute (used by early CSS to prevent flash)
+        document.documentElement.setAttribute('data-display-mode', mode);
+
         // Sync hidden checkbox for any code that reads advancedMode
         if (advancedCheckbox) advancedCheckbox.checked = isAdvanced;
 
@@ -1907,6 +1910,21 @@ function initializeAdvancedControls() {
         // Participant ID display (top right): hidden in participant mode
         const pidDisplay = document.getElementById('participantIdDisplay');
         if (pidDisplay) pidDisplay.style.display = isParticipant ? 'none' : '';
+
+        // EMIC controls panel (Fetch Data, Component, De-trend): hidden in participant mode
+        const emicControlsPanel = document.getElementById('emicControlsPanel');
+        if (emicControlsPanel) emicControlsPanel.style.display = isParticipant ? 'none' : '';
+
+        // Move #status between controls panel and playback bar based on mode
+        const statusEl = document.getElementById('status');
+        if (statusEl) {
+            const anchor = isParticipant
+                ? document.getElementById('statusAnchorPlayback')
+                : document.getElementById('statusAnchorControls');
+            if (anchor && statusEl.parentElement !== anchor) {
+                anchor.appendChild(statusEl);
+            }
+        }
 
         // Data Viewer panel: only visible in dataviewer mode
         const dvPanel = document.getElementById('dataViewerPanel');

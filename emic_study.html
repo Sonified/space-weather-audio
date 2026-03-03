@@ -49,6 +49,14 @@
             r.style.setProperty('--page-bg', a.pageBg);
             r.style.background = a.pageBg;
         })();
+
+        // Apply saved display mode BEFORE paint to prevent panel flash
+        (function() {
+            var mode = localStorage.getItem('emic_display_mode') || 'participant';
+            if (mode === 'participant') {
+                document.documentElement.setAttribute('data-display-mode', 'participant');
+            }
+        })();
     </script>
     <link rel="stylesheet" href="styles.css?v=20260212g">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -58,6 +66,13 @@
             --axis-label-color: #bbb;
             --axis-tick-color: #666;
             --panel-label-size: 15px;
+        }
+
+        /* Hide participant-hidden elements before JS loads (prevents flash) */
+        html[data-display-mode="participant"] #emicControlsPanel,
+        html[data-display-mode="participant"] #stretchGroup,
+        html[data-display-mode="participant"] #speedGroup {
+            display: none;
         }
         
         /* EMIC: taller spectrogram, shorter minimap (14px transferred) */
@@ -281,7 +296,7 @@
         </div>
 
         <!-- EMIC Study Controls: Stretch Algorithm + Speed -->
-        <div class="panel" style="padding: 8px 15px;">
+        <div id="emicControlsPanel" class="panel" style="padding: 8px 15px;">
             <div class="emic-controls-bar">
                 <button type="button" id="startBtn" class="btn-action" style="padding: 6px 14px; font-size: 14px;">📡 Fetch Data</button>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 8px;"></div>
@@ -299,7 +314,10 @@
                     <input type="checkbox" id="removeDCOffsetEmic" style="width: 16px; height: 16px; cursor: pointer;" onchange="document.getElementById('removeDCOffset').checked = this.checked; document.getElementById('removeDCOffset').dispatchEvent(new Event('change'));">
                 </div>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 8px;"></div>
-                <div class="status info" id="status" style="margin: 0; padding: 6px 12px; flex: 1; min-width: 80px; font-size: 13px;"></div>
+                <!-- Anchor: #status lives here in standard/advanced mode, moves to playback bar in participant mode -->
+                <div id="statusAnchorControls" style="display: contents;">
+                    <div class="status info" id="status" style="margin: 0; padding: 6px 12px; flex: 1; min-width: 80px; font-size: 13px;"></div>
+                </div>
             </div>
         </div>
 
@@ -378,6 +396,8 @@
                     <label for="volumeSlider" id="volumeLabel" style="font-weight: 600; white-space: nowrap; font-size: var(--panel-label-size); flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0">Volume: <span id="volumeValue">1.0</span></label>
                     <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" style="flex: 1; min-width: 0;">
                 </div>
+                <!-- Anchor: #status moves here in participant mode -->
+                <div id="statusAnchorPlayback" style="display: contents;"></div>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 4px;"></div>
                 <div class="emic-btn-group" id="stretchGroup">
                     <label>Stretch:</label>

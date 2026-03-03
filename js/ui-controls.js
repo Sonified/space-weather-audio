@@ -1111,15 +1111,19 @@ export function setupModalEventListeners() {
                     }, 350);
                 } else {
                     // EMIC mode: show "click Fetch Data to begin" with typewriter effect
-                    setTimeout(async () => {
-                        const statusEl = document.getElementById('status');
-                        if (statusEl) {
-                            const { typeText } = await import('./tutorial-effects.js');
-                            statusEl.className = 'status info';
-                            const msg = State.isMobileScreen() ? 'Click Fetch Data to begin (or press ENTER)' : '👈 click Fetch Data to begin (or press ENTER)';
-                            typeText(statusEl, msg, 30, 10);
-                        }
-                    }, 500);
+                    // Skip for shared/simulate sessions — fetch is auto-triggered
+                    const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
+                    if (!isSharedSession) {
+                        setTimeout(async () => {
+                            const statusEl = document.getElementById('status');
+                            if (statusEl) {
+                                const { typeText } = await import('./tutorial-effects.js');
+                                statusEl.className = 'status info';
+                                const msg = State.isMobileScreen() ? 'Click Fetch Data to begin (or press ENTER)' : '👈 click Fetch Data to begin (or press ENTER)';
+                                typeText(statusEl, msg, 30, 10);
+                            }
+                        }, 500);
+                    }
                 }
             });
         }
