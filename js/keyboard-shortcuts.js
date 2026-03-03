@@ -232,6 +232,25 @@ function handleKeyboardShortcut(event) {
         return;
     }
     
+    // Backtick: Toggle settings drawer (advanced mode only)
+    if (event.key === '`') {
+        const displayMode = document.getElementById('displayMode')?.value;
+        if (displayMode === 'advanced') {
+            event.preventDefault();
+            const drawer = document.getElementById('settingsDrawer');
+            if (drawer) {
+                if (drawer.classList.contains('open')) {
+                    drawer.classList.remove('open');
+                    document.body.classList.remove('drawer-open');
+                } else {
+                    drawer.classList.add('open');
+                    document.body.classList.add('drawer-open');
+                }
+                setTimeout(() => window.dispatchEvent(new Event('resize')), 260);
+            }
+        }
+    }
+
     // Escape key: Exit feature selection mode first, then zoom back out to full view
     if (event.key === 'Escape') {
         // console.log('🔍 [ESCAPE DEBUG] Escape key pressed');
