@@ -4485,3 +4485,290 @@ select.csel-native {
     background: linear-gradient(135deg, #bb7766 0%, #995544 100%);
 }
 
+/* ============================================================
+   Data Viewer Panel (localhost dev mode)
+   ============================================================ */
+#dataViewerPanel {
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, rgba(30,35,60,0.95), rgba(20,25,45,0.95));
+    border: 1px solid rgba(100,120,200,0.3);
+    border-radius: 8px;
+    color: #ddd;
+    font-family: system-ui, sans-serif;
+}
+.dv-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.dv-bar .dv-title {
+    font-weight: 700;
+    font-size: 15px;
+    color: #8af;
+}
+.dv-bar label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #aaa;
+}
+.dv-bar .dv-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+#dvUserSelect { min-width: 180px; }
+#dvSessionSelect { min-width: 280px; }
+#dvStatusText {
+    font-size: 12px;
+    color: #aaa;
+    font-style: italic;
+}
+#dvDataDisplay {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+/* ============================================================
+   Bottom Controls Bar (below spectrogram)
+   ============================================================ */
+.controls-bar-bottom {
+    display: flex;
+    align-items: center;
+    gap: 12px 30px;
+    margin-top: 8px;
+    padding: 4px 40px 0 8px;
+    flex-wrap: wrap;
+}
+.controls-bar-bottom label {
+    font-size: 14px;
+    font-weight: 700;
+    white-space: nowrap;
+    user-select: none;
+    color: #e8e8ff;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* ============================================================
+   Viz Controls (right side of bottom bar)
+   ============================================================ */
+.viz-controls {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-left: auto;
+    flex-wrap: wrap;
+}
+
+/* ============================================================
+   Oscilloscope Panel
+   ============================================================ */
+#oscilloscope-panel {
+    display: block;
+    pointer-events: none;
+}
+.oscilloscope-enclosure {
+    position: relative;
+    border-radius: 5px;
+    padding: 4px;
+    background: linear-gradient(135deg, rgba(40, 40, 70, 0.85) 0%, rgba(25, 25, 55, 0.8) 100%);
+    box-shadow: 0 0 5px rgba(102, 126, 234, 0.2), inset 0 0 20px rgba(80, 90, 130, 0.5);
+}
+#oscilloscope {
+    display: block;
+    width: 106px;
+    height: 28px;
+    border-radius: 2px;
+    background: rgba(3, 3, 8, 0.98);
+}
+#oscilloscope-frost {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 106px;
+    height: 28px;
+    border-radius: 2px;
+    pointer-events: none;
+    opacity: 0.5;
+}
+
+/* ============================================================
+   EMIC Study Page Overrides (emic_study.html)
+   ============================================================ */
+
+/* EMIC-specific CSS custom properties */
+.emic-page {
+    --axis-label-font-size: 14px;
+    --axis-label-color: #bbb;
+    --axis-tick-color: #666;
+    --panel-label-size: 15px;
+}
+
+/* Hide participant-hidden elements before JS loads (prevents flash) */
+html[data-display-mode="participant"] #emicControlsPanel,
+html[data-display-mode="participant"] #stretchGroup,
+html[data-display-mode="participant"] #speedGroup {
+    display: none;
+}
+
+/* EMIC: taller spectrogram, shorter minimap */
+.emic-page #spectrogram { height: var(--spec-height, clamp(250px, 62vh, 600px)); }
+.emic-page #waveform { height: 121px; }
+
+/* EMIC Study header */
+.emic-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 6px;
+    margin-top: 0;
+    position: relative;
+    z-index: 1001;
+}
+.emic-header h1 {
+    margin: 0;
+    font-size: 1.5em;
+    opacity: 0.88;
+    color: #fff;
+}
+.emic-header .subtitle {
+    font-size: 0.55em;
+    opacity: 0.6;
+    font-weight: 400;
+    display: block;
+    margin-top: 2px;
+}
+
+/* EMIC participant bar */
+.emic-participant-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.emic-participant-bar label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #aaa;
+    white-space: nowrap;
+}
+.emic-participant-bar input {
+    padding: 4px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 4px;
+    border: 1px solid #555;
+    background: rgba(60, 60, 60, 0.9);
+    color: #ddd;
+    width: 120px;
+}
+
+/* EMIC controls bar */
+.emic-controls-bar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 0 4px;
+    flex-wrap: wrap;
+    min-height: 38px;
+}
+.emic-placeholder-note {
+    font-size: 11px;
+    color: #666;
+    font-style: italic;
+    padding: 0 8px;
+}
+
+/* EMIC modal size overrides */
+.emic-page .modal-content,
+.emic-page #participantModal .modal-content {
+    max-width: 440px !important;
+    min-width: 280px !important;
+    width: 80% !important;
+}
+.emic-page #backgroundQuestionModal .modal-content,
+.emic-page #dataAnalysisQuestionModal .modal-content {
+    max-width: 612px !important;
+    min-width: 320px !important;
+    width: 85% !important;
+    padding: 24px 28px !important;
+}
+.emic-page #musicalExperienceQuestionModal .modal-content {
+    max-width: 660px !important;
+    min-width: 320px !important;
+    width: 88% !important;
+    padding: 24px 28px !important;
+}
+.emic-page #feedbackQuestionModal .modal-content,
+.emic-page #referralQuestionModal .modal-content {
+    max-width: 680px !important;
+    min-width: 320px !important;
+    width: 88% !important;
+    padding: 24px 28px !important;
+}
+.emic-page #welcomeModal .modal-content,
+.emic-page #emicAboutModal .modal-content {
+    max-width: 720px !important;
+    min-width: 320px !important;
+    width: 90% !important;
+    padding: 24px 28px !important;
+}
+.emic-page #participantModal .modal-body p:first-child {
+    font-size: 20px !important;
+}
+.emic-page #participantModal .modal-body p:nth-child(2) {
+    font-size: 16px !important;
+}
+.emic-page .begin-analysis-btn {
+    display: none !important;
+}
+.emic-page .modal-submit {
+    width: auto;
+    min-width: 200px;
+    display: block;
+    margin: 16px auto 0 auto;
+}
+
+/* Playback bar: hidden-scrollbar horizontal scroll */
+.panel-playback > div {
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.panel-playback > div::-webkit-scrollbar {
+    display: none;
+}
+
+/* Questionnaires panel: thin dark scrollbar */
+#questionnairesPanel > div {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+#questionnairesPanel > div::-webkit-scrollbar {
+    height: 3px;
+}
+#questionnairesPanel > div::-webkit-scrollbar-track {
+    background: transparent;
+}
+#questionnairesPanel > div::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 2px;
+}
+
+/* EMIC viz-controls — compact styling override */
+.emic-page .viz-controls {
+    gap: 18px !important;
+}
+.emic-page .viz-controls label {
+    font-size: 12px !important;
+    opacity: 0.8;
+}
+.emic-page .viz-controls select {
+    font-size: 12px !important;
+    padding: 2px 6px !important;
+    background: rgba(255, 255, 255, 0.12) !important;
+    color: #e0e0e8;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    border-radius: 3px;
+}
+
