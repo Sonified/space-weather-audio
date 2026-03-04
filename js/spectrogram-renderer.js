@@ -1053,7 +1053,8 @@ function showFeaturePopup(box) {
     popup.className = 'feature-popup';
     popup.innerHTML = `
         <div class="feature-popup-header">
-            <span class="feature-popup-title">Feature <strong>${flatNum}</strong> <button class="feature-popup-play" title="Play this feature from the beginning" data-start="${feature.startTime}" data-end="${feature.endTime}">&#9654;</button></span>
+            <!-- Play triangle vertical position: adjust top:-Npx on the button inline style -->
+            <span class="feature-popup-title" style="display:flex;align-items:center">Feature <strong>${flatNum}</strong> <button class="feature-popup-play" title="Play this feature from the beginning" data-start="${feature.startTime}" data-end="${feature.endTime}" style="position:relative;top:-2px">&#9654;</button></span>
             <div class="feature-popup-header-buttons">
                 <span class="feature-popup-gear" role="button" aria-label="Feature settings" style="display:${isAdvanced ? 'inline-flex' : 'none'}">&#9881;</span>
                 ${canDelete ? '<button class="feature-popup-delete" title="Delete this feature"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>' : ''}

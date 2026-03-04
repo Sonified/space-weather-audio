@@ -3872,6 +3872,8 @@ select.csel-native {
     font-size: 14px;
     font-weight: 600;
     color: rgba(255, 255, 255, 0.85);
+    display: flex;
+    align-items: center;
 }
 .feature-popup-play {
     -webkit-appearance: none;
@@ -3880,16 +3882,19 @@ select.csel-native {
     border: 0;
     outline: 0;
     box-shadow: none;
-    color: #4a9;
-    font-size: 14px;
+    color: #4cb88a;
+    font-size: 21px;
     cursor: pointer;
-    width: 22px;
-    height: 22px;
+    width: 26px;
+    height: 26px;
     padding: 0;
     margin-left: 4px;
-    line-height: 22px;
+    line-height: 26px;
     text-align: center;
     vertical-align: middle;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border-radius: 3px;
     transition: background 0.15s, transform 0.15s;
 }
@@ -3899,7 +3904,7 @@ select.csel-native {
     box-shadow: none;
 }
 .feature-popup-play:hover {
-    transform: scale(1.15);
+    transform: scale(1.08);
 }
 .feature-popup-play:active {
     transform: scale(0.9);
