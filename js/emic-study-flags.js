@@ -177,7 +177,36 @@ function buildFlagCheckboxes() {
     }
 
     container.appendChild(makeColumn('Flow State', flowFlags));
-    container.appendChild(makeColumn('Questionnaires', questionnaireFlags));
+    const qCol = makeColumn('Questionnaires', questionnaireFlags);
+
+    // Copy button next to questionnaires column
+    const copyBtn = document.createElement('button');
+    copyBtn.textContent = '📋 Copy';
+    copyBtn.style.cssText = 'padding: 3px 8px; font-size: 11px; border: 1px solid #555; border-radius: 4px; background: rgba(60,60,60,0.9); color: #ccc; cursor: pointer; margin-top: auto; white-space: nowrap; transition: all 0.15s;';
+    copyBtn.addEventListener('click', () => {
+        const parts = [];
+        for (const [name, key] of Object.entries(EMIC_FLAGS)) {
+            const short = name.replace(/^HAS_/, '').replace(/^IS_/, '').replace(/SUBMITTED_?/, 'SUB_');
+            const val = localStorage.getItem(key);
+            if (key === EMIC_FLAGS.ACTIVE_FEATURE_COUNT) {
+                parts.push(`${short}=${val || '0'}`);
+            } else {
+                parts.push(`${short}=${val === 'true' ? '1' : '0'}`);
+            }
+        }
+        const pid = localStorage.getItem('participantId') || '?';
+        const text = `flags[${pid}]: ${parts.join(' ')}`;
+        navigator.clipboard.writeText(text).then(() => {
+            copyBtn.textContent = '✅ Copied';
+            setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 1500);
+        });
+    });
+
+    const rightWrapper = document.createElement('div');
+    rightWrapper.style.cssText = 'display: flex; gap: 12px; align-items: flex-start;';
+    rightWrapper.appendChild(qCol);
+    rightWrapper.appendChild(copyBtn);
+    container.appendChild(rightWrapper);
 }
 
 /**
