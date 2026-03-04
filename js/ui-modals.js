@@ -449,6 +449,8 @@ function wireParticipantModal() {
             return;
         }
 
+        // Local environment: skip production API check, allow any valid username
+        // Local usernames don't get added to the production pool
         if (isLocalEnvironment()) {
             if (usernameStatusEl) {
                 usernameStatusEl.innerHTML = '<span style="color: #28a745; font-weight: 600;">✓ Local mode (not synced)</span>';
@@ -485,6 +487,7 @@ function wireParticipantModal() {
             }
         } catch (error) {
             console.error('Username check error:', error);
+            // On error, allow the username (graceful degradation)
             if (usernameStatusEl) {
                 usernameStatusEl.innerHTML = '<span style="color: #999;">Could not verify - proceeding anyway</span>';
             }
@@ -518,6 +521,9 @@ function wireParticipantModal() {
         participantSubmitBtn.addEventListener('click', async () => {
             const username = participantIdInput?.value.trim();
 
+            // Register the username (claim it) - skip for local environment
+            // Exception: EMIC study always registers (even localhost) so heartbeats + syncs work
+            // Fire-and-forget: don't block modal close on network round-trip
             const { isEmicStudyMode: isEmic } = await import('./master-modes.js');
             if (username && isUsernameAvailable && (!isLocalEnvironment() || isEmic())) {
                 registerUsername(username)
@@ -528,8 +534,10 @@ function wireParticipantModal() {
             }
 
             const { submitParticipantSetup } = await import('./ui-surveys.js');
-            submitParticipantSetup();
+            submitParticipantSetup();  // Save data locally
 
+            // Mark participant setup as seen when user submits (not before)
+            // Works for both Study mode and Solar Portal mode
             localStorage.setItem('study_has_seen_participant_setup', 'true');
             console.log('✅ Participant setup marked as seen');
 
@@ -554,16 +562,20 @@ function wireWelcomeModal() {
     const welcomeSubmitBtn = welcomeModal.querySelector('.modal-submit');
     if (welcomeSubmitBtn) {
         welcomeSubmitBtn.addEventListener('click', async () => {
+            // Mark welcome as seen when user submits (not before opening)
             if (isStudyMode()) {
                 localStorage.setItem('study_has_seen_welcome', 'true');
                 console.log('✅ Welcome marked as seen');
             }
 
             await closeWelcomeModal();
+            // Open pre-survey after welcome closes (not in EMIC mode)
             const { isEmicStudyMode: isEmic } = await import('./master-modes.js');
             if (!isEmic()) {
                 setTimeout(() => openPreSurveyModal(), 350);
             } else {
+                // EMIC mode: show instructions with typewriter effect
+                // Skip for shared/simulate sessions — fetch is auto-triggered
                 const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
                 if (!isSharedSession) {
                     setTimeout(async () => {
@@ -576,6 +588,7 @@ function wireWelcomeModal() {
                                 : '👈 Press PLAY to begin playback (or use the space bar).';
                             typeText(statusEl, msg, 15, 5);
 
+                            // After user clicks play, show the drag instruction
                             const playBtn = document.getElementById('playPauseBtn');
                             if (playBtn) {
                                 playBtn.addEventListener('click', () => {
@@ -625,6 +638,7 @@ function wireBeginAnalysisModal() {
         beginAnalysisCancelBtn.addEventListener('click', () => closeBeginAnalysisModal(false));
     }
 
+    // Submit dispatches a custom event that main.js listens for to proceed with the workflow
     const beginAnalysisSubmitBtn = beginAnalysisModal.querySelector('.modal-submit');
     if (beginAnalysisSubmitBtn) {
         beginAnalysisSubmitBtn.addEventListener('click', () => {
@@ -693,8 +707,10 @@ function wireCompleteConfirmationModal() {
             console.log('✅ Features enabled after feature selection');
 
             const { isStudyMode } = await import('./master-modes.js');
+            // In study mode, use the workflow. Otherwise, open activity level directly
             if (isStudyMode()) {
                 console.log('🎓 Study Mode: Starting submit workflow...');
+                // keepOverlay: true so overlay stays for Activity Level modal
                 await modalManager.closeModal('completeConfirmationModal', { keepOverlay: true });
                 console.log('✅ Complete Confirmation modal closed (overlay kept for workflow)');
                 const { handleStudyModeSubmit } = await import('./study-workflow.js');
@@ -717,7 +733,7 @@ function wireMissingStudyIdModal() {
     if (enterStudyIdBtn) {
         enterStudyIdBtn.addEventListener('click', () => {
             closeMissingStudyIdModal();
-            setTimeout(() => openParticipantModal(), 100);
+            setTimeout(() => openParticipantModal(), 100); // Small delay to ensure modal closes first
         });
     }
 }
@@ -755,25 +771,31 @@ function wirePreSurveyModal() {
             const { submitPreSurvey } = await import('./ui-surveys.js');
             await submitPreSurvey();
 
+            // Auto-detect next modal using workflow logic
             const nextModal = await getNextModalInWorkflow('preSurveyModal');
             console.log('🔍 Pre-Survey submit: nextModal =', nextModal);
             await closePreSurveyModal(nextModal !== null);
-            startActivityTimer();
+            startActivityTimer(); // Start activity timer after pre-survey completion
 
+            // In study mode, open the next modal in workflow
             if (isStudyMode() && nextModal) {
                 setTimeout(() => {
+                    // First visit → tutorial intro; returning visit → user explores freely
                     if (nextModal === 'tutorialIntroModal') {
                         console.log('🎓 Opening Tutorial Intro modal...');
                         openTutorialIntroModal();
                     } else if (nextModal === 'activityLevelModal') {
+                        // This shouldn't happen after pre-survey - Activity Level comes after Submit
                         console.warn('⚠️ Pre-Survey: Activity Level detected as next modal - this is wrong! Closing overlay and letting user explore.');
                         fadeOutOverlay();
                     } else {
+                        // Returning visit: Activity Level will open when user clicks Submit button
                         console.log('📊 Pre-Survey complete - ready for experience. Activity Level will show after Submit.');
                         fadeOutOverlay();
                     }
                 }, 350);
             } else if (isStudyMode() && !nextModal) {
+                // No next modal - correct for returning visits. Close overlay and let user explore
                 console.log('📊 Pre-Survey complete - no next modal (returning visit). Closing overlay, ready for experience.');
                 fadeOutOverlay();
             }
@@ -819,16 +841,19 @@ function wirePostSurveyModal() {
             await submitPostSurvey();
             await closePostSurveyModal();
 
+            // In study mode, submit all surveys to Qualtrics and show end modal
             if (isStudyMode()) {
                 setTimeout(async () => {
                     try {
                         const { attemptSubmission } = await import('./ui-controls.js');
-                        await attemptSubmission(true);
+                        await attemptSubmission(true);  // fromWorkflow=true
                         console.log('✅ Submission complete');
                     } catch (error) {
                         console.error('❌ Error during submission:', error);
+                        // Continue to show end modal even if submission fails
                     }
 
+                    // Show end modal (always show, even if submission had issues)
                     const { getParticipantId } = await import('./qualtrics-api.js');
                     const { incrementSessionCount } = await import('./study-workflow.js');
                     const participantId = getParticipantId();
@@ -874,17 +899,21 @@ function wireActivityLevelModal() {
             const success = await submitActivityLevelSurvey();
 
             if (!success) {
+                // Submission failed (e.g., no participant ID) - keep modal open
                 console.log('❌ Activity Level submission failed - keeping modal open');
                 return;
             }
 
             console.log('✅ Activity Level submission successful');
 
+            // In study mode, the workflow is waiting for the modal to close via its promise from openModal
             const { isStudyMode } = await import('./master-modes.js');
             console.log('🔍 isStudyMode:', isStudyMode());
             if (isStudyMode()) {
                 console.log('✅ Activity Level saved - closing modal for workflow...');
+                // Close the modal (auto-detects next modal and keeps overlay)
                 await closeActivityLevelModal();
+                // Open next survey in workflow
                 const { shouldShowAwesf } = await import('./study-workflow.js');
                 if (shouldShowAwesf()) {
                     setTimeout(() => openAwesfModal(), 350);
@@ -945,6 +974,7 @@ function wireAwesfModal() {
             const { submitAwesfSurvey } = await import('./ui-surveys.js');
             await submitAwesfSurvey();
             await closeAwesfModal();
+            // Open post-survey after AWE-SF closes
             setTimeout(() => openPostSurveyModal(), 350);
         });
     }
@@ -965,9 +995,11 @@ function wireTutorialIntroModal() {
             console.log('🎓🔥 BEGIN TUTORIAL BUTTON CLICKED - DISABLING CONTROLS NOW');
             console.trace('Stack trace for Begin Tutorial click:');
 
+            // Mark tutorial as in progress immediately when user clicks "Begin Tutorial"
             const { markTutorialAsInProgress } = await import('./study-workflow.js');
             markTutorialAsInProgress();
 
+            // Disable speed and volume controls during tutorial (tutorial will re-enable at appropriate time)
             const speedSlider = document.getElementById('playbackSpeed');
             const volumeSlider = document.getElementById('volumeSlider');
             const speedLabel = document.getElementById('speedLabel');
@@ -980,9 +1012,11 @@ function wireTutorialIntroModal() {
 
             closeTutorialIntroModal();
 
+            // Start the tutorial after modal closes
             setTimeout(async () => {
                 const { runInitialTutorial } = await import('./tutorial.js');
                 await runInitialTutorial();
+                // Mark tutorial as seen after it completes
                 const { markTutorialAsSeen } = await import('./study-workflow.js');
                 markTutorialAsSeen();
             }, 350);
@@ -1002,6 +1036,7 @@ function wireTutorialRevisitModal() {
     const tutorialRevisitBtn2 = tutorialRevisitModal.querySelector('#tutorialRevisitBtn2');
     const tutorialRevisitBtn3 = tutorialRevisitModal.querySelector('#tutorialRevisitBtn3');
 
+    // Button 1: Continue (when active) or Yes/restart (when not active)
     if (tutorialRevisitBtn1) {
         tutorialRevisitBtn1.addEventListener('click', async () => {
             const { isTutorialActive } = await import('./tutorial-state.js');
@@ -1020,6 +1055,7 @@ function wireTutorialRevisitModal() {
         });
     }
 
+    // Button 2: Restart (when active) or Cancel (when not active)
     if (tutorialRevisitBtn2) {
         tutorialRevisitBtn2.addEventListener('click', async () => {
             const { isTutorialActive } = await import('./tutorial-state.js');
@@ -1039,6 +1075,7 @@ function wireTutorialRevisitModal() {
         });
     }
 
+    // Button 3: Exit tutorial (only shown when tutorial is active)
     if (tutorialRevisitBtn3) {
         tutorialRevisitBtn3.addEventListener('click', async () => {
             closeTutorialRevisitModal(false);
