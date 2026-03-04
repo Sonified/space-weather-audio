@@ -1110,7 +1110,7 @@ export function setupModalEventListeners() {
                         openPreSurveyModal();
                     }, 350);
                 } else {
-                    // EMIC mode: show "click Fetch Data to begin" with typewriter effect
+                    // EMIC mode: show instructions with typewriter effect
                     // Skip for shared/simulate sessions — fetch is auto-triggered
                     const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
                     if (!isSharedSession) {
@@ -1119,7 +1119,9 @@ export function setupModalEventListeners() {
                             if (statusEl) {
                                 const { typeText } = await import('./tutorial-effects.js');
                                 statusEl.className = 'status info';
-                                const msg = State.isMobileScreen() ? 'Click Fetch Data to begin (or press ENTER)' : '👈 click Fetch Data to begin (or press ENTER)';
+                                const msg = State.isMobileScreen()
+                                    ? 'Press PLAY to begin playback (or use the space bar). Click and drag on the spectrogram to identify an EMIC wave.'
+                                    : '👈 Press PLAY to begin playback (or use the space bar). Click and drag on the main spectrogram window to identify an EMIC wave.';
                                 typeText(statusEl, msg, 30, 10);
                             }
                         }, 500);
@@ -2312,11 +2314,70 @@ export async function openParticipantInfoModal() {
     closeAllModals();
 
     // Populate the current participant ID
-    const { getParticipantId } = await import('./qualtrics-api.js');
+    const { getParticipantId, storeParticipantId } = await import('./qualtrics-api.js');
     const participantId = getParticipantId();
     const idDisplay = document.getElementById('participantInfoId');
+    const idInput = document.getElementById('participantInfoInput');
+    const changeBtn = document.getElementById('participantInfoChangeBtn');
+    const saveBtn = document.getElementById('participantInfoSaveBtn');
+    const cancelBtn = document.getElementById('participantInfoCancelBtn');
+
     if (idDisplay) {
         idDisplay.textContent = participantId || '--';
+    }
+
+    // Reset to display mode each time modal opens
+    if (idDisplay) idDisplay.style.display = '';
+    if (idInput) idInput.style.display = 'none';
+    if (changeBtn) changeBtn.style.display = '';
+    if (saveBtn) saveBtn.style.display = 'none';
+    if (cancelBtn) cancelBtn.style.display = 'none';
+
+    // Wire Change/Save/Cancel
+    if (changeBtn) {
+        changeBtn.onclick = () => {
+            idDisplay.style.display = 'none';
+            idInput.style.display = '';
+            idInput.value = participantId || '';
+            changeBtn.style.display = 'none';
+            saveBtn.style.display = '';
+            cancelBtn.style.display = '';
+            idInput.focus();
+            idInput.select();
+        };
+    }
+    if (cancelBtn) {
+        cancelBtn.onclick = () => {
+            idDisplay.style.display = '';
+            idInput.style.display = 'none';
+            changeBtn.style.display = '';
+            saveBtn.style.display = 'none';
+            cancelBtn.style.display = 'none';
+        };
+    }
+    if (saveBtn) {
+        saveBtn.onclick = () => {
+            const newId = idInput.value.trim();
+            if (newId) {
+                storeParticipantId(newId);
+                idDisplay.textContent = newId;
+                // Update the top-bar participant display
+                const topBarValue = document.getElementById('participantIdValue');
+                if (topBarValue) topBarValue.textContent = newId;
+            }
+            idDisplay.style.display = '';
+            idInput.style.display = 'none';
+            changeBtn.style.display = '';
+            saveBtn.style.display = 'none';
+            cancelBtn.style.display = 'none';
+        };
+    }
+    // Allow Enter to save
+    if (idInput) {
+        idInput.onkeydown = (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); saveBtn?.click(); }
+            if (e.key === 'Escape') { e.preventDefault(); cancelBtn?.click(); }
+        };
     }
 
     // Update title based on welcome mode

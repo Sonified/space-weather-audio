@@ -202,7 +202,7 @@ export function createBeginAnalysisModal() {
                 </p>
                 <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
                     <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 220px;">Begin Analysis</button>
-                    <button type="button" class="modal-cancel" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #6c757d; border: 2px solid #6c757d; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 220px;">Cancel</button>
+                    <button type="button" class="modal-cancel" style="width: 220px;">Cancel</button>
                 </div>
             </div>
         </div>
@@ -247,7 +247,7 @@ export function createCompleteConfirmationModal() {
                 </p>
                 <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
                     <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #28a745; border: 2px solid #28a745; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 180px;">Yes, I'm Done</button>
-                    <button type="button" class="modal-cancel" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #6c757d; border: 2px solid #6c757d; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 180px;">Not yet</button>
+                    <button type="button" class="modal-cancel" style="width: 180px;">Not yet</button>
                 </div>
             </div>
         </div>
@@ -297,8 +297,8 @@ export function createTutorialRevisitModal() {
                 </p>
                 <div style="display: flex; flex-direction: column; gap: 15px; align-items: center; justify-content: center;">
                     <button type="button" class="modal-submit" id="tutorialRevisitBtn1" style="padding: 8px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 200px;">Yes</button>
-                    <button type="button" class="modal-cancel" id="tutorialRevisitBtn2" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #6c757d; border: 2px solid #6c757d; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 200px;">Cancel</button>
-                    <button type="button" class="modal-exit" id="tutorialRevisitBtn3" style="display: none; padding: 10px 16px; font-size: 16px; font-weight: 600; background: #dc3545; border: 2px solid #dc3545; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 200px;">Exit</button>
+                    <button type="button" class="modal-cancel" id="tutorialRevisitBtn2" style="width: 200px;">Cancel</button>
+                    <button type="button" class="modal-exit" id="tutorialRevisitBtn3" style="display: none; width: 200px;">Exit</button>
                 </div>
             </div>
         </div>
@@ -387,11 +387,11 @@ function createMoodSurveyModal(surveyType, surveyId, title) {
                 <!-- Quick-fill buttons -->
                 <div class="quick-fill-buttons" style="display: flex; gap: 6px; margin-bottom: 8px; padding: 8px 6px; background: rgba(0, 0, 0, 0.05); border-radius: 6px; justify-content: center; flex-wrap: wrap;">
                     <span style="font-weight: 600; color: #550000; margin-right: 6px; align-self: center;">Quick fill:</span>
-                    <button type="button" class="quick-fill-btn" data-value="1" data-survey="${surveyId}" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">1</button>
-                    <button type="button" class="quick-fill-btn" data-value="2" data-survey="${surveyId}" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">2</button>
-                    <button type="button" class="quick-fill-btn" data-value="3" data-survey="${surveyId}" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">3</button>
-                    <button type="button" class="quick-fill-btn" data-value="4" data-survey="${surveyId}" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">4</button>
-                    <button type="button" class="quick-fill-btn" data-value="5" data-survey="${surveyId}" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">5</button>
+                    <button type="button" class="quick-fill-btn" data-value="1" data-survey="${surveyId}">1</button>
+                    <button type="button" class="quick-fill-btn" data-value="2" data-survey="${surveyId}">2</button>
+                    <button type="button" class="quick-fill-btn" data-value="3" data-survey="${surveyId}">3</button>
+                    <button type="button" class="quick-fill-btn" data-value="4" data-survey="${surveyId}">4</button>
+                    <button type="button" class="quick-fill-btn" data-value="5" data-survey="${surveyId}">5</button>
                 </div>
                 
                 <!-- Scale header labels -->
@@ -652,13 +652,13 @@ export function createAwesfModal() {
                 <!-- Quick-fill buttons -->
                 <div class="quick-fill-buttons" style="display: flex; gap: 8px; margin-bottom: 15px; padding: 10px; background: rgba(0, 0, 0, 0.05); border-radius: 6px; justify-content: center; flex-wrap: wrap;">
                     <span style="font-weight: 600; color: #550000; margin-right: 8px; align-self: center;">Quick fill:</span>
-                    <button type="button" class="quick-fill-btn" data-value="1" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">1</button>
-                    <button type="button" class="quick-fill-btn" data-value="2" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">2</button>
-                    <button type="button" class="quick-fill-btn" data-value="3" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">3</button>
-                    <button type="button" class="quick-fill-btn" data-value="4" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">4</button>
-                    <button type="button" class="quick-fill-btn" data-value="5" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">5</button>
-                    <button type="button" class="quick-fill-btn" data-value="6" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">6</button>
-                    <button type="button" class="quick-fill-btn" data-value="7" data-survey="awesfModal" style="padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid #999; background: white; color: #666; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='white'">7</button>
+                    <button type="button" class="quick-fill-btn" data-value="1" data-survey="awesfModal">1</button>
+                    <button type="button" class="quick-fill-btn" data-value="2" data-survey="awesfModal">2</button>
+                    <button type="button" class="quick-fill-btn" data-value="3" data-survey="awesfModal">3</button>
+                    <button type="button" class="quick-fill-btn" data-value="4" data-survey="awesfModal">4</button>
+                    <button type="button" class="quick-fill-btn" data-value="5" data-survey="awesfModal">5</button>
+                    <button type="button" class="quick-fill-btn" data-value="6" data-survey="awesfModal">6</button>
+                    <button type="button" class="quick-fill-btn" data-value="7" data-survey="awesfModal">7</button>
                 </div>
                 
                 <!-- Scale header labels -->
@@ -896,9 +896,13 @@ export function createParticipantInfoModal() {
                 <p style="margin-bottom: 16px; color: #333; font-size: 16px; line-height: 1.6;">
                     You are currently logged in as:
                 </p>
-                <p id="participantInfoId" style="margin-bottom: 20px; color: #550000; font-size: 20px; font-weight: 700; text-align: center; padding: 12px; background: rgba(85, 0, 0, 0.05); border-radius: 8px;">
-                    --
-                </p>
+                <p id="participantInfoId" style="margin-bottom: 0; color: #550000; font-size: 20px; font-weight: 700; text-align: center; padding: 12px; background: rgba(85, 0, 0, 0.05); border-radius: 8px;">--</p>
+                <input id="participantInfoInput" type="text" style="display: none; font-size: 18px; font-weight: 600; text-align: center; width: 100%; padding: 6px 10px; border: 2px solid #007bff; border-radius: 6px; outline: none; box-sizing: border-box;">
+                <div style="text-align: center; margin-top: 8px; margin-bottom: 20px;">
+                    <button id="participantInfoChangeBtn" type="button" style="font-size: 13px; color: #007bff; background: none; border: none; cursor: pointer; text-decoration: underline; padding: 2px 8px;">Change</button>
+                    <button id="participantInfoSaveBtn" type="button" style="display: none; font-size: 13px; color: #fff; background: #007bff; border: none; border-radius: 4px; cursor: pointer; padding: 4px 14px; font-weight: 600;">Save</button>
+                    <button id="participantInfoCancelBtn" type="button" style="display: none; font-size: 13px; color: #666; background: none; border: none; cursor: pointer; text-decoration: underline; padding: 2px 8px; margin-left: 4px;">Cancel</button>
+                </div>
                 <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
                 <p style="margin-bottom: 0; color: #555; font-size: 15px; line-height: 1.6;">
                     If you have any questions or need assistance, please contact the study coordinator, Lucy Williams, at
@@ -962,24 +966,24 @@ export function createBackgroundQuestionModal() {
                 </div>
 
                 <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
-                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
-                        <input type="radio" name="backgroundLevel" value="1" style="width: 18px; height: 18px; accent-color: #007bff;">
+                    <label class="radio-choice">
+                        <input type="radio" name="backgroundLevel" value="1">
                         <div><strong>None</strong> <span style="color: #444;">: No prior background</span></div>
                     </label>
-                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
-                        <input type="radio" name="backgroundLevel" value="2" style="width: 18px; height: 18px; accent-color: #007bff;">
+                    <label class="radio-choice">
+                        <input type="radio" name="backgroundLevel" value="2">
                         <div><strong>Minimal</strong> <span style="color: #444;">: Less than 1 year of coursework or experience</span></div>
                     </label>
-                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
-                        <input type="radio" name="backgroundLevel" value="3" style="width: 18px; height: 18px; accent-color: #007bff;">
+                    <label class="radio-choice">
+                        <input type="radio" name="backgroundLevel" value="3">
                         <div><strong>Some</strong> <span style="color: #444;">: 1–2 years of coursework or experience</span></div>
                     </label>
-                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
-                        <input type="radio" name="backgroundLevel" value="4" style="width: 18px; height: 18px; accent-color: #007bff;">
+                    <label class="radio-choice">
+                        <input type="radio" name="backgroundLevel" value="4">
                         <div><strong>Considerable</strong> <span style="color: #444;">: 3–5 years of coursework or professional experience</span></div>
                     </label>
-                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
-                        <input type="radio" name="backgroundLevel" value="5" style="width: 18px; height: 18px; accent-color: #007bff;">
+                    <label class="radio-choice">
+                        <input type="radio" name="backgroundLevel" value="5">
                         <div><strong>Extensive</strong> <span style="color: #444;">: 5+ years of coursework or professional experience</span></div>
                     </label>
                 </div>
@@ -1008,24 +1012,24 @@ export function createDataAnalysisQuestionModal() {
                 </div>
 
                 <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
-                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
-                        <input type="radio" name="dataAnalysisLevel" value="1" style="width: 18px; height: 18px; accent-color: #007bff;">
+                    <label class="radio-choice">
+                        <input type="radio" name="dataAnalysisLevel" value="1">
                         <div><strong>Never</strong> <span style="color: #444;">: This was my first time working with scientific data</span></div>
                     </label>
-                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
-                        <input type="radio" name="dataAnalysisLevel" value="2" style="width: 18px; height: 18px; accent-color: #007bff;">
+                    <label class="radio-choice">
+                        <input type="radio" name="dataAnalysisLevel" value="2">
                         <div><strong>Rarely</strong> <span style="color: #444;">: A few times in coursework or casually</span></div>
                     </label>
-                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
-                        <input type="radio" name="dataAnalysisLevel" value="3" style="width: 18px; height: 18px; accent-color: #007bff;">
+                    <label class="radio-choice">
+                        <input type="radio" name="dataAnalysisLevel" value="3">
                         <div><strong>Occasionally</strong> <span style="color: #444;">: Regular coursework or some research involvement</span></div>
                     </label>
-                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
-                        <input type="radio" name="dataAnalysisLevel" value="4" style="width: 18px; height: 18px; accent-color: #007bff;">
+                    <label class="radio-choice">
+                        <input type="radio" name="dataAnalysisLevel" value="4">
                         <div><strong>Frequently</strong> <span style="color: #444;">: Ongoing research or professional work</span></div>
                     </label>
-                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
-                        <input type="radio" name="dataAnalysisLevel" value="5" style="width: 18px; height: 18px; accent-color: #007bff;">
+                    <label class="radio-choice">
+                        <input type="radio" name="dataAnalysisLevel" value="5">
                         <div><strong>Extensively</strong> <span style="color: #444;">: Multiple years of hands-on data analysis experience</span></div>
                     </label>
                 </div>
@@ -1054,24 +1058,24 @@ export function createMusicalExperienceQuestionModal() {
                 </div>
 
                 <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
-                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
-                        <input type="radio" name="musicalExperienceLevel" value="1" style="width: 18px; height: 18px; accent-color: #007bff;">
+                    <label class="radio-choice">
+                        <input type="radio" name="musicalExperienceLevel" value="1">
                         <div><strong>None</strong> <span style="color: #444;">: No musical training or experience</span></div>
                     </label>
-                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
-                        <input type="radio" name="musicalExperienceLevel" value="2" style="width: 18px; height: 18px; accent-color: #007bff;">
+                    <label class="radio-choice">
+                        <input type="radio" name="musicalExperienceLevel" value="2">
                         <div><strong>Minimal</strong> <span style="color: #444;">: Some informal exposure (e.g., basic music classes in school)</span></div>
                     </label>
-                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
-                        <input type="radio" name="musicalExperienceLevel" value="3" style="width: 18px; height: 18px; accent-color: #007bff;">
+                    <label class="radio-choice">
+                        <input type="radio" name="musicalExperienceLevel" value="3">
                         <div><strong>Some</strong> <span style="color: #444;">: 1–3 years of musical training or playing an instrument</span></div>
                     </label>
-                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
-                        <input type="radio" name="musicalExperienceLevel" value="4" style="width: 18px; height: 18px; accent-color: #007bff;">
+                    <label class="radio-choice">
+                        <input type="radio" name="musicalExperienceLevel" value="4">
                         <div><strong>Considerable</strong> <span style="color: #444;">: 4+ years of training, active musician or regular performer</span></div>
                     </label>
-                    <label class="radio-choice" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; transition: background 0.15s;">
-                        <input type="radio" name="musicalExperienceLevel" value="5" style="width: 18px; height: 18px; accent-color: #007bff;">
+                    <label class="radio-choice">
+                        <input type="radio" name="musicalExperienceLevel" value="5">
                         <div><strong>Extensive</strong> <span style="color: #444;">: Professional musician, music degree, or lifelong serious practice</span></div>
                     </label>
                 </div>
