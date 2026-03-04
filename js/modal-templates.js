@@ -377,22 +377,6 @@ export async function initializeModals() {
         overlay.appendChild(createReferralQuestionModal());
     }
 
-    // Volcano study modals — loaded only when NOT in EMIC mode
-    if (!isEmicStudyMode()) {
-        const volcanoTemplates = await import('./volcano/volcano-modal-templates.js');
-        overlay.appendChild(volcanoTemplates.createEndModal());
-        overlay.appendChild(volcanoTemplates.createWelcomeBackModal());
-        overlay.appendChild(volcanoTemplates.createBeginAnalysisModal());
-        overlay.appendChild(volcanoTemplates.createCompleteConfirmationModal());
-        overlay.appendChild(volcanoTemplates.createTutorialIntroModal());
-        overlay.appendChild(volcanoTemplates.createTutorialRevisitModal());
-        overlay.appendChild(volcanoTemplates.createMissingStudyIdModal());
-        overlay.appendChild(volcanoTemplates.createPreSurveyModal());
-        overlay.appendChild(volcanoTemplates.createPostSurveyModal());
-        overlay.appendChild(volcanoTemplates.createActivityLevelModal());
-        overlay.appendChild(volcanoTemplates.createAwesfModal());
-    }
-
     // Pre-populate participant ID from URL (Qualtrics) or localStorage
     // BUT NOT in STUDY_CLEAN mode (always start fresh)
     const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
