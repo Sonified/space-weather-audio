@@ -867,6 +867,99 @@ export function resizeRendererToDisplaySize() {
     }
 }
 
+// ─── Frozen waveform strip: render waveform shader to offscreen texture ─────
+
+async function renderFrozenWaveformStrip(viewStartSec, viewEndSec) {
+    if (!threeRenderer || !waveformMesh || !frozenWF.renderTarget) return;
+
+    const canvas = threeRenderer.domElement;
+    const viewSpan = viewEndSec - viewStartSec;
+    const stripSpan = viewSpan * FROZEN_WF_MULTIPLIER;
+    const viewCenter = (viewStartSec + viewEndSec) / 2;
+
+    const dataDurationSec = (State.dataEndTime.getTime() - State.dataStartTime.getTime()) / 1000;
+    const clampedStart = Math.max(0, viewCenter - stripSpan / 2);
+    const clampedEnd = Math.min(dataDurationSec, viewCenter + stripSpan / 2);
+
+    const actualStripSpan = clampedEnd - clampedStart;
+    const rtWidth = Math.ceil(canvas.width * (actualStripSpan / viewSpan));
+    const rtHeight = canvas.height;
+    if (frozenWF.renderTarget.width !== rtWidth || frozenWF.renderTarget.height !== rtHeight) {
+        frozenWF.renderTarget.setSize(rtWidth, rtHeight);
+    }
+
+    // Save uniforms
+    const savedViewportStart = wfUViewportStart.value;
+    const savedViewportEnd = wfUViewportEnd.value;
+    const savedCanvasWidth = wfUCanvasWidth.value;
+    const savedCanvasHeight = wfUCanvasHeight.value;
+    const savedTransparentBg = wfUTransparentBg.value;
+
+    wfUViewportStart.value = Math.max(0, clampedStart / dataDurationSec);
+    wfUViewportEnd.value = Math.min(1, clampedEnd / dataDurationSec);
+    wfUCanvasWidth.value = rtWidth;
+    wfUCanvasHeight.value = rtHeight;
+    wfUTransparentBg.value = (getMainWindowMode() === 'both') ? 1.0 : 0.0;
+
+    // Position waveformMesh to fill offscreen camera [0,1]×[0,1]
+    const savedPos = waveformMesh.position.clone();
+    const savedScale = waveformMesh.scale.clone();
+    waveformMesh.position.set(0.5, 0.5, 0);
+    waveformMesh.scale.set(0.5, 0.5, 1);
+    waveformMesh.visible = true;
+
+    // Hide everything except waveform for offscreen render
+    const savedVisibility = [];
+    scene.children.forEach(child => {
+        if (child !== waveformMesh) {
+            savedVisibility.push({ obj: child, vis: child.visible });
+            child.visible = false;
+        }
+    });
+
+    frozenWF.stripCamera.left = 0;
+    frozenWF.stripCamera.right = 1;
+    frozenWF.stripCamera.top = 1;
+    frozenWF.stripCamera.bottom = 0;
+    frozenWF.stripCamera.updateProjectionMatrix();
+
+    // Clear to transparent so "both" mode composites correctly
+    const savedClearColor = threeRenderer.getClearColor(new THREE.Color());
+    const savedClearAlpha = threeRenderer.getClearAlpha();
+    threeRenderer.setClearColor(0x000000, 0);
+
+    threeRenderer.setRenderTarget(frozenWF.renderTarget);
+    await threeRenderer.renderAsync(scene, frozenWF.stripCamera);
+    threeRenderer.setRenderTarget(null);
+
+    threeRenderer.setClearColor(savedClearColor, savedClearAlpha);
+
+    // Restore everything
+    savedVisibility.forEach(({ obj, vis }) => { obj.visible = vis; });
+    waveformMesh.position.copy(savedPos);
+    waveformMesh.scale.copy(savedScale);
+    waveformMesh.visible = false;
+
+    wfUViewportStart.value = savedViewportStart;
+    wfUViewportEnd.value = savedViewportEnd;
+    wfUCanvasWidth.value = savedCanvasWidth;
+    wfUCanvasHeight.value = savedCanvasHeight;
+    wfUTransparentBg.value = savedTransparentBg;
+
+    // Record strip state
+    frozenWF.stripStartSec = clampedStart;
+    frozenWF.stripEndSec = clampedEnd;
+    frozenWF.viewSpanAtRender = viewSpan;
+    frozenWF.canvasWidthAtRender = canvas.width;
+    frozenWF.canvasHeightAtRender = canvas.height;
+    frozenWF.modeAtRender = getMainWindowMode();
+    frozenWF.dirty = false;
+    frozenWF.active = true;
+
+    positionMeshWorldSpace(frozenWF.quad, clampedStart, clampedEnd);
+    frozenWF.quad.visible = true;
+}
+
 // ─── Helper: render one frame ───────────────────────────────────────────────
 
 let renderPending = false;
@@ -887,40 +980,77 @@ async function renderFrame() {
             tryUseTiles(camera.left, camera.right);
         }
 
-        // Waveform TSL mesh: show in timeSeries/both modes, update uniforms
+        // Waveform: frozen texture mode (zoomed in) or live shader mode (full view)
         const showWaveform = (mode === 'timeSeries' || mode === 'both') && wfTotalSamples > 0;
-        if (waveformMesh) {
-            waveformMesh.visible = showWaveform;
-            if (showWaveform && State.dataStartTime && State.dataEndTime) {
-                const dataDurationSec = (State.dataEndTime.getTime() - State.dataStartTime.getTime()) / 1000;
+        if (waveformMesh && showWaveform && State.dataStartTime && State.dataEndTime) {
+            const dataDurationSec = (State.dataEndTime.getTime() - State.dataStartTime.getTime()) / 1000;
+            const viewSpan = camera.right - camera.left;
+            const canvas = threeRenderer.domElement;
+            const zoomRatio = viewSpan / dataDurationSec;
+
+            // Detect zoom-level changes — use relative threshold to ignore FP drift during pan
+            if (lastViewSpan > 0 && Math.abs(viewSpan - lastViewSpan) / lastViewSpan > 0.001) {
+                lastZoomChangeTime = performance.now();
+            }
+            lastViewSpan = viewSpan;
+
+            // Use frozen mode when zoomed in, settled, enabled, and not mid-transition
+            const zoomSettled = (performance.now() - lastZoomChangeTime) > FROZEN_WF_SETTLE_MS;
+            const useFrozen = waveformPanMode === 'smartFreeze'
+                && zoomRatio < 0.80 && zoomSettled && !isZoomTransitionInProgress();
+
+            if (useFrozen) {
+                // ─── FROZEN MODE: render-to-texture, world-space quad ───
+                waveformMesh.visible = false;
+
+                const needsRerender = frozenWF.dirty
+                    || canvas.width !== frozenWF.canvasWidthAtRender
+                    || canvas.height !== frozenWF.canvasHeightAtRender
+                    || Math.abs(viewSpan - frozenWF.viewSpanAtRender) > 0.01
+                    || mode !== frozenWF.modeAtRender
+                    || camera.left < frozenWF.stripStartSec + viewSpan * FROZEN_WF_BUFFER
+                    || camera.right > frozenWF.stripEndSec - viewSpan * FROZEN_WF_BUFFER;
+
+                if (needsRerender) {
+                    await renderFrozenWaveformStrip(camera.left, camera.right);
+                }
+                frozenWF.quad.visible = true;
+
+            } else {
+                // ─── LIVE MODE: original frustum-filling behavior ───
+                if (frozenWF.quad) frozenWF.quad.visible = false;
+                frozenWF.active = false;
+                frozenWF.dirty = true;
+                waveformMesh.visible = true;
+
                 if (dataDurationSec > 0) {
                     wfUViewportStart.value = Math.max(0, camera.left / dataDurationSec);
                     wfUViewportEnd.value = Math.min(1, camera.right / dataDurationSec);
                 }
-                // Scale the [-1,1] plane to fill the camera frustum exactly
-                // (spectrogram camera uses real-world coords: seconds × freq bins)
                 waveformMesh.position.x = (camera.left + camera.right) / 2;
                 waveformMesh.position.y = (camera.top + camera.bottom) / 2;
                 waveformMesh.scale.x = (camera.right - camera.left) / 2;
                 waveformMesh.scale.y = (camera.top - camera.bottom) / 2;
-
-                const canvas = threeRenderer.domElement;
                 wfUCanvasWidth.value = parseFloat(canvas.width);
                 wfUCanvasHeight.value = parseFloat(canvas.height);
-
                 wfUTransparentBg.value = (mode === 'both') ? 1.0 : 0.0;
-
-                // DEBUG: log samples-per-pixel to verify Catmull-Rom branch
-                if (!window._sppLogThrottle || performance.now() - window._sppLogThrottle > 2000) {
-                    const viewSpan = wfUViewportEnd.value - wfUViewportStart.value;
-                    const sppCPU = (viewSpan * wfUTotalSamples.value) / canvas.width;
-                    const catEnabled = wfUCatmullEnabled?.value > 0.5;
-                    const catThresh = wfUCatmullThreshold?.value || 128;
-                    const branch = catEnabled && sppCPU <= catThresh ? 'CATMULL-ROM' : sppCPU > 256 ? 'MIP' : 'RAW';
-                    console.log(`🎵 Waveform spp=${sppCPU.toFixed(3)} | branch=${branch}`);
-                    window._sppLogThrottle = performance.now();
-                }
             }
+
+            // DEBUG: log samples-per-pixel + mode
+            if (!window._sppLogThrottle || performance.now() - window._sppLogThrottle > 2000) {
+                const vpStart = Math.max(0, camera.left / dataDurationSec);
+                const vpEnd = Math.min(1, camera.right / dataDurationSec);
+                const vpSpan = vpEnd - vpStart;
+                const sppCPU = (vpSpan * wfUTotalSamples.value) / canvas.width;
+                const catEnabled = wfUCatmullEnabled?.value > 0.5;
+                const catThresh = wfUCatmullThreshold?.value || 128;
+                const branch = catEnabled && sppCPU <= catThresh ? 'CATMULL-ROM' : sppCPU > 256 ? 'MIP' : 'RAW';
+                console.log(`🎵 Waveform spp=${sppCPU.toFixed(3)} | branch=${branch} | ${useFrozen ? 'FROZEN' : 'LIVE'}`);
+                window._sppLogThrottle = performance.now();
+            }
+        } else {
+            if (waveformMesh) waveformMesh.visible = false;
+            if (frozenWF.quad) frozenWF.quad.visible = false;
         }
 
         await threeRenderer.renderAsync(scene, camera);
@@ -944,6 +1074,7 @@ function uploadMainWaveformSamples(expectedTotalSamples = 0) {
     const samples = State.completeSamplesArray || State.getCompleteSamplesArray();
     if (!samples || samples.length === 0) return;
     if (!wfUTotalSamples) return; // TSL uniforms not yet initialized
+    frozenWF.dirty = true; // New audio data — invalidate frozen strip
 
     const effectiveTotal = expectedTotalSamples > samples.length ? expectedTotalSamples : samples.length;
     wfTotalSamples = effectiveTotal;
@@ -2136,6 +2267,20 @@ export function clearCompleteSpectrogram() {
     if (wfMipTexture) { wfMipTexture.dispose(); wfMipTexture = null; }
     if (wfColormapTexture) { wfColormapTexture.dispose(); wfColormapTexture = null; }
     wfTotalSamples = 0;
+
+    // Dispose frozen waveform strip
+    if (frozenWF.quad) {
+        frozenWF.quad.geometry.dispose();
+        if (scene) scene.remove(frozenWF.quad);
+    }
+    if (frozenWF.quadMaterial) frozenWF.quadMaterial.dispose();
+    if (frozenWF.renderTarget) frozenWF.renderTarget.dispose();
+    frozenWF = {
+        active: false, renderTarget: null, quad: null, quadMaterial: null,
+        stripStartSec: 0, stripEndSec: 0, stripCamera: null,
+        viewSpanAtRender: 0, canvasWidthAtRender: 0, canvasHeightAtRender: 0,
+        modeAtRender: null, dirty: true,
+    };
 
     // Dispose pyramid and tile meshes
     disposePyramid();
