@@ -1832,7 +1832,10 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                     // Message will be shown after tutorial overlay appears if not playing
                                 }
                                 // Enable loop button if tutorial is skipped (Personal mode or Study mode after first session)
-                                import('./master-modes.js').then(({ shouldSkipTutorial, isStudyMode }) => {
+                                Promise.all([
+                                    import('./master-modes.js'),
+                                    import('./study-workflow.js')
+                                ]).then(([{ shouldSkipTutorial, isStudyMode }, { isTutorialCompleted }]) => {
                                     const loopBtn = document.getElementById('loopBtn');
                                     if (loopBtn) {
                                         if (shouldSkipTutorial()) {
@@ -1840,8 +1843,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                                             loopBtn.disabled = false;
                                         } else if (isStudyMode()) {
                                             // Study mode - check if tutorial already seen
-                                            const hasSeenTutorial = localStorage.getItem('study_has_seen_tutorial') === 'true';
-                                            if (hasSeenTutorial) {
+                                            if (isTutorialCompleted()) {
                                                 loopBtn.disabled = false;
                                             }
                                             // If not seen, tutorial will enable it
@@ -2533,7 +2535,10 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
     document.getElementById('downloadBtn').disabled = false;
     
     // Enable loop button if tutorial is skipped (Personal mode or Study mode after first session)
-    import('./master-modes.js').then(({ shouldSkipTutorial, isStudyMode }) => {
+    Promise.all([
+        import('./master-modes.js'),
+        import('./study-workflow.js')
+    ]).then(([{ shouldSkipTutorial, isStudyMode }, { isTutorialCompleted }]) => {
         const loopBtn = document.getElementById('loopBtn');
         if (loopBtn) {
             if (shouldSkipTutorial()) {
@@ -2541,8 +2546,7 @@ export async function fetchFromR2Worker(stationData, startTime, estimatedEndTime
                 loopBtn.disabled = false;
             } else if (isStudyMode()) {
                 // Study mode - check if tutorial already seen
-                const hasSeenTutorial = localStorage.getItem('study_has_seen_tutorial') === 'true';
-                if (hasSeenTutorial) {
+                if (isTutorialCompleted()) {
                     loopBtn.disabled = false;
                 }
                 // If not seen, tutorial will enable it

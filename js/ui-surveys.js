@@ -865,14 +865,14 @@ export async function attemptSubmission(fromWorkflow = false) {
                 
                 // Workflow state at time of submission
                 workflowState: {
-                    study_has_seen_participant_setup: localStorage.getItem('study_has_seen_participant_setup') === 'true',
-                    study_has_seen_welcome: localStorage.getItem('study_has_seen_welcome') === 'true',
-                    study_tutorial_in_progress: localStorage.getItem('study_tutorial_in_progress') === 'true',
-                    study_tutorial_completed: localStorage.getItem('study_tutorial_completed') === 'true',
-                    study_has_seen_welcome_back: localStorage.getItem('study_has_seen_welcome_back') === 'true',
-                    study_pre_survey_completion_date: localStorage.getItem('study_pre_survey_completion_date') || null,
-                    study_begin_analysis_clicked_this_session: localStorage.getItem('study_begin_analysis_clicked_this_session') === 'true',
-                    study_session_timed_out: localStorage.getItem('study_session_timed_out') === 'true'
+                    study_has_seen_participant_setup: localStorage.getItem(STORAGE_KEYS.HAS_SEEN_PARTICIPANT_SETUP) === 'true',
+                    study_has_seen_welcome: localStorage.getItem(STORAGE_KEYS.HAS_SEEN_WELCOME) === 'true',
+                    study_tutorial_in_progress: localStorage.getItem(STORAGE_KEYS.TUTORIAL_IN_PROGRESS) === 'true',
+                    study_tutorial_completed: localStorage.getItem(STORAGE_KEYS.TUTORIAL_COMPLETED) === 'true',
+                    study_has_seen_welcome_back: localStorage.getItem(STORAGE_KEYS.HAS_SEEN_WELCOME_BACK) === 'true',
+                    study_pre_survey_completion_date: localStorage.getItem(STORAGE_KEYS.PRE_SURVEY_COMPLETION_DATE) || null,
+                    study_begin_analysis_clicked_this_session: localStorage.getItem(STORAGE_KEYS.BEGIN_ANALYSIS_CLICKED_THIS_SESSION) === 'true',
+                    study_session_timed_out: localStorage.getItem(STORAGE_KEYS.SESSION_TIMED_OUT) === 'true'
                 },
                 
                 // Interface interactions (future expansion)
