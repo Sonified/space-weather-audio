@@ -1707,17 +1707,27 @@ input[type="checkbox"] {
 
 .modal-submit {
     width: 100%;
-    padding: 9px 24px;
-    font-size: 18px;
+    padding: 10px 24px;
+    font-size: 16px;
+    font-weight: 600;
     margin-top: 4px;
-    background: #0056b3 !important; /* Blue to match other modal buttons */
-    border-color: #0056b3 !important;
-    color: white !important;
+    background: linear-gradient(180deg, #2196F3 0%, #1976D2 100%);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: white;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(21, 101, 192, 0.35);
+    text-shadow: 0 1px 1px rgba(0,0,0,0.15);
 }
-
 .modal-submit:hover:not(:disabled) {
-    background: #004085 !important; /* Darker blue on hover */
-    border-color: #004085 !important;
+    background: linear-gradient(180deg, #42a5f5 0%, #1e88e5 100%);
+    box-shadow: 0 4px 12px rgba(21, 101, 192, 0.45);
+}
+.modal-submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
 }
 
 .mood-survey-intro {
@@ -4431,6 +4441,57 @@ select.csel-native {
 .modal-exit:hover {
     background: #c82333;
     border-color: #c82333;
+}
+
+/* Confirm dialog button pair (e.g. "Ready to finish?") */
+.confirm-btn {
+    padding: 10px 20px;
+    font-size: 16px;
+    font-weight: 600;
+    color: white;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-shadow: 0 1px 1px rgba(0,0,0,0.15);
+}
+.confirm-btn-back {
+    background: linear-gradient(180deg, #d07070 0%, #b85555 100%);
+    box-shadow: 0 2px 8px rgba(180, 80, 80, 0.35);
+}
+.confirm-btn-back:hover {
+    background: linear-gradient(180deg, #da7e7e 0%, #c56060 100%);
+    box-shadow: 0 4px 12px rgba(180, 80, 80, 0.45);
+}
+.confirm-btn-proceed {
+    background: linear-gradient(180deg, #2196F3 0%, #1976D2 100%);
+    box-shadow: 0 2px 8px rgba(21, 101, 192, 0.35);
+}
+.confirm-btn-proceed:hover {
+    background: linear-gradient(180deg, #42a5f5 0%, #1e88e5 100%);
+    box-shadow: 0 4px 12px rgba(25, 118, 210, 0.45);
+}
+
+/* Complete button (playback bar) */
+.complete-btn {
+    background: linear-gradient(180deg, #2196F3 0%, #1976D2 100%);
+    color: white;
+    font-weight: 700;
+    padding: 8px 18px;
+    font-size: 15px;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    cursor: pointer;
+    margin-left: auto;
+    white-space: nowrap;
+    transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(21, 101, 192, 0.35);
+    text-shadow: 0 1px 1px rgba(0,0,0,0.15);
+}
+.complete-btn:hover {
+    background: linear-gradient(180deg, #42a5f5 0%, #1e88e5 100%);
+    box-shadow: 0 4px 12px rgba(21, 101, 192, 0.45);
+    transform: scale(1.03);
 }
 
 /* ============================================================

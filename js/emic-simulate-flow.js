@@ -82,35 +82,30 @@ export function initSimulateFlow() {
         btn.style.background = '#dc3545';
         flowLog('Restored Cancel Flow button after page refresh');
 
-        // If user closed welcome but hasn't completed analysis, re-show the complete button immediately
-        // (skip feature polling — they already had features before reload)
-        if (getEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME) && !getEmicFlag(EMIC_FLAGS.HAS_COMPLETED_ANALYSIS)) {
+        // Resume flow based on flag state after page refresh
+        if (getEmicFlag(EMIC_FLAGS.HAS_CONFIRMED_COMPLETE)) {
+            // Already confirmed — resume at questionnaires
+            flowLog('Resuming after refresh: confirmed complete, skipping to questionnaires');
+            resumeFromConfirmed();
+        } else if (getEmicFlag(EMIC_FLAGS.HAS_CLICKED_COMPLETE)) {
+            // Clicked complete but didn't confirm — show confirmation modal
+            flowLog('Resuming after refresh: clicked complete, showing confirmation');
+            resumeFromComplete();
+        } else if (getEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME)) {
+            // Still drawing features — re-show complete button
             flowLog('Restoring Complete button after page refresh (immediate show)');
             if (!completeBtn) {
                 completeBtn = document.createElement('button');
                 completeBtn.id = 'simulateFlowCompleteBtn';
                 completeBtn.type = 'button';
                 completeBtn.textContent = '✓ Complete';
-                completeBtn.style.cssText = `
-                    background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
-                    color: white; font-weight: 700; padding: 8px 18px; font-size: 15px;
-                    border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; cursor: pointer;
-                    margin-left: auto; white-space: nowrap;
-                    transition: all 0.2s;
-                    box-shadow: 0 2px 6px rgba(25, 118, 210, 0.4), inset 0 1px 0 rgba(255,255,255,0.15);
-                    text-shadow: 0 1px 1px rgba(0,0,0,0.2);
-                `;
-                completeBtn.addEventListener('mouseenter', () => { completeBtn.style.transform = 'scale(1.03)'; });
-                completeBtn.addEventListener('mouseleave', () => { completeBtn.style.transform = 'scale(1)'; });
+                completeBtn.className = 'complete-btn';
                 const playbackBar = document.querySelector('.panel-playback > div');
                 if (playbackBar) playbackBar.appendChild(completeBtn);
             }
             completeBtn.style.display = '';
             completeBtn.addEventListener('click', () => {
-                completeBtn.style.display = 'none';
-                setEmicFlag(EMIC_FLAGS.HAS_COMPLETED_ANALYSIS);
                 flowLog('Complete button clicked after refresh-restore');
-                // Resume the flow from Step 5 (confirmation → questionnaires → submission)
                 resumeFromComplete();
             }, { once: true });
         }
@@ -148,6 +143,8 @@ export function isFlowActive() {
 // preventing the dark backdrop from flickering between sequential modals.
 // ═══════════════════════════════════════════════════════════════════════════════
 
+let originalDisableScroll = null;
+
 function installOverlayPatch() {
     if (originalCloseModal) return;
     originalCloseModal = modalManager.closeModal.bind(modalManager);
@@ -157,12 +154,19 @@ function installOverlayPatch() {
         }
         return originalCloseModal(modalId, options);
     };
+    // Don't let modals lock scroll during the flow — respect user's setting
+    originalDisableScroll = modalManager.disableBackgroundScroll.bind(modalManager);
+    modalManager.disableBackgroundScroll = function() {};
 }
 
 function removeOverlayPatch() {
     if (originalCloseModal) {
         modalManager.closeModal = originalCloseModal;
         originalCloseModal = null;
+    }
+    if (originalDisableScroll) {
+        modalManager.disableBackgroundScroll = originalDisableScroll;
+        originalDisableScroll = null;
     }
 }
 
@@ -381,6 +385,7 @@ async function startFlow() {
     } catch (err) {
         console.error('❌ Simulate flow error:', err);
         restoreRealUser();
+        clearAllEmicFlags();
     } finally {
         cleanup();
     }
@@ -400,6 +405,56 @@ function restoreRealUser() {
 }
 
 /**
+ * Resume from after confirmation (Step 6+): questionnaire intro → questionnaires → submission.
+ * Called on refresh when HAS_CONFIRMED_COMPLETE is set.
+ */
+async function resumeFromConfirmed(username) {
+    const testUsername = username || getParticipantId();
+    inFlowSequence = true;
+    flowActive = true;
+
+    // Ensure overlay patch is installed
+    installOverlayPatch();
+
+    try {
+        // ─── Step 6: Questionnaire intro ─────────────────────────────────
+        flowLog('Resuming from confirmed: showing questionnaire intro');
+        await showIntroModal();
+
+        if (!flowActive) return;
+
+        // ─── Step 7: Questionnaire sequence (skips already-completed ones) ──
+        const questionnaireData = await runQuestionnaireSequence();
+
+        if (!flowActive) return;
+
+        // ─── Step 8: Save + Submission Complete ──────────────────────────
+        const submissionData = buildSubmissionData(questionnaireData, testUsername);
+        saveToLocalStorage(submissionData);
+        setEmicFlag(EMIC_FLAGS.HAS_SUBMITTED);
+        flowLog('Submission saved to localStorage');
+
+        flowLog('Upload to server started');
+        await uploadToServer(submissionData);
+
+        flowLog('Submission complete modal shown');
+        await showSubmissionCompleteModal(submissionData.featureCount);
+
+        // ─── Restore real user and clear flags ──────────────────────────
+        restoreRealUser();
+        clearAllEmicFlags();
+        flowLog('Flow completed successfully — all flags cleared');
+
+    } catch (err) {
+        console.error('❌ Simulate flow error (resumeFromConfirmed):', err);
+        restoreRealUser();
+        clearAllEmicFlags();
+    } finally {
+        cleanup();
+    }
+}
+
+/**
  * Resume the flow from Step 5 (confirmation → questionnaires → submission).
  * Called from both the normal flow and the refresh-restore Complete button handler.
  * @param {string} [username] - participant ID to use; defaults to current participant
@@ -413,29 +468,34 @@ async function resumeFromComplete(username) {
     installOverlayPatch();
 
     try {
-        // ─── Step 5: Confirmation ────────────────────────────────────────
-        setEmicFlag(EMIC_FLAGS.HAS_COMPLETED_ANALYSIS);
-        syncEmicProgress(testUsername, 'analysis_complete');
-        flowLog('Complete clicked');
-        completeTime = new Date().toISOString();
-        const confirmed = await showConfirmModal();
-        flowLog(`Confirmation ${confirmed ? 'confirmed' : 'declined'}`);
-        if (!confirmed) {
-            // User went back — re-show complete button
-            inFlowSequence = false;
-            await showCompleteButton();
-            if (!flowActive) return;
-            inFlowSequence = true;
+        // ─── Step 5: Confirmation (loop until confirmed) ─────────────────
+        let confirmed = false;
+        while (!confirmed && flowActive) {
+            setEmicFlag(EMIC_FLAGS.HAS_CLICKED_COMPLETE);
+            syncEmicProgress(testUsername, 'analysis_complete');
             completeTime = new Date().toISOString();
-            const confirmed2 = await showConfirmModal();
-            flowLog(`Second confirmation ${confirmed2 ? 'confirmed' : 'declined'}`);
-            if (!confirmed2) {
-                flowLog('Flow ended (user declined twice)');
-                restoreRealUser();
-                cleanup();
-                return;
+            confirmed = await showConfirmModal();
+            flowLog(`Confirmation ${confirmed ? 'confirmed' : 'declined'}`);
+            if (!confirmed) {
+                setEmicFlag(EMIC_FLAGS.HAS_CLICKED_COMPLETE, false);
+                inFlowSequence = false;
+                // Wait for user to click Complete again (button stays visible)
+                await new Promise((resolve) => {
+                    const onClick = () => {
+                        completeBtn.removeEventListener('click', onClick);
+                        resolve();
+                    };
+                    completeBtn.addEventListener('click', onClick);
+                });
+                if (!flowActive) return;
+                inFlowSequence = true;
             }
         }
+        if (!flowActive) return;
+
+        // User confirmed — set confirmed flag
+        setEmicFlag(EMIC_FLAGS.HAS_CONFIRMED_COMPLETE);
+        flowLog('Complete confirmed');
 
         // ─── Step 6: Questionnaire intro ─────────────────────────────────
         flowLog('Questionnaire intro shown');
@@ -460,12 +520,15 @@ async function resumeFromComplete(username) {
         flowLog('Submission complete modal shown');
         await showSubmissionCompleteModal(submissionData.featureCount);
 
-        // ─── Restore real user ───────────────────────────────────────────
+        // ─── Restore real user and clear flags ──────────────────────────
         restoreRealUser();
+        clearAllEmicFlags();
+        flowLog('Flow completed successfully — all flags cleared');
 
     } catch (err) {
         console.error('❌ Simulate flow error (resumeFromComplete):', err);
         restoreRealUser();
+        clearAllEmicFlags();
     } finally {
         cleanup();
     }
@@ -592,17 +655,8 @@ function showCompleteButton() {
             completeBtn.id = 'simulateFlowCompleteBtn';
             completeBtn.type = 'button';
             completeBtn.textContent = '✓ Complete';
-            completeBtn.style.cssText = `
-                background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
-                color: white; font-weight: 700; padding: 8px 18px; font-size: 15px;
-                border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; cursor: pointer;
-                margin-left: auto; display: none; white-space: nowrap;
-                transition: all 0.2s;
-                box-shadow: 0 2px 6px rgba(25, 118, 210, 0.4), inset 0 1px 0 rgba(255,255,255,0.15);
-                text-shadow: 0 1px 1px rgba(0,0,0,0.2);
-            `;
-            completeBtn.addEventListener('mouseenter', () => { completeBtn.style.transform = 'scale(1.03)'; });
-            completeBtn.addEventListener('mouseleave', () => { completeBtn.style.transform = 'scale(1)'; });
+            completeBtn.className = 'complete-btn';
+            completeBtn.style.display = 'none';
 
             const playbackBar = document.querySelector('.panel-playback > div');
             if (playbackBar) playbackBar.appendChild(completeBtn);
@@ -613,7 +667,6 @@ function showCompleteButton() {
 
         const onClick = () => {
             completeBtn.removeEventListener('click', onClick);
-            completeBtn.style.display = 'none';
             if (featurePollInterval) { clearInterval(featurePollInterval); featurePollInterval = null; }
             resolve();
         };
@@ -655,9 +708,9 @@ function showConfirmModal() {
                     <p style="color: #666; margin: 0 0 24px; font-size: 16px; line-height: 1.5;">
                         Are you sure you're ready to finish? You won't be able to go back after this.
                     </p>
-                    <div style="display: flex; gap: 12px; justify-content: center;">
-                        <button type="button" id="sfConfirmNo" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #c97070 !important; border: 2px solid #c97070 !important; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; min-width: 120px;">Go back</button>
-                        <button type="button" id="sfConfirmYes" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; min-width: 140px;">Yes, I'm done</button>
+                    <div style="display: flex; gap: 24px; justify-content: center; align-items: center;">
+                        <button type="button" id="sfConfirmNo" class="confirm-btn confirm-btn-back" style="min-width: 120px;">Go back</button>
+                        <button type="button" id="sfConfirmYes" class="confirm-btn confirm-btn-proceed" style="min-width: 140px;">Yes, I'm done</button>
                     </div>
                 </div>
             </div>
@@ -699,7 +752,7 @@ function showIntroModal() {
                     <p style="color: #666; margin: 0 0 24px; font-size: 16px; line-height: 1.6;">
                         You will now be guided through a brief set of questions that should take 2–3 minutes.
                     </p>
-                    <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; min-width: 140px;">OK</button>
+                    <button type="button" class="modal-submit" style="min-width: 140px;">OK</button>
                 </div>
             </div>
         `;
@@ -734,6 +787,11 @@ async function runQuestionnaireSequence() {
     const questionnaireData = {};
 
     for (const q of questionnaires) {
+        // Skip already-completed questionnaires (resume after refresh)
+        if (getEmicFlag(q.flag)) {
+            flowLog(`Skipping already-completed questionnaire: ${q.key}`);
+            continue;
+        }
         const modal = document.getElementById(q.id);
         if (!modal) {
             console.warn(`⚠️ Questionnaire modal not found: ${q.id}, skipping`);
@@ -881,7 +939,7 @@ function createSubmissionCompleteElement(featureCount) {
                 <p style="color: #666; margin: 0 0 24px; font-size: 15px; line-height: 1.5;">
                     Your answers have been submitted. You can now close this page.
                 </p>
-                <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; min-width: 120px;">Close</button>
+                <button type="button" class="modal-submit" style="min-width: 120px;">Close</button>
             </div>
         </div>
     `;

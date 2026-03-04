@@ -178,7 +178,7 @@ export function createWelcomeBackModal() {
                     Are you ready to begin? Your session should be completed in one sitting. Please use high-quality speakers or headphones.
                 </p>
                 <div style="display: flex; justify-content: center;">
-                    <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 220px;">Start Now</button>
+                    <button type="button" class="modal-submit" style="width: 220px;">Start Now</button>
                 </div>
             </div>
         </div>
@@ -201,7 +201,7 @@ export function createBeginAnalysisModal() {
                     You won't be able to switch volcanoes after this. Your session should be completed in one sitting. Please use high-quality speakers or headphones.
                 </p>
                 <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
-                    <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 220px;">Begin Analysis</button>
+                    <button type="button" class="modal-submit" style="width: 220px;">Begin Analysis</button>
                     <button type="button" class="modal-cancel" style="width: 220px;">Cancel</button>
                 </div>
             </div>
@@ -246,7 +246,7 @@ export function createCompleteConfirmationModal() {
                     Once you continue, you won't be able to add more features. You'll complete a brief post-survey to finish your session.
                 </p>
                 <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
-                    <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #28a745; border: 2px solid #28a745; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 180px;">Yes, I'm Done</button>
+                    <button type="button" class="modal-submit" style="width: 180px; background: linear-gradient(180deg, #2ecc71 0%, #28a745 100%); box-shadow: 0 2px 8px rgba(40, 167, 69, 0.35);">Yes, I'm Done</button>
                     <button type="button" class="modal-cancel" style="width: 180px;">Not yet</button>
                 </div>
             </div>
@@ -273,7 +273,7 @@ export function createTutorialIntroModal() {
                     It will take approximately 5 minutes to complete.
                 </p>
                 <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
-                    <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #c62828; border: 2px solid #c62828; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 280px;">Begin Tutorial</button>
+                    <button type="button" class="modal-submit" style="width: 280px; background: linear-gradient(180deg, #e53935 0%, #c62828 100%); box-shadow: 0 2px 8px rgba(198, 40, 40, 0.35);">Begin Tutorial</button>
                 </div>
             </div>
         </div>
@@ -296,7 +296,7 @@ export function createTutorialRevisitModal() {
                     Would you like to revisit the tutorial?
                 </p>
                 <div style="display: flex; flex-direction: column; gap: 15px; align-items: center; justify-content: center;">
-                    <button type="button" class="modal-submit" id="tutorialRevisitBtn1" style="padding: 8px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 200px;">Yes</button>
+                    <button type="button" class="modal-submit" id="tutorialRevisitBtn1" style="width: 200px;">Yes</button>
                     <button type="button" class="modal-cancel" id="tutorialRevisitBtn2" style="width: 200px;">Cancel</button>
                     <button type="button" class="modal-exit" id="tutorialRevisitBtn3" style="display: none; width: 200px;">Exit</button>
                 </div>
@@ -332,7 +332,7 @@ export function createMissingStudyIdModal() {
                     </p>
                 </div>
                 <div style="display: flex; gap: 15px; justify-content: center;">
-                    <button type="button" class="modal-submit" style="padding: 12px 24px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s;">Enter Study ID</button>
+                    <button type="button" class="modal-submit">Enter Study ID</button>
                 </div>
             </div>
         </div>
