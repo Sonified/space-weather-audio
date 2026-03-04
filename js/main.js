@@ -2442,9 +2442,7 @@ async function initializeEmicStudyMode() {
     const simulatePanel = document.querySelector('.panel-simulate');
     if (simulatePanel) simulatePanel.style.display = 'none';
 
-    // Skip tutorial entirely
-    const { markTutorialAsCompleted } = await import('./study-workflow.js');
-    markTutorialAsCompleted();
+    // Tutorial is never initialized in EMIC mode (shouldSkipTutorial=true in master-modes.js)
 
     // Enable all features immediately
     const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
