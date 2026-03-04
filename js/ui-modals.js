@@ -60,17 +60,14 @@ export function checkIfAnyModalVisible() {
     const allModalIds = [
         'welcomeModal',
         'participantModal',
-        'preSurveyModal',
-        'postSurveyModal',
-        'activityLevelModal',
-        'awesfModal',
-        'endModal',
-        'beginAnalysisModal',
-        'missingStudyIdModal',
-        'completeConfirmationModal',
-        'tutorialIntroModal',
-        'tutorialRevisitModal',
-        'welcomeBackModal'
+        'participantInfoModal',
+        'aboutModal',
+        'emicAboutModal',
+        'backgroundQuestionModal',
+        'dataAnalysisQuestionModal',
+        'musicalExperienceQuestionModal',
+        'feedbackQuestionModal',
+        'referralQuestionModal'
     ];
 
     return allModalIds.some(modalId => {
@@ -248,17 +245,14 @@ export function closeAllModals() {
     const allModalIds = [
         'welcomeModal',
         'participantModal',
-        'preSurveyModal',
-        'postSurveyModal',
-        'activityLevelModal',
-        'awesfModal',
-        'endModal',
-        'beginAnalysisModal',
-        'missingStudyIdModal',
-        'completeConfirmationModal',
-        'tutorialIntroModal',
-        'tutorialRevisitModal',
-        'welcomeBackModal'
+        'participantInfoModal',
+        'aboutModal',
+        'emicAboutModal',
+        'backgroundQuestionModal',
+        'dataAnalysisQuestionModal',
+        'musicalExperienceQuestionModal',
+        'feedbackQuestionModal',
+        'referralQuestionModal'
     ];
 
     allModalIds.forEach(modalId => {
@@ -491,7 +485,7 @@ export function setupModalEventListeners() {
 function removeModalEventListeners() {
     // 🔥 FIX: Clone modals to break all event listener references
     // This ensures old closures (NativeContext instances) can be garbage collected
-    const modalIds = ['participantModal', 'preSurveyModal', 'postSurveyModal', 'activityLevelModal', 'awesfModal'];
+    const modalIds = ['participantModal', 'welcomeModal'];
 
     modalIds.forEach(modalId => {
         const modal = document.getElementById(modalId);

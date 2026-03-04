@@ -28,7 +28,7 @@ import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { zoomState } from './zoom-state.js';
 import { initKeyboardShortcuts, cleanupKeyboardShortcuts } from './keyboard-shortcuts.js';
 import { initDataViewer, fetchUsers } from './data-viewer.js';
-import { setStatusText, appendStatusText } from './tutorial-effects.js';
+import { setStatusText } from './tutorial-effects.js';
 import { drawDayMarkers, clearDayMarkers } from './day-markers.js';
 import { initScrollZoom } from './scroll-zoom.js';
 import {
@@ -1405,8 +1405,8 @@ function injectGearPopovers() {
                 <div class="gear-popover-row">
                     <span class="gear-label">Click:</span>
                     <select id="navBarClick" class="gear-select">
-                        <option value="moveWindow">Move window</option>
-                        <option value="moveAndPlay" selected>Move & play</option>
+                        <option value="moveWindow" selected>Move window</option>
+                        <option value="moveAndPlay">Move & play</option>
                     </select>
                 </div>
                 <div class="gear-popover-row">
@@ -3215,7 +3215,7 @@ async function initializeMainApp() {
     });
     
     // Blur dropdowns
-    const dropdowns = ['volcano', 'dataType', 'station', 'duration', 'frequencyScale'];
+    const dropdowns = ['dataType', 'station', 'duration', 'frequencyScale'];
     dropdowns.forEach(id => {
         const dropdown = document.getElementById(id);
         if (dropdown) {
