@@ -840,3 +840,124 @@ export async function closeWelcomeModal(keepOverlay = null) {
         });
     }
 }
+
+// ── Questionnaire modal wiring ──────────────────────────────────────────────
+
+/**
+ * Config for all 5 post-study questionnaire modals.
+ * Shared by wireQuestionnaireModals (main.js) and runQuestionnaireSequence (emic-study-flow.js).
+ *
+ * type 'radio':    radios enable submit; value = checked radio
+ * type 'textarea': input toggles submit text between 'Skip'/'✓ Submit'; value = textarea content
+ */
+export const QUESTIONNAIRE_CONFIG = [
+    {
+        key: 'background',
+        btnId: 'backgroundQuestionBtn',
+        modalId: 'backgroundQuestionModal',
+        type: 'radio',
+        inputName: 'backgroundLevel',
+        flag: 'HAS_SUBMITTED_BACKGROUND',
+        milestone: 'questionnaire_background',
+        logLabel: 'Background level'
+    },
+    {
+        key: 'dataAnalysis',
+        btnId: 'dataAnalysisQuestionBtn',
+        modalId: 'dataAnalysisQuestionModal',
+        type: 'radio',
+        inputName: 'dataAnalysisLevel',
+        flag: 'HAS_SUBMITTED_DATA_ANALYSIS',
+        milestone: 'questionnaire_data_analysis',
+        logLabel: 'Data analysis level'
+    },
+    {
+        key: 'musicalExperience',
+        btnId: 'musicalExperienceQuestionBtn',
+        modalId: 'musicalExperienceQuestionModal',
+        type: 'radio',
+        inputName: 'musicalExperienceLevel',
+        flag: 'HAS_SUBMITTED_MUSICAL',
+        milestone: 'questionnaire_musical',
+        logLabel: 'Musical experience level'
+    },
+    {
+        key: 'feedback',
+        btnId: 'feedbackQuestionBtn',
+        modalId: 'feedbackQuestionModal',
+        type: 'textarea',
+        inputName: 'feedbackText',
+        flag: 'HAS_SUBMITTED_FEEDBACK',
+        milestone: 'questionnaire_feedback',
+        logLabel: 'Feedback'
+    },
+    {
+        key: 'referral',
+        btnId: 'referralQuestionBtn',
+        modalId: 'referralQuestionModal',
+        type: 'textarea',
+        inputName: 'referralText',
+        flag: 'HAS_SUBMITTED_REFERRAL',
+        milestone: 'questionnaire_referral',
+        logLabel: 'Referral'
+    }
+];
+
+/**
+ * Wire all 5 post-study questionnaire modals (button → open, close, input → enable submit, submit).
+ * Replaces ~160 lines of copy-paste in main.js.
+ */
+export function wireQuestionnaireModals(modalMgr) {
+    for (const q of QUESTIONNAIRE_CONFIG) {
+        const btn = document.getElementById(q.btnId);
+        const modal = document.getElementById(q.modalId);
+        if (!btn || !modal) continue;
+
+        // Open
+        btn.addEventListener('click', async () => {
+            await modalMgr.openModal(q.modalId);
+        });
+
+        // Close
+        const closeBtn = modal.querySelector('.modal-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => modalMgr.closeModal(q.modalId));
+        }
+
+        const submitBtn = modal.querySelector('.modal-submit');
+
+        if (q.type === 'radio') {
+            // Enable submit when any radio is selected
+            modal.querySelectorAll('input[type="radio"]').forEach(radio => {
+                radio.addEventListener('change', () => { submitBtn.disabled = false; });
+            });
+        } else {
+            // Textarea: toggle submit text between Skip and Submit
+            const textarea = modal.querySelector(`#${q.inputName}`);
+            if (textarea) {
+                textarea.addEventListener('input', () => {
+                    submitBtn.textContent = textarea.value.trim() ? '✓ Submit' : 'Skip';
+                });
+            }
+        }
+
+        // Submit handler
+        submitBtn.addEventListener('click', async () => {
+            let value;
+            if (q.type === 'radio') {
+                value = document.querySelector(`input[name="${q.inputName}"]:checked`)?.value;
+            } else {
+                value = modal.querySelector(`#${q.inputName}`)?.value?.trim();
+            }
+            console.log(`📋 ${q.logLabel}:`, value || '(skipped)');
+
+            if (isEmicStudyMode()) {
+                const { EMIC_FLAGS, setEmicFlag } = await import('./emic-study-flags.js');
+                setEmicFlag(EMIC_FLAGS[q.flag]);
+                const { syncEmicProgress } = await import('./data-uploader.js');
+                syncEmicProgress(localStorage.getItem('participantId'), q.milestone);
+            }
+            modalMgr.closeModal(q.modalId);
+        });
+    }
+}

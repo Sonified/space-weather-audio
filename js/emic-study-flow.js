@@ -32,6 +32,7 @@ import { getStandaloneFeatures } from './feature-tracker.js';
 import { getParticipantId, storeParticipantId } from './participant-id.js';
 import { uploadEmicSubmission, syncEmicProgress } from './data-uploader.js';
 import { EMIC_FLAGS, getEmicFlag, setEmicFlag, clearAllEmicFlags, updateActiveFeatureCount } from './emic-study-flags.js';
+import { QUESTIONNAIRE_CONFIG } from './ui-modals.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FLOW LOGGING
@@ -776,40 +777,34 @@ function showIntroModal() {
  * Existing submit handlers in main.js close each modal → patch forces keepOverlay.
  */
 async function runQuestionnaireSequence() {
-    const questionnaires = [
-        { id: 'backgroundQuestionModal', key: 'background', radioName: 'backgroundLevel', flag: EMIC_FLAGS.HAS_SUBMITTED_BACKGROUND },
-        { id: 'dataAnalysisQuestionModal', key: 'dataAnalysis', radioName: 'dataAnalysisLevel', flag: EMIC_FLAGS.HAS_SUBMITTED_DATA_ANALYSIS },
-        { id: 'musicalExperienceQuestionModal', key: 'musicalExperience', radioName: 'musicalExperienceLevel', flag: EMIC_FLAGS.HAS_SUBMITTED_MUSICAL },
-        { id: 'referralQuestionModal', key: 'referral', textareaId: 'referralText', flag: EMIC_FLAGS.HAS_SUBMITTED_REFERRAL },
-        { id: 'feedbackQuestionModal', key: 'feedback', textareaId: 'feedbackText', flag: EMIC_FLAGS.HAS_SUBMITTED_FEEDBACK },
-    ];
-
     const questionnaireData = {};
 
-    for (const q of questionnaires) {
+    for (const q of QUESTIONNAIRE_CONFIG) {
+        const resolvedFlag = EMIC_FLAGS[q.flag];
+
         // Skip already-completed questionnaires (resume after refresh)
-        if (getEmicFlag(q.flag)) {
+        if (getEmicFlag(resolvedFlag)) {
             flowLog(`Skipping already-completed questionnaire: ${q.key}`);
             continue;
         }
-        const modal = document.getElementById(q.id);
+        const modal = document.getElementById(q.modalId);
         if (!modal) {
-            console.warn(`⚠️ Questionnaire modal not found: ${q.id}, skipping`);
+            console.warn(`⚠️ Questionnaire modal not found: ${q.modalId}, skipping`);
             continue;
         }
         if (!flowActive) break;
 
         // Open this questionnaire (swap from previous, overlay stays)
-        await modalManager.openModal(q.id, { keepOverlay: true });
+        await modalManager.openModal(q.modalId, { keepOverlay: true });
         // ↑ This promise resolves when the existing submit handler in main.js
         //   calls modalManager.closeModal() — patched to keepOverlay:true
 
         // Collect responses after modal closes
         const responses = {};
-        if (q.radioName) {
-            responses[q.radioName] = document.querySelector(`input[name="${q.radioName}"]:checked`)?.value || '';
-        } else if (q.textareaId) {
-            const textarea = document.getElementById(q.textareaId);
+        if (q.type === 'radio') {
+            responses[q.inputName] = document.querySelector(`input[name="${q.inputName}"]:checked`)?.value || '';
+        } else {
+            const textarea = document.getElementById(q.inputName);
             responses[q.key + 'Text'] = textarea?.value?.trim() || '';
         }
 
@@ -817,8 +812,8 @@ async function runQuestionnaireSequence() {
             responses,
             completedAt: new Date().toISOString()
         };
-        setEmicFlag(q.flag);
-        syncEmicProgress(getParticipantId(), `questionnaire_${q.key}`);
+        setEmicFlag(resolvedFlag);
+        syncEmicProgress(getParticipantId(), q.milestone);
         flowLog(`Questionnaire "${q.key}" completed: ${JSON.stringify(responses)}`);
     }
 

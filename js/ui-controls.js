@@ -22,7 +22,9 @@ export {
     closeParticipantModal,
     openParticipantInfoModal,
     openWelcomeModal,
-    closeWelcomeModal
+    closeWelcomeModal,
+    wireQuestionnaireModals,
+    QUESTIONNAIRE_CONFIG
 } from './ui-modals.js';
 
 // Survey functions (re-exported for backward compatibility)
