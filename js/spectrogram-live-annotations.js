@@ -8,7 +8,7 @@
 
 import * as State from './audio-state.js';
 import { zoomState } from './zoom-state.js';
-import { getCurrentRegions, getStandaloneFeatures } from './region-tracker.js';
+import { getStandaloneFeatures } from './region-tracker.js';
 import { getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
 import { getYPositionForFrequencyScaled } from './spectrogram-axis-renderer.js';
 import { getHoveredBoxKey } from './spectrogram-renderer.js';
@@ -189,107 +189,95 @@ export function updateLiveAnnotations() {
     const canvasRect = canvas.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
 
-    const regions = getCurrentRegions();
+    const features = getStandaloneFeatures();
 
     // Debug on first run
     if (!window._liveAnnotationDebugLogged) {
-        console.log('📝 Live annotation checking regions:', regions.length);
+        console.log('📝 Live annotation checking standalone features:', features.length);
         window._liveAnnotationDebugLogged = true;
     }
 
-    regions.forEach((region, regionIndex) => {
-        if (!region.features) return;
+    features.forEach((feature, featureIndex) => {
+        const key = `-1-${featureIndex}`;
 
-        region.features.forEach((feature, featureIndex) => {
-            const key = `${regionIndex}-${featureIndex}`;
+        if (!feature.notes || !feature.notes.trim()) return;
+        if (!feature.startTime || !feature.endTime) return;
 
-            if (!feature.notes || !feature.notes.trim()) return;
-            if (!feature.startTime || !feature.endTime) return;
+        const featureStartMs = new Date(feature.startTime).getTime();
+        const featureEndMs = new Date(feature.endTime).getTime();
 
-            const featureStartMs = new Date(feature.startTime).getTime();
-            const featureEndMs = new Date(feature.endTime).getTime();
+        const timeUntilFeature = featureStartMs - playheadMs;
+        const playbackRate = State.currentPlaybackRate || 1.0;
+        const scaledLeadTime = LEAD_TIME_MS * playbackRate;
 
-            const timeUntilFeature = featureStartMs - playheadMs;
-            const playbackRate = State.currentPlaybackRate || 1.0;
-            const scaledLeadTime = LEAD_TIME_MS * playbackRate;
+        const shouldShow = timeUntilFeature <= scaledLeadTime && timeUntilFeature > -(featureEndMs - featureStartMs);
 
-            const shouldShow = timeUntilFeature <= scaledLeadTime && timeUntilFeature > -(featureEndMs - featureStartMs);
+        const existingAnnotation = activeAnnotations.get(key);
 
-            const existingAnnotation = activeAnnotations.get(key);
+        if (shouldShow && !existingAnnotation) {
+            // Get box position using EXACT same math as canvas rendering
+            const boxPos = getFeatureBoxPosition(feature, canvas);
+            if (!boxPos) return;
 
-            if (shouldShow && !existingAnnotation) {
-                // Get box position using EXACT same math as canvas rendering
-                const boxPos = getFeatureBoxPosition(feature, canvas);
-                if (!boxPos) return;
+            const element = createAnnotationElement(feature.notes.trim(), -1, featureIndex);
+            annotationContainer.appendChild(element);
 
-                // DEBUG: Print annotation coordinates in same format as canvas
-                const leftInContainerDbg = (canvasRect.left - containerRect.left) + boxPos.midX_css;
-                const topInContainerDbg = (canvasRect.top - containerRect.top) + boxPos.topY_css;
-                console.log(`📝 ANNOTATION ${key}: css(x=${boxPos.midX_css.toFixed(1)}, y=${boxPos.topY_css.toFixed(1)}) → container(left=${leftInContainerDbg.toFixed(1)}, top=${topInContainerDbg.toFixed(1)})`);
-                console.log(`📝 ANNOTATION ${key}: canvasOffset=(${(canvasRect.left - containerRect.left).toFixed(1)}, ${(canvasRect.top - containerRect.top).toFixed(1)})`);
+            // Position in container coordinates
+            const leftInContainer = (canvasRect.left - containerRect.left) + boxPos.midX_css;
+            const topInContainer = (canvasRect.top - containerRect.top) + boxPos.topY_css;
 
-                const element = createAnnotationElement(feature.notes.trim(), regionIndex, featureIndex);
-                annotationContainer.appendChild(element);
+            // Position ABOVE the box
+            element.style.left = leftInContainer + 'px';
+            element.style.top = (topInContainer - 40) + 'px';
+            element.style.transform = 'translateX(-50%)';
+            element.style.opacity = '1';
 
-                // Position in container coordinates
-                // Canvas offset from container + box position in CSS pixels
+            activeAnnotations.set(key, {
+                element,
+                showTime: now,
+                hideTime: null,
+                state: 'fading-in',
+                featureStartMs,
+                featureEndMs,
+                feature,
+                initialTopInContainer: topInContainer
+            });
+
+        } else if (existingAnnotation) {
+            const { element, showTime, state, feature: feat } = existingAnnotation;
+
+            // Update position (for zoom/pan)
+            const boxPos = getFeatureBoxPosition(feat, canvas);
+            if (boxPos) {
                 const leftInContainer = (canvasRect.left - containerRect.left) + boxPos.midX_css;
                 const topInContainer = (canvasRect.top - containerRect.top) + boxPos.topY_css;
 
-                // Position ABOVE the box
-                element.style.left = leftInContainer + 'px';
-                element.style.top = (topInContainer - 40) + 'px';
-                element.style.transform = 'translateX(-50%)';
-                element.style.opacity = '1';
+                element.style.left = (leftInContainer + 300) + 'px';
+                element.style.top = (topInContainer - 20) + 'px';
+            }
 
-                activeAnnotations.set(key, {
-                    element,
-                    showTime: now,
-                    hideTime: null,
-                    state: 'fading-in',
-                    featureStartMs,
-                    featureEndMs,
-                    feature,
-                    initialTopInContainer: topInContainer
-                });
+            // Handle fade out
+            const timeSinceShow = now - showTime;
+            const playheadPastFeature = playheadMs > featureEndMs;
 
-            } else if (existingAnnotation) {
-                const { element, showTime, state, feature: feat } = existingAnnotation;
+            if ((state === 'fading-in' || state === 'visible') && timeSinceShow > FADE_IN_DURATION) {
+                existingAnnotation.state = 'visible';
+            }
 
-                // Update position (for zoom/pan)
-                const boxPos = getFeatureBoxPosition(feat, canvas);
-                if (boxPos) {
-                    const leftInContainer = (canvasRect.left - containerRect.left) + boxPos.midX_css;
-                    const topInContainer = (canvasRect.top - containerRect.top) + boxPos.topY_css;
+            if (state !== 'fading-out' && timeSinceShow > MIN_DISPLAY_TIME && playheadPastFeature) {
+                existingAnnotation.state = 'fading-out';
+                existingAnnotation.hideTime = now;
+                element.style.transition = `opacity ${FADE_OUT_DURATION}ms ease-in`;
+                element.style.opacity = '0';
+            }
 
-                    // Keep +300 offset and -20 for Y (matching canvas)
-                    element.style.left = (leftInContainer + 300) + 'px';
-                    element.style.top = (topInContainer - 20) + 'px';
-                }
-
-                // Handle fade out
-                const timeSinceShow = now - showTime;
-                const playheadPastFeature = playheadMs > featureEndMs;
-
-                if ((state === 'fading-in' || state === 'visible') && timeSinceShow > FADE_IN_DURATION) {
-                    existingAnnotation.state = 'visible';
-                }
-
-                if (state !== 'fading-out' && timeSinceShow > MIN_DISPLAY_TIME && playheadPastFeature) {
-                    existingAnnotation.state = 'fading-out';
-                    existingAnnotation.hideTime = now;
-                    element.style.transition = `opacity ${FADE_OUT_DURATION}ms ease-in`;
-                    element.style.opacity = '0';
-                }
-
-                if (state === 'fading-out' && existingAnnotation.hideTime) {
-                    if (now - existingAnnotation.hideTime > FADE_OUT_DURATION) {
-                        element.remove();
-                        activeAnnotations.delete(key);
-                    }
+            if (state === 'fading-out' && existingAnnotation.hideTime) {
+                if (now - existingAnnotation.hideTime > FADE_OUT_DURATION) {
+                    element.remove();
+                    activeAnnotations.delete(key);
                 }
             }
-        });
+        }
     });
 }
 

@@ -541,9 +541,8 @@ async function resumeFromComplete(username) {
 
 /**
  * Open the participant login modal pre-filled with the test username.
- * Uses storeParticipantId() to properly switch the active user — this means
- * getCurrentRegions() returns empty for the new test user (region-tracker
- * stores by spacecraft+username key), giving a clean slate automatically.
+ * Uses storeParticipantId() to properly switch the active user — features
+ * are stored by spacecraft+username key, giving a clean slate automatically.
  * Resolves when the modal closes (user submits).
  */
 async function openLoginWithTestUser(testUsername) {

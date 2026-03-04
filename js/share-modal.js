@@ -5,7 +5,6 @@
 
 import * as ShareAPI from './share-api.js';
 import * as State from './audio-state.js';
-import { getRegions } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 import { getParticipantId } from './participant-id.js';
 import { getCurrentColormap } from './colormaps.js';
@@ -1186,22 +1185,10 @@ export function closeShareModal() {
  * Gather session data for saving
  */
 function gatherSessionData() {
-    const regions = getRegions();
     const spacecraft = State.currentMetadata?.spacecraft || document.getElementById('spacecraft')?.value;
     const dataType = State.currentMetadata?.dataset || document.getElementById('dataType')?.value;
 
-    // Debug: log what features we're capturing
     console.log('🔗 Gathering session data...');
-    console.log(`🔗   ${regions.length} region(s) found`);
-    regions.forEach((r, i) => {
-        const featureCount = r.features?.length || 0;
-        console.log(`🔗   Region ${i + 1} (id=${r.id}): ${featureCount} feature(s), featureCount=${r.featureCount}`);
-        if (r.features && r.features.length > 0) {
-            r.features.forEach((f, j) => {
-                console.log(`🔗     Feature ${j + 1}: type=${f.type}, notes="${f.notes?.slice(0, 30) || ''}..."`);
-            });
-        }
-    });
 
     return {
         session_id: currentSessionId,  // Re-use if we have one
@@ -1211,18 +1198,7 @@ function gatherSessionData() {
             start: State.dataStartTime?.toISOString(),
             end: State.dataEndTime?.toISOString()
         },
-        regions: regions.map(r => ({
-            id: r.id,
-            startTime: r.startTime,
-            stopTime: r.stopTime,
-            minFrequency: r.minFrequency,
-            maxFrequency: r.maxFrequency,
-            label: r.label,
-            color: r.color,
-            featureCount: r.featureCount || 1,
-            features: r.features || [],
-            expanded: r.expanded || false
-        })),
+        regions: [],
         view_settings: {
             frequency_scale: State.frequencyScale,
             colormap: getCurrentColormap(),
@@ -1431,12 +1407,6 @@ export async function saveCurrentSession(silent = true) {
     const username = getParticipantId();
     if (!username) {
         if (!silent) console.warn('No username set, cannot save session');
-        return null;
-    }
-
-    const regions = getRegions();
-    if (regions.length === 0) {
-        // Don't save empty sessions
         return null;
     }
 

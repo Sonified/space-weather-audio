@@ -37,17 +37,17 @@ function getTickEdgeFadeMode() {
 
 function getTickEdgeSpatialWidth() {
     const el = document.getElementById('tickEdgeSpatialWidth');
-    return el ? parseFloat(el.value) : 0.3;
+    return el ? parseFloat(el.value) : 0.6;
 }
 
 function getTickEdgeTimeIn() {
     const el = document.getElementById('tickEdgeTimeIn');
-    return el ? parseFloat(el.value) : 0.5;
+    return el ? parseFloat(el.value) : 0;
 }
 
 function getTickEdgeTimeOut() {
     const el = document.getElementById('tickEdgeTimeOut');
-    return el ? parseFloat(el.value) : 0.3;
+    return el ? parseFloat(el.value) : 0.2;
 }
 
 function getTickEdgeFadeCurve() {

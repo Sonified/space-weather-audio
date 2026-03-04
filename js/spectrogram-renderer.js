@@ -6,7 +6,7 @@
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate, getYPositionForFrequencyScaled, getScaleTransitionState, getLogScaleMinFreq } from './spectrogram-axis-renderer.js';
-import { handleSpectrogramSelection, isInFrequencySelectionMode, getCurrentRegions, getStandaloneFeatures, saveStandaloneFeatures, startFrequencySelection, zoomToRegion, getFlatFeatureNumber, deleteRegion, deleteStandaloneFeature, deleteSpecificFeature, renderStandaloneFeaturesList, updateFeature } from './region-tracker.js';
+import { handleSpectrogramSelection, isInFrequencySelectionMode, getStandaloneFeatures, saveStandaloneFeatures, startFrequencySelection, getFlatFeatureNumber, deleteStandaloneFeature, renderStandaloneFeaturesList } from './region-tracker.js';
 import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, resetSpectrogramState, updateElasticFriendInBackground, onColormapChanged, setScrollZoomHiRes } from './main-window-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { isStudyMode } from './master-modes.js';
@@ -741,27 +741,14 @@ function handleBoxDragUp(e, canvas) {
 
     if (wasBoxDrag) {
         const box = completedSelectionBoxes[boxDragState.boxIndex];
-        const isStandalone = box.regionIndex === -1;
-        if (isStandalone) {
-            const features = getStandaloneFeatures();
-            const feature = features[box.featureIndex];
-            if (feature) {
-                feature.startTime = box.startTime;
-                feature.endTime = box.endTime;
-                feature.lowFreq = box.lowFreq;
-                feature.highFreq = box.highFreq;
-                saveStandaloneFeatures();
-            }
-        } else {
-            const regions = getCurrentRegions();
-            const feature = regions[box.regionIndex]?.features?.[box.featureIndex];
-            if (feature) {
-                feature.startTime = box.startTime;
-                feature.endTime = box.endTime;
-                feature.lowFreq = box.lowFreq;
-                feature.highFreq = box.highFreq;
-                updateFeature(box.regionIndex, box.featureIndex, feature);
-            }
+        const features = getStandaloneFeatures();
+        const feature = features[box.featureIndex];
+        if (feature) {
+            feature.startTime = box.startTime;
+            feature.endTime = box.endTime;
+            feature.lowFreq = box.lowFreq;
+            feature.highFreq = box.highFreq;
+            saveStandaloneFeatures();
         }
         redrawAllCanvasFeatureBoxes();
     } else {
@@ -1034,21 +1021,14 @@ function showFeaturePopup(box) {
     popupPinOffset = null;
 
     // Get feature data
-    let feature;
-    const isStandalone = box.regionIndex === -1;
-    if (isStandalone) {
-        const standalone = getStandaloneFeatures();
-        feature = standalone[box.featureIndex];
-    } else {
-        const regions = getCurrentRegions();
-        feature = regions[box.regionIndex]?.features?.[box.featureIndex];
-    }
+    const standalone = getStandaloneFeatures();
+    const feature = standalone[box.featureIndex];
     if (!feature) return;
 
     // Build popup DOM
     const flatNum = getFlatFeatureNumber(box.regionIndex, box.featureIndex);
     const isAdvanced = document.getElementById('advancedMode')?.checked;
-    const canDelete = isStandalone || (box.featureIndex > 0 && getCurrentRegions()[box.regionIndex]?.features?.length > 1);
+    const canDelete = true;
     const popup = document.createElement('div');
     popup.className = 'feature-popup';
     popup.innerHTML = `
@@ -1214,16 +1194,11 @@ function showFeaturePopup(box) {
     // Delete button with confirmation (only present when canDelete is true)
     popup.querySelector('.feature-popup-delete')?.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const isStandalone = box.regionIndex === -1;
         const label = `Feature ${getFlatFeatureNumber(box.regionIndex, box.featureIndex)}`;
         if (await confirmDelete(`Delete ${label}? This cannot be undone.`, e.clientX, e.clientY)) {
-            if (isStandalone) {
-                deleteStandaloneFeature(box.featureIndex);
-                redrawAllCanvasFeatureBoxes();
-                renderStandaloneFeaturesList();
-            } else {
-                deleteSpecificFeature(box.regionIndex, box.featureIndex);
-            }
+            deleteStandaloneFeature(box.featureIndex);
+            redrawAllCanvasFeatureBoxes();
+            renderStandaloneFeaturesList();
         }
     });
 
@@ -1325,13 +1300,9 @@ function showFeaturePopup(box) {
             if (!val || !key) return;
 
             // Write directly to the feature object
-            if (isStandalone) {
-                const standalone = getStandaloneFeatures();
-                const f = standalone[box.featureIndex];
-                if (f) f[key] = val;
-            } else {
-                updateFeature(box.regionIndex, box.featureIndex, key, val);
-            }
+            const features = getStandaloneFeatures();
+            const f = features[box.featureIndex];
+            if (f) f[key] = val;
 
             // Redraw the canvas boxes to reflect the change
             redrawAllCanvasFeatureBoxes();
@@ -1341,27 +1312,18 @@ function showFeaturePopup(box) {
 
     // Save logic
     function saveAndClose() {
-        if (isStandalone) {
-            const standalone = getStandaloneFeatures();
-            const f = standalone[box.featureIndex];
-            if (f) {
-                f.notes = notesArea.value.trim();
-                // Update editable fields if changed
-                popup.querySelectorAll('input[data-key]').forEach(input => {
-                    const key = input.dataset.key;
-                    const val = resolveInputValue(input);
-                    if (val && key) f[key] = val;
-                });
-                saveStandaloneFeatures();
-                renderStandaloneFeaturesList();
-            }
-        } else {
-            updateFeature(box.regionIndex, box.featureIndex, 'notes', notesArea.value.trim());
+        const features = getStandaloneFeatures();
+        const f = features[box.featureIndex];
+        if (f) {
+            f.notes = notesArea.value.trim();
+            // Update editable fields if changed
             popup.querySelectorAll('input[data-key]').forEach(input => {
                 const key = input.dataset.key;
                 const val = resolveInputValue(input);
-                if (val && key) updateFeature(box.regionIndex, box.featureIndex, key, val);
+                if (val && key) f[key] = val;
             });
+            saveStandaloneFeatures();
+            renderStandaloneFeaturesList();
         }
         rebuildCanvasBoxesFromFeatures();
         closeFeaturePopup();
@@ -1420,29 +1382,7 @@ function showFeaturePopup(box) {
  * This ensures boxes match the actual feature array (no orphans, numbers shift correctly)
  */
 function rebuildCanvasBoxesFromFeatures() {
-    const regions = getCurrentRegions();
     completedSelectionBoxes = [];
-
-    // Rebuild boxes from region-based features
-    if (regions) {
-        regions.forEach((region, regionIndex) => {
-            if (!region.features) return;
-
-            region.features.forEach((feature, featureIndex) => {
-                if (feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime) {
-                    completedSelectionBoxes.push({
-                        regionIndex,
-                        featureIndex,
-                        startTime: feature.startTime,
-                        endTime: feature.endTime,
-                        lowFreq: parseFloat(feature.lowFreq),
-                        highFreq: parseFloat(feature.highFreq),
-                        notes: feature.notes
-                    });
-                }
-            });
-        });
-    }
 
     // Rebuild boxes from standalone features (regionIndex = -1)
     const standalone = getStandaloneFeatures();
@@ -2320,18 +2260,13 @@ export function setupSpectrogramSelection() {
         // Check close button (×) before anything else
         const closedBox = getClickedCloseButton(clickX, clickY);
         if (closedBox) {
-            if (closedBox.regionIndex === -1) {
-                // Standalone feature
-                confirmDelete('Delete this feature?', e.clientX, e.clientY).then(ok => {
-                    if (ok) {
-                        deleteStandaloneFeature(closedBox.featureIndex);
-                        redrawAllCanvasFeatureBoxes();
-                        renderStandaloneFeaturesList();
-                    }
-                });
-            } else {
-                deleteRegion(closedBox.regionIndex);
-            }
+            confirmDelete('Delete this feature?', e.clientX, e.clientY).then(ok => {
+                if (ok) {
+                    deleteStandaloneFeature(closedBox.featureIndex);
+                    redrawAllCanvasFeatureBoxes();
+                    renderStandaloneFeaturesList();
+                }
+            });
             return;
         }
 
@@ -2340,14 +2275,9 @@ export function setupSpectrogramSelection() {
 
         const clickedBox = getBoxAtPoint(clickX, clickY);
         if (clickedBox && !spectrogramSelectionActive) {
-            if (!zoomState.isInRegion()) {
-                console.log(`🔍 Clicked feature box while zoomed out - zooming to region ${clickedBox.regionIndex + 1}`);
-                zoomToRegion(clickedBox.regionIndex);
-                return;
-            }
-            // Zoomed in - start frequency selection to re-draw the feature
+            // Start frequency selection to re-draw the feature
             startFrequencySelection(clickedBox.regionIndex, clickedBox.featureIndex);
-            console.log(`🎯 Clicked canvas box - starting reselection for region ${clickedBox.regionIndex + 1}, feature ${clickedBox.featureIndex + 1}`);
+            console.log(`🎯 Clicked canvas box - starting reselection for feature ${clickedBox.featureIndex + 1}`);
             return;
         }
 

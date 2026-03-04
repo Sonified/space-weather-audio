@@ -6,7 +6,6 @@
  */
 
 import * as State from './audio-state.js';
-import { getCurrentRegions } from './region-tracker.js';
 import { isStudyMode } from './master-modes.js';
 
 // Tutorial active state — shared so non-volcano files can check without importing volcano modules.
@@ -1102,109 +1101,29 @@ export function removeTypeDropdownGlow(regionIndex, featureIndex) {
  * Add glow effect to add feature button
  */
 export function addAddFeatureButtonGlow(regionIndex) {
-    const regions = getCurrentRegions();
-    if (!regions || !regions[regionIndex]) {
-        console.warn(`⚠️ Cannot add glow: region ${regionIndex} not found`);
-        return;
-    }
-    
-    const regionId = regions[regionIndex].id;
-    const regionCard = document.querySelector(`[data-region-id="${regionId}"]`);
-    if (!regionCard) {
-        console.warn(`⚠️ Cannot add glow: region card not found for region ${regionIndex} (id: ${regionId})`);
-        return;
-    }
-    
-    const button = regionCard.querySelector('.add-feature-btn');
-    const label = regionCard.querySelector('.add-feature-label');
-    
-    if (!button) {
-        console.warn(`⚠️ Cannot add glow: add-feature-btn not found in region card ${regionIndex}`);
-        return;
-    }
-    
-    // Add glow to button
-    button.classList.add('fading-in');
-    button.offsetHeight; // Force reflow
-    button.classList.add('add-feature-button-glow');
-    setTimeout(() => {
-        button.classList.remove('fading-in');
-    }, 500);
-    
-    // Add glow to label if it exists
-    if (label) {
-        label.classList.add('fading-in');
-        label.offsetHeight; // Force reflow
-        label.classList.add('add-feature-button-glow');
-        setTimeout(() => {
-            label.classList.remove('fading-in');
-        }, 500);
-    }
+    // Stub — previously used region-based lookup (now dead)
+    console.warn('addAddFeatureButtonGlow: region-based glow no longer supported');
 }
 
 /**
  * Remove glow effect from add feature button
  */
 export function removeAddFeatureButtonGlow(regionIndex) {
-    const regionCard = document.querySelector(`[data-region-id="${getCurrentRegions()[regionIndex]?.id}"]`);
-    if (regionCard) {
-        const button = regionCard.querySelector('.add-feature-btn');
-        const label = regionCard.querySelector('.add-feature-label');
-        
-        if (button) {
-            button.classList.add('fading-out');
-            setTimeout(() => {
-                button.classList.remove('add-feature-button-glow', 'fading-out');
-            }, 500);
-        }
-        
-        if (label) {
-            label.classList.add('fading-out');
-            setTimeout(() => {
-                label.classList.remove('add-feature-button-glow', 'fading-out');
-            }, 500);
-        }
-    }
+    // Stub — previously used region-based lookup (now dead)
 }
 
 /**
  * Disable add feature button
  */
 export function disableAddFeatureButton(regionIndex) {
-    const regionCard = document.querySelector(`[data-region-id="${getCurrentRegions()[regionIndex]?.id}"]`);
-    if (regionCard) {
-        const button = regionCard.querySelector('.add-feature-btn');
-        const label = regionCard.querySelector('.add-feature-label');
-        if (button) {
-            button.disabled = true;
-            button.style.pointerEvents = 'none';
-            button.style.opacity = '0.5';
-        }
-        if (label) {
-            label.classList.add('disabled');
-            label.style.pointerEvents = 'none';
-        }
-    }
+    // Stub — previously used region-based lookup (now dead)
 }
 
 /**
  * Enable add feature button
  */
 export function enableAddFeatureButton(regionIndex) {
-    const regionCard = document.querySelector(`[data-region-id="${getCurrentRegions()[regionIndex]?.id}"]`);
-    if (regionCard) {
-        const button = regionCard.querySelector('.add-feature-btn');
-        const label = regionCard.querySelector('.add-feature-label');
-        if (button) {
-            button.disabled = false;
-            button.style.pointerEvents = 'auto';
-            button.style.opacity = '1';
-        }
-        if (label) {
-            label.classList.remove('disabled');
-            label.style.pointerEvents = 'auto';
-        }
-    }
+    // Stub — previously used region-based lookup (now dead)
 }
 
 

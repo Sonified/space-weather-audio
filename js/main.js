@@ -18,7 +18,7 @@ import { modalManager } from './modal-manager.js';
 import { initErrorReporter } from './error-reporter.js';
 import { initSilentErrorReporter } from './silent-error-reporter.js';
 import { resizeAxisCanvas, drawFrequencyAxis, setMinFreqMultiplier, getMinFreqMultiplier } from './spectrogram-axis-renderer.js';
-import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchSpacecraftRegions, updateCompleteButtonState, updateCmpltButtonState, showAddRegionButton } from './region-tracker.js';
+import { startFrequencySelection, updateCompleteButtonState, updateCmpltButtonState } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 import { initKeyboardShortcuts } from './keyboard-shortcuts.js';
 import { setStatusText } from './tutorial-effects.js';
@@ -432,12 +432,6 @@ export async function initAudioWorklet() {
             State.setPlaybackState(PlaybackState.PAUSED);
             State.setCurrentAudioPosition(position);
             
-            // 🚩 Worklet reached boundary - reset region button if we were playing a region
-            // The worklet is the single source of truth for boundaries
-            if (getActivePlayingRegionIndex() !== null) {
-                clearActivePlayingRegion();
-            }
-            
             const playBtn = document.getElementById('playPauseBtn');
             playBtn.disabled = false;
             playBtn.textContent = '▶️ Resume';
@@ -673,11 +667,6 @@ export async function startStreaming(event, config = null) {
         if (waveformCanvas) {
             waveformCanvas.classList.remove('pulse');
         }
-        
-        // 🔥 FIX: Remove add region button to prevent detached DOM leaks
-        // Import dynamically to avoid circular dependencies
-        const { removeAddRegionButton } = await import('./region-tracker.js');
-        removeAddRegionButton();
         
         // Terminate and recreate waveform worker to free memory
         // Note: initWaveformWorker() already handles cleanup, but we do it here too for safety
@@ -1102,9 +1091,6 @@ async function initializeMainApp() {
     // Setup UI controls (all modes need them)
     setupModalEventListeners();
     
-    // Initialize region tracker
-    initRegionTracker();
-    
     // Initialize complete button state (disabled until first feature is identified)
     updateCompleteButtonState(); // Begin Analysis button
     updateCmpltButtonState(); // Complete button
@@ -1177,10 +1163,6 @@ async function initializeMainApp() {
 
         // 🛰️ Update the Data dropdown to show datasets for the selected spacecraft
         updateDatasetOptions();
-
-        // 🔧 FIX: Don't switch regions here! The user is still viewing old data.
-        // Regions will switch when "Fetch Data" is clicked (via startStreaming → switchSpacecraftRegions)
-        // The dropdown just selects WHICH spacecraft to fetch next, doesn't change current data/regions
 
         // 🎨 Visual reminder: If there's loaded data from a different spacecraft, mark it as "(Currently Loaded)"
         if (spacecraftWithData && selectedSpacecraft !== spacecraftWithData) {

@@ -1,9 +1,9 @@
 /**
  * keyboard-shortcuts.js
- * Keyboard shortcuts for region navigation and feature drawing
+ * Keyboard shortcuts for feature drawing and navigation
  */
 
-import { zoomToRegion, zoomToFull, getCurrentRegions, getActiveRegionIndex, isInFrequencySelectionMode, startFrequencySelection, addFeature, createRegionFromSelectionTimes, toggleRegionPlay, stopFrequencySelection, getStandaloneFeatures, deleteStandaloneFeature, renderStandaloneFeaturesList, updateCompleteButtonState, updateCmpltButtonState } from './region-tracker.js';
+import { isInFrequencySelectionMode, startFrequencySelection, stopFrequencySelection, getStandaloneFeatures, deleteStandaloneFeature, renderStandaloneFeaturesList, updateCompleteButtonState, updateCmpltButtonState } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 import * as State from './audio-state.js';
 import { changeFrequencyScale, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
@@ -97,66 +97,12 @@ function handleKeyboardShortcut(event) {
         return;
     }
 
-    // Number keys (1-9): Zoom to region, or play region if already zoomed into it
-    // Only in Region Creation mode — windowed modes don't use region navigation
-    if (event.key >= '1' && event.key <= '9') {
-        const viewingModeEl = document.getElementById('viewingMode');
-        const viewingMode = viewingModeEl ? viewingModeEl.value : 'regionCreation';
-        if (viewingMode !== 'regionCreation') return;
-
-        const regionIndex = parseInt(event.key) - 1; // Convert '1' to 0, '2' to 1, etc.
-        const regions = getCurrentRegions();
-        
-        if (regionIndex < regions.length) {
-            event.preventDefault();
-            const region = regions[regionIndex];
-            
-            // 🎓 Tutorial: Resolve promise if waiting for this specific number key
-            if (State.waitingForNumberKeyPress && State.targetNumberKey === event.key && State._numberKeyPressResolve) {
-                State.setWaitingForNumberKeyPress(false);
-                const resolve = State._numberKeyPressResolve;
-                State.setNumberKeyPressResolve(null);
-                State.setTargetNumberKey(null);
-                resolve();
-            }
-            
-            // Always execute the action, even during tutorial (tutorial will track it separately)
-            // Check if we're already zoomed into this specific region
-            if (zoomState.isInRegion() && zoomState.getCurrentRegionId() === region.id) {
-                // Already zoomed into this region - play it from the start
-                toggleRegionPlay(regionIndex);
-                console.log(`▶️ Playing region ${regionIndex + 1} from start`);
-            } else {
-                // Not zoomed into this region - zoom to it
-                zoomToRegion(regionIndex);
-            }
-        }
-        return;
-    }
-    
     // 'f' key: Toggle flags panel (localhost only)
     if ((event.key === 'f' || event.key === 'F') && isLocalEnvironment()) {
         const btn = document.getElementById('showFlagsBtn');
         if (btn) {
             event.preventDefault();
             btn.click();
-        }
-        return;
-    }
-    
-    // 'r' key: Confirm/add region from current selection
-    if (event.key === 'r' || event.key === 'R') {
-        // Check if region creation is enabled (requires "Begin Analysis" to be pressed)
-        if (!State.isRegionCreationEnabled()) {
-            console.log('🔒 Region creation disabled - please press "Begin Analysis" first');
-            return;
-        }
-        
-        // Check if there's a valid selection
-        if (State.selectionStart !== null && State.selectionEnd !== null) {
-            event.preventDefault();
-            createRegionFromSelectionTimes(State.selectionStart, State.selectionEnd);
-            console.log('✅ Region created from selection');
         }
         return;
     }
@@ -256,48 +202,13 @@ function handleKeyboardShortcut(event) {
     // Escape key: Exit feature selection mode first, then zoom back out to full view
     if (event.key === 'Escape') {
         // console.log('🔍 [ESCAPE DEBUG] Escape key pressed');
-        // console.log('🔍 [ESCAPE DEBUG] isTypingInField:', isTypingInField);
-        // console.log('🔍 [ESCAPE DEBUG] isInFrequencySelectionMode():', isInFrequencySelectionMode());
-        // console.log('🔍 [ESCAPE DEBUG] zoomState.isInRegion():', zoomState.isInRegion());
-        // console.log('🔍 [ESCAPE DEBUG] zoomState:', {
-        //     mode: zoomState.mode,
-        //     activeRegionId: zoomState.activeRegionId,
-        //     initialized: zoomState.isInitialized()
-        // });
-
         // If typing in a field, blur it first so Escape works
         if (isTypingInField) {
-            // console.log('🔍 [ESCAPE DEBUG] Blurring active input/textarea');
             event.target.blur();
         }
-        
-        // First priority: Zoom out if in a region (also exits feature selection mode)
-        if (zoomState.isInRegion()) {
-            // Exit feature selection mode if active (before zooming out)
-            if (isInFrequencySelectionMode()) {
-                stopFrequencySelection();
-            }
-            // console.log('🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴');
-            // console.log('🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴');
-            // console.log('🔴🔴 ESCAPE PRESSED - STARTING ZOOM OUT 🔴🔴');
-            
-            // 🔍 DIAGNOSTIC: Check what's currently visible on the MAIN canvas before zoom out
-            // const mainCanvas = document.getElementById('spectrogram');
-            // if (mainCanvas) {
-            //     const mainCtx = mainCanvas.getContext('2d', { willReadFrequently: true });
-            //     const midX = Math.floor(mainCanvas.width / 2);
-            //     const midY = Math.floor(mainCanvas.height / 2);
-            //     const visiblePixel = mainCtx.getImageData(midX, midY, 1, 1).data;
-            //     console.log(`🔍 MAIN CANVAS (what user sees) center pixel:`, {
-            //         rgba: `${visiblePixel[0]}, ${visiblePixel[1]}, ${visiblePixel[2]}, ${visiblePixel[3]}`,
-            //         brightness: visiblePixel[0] + visiblePixel[1] + visiblePixel[2]
-            //     });
-            // }
-            
-            event.preventDefault();
-            zoomToFull();
-        } else if (isInFrequencySelectionMode()) {
-            // Not in region but in feature selection mode - just exit feature selection
+
+        // Exit feature selection mode if active
+        if (isInFrequencySelectionMode()) {
             event.preventDefault();
             stopFrequencySelection();
         }

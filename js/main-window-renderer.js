@@ -1071,7 +1071,7 @@ async function renderFrame() {
                 const catEnabled = wfUCatmullEnabled?.value > 0.5;
                 const catThresh = wfUCatmullThreshold?.value || 128;
                 const branch = catEnabled && sppCPU <= catThresh ? 'CATMULL-ROM' : sppCPU > 256 ? 'MIP' : 'RAW';
-                console.log(`🎵 Waveform spp=${sppCPU.toFixed(3)} | branch=${branch} | ${useFrozen ? 'FROZEN' : 'LIVE'}`);
+                if (window.pm?.interaction) console.log(`🎵 Waveform spp=${sppCPU.toFixed(3)} | branch=${branch} | ${useFrozen ? 'FROZEN' : 'LIVE'}`);
                 window._sppLogThrottle = performance.now();
             }
         } else {

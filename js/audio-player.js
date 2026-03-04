@@ -11,7 +11,6 @@ import { PlaybackState } from './audio-state.js';
 import { drawWaveformWithSelection, updatePlaybackIndicator, startPlaybackIndicator } from './minimap-window-renderer.js';
 import { updateAxisForPlaybackSpeed } from './spectrogram-axis-renderer.js';
 import { drawSpectrogram, startVisualization, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
-import { updateActiveRegionPlayButton, getActivePlayingRegionIndex, getCurrentRegions } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
 import { getCurrentPlaybackBoundaries, isAtBoundaryEnd, getRestartPosition, formatBoundaries } from './playback-boundaries.js';
 import { setPlayingState } from './oscilloscope-renderer.js';
@@ -118,9 +117,6 @@ export async function startPlayback() {
         startPlaybackIndicator();
     }
 
-    // Update active region button
-    updateActiveRegionPlayButton(true);
-
     // 🔗 Shared session: Show zoom hint on first play (only once)
     const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
     const sharedSessionHintShown = sessionStorage.getItem('sharedSessionHintShown') === 'true';
@@ -176,8 +172,6 @@ export function pausePlayback() {
         setStatusText('Audio playback paused', 'status');
     });
     
-    // Update active region button
-    updateActiveRegionPlayButton(false);
 }
 
 // ===== SIMPLIFIED TOGGLEPLAYPAUSE =====

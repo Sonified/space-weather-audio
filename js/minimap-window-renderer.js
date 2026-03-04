@@ -9,7 +9,7 @@ import { seekToPosition, updateWorkletSelection, getCurrentPosition, pausePlayba
 import { positionWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
 import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate, getInterpolatedTimeRange, isZoomTransitionInProgress } from './waveform-x-axis-renderer.js';
 import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas } from './spectrogram-x-axis-renderer.js';
-import { drawRegionHighlights, showAddRegionButton, hideAddRegionButton, clearActiveRegion, resetAllRegionPlayButtons, getActiveRegionIndex, isPlayingActiveRegion, checkCanvasZoomButtonClick, checkCanvasPlayButtonClick, zoomToRegion, zoomToFull, getRegions, toggleRegionPlay, renderRegionsAfterCrossfade, getStandaloneFeatures } from './region-tracker.js';
+import { getStandaloneFeatures } from './region-tracker.js';
 import { drawRegionButtons } from './waveform-buttons-renderer.js';
 import { printSelectionDiagnostics } from './selection-diagnostics.js';
 import { drawSpectrogramPlayhead, drawSpectrogramScrubPreview, clearSpectrogramScrubPreview, cleanupPlayheadOverlay } from './spectrogram-playhead.js';
@@ -820,9 +820,8 @@ function drawMinimapFeatureBoxes(ctx, width, height) {
     if (fbCheckbox && !fbCheckbox.checked) return;
     if (!State.dataStartTime || !State.dataEndTime) return;
 
-    const regions = getRegions() || [];
     const standalone = getStandaloneFeatures();
-    if (regions.length === 0 && standalone.length === 0) return;
+    if (standalone.length === 0) return;
 
     const dataStartMs = State.dataStartTime.getTime();
     const dataEndMs = State.dataEndTime.getTime();
@@ -876,15 +875,7 @@ function drawMinimapFeatureBoxes(ctx, width, height) {
         // No number labels on minimap — too small to be useful
     }
 
-    // Draw region-based features
-    for (const region of regions) {
-        if (!region.features) continue;
-        region.features.forEach((feature) => {
-            drawOneMinimapFeature(feature);
-        });
-    }
-
-    // Draw standalone features (reuse variable from top of function)
+    // Draw standalone features
     standalone.forEach((feature) => {
         drawOneMinimapFeature(feature);
     });
@@ -960,14 +951,13 @@ function drawWaveformOverlays() {
         drawMinimapFeatureBoxes(wfOverlayCtx, width, height);
     }
 
-    // Region highlights: hide entirely in windowed modes (scroll/pageTurn), show in region creation mode
+    // Region buttons: hide entirely in windowed modes (scroll/pageTurn), show in region creation mode
     if (!isEmicWindowedMode()) {
-        drawRegionHighlights(wfOverlayCtx, width, height);
         drawRegionButtons();
     }
 
     // Selection box
-    if (State.selectionStart !== null && State.selectionEnd !== null && !isPlayingActiveRegion()) {
+    if (State.selectionStart !== null && State.selectionEnd !== null) {
         let startX, endX;
         if (isEmicScrollZoomed) {
             // Minimap: always map to full range
@@ -1302,11 +1292,8 @@ export async function drawWaveform() {
     positionWaveformDateCanvas();
     drawWaveformDate();
 
-    // Draw overlays (regions, playhead)
+    // Draw overlays (playhead, selection)
     drawWaveformOverlays();
-
-    // Render regions
-    renderRegionsAfterCrossfade();
 
     // Mobile tap hint
     showMobileTapHint();
@@ -1338,7 +1325,6 @@ export async function drawWaveformFromMinMax() {
 
     // Overlays
     drawWaveformOverlays();
-    renderRegionsAfterCrossfade();
     showMobileTapHint();
 }
 
@@ -1489,9 +1475,6 @@ export function setupWaveformInteraction() {
     canvas.addEventListener('mousedown', (e) => {
         if (State.getCompleteSamplesLength() === 0 || State.totalAudioDuration === 0) return;
         
-        // Hide any existing "Add Region" button when starting a new selection
-        hideAddRegionButton();
-        
         // 🔥 FIX: Resolve tutorial promise FIRST (before any early returns)
         // This ensures the tutorial progresses even if clicks are disabled
         if (State._waveformClickResolve) {
@@ -1552,32 +1535,6 @@ export function setupWaveformInteraction() {
         //     console.log(`  Buttons canvas: ${buttonsCanvas.width}px × ${buttonsCanvas.height}px (device)`);
         // }
         // console.log(`  DPR: ${window.devicePixelRatio}`);
-        
-        // 🔧 FIX: Check if click is on a canvas button BEFORE starting scrub preview
-        // This prevents the white playhead from appearing when clicking buttons
-        // BUT: Only check if we're not already dragging/selecting (to avoid false positives)
-        if (!State.isDragging && !State.isSelecting && State.selectionStartX === null) {
-            const clickedZoomRegionIndex = checkCanvasZoomButtonClick(startX, startY);
-            const clickedPlayRegionIndex = checkCanvasPlayButtonClick(startX, startY);
-            
-            // console.log(`  Zoom button hit: ${clickedZoomRegionIndex !== null ? `Region ${clickedZoomRegionIndex + 1}` : 'none'}`);
-            // console.log(`  Play button hit: ${clickedPlayRegionIndex !== null ? `Region ${clickedPlayRegionIndex + 1}` : 'none'}`);
-            
-            // 🔥 Check if region buttons are disabled (during tutorial)
-            if (State.regionButtonsDisabled && (clickedZoomRegionIndex !== null || clickedPlayRegionIndex !== null)) {
-                e.stopPropagation();
-                e.preventDefault();
-                return; // Ignore clicks on disabled buttons
-            }
-            
-            if (clickedZoomRegionIndex !== null || clickedPlayRegionIndex !== null) {
-                // Clicked on a button - don't start dragging/scrub preview
-                // The button action will be handled in mouseup, but we prevent the scrub preview here
-                e.stopPropagation();
-                e.preventDefault();
-                return; // Don't process as normal waveform click
-            }
-        }
         
         // --- Minimap viewport drag/resize: intercept in windowed mode when zoomed ---
         if (isMinimapZoomed()) {
@@ -1747,12 +1704,6 @@ export function setupWaveformInteraction() {
                 State.setIsSelecting(true);
                 canvas.style.cursor = 'col-resize';
                 console.log('📏 Selection drag detected');
-
-                // 🏛️ Only clear active region if NOT inside a region (outside the temple)
-                // Inside the temple, selections are within sacred walls, flag stays up
-                if (!zoomState.isInRegion()) {
-                    clearActiveRegion();
-                }
             }
             
             if (State.isSelecting) {
@@ -1803,158 +1754,11 @@ export function setupWaveformInteraction() {
         // Minimap viewport drag is handled by document-level listeners
         if (minimapDragging) return;
 
-        // 🔧 FIX: Check for button clicks even when not dragging
-        // (in case we returned early from mousedown to prevent scrub preview)
         const rect = canvas.getBoundingClientRect();
-        const clickX = e.clientX - rect.left;
-        const clickY = e.clientY - rect.top;
-        const clickedZoomRegionIndex = checkCanvasZoomButtonClick(clickX, clickY);
-        const clickedPlayRegionIndex = checkCanvasPlayButtonClick(clickX, clickY);
-        
-        // 🔥 Check if region buttons are disabled (during tutorial)
-        if (State.regionButtonsDisabled) {
-            if (clickedZoomRegionIndex !== null) {
-                // Check if this specific zoom button is enabled for tutorial
-                if (!State.isRegionZoomButtonEnabled(clickedZoomRegionIndex)) {
-                    return; // Ignore clicks on disabled buttons
-                }
-            }
-            if (clickedPlayRegionIndex !== null) {
-                // Check if this specific play button is enabled for tutorial
-                if (!State.isRegionPlayButtonEnabled(clickedPlayRegionIndex)) {
-                    return; // Ignore clicks on disabled buttons
-                }
-            }
-        }
-        
-        if (clickedZoomRegionIndex !== null) {
-            // Clicked on a zoom button - handle zoom
-            e.stopPropagation();
-            e.preventDefault();
-            
-            // Clear any dragging state
-            State.setIsDragging(false);
-            canvas.style.cursor = 'pointer';
-            
-            const regions = getRegions();
-            const region = regions[clickedZoomRegionIndex];
-            
-            if (region) {
-                // Check if we're already inside THIS temple
-                if (zoomState.isInRegion() && zoomState.getCurrentRegionId() === region.id) {
-                    // We're inside - exit the temple and return to full view
-                    zoomToFull();
-                } else {
-                    // Zoom into this region
-                    zoomToRegion(clickedZoomRegionIndex);
-                }
-            }
-            
-            // Clear selection state
-            State.setSelectionStartX(null);
-            State.setIsSelecting(false);
-            State.setSelectionStart(null);
-            State.setSelectionEnd(null);
-            updateWorkletSelection();
-            hideAddRegionButton();
-            
-            // Clear scrub preview if it was shown
-            clearSpectrogramScrubPreview();
-            
-            // Redraw to update button states (canvas buttons will update via redraw)
-            drawWaveformWithSelection();
-            return; // Don't process as normal waveform click
-        }
-        
-        if (clickedPlayRegionIndex !== null) {
-            // Clicked on a play button - play region from start (mirrors panel play button)
-            e.stopPropagation();
-            e.preventDefault();
-            
-            // Clear all selection/dragging state to allow new selections
-            State.setIsDragging(false);
-            State.setIsSelecting(false);
-            State.setSelectionStartX(null);
-            canvas.style.cursor = 'pointer';
-            
-            // ✅ Call toggleRegionPlay synchronously (same logic as panel buttons)
-            // This sets activePlayingRegionIndex and updates region.playing state
-            // toggleRegionPlay already calls drawWaveformWithSelection() which redraws buttons
-            toggleRegionPlay(clickedPlayRegionIndex);
-            
-            // Return early - don't process as normal waveform click
-            return;
-        }
-        
+
         if (State.isDragging) {
             State.setIsDragging(false);
             canvas.style.cursor = 'pointer';
-            
-            // Check if click is on a canvas zoom button (only if not selecting/dragging)
-            // Only check if it was a simple click, not a drag
-            const startX = State.selectionStartX || 0;
-            const endX = e.clientX - rect.left;
-            const dragDistance = Math.abs(endX - startX);
-            
-            // Only check for button click if it was a simple click (not a drag)
-            if (!State.isSelecting && dragDistance < 5) {
-                // Already checked above, but keep this as fallback for edge cases
-                const checkZoomAgain = checkCanvasZoomButtonClick(endX, clickY);
-                const checkPlayAgain = checkCanvasPlayButtonClick(endX, clickY);
-                
-                if (checkZoomAgain !== null) {
-                    // Clicked on a zoom button - handle zoom
-                    e.stopPropagation();
-                    e.preventDefault();
-                    
-                    const regions = getRegions();
-                    const region = regions[checkZoomAgain];
-                    
-                    if (region) {
-                        // Check if we're already inside THIS temple
-                        if (zoomState.isInRegion() && zoomState.getCurrentRegionId() === region.id) {
-                            // We're inside - exit the temple and return to full view
-                            zoomToFull();
-                        } else {
-                            // Zoom into this region
-                            zoomToRegion(checkZoomAgain);
-                        }
-                    }
-                    
-                    // Clear selection state
-                    State.setSelectionStartX(null);
-                    State.setIsSelecting(false);
-                    State.setSelectionStart(null);
-                    State.setSelectionEnd(null);
-                    updateWorkletSelection();
-                    hideAddRegionButton();
-                    
-                    // Clear scrub preview
-                    clearSpectrogramScrubPreview();
-                    
-                    // Redraw to update button states (canvas buttons will update via redraw)
-                    drawWaveformWithSelection();
-                    return; // Don't process as normal waveform click
-                }
-                
-                if (checkPlayAgain !== null) {
-                    // Clicked on a play button - play region from start (mirrors panel play button)
-                    e.stopPropagation();
-                    e.preventDefault();
-                    
-                    // Clear all selection/dragging state to allow new selections
-                    State.setIsDragging(false);
-                    State.setIsSelecting(false);
-                    State.setSelectionStartX(null);
-                    
-                    // ✅ Call toggleRegionPlay synchronously (same logic as panel buttons)
-                    // This sets activePlayingRegionIndex and updates region.playing state
-                    // toggleRegionPlay already calls drawWaveformWithSelection() which redraws buttons
-                    toggleRegionPlay(checkPlayAgain);
-                    
-                    return; // Don't process as normal waveform click
-                }
-            }
             
             if (State.isSelecting) {
                 const { targetPosition } = getPositionFromMouse(e);
@@ -1983,36 +1787,7 @@ export function setupWaveformInteraction() {
                 printSelectionDiagnostics(State.selectionStartX, currentX, rect.width);
                 
                 State.setSelectionStartX(null);
-                
-                // 🏛️ Only reset region buttons if NOT inside a region (outside the temple)
-                // Inside the temple, selections are within sacred walls, flag stays up
-                if (!zoomState.isInRegion()) {
-                    resetAllRegionPlayButtons();
-                }
-                
-                // 🏛️ Show "Add Region" button only if NOT inside a region (outside the temple)
-                // When inside the temple, we don't want to add new regions
-                if (!zoomState.isInRegion()) {
-                    showAddRegionButton(newSelectionStart, newSelectionEnd);
-                    // Update status message
-                    const statusEl = document.getElementById('status');
-                    if (statusEl) {
-                    // Resolve selection tutorial promise if waiting
-                    if (State.waitingForSelection && State._selectionTutorialResolve) {
-                        State._selectionTutorialResolve();
-                        State.setSelectionTutorialResolve(null);
-                        State.setWaitingForSelection(false);
-                    } else {
-                        // Show status message for selection
-                        const newMessage = 'Type (R) or click Add Region to create a new region.';
-                        if (!statusEl.textContent.startsWith(newMessage.substring(0, 20))) {
-                            statusEl.className = 'status info';
-                            statusEl.textContent = newMessage;
-                        }
-                    }
-                    }
-                }
-                
+
                 // 🏠 AUTONOMOUS: Set selection state and send to worklet immediately
                 // No timeout needed - worklet uses selection when making decisions, no coordination required!
                 State.setSelectionStart(newSelectionStart);
@@ -2040,21 +1815,12 @@ export function setupWaveformInteraction() {
                 State.setSelectionStart(null);
                 State.setSelectionEnd(null);
                 State.setSelectionStartX(null);
-                
-                // Hide "Add Region" button when selection is cleared
-                hideAddRegionButton();
-                
+
                 updateWorkletSelection();
-                
+
                 // Redraw overlays after clearing selection
                 drawWaveformOverlays();
-                
-                // 🏛️ Only reset region buttons if NOT inside a region (outside the temple)
-                // Inside the temple, clicking seeks within sacred walls, flag stays up
-                if (!zoomState.isInRegion()) {
-                    resetAllRegionPlayButtons();
-                }
-                
+
                 const { targetPosition } = getPositionFromMouse(e);
                 const zoomMode = zoomState.isInRegion() ? 'temple (zoomed)' : 'full view';
                 const zoomLevel = zoomState.isInitialized() ? zoomState.getZoomLevel().toFixed(1) : 'N/A';
@@ -2089,11 +1855,6 @@ export function setupWaveformInteraction() {
                     drawWaveformWithSelection();
                     clearSpectrogramScrubPreview();  // Clear scrub preview
                     drawSpectrogramPlayhead();  // Update spectrogram immediately
-
-                    // Show "Add Region" button (same as normal mouseup path)
-                    if (!zoomState.isInRegion()) {
-                        showAddRegionButton(State.selectionStart, State.selectionEnd);
-                    }
 
                     // Seek to start and optionally start playback if playOnClick is enabled
                     const shouldAutoPlay = document.getElementById('playOnClick').checked;
@@ -2153,37 +1914,12 @@ export function setupWaveformInteraction() {
         const rect = canvas.getBoundingClientRect();
         const touch = e.touches[0];
         const startX = touch.clientX - rect.left;
-        const startY = touch.clientY - rect.top;
-
-        // Check if touching a button FIRST (before preventDefault to allow button handling)
-        if (!State.isDragging && !State.isSelecting && State.selectionStartX === null) {
-            const clickedZoomRegionIndex = checkCanvasZoomButtonClick(startX, startY);
-            const clickedPlayRegionIndex = checkCanvasPlayButtonClick(startX, startY);
-            console.log(`📱 Button check: zoom=${clickedZoomRegionIndex}, play=${clickedPlayRegionIndex}, coords=(${startX.toFixed(0)}, ${startY.toFixed(0)})`);
-
-            if (State.regionButtonsDisabled && (clickedZoomRegionIndex !== null || clickedPlayRegionIndex !== null)) {
-                console.log('📱 Buttons disabled, ignoring');
-                return;
-            }
-
-            if (clickedZoomRegionIndex !== null || clickedPlayRegionIndex !== null) {
-                // Store button index for touchend - DON'T preventDefault for buttons
-                canvas._touchedZoomButton = clickedZoomRegionIndex;
-                canvas._touchedPlayButton = clickedPlayRegionIndex;
-                e.preventDefault(); // Prevent scrolling but allow button handling
-                console.log('📱 Button tap detected, waiting for touchend');
-                return;
-            }
-        }
 
         // For drag/selection interactions, prevent default to avoid scrolling
         e.preventDefault();
 
         // Hide mobile tap hint on first tap
         hideMobileTapHint();
-
-        // Hide any existing "Add Region" button when starting a new selection
-        hideAddRegionButton();
 
         // Resolve tutorial promise if waiting
         if (State._waveformClickResolve) {
@@ -2226,10 +1962,6 @@ export function setupWaveformInteraction() {
         if (dragDistance > 10 && !State.isSelecting) { // Higher threshold for touch (10px vs 3px for mouse)
             State.setIsSelecting(true);
             console.log('📱 Selection drag detected');
-
-            if (!zoomState.isInRegion()) {
-                clearActiveRegion();
-            }
         }
 
         if (State.isSelecting) {
@@ -2258,36 +1990,6 @@ export function setupWaveformInteraction() {
         // Only handle touch events on actual touch devices
         if (!isTouchDevice) return;
 
-        // Check if we touched a button
-        if (canvas._touchedZoomButton !== undefined || canvas._touchedPlayButton !== undefined) {
-            const zoomIndex = canvas._touchedZoomButton;
-            const playIndex = canvas._touchedPlayButton;
-            canvas._touchedZoomButton = undefined;
-            canvas._touchedPlayButton = undefined;
-
-            // Handle button tap
-            if (zoomIndex !== null && zoomIndex !== undefined) {
-                if (!State.regionButtonsDisabled || State.isRegionZoomButtonEnabled(zoomIndex)) {
-                    const regions = getRegions();
-                    const region = regions[zoomIndex];
-                    if (region) {
-                        if (zoomState.isInRegion() && zoomState.getCurrentRegionId() === region.id) {
-                            zoomToFull();
-                        } else {
-                            zoomToRegion(zoomIndex);
-                        }
-                    }
-                }
-                return;
-            }
-            if (playIndex !== null && playIndex !== undefined) {
-                if (!State.regionButtonsDisabled || State.isRegionPlayButtonEnabled(playIndex)) {
-                    toggleRegionPlay(playIndex);
-                }
-                return;
-            }
-        }
-
         const wasSelecting = State.isSelecting;
         const wasDragging = State.isDragging;
 
@@ -2297,13 +1999,6 @@ export function setupWaveformInteraction() {
         if (State.selectionStartX !== null) {
             if (wasSelecting && State.selectionStart !== null && State.selectionEnd !== null) {
                 // Finished creating a selection
-                const selectionDuration = Math.abs(State.selectionEnd - State.selectionStart);
-
-                if (selectionDuration >= 1) {
-                    // Show "Add Region" button
-                    showAddRegionButton(State.selectionStart, State.selectionEnd);
-                }
-
                 updateWorkletSelection();
                 State.setCurrentAudioPosition(State.selectionStart);
                 if (State.audioContext) {
@@ -2320,10 +2015,6 @@ export function setupWaveformInteraction() {
                 State.setSelectionStart(null);
                 State.setSelectionEnd(null);
                 updateWorkletSelection();
-
-                if (!zoomState.isInRegion()) {
-                    resetAllRegionPlayButtons();
-                }
 
                 const touch = e.changedTouches[0];
                 const { targetPosition } = getPositionFromMouse({ clientX: touch.clientX, clientY: touch.clientY });
@@ -2607,10 +2298,6 @@ export function initWaveformWorker() {
             State.setWaveformMinMaxData(waveformData);
             // console.log(`🔍 [PIPELINE] Calling drawWaveformFromMinMax()`);
             drawWaveformFromMinMax();
-            
-            // 🔧 FIX: Don't call drawWaveformWithSelection() here - it draws regions immediately
-            // Regions will be drawn after crossfade completes (via renderRegionsAfterCrossfade)
-            // drawWaveformWithSelection() is already called at the end of the crossfade animation (line 344)
             
             // 🔥 FIX: Clear waveformData references after use to allow GC of transferred ArrayBuffers
             // The mins/maxs buffers were transferred from worker - clearing helps GC
