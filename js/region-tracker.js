@@ -4023,9 +4023,6 @@ export function zoomToFull() {
         
         // DON'T reset spectrogram state - we just restored it!
         // The spectrogram is fully functional and initialized after zoom out
-        // import('./spectrogram-complete-renderer.js').then(module => {
-        //     module.resetSpectrogramState();
-        // });
         
         // console.log('🌍 ========== ZOOM OUT: Animation Complete ==========');
         // console.log('🏛️ Now in full view:', {

@@ -95,7 +95,7 @@ space-weather-audio/
 │   ├── region-tracker.js   # Feature annotation
 │   ├── share-modal.js      # Session sharing
 │   └── ...                 # 40+ specialized modules
-├── worker/
+├── cloudflare-worker/
 │   └── src/index.js        # Cloudflare Worker API
 └── docs/
     ├── TODO.md

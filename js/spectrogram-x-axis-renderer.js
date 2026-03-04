@@ -35,8 +35,18 @@ function getTickEdgeFadeMode() {
     return el ? el.value : 'spatial';
 }
 
-function getTickEdgeFadeAmount() {
-    const el = document.getElementById('tickEdgeFadeAmount');
+function getTickEdgeSpatialWidth() {
+    const el = document.getElementById('tickEdgeSpatialWidth');
+    return el ? parseFloat(el.value) : 0.3;
+}
+
+function getTickEdgeTimeIn() {
+    const el = document.getElementById('tickEdgeTimeIn');
+    return el ? parseFloat(el.value) : 0.5;
+}
+
+function getTickEdgeTimeOut() {
+    const el = document.getElementById('tickEdgeTimeOut');
     return el ? parseFloat(el.value) : 0.3;
 }
 
@@ -138,30 +148,33 @@ export function drawSpectrogramXAxis() {
     const levelChanged = lastTickInterval !== null && currentInterval !== null && currentInterval !== lastTickInterval;
     lastTickInterval = currentInterval;
 
-    // Build set of currently-visible tick keys
+    // Build set of currently-visible tick keys + label lookup
     const currentTickKeys = new Set();
+    const tickLabelMap = new Map(); // key → { label, isBold }
     for (const tick of ticks) {
-        currentTickKeys.add(tick.utcTime.getTime());
+        const key = tick.utcTime.getTime();
+        currentTickKeys.add(key);
+        tickLabelMap.set(key, { label: formatTickLabel(tick), isBold: !!tick.isDayCrossing });
     }
 
     // Edge fade: applies symmetrically to both left and right edges during pan.
-    // Mode "spatial" = position-based opacity gradient at edges.
-    // Mode "time" = time-based fade-in when tick first appears at either edge.
+    // Mode "spatial" = position-based opacity gradient at edges (width slider).
+    // Mode "time" = time-based fade-in/out when ticks appear at edges (separate in/out sliders).
     // Mode "none" = instant appear/disappear (original behavior).
     const edgeFadeMode = getTickEdgeFadeMode();
-    const edgeFadeAmount = getTickEdgeFadeAmount();
+    const edgeSpatialWidth = getTickEdgeSpatialWidth();
+    const edgeTimeIn = getTickEdgeTimeIn();
+    const edgeTimeOut = getTickEdgeTimeOut();
     const EDGE_PX_PER_UNIT = 80;
-    const edgeFadePx = edgeFadeAmount * EDGE_PX_PER_UNIT;
+    const edgeFadePx = edgeSpatialWidth * EDGE_PX_PER_UNIT;
     const edgeCurve = easingFunctions[getTickEdgeFadeCurve()] || easingFunctions.easeOut;
 
-    /** Spatial edge opacity — symmetric fade at both edges */
+    /** Spatial edge opacity — symmetric fade at both edges (spatial mode only) */
     function edgeOpacity(x) {
         if (edgeFadeMode !== 'spatial' || edgeFadePx <= 0) return 1;
-        // Left edge
         if (x < edgeFadePx) {
             return edgeCurve(Math.max(0, x / edgeFadePx));
         }
-        // Right edge
         if (x > canvasWidth - edgeFadePx) {
             return edgeCurve(Math.max(0, (canvasWidth - x) / edgeFadePx));
         }
@@ -171,8 +184,9 @@ export function drawSpectrogramXAxis() {
     if (levelChanged) {
         // Level changed — fade in new ticks, fade out departed ticks
         for (const key of currentTickKeys) {
+            const info = tickLabelMap.get(key);
             if (!tickFadeState.has(key)) {
-                tickFadeState.set(key, { startOpacity: 0, targetOpacity: 1, transitionStart: now });
+                tickFadeState.set(key, { startOpacity: 0, targetOpacity: 1, transitionStart: now, label: info?.label, isBold: info?.isBold });
             } else {
                 const state = tickFadeState.get(key);
                 if (state.targetOpacity !== 1) {
@@ -189,29 +203,54 @@ export function drawSpectrogramXAxis() {
                 state.transitionStart = now;
             }
         }
-    } else if (edgeFadeMode === 'time' && edgeFadeAmount > 0) {
-        // Same level (panning) — time-based fade at both edges
+    } else if (edgeFadeMode === 'time') {
+        // Same level (panning) — time-based fade in/out at edges
+        const EDGE_ZONE = edgeFadePx > 0 ? edgeFadePx : 80; // pixels from edge to count as "edge entry"
         for (const key of currentTickKeys) {
-            if (!tickFadeState.has(key)) {
-                // New tick at either edge — fade in over time
-                tickFadeState.set(key, { startOpacity: 0, targetOpacity: 1, transitionStart: now, isEdgeTimed: true });
+            const existing = tickFadeState.get(key);
+            if (!existing) {
+                // New tick — only fade in if it appeared near an edge
+                const tickTime = new Date(key);
+                const timeOffsetSeconds = (tickTime.getTime() - startTimeUTC.getTime()) / 1000;
+                const x = (timeOffsetSeconds / actualTimeSpanSeconds) * canvasWidth;
+                const nearEdge = x < EDGE_ZONE || x > canvasWidth - EDGE_ZONE;
+                const info = tickLabelMap.get(key);
+                if (nearEdge) {
+                    tickFadeState.set(key, { startOpacity: 0, targetOpacity: 1, transitionStart: now, isEdgeTimed: true, label: info?.label, isBold: info?.isBold });
+                } else {
+                    // Mid-screen tick — instant full opacity
+                    tickFadeState.set(key, { startOpacity: 1, targetOpacity: 1, transitionStart: now, isEdgeTimed: true, label: info?.label, isBold: info?.isBold });
+                }
+            } else if (existing.targetOpacity === 0) {
+                // Tick re-entered viewport (user panned back) — reverse fade-out to fade-in
+                existing.startOpacity = computeOpacity(existing, edgeTimeIn, edgeTimeOut, now);
+                existing.targetOpacity = 1;
+                existing.transitionStart = now;
             }
         }
         for (const [key, state] of tickFadeState) {
-            if (!currentTickKeys.has(key)) {
-                // Can't visually fade out off-screen ticks, so just remove
-                tickFadeState.delete(key);
+            if (!currentTickKeys.has(key) && state.targetOpacity !== 0) {
+                // Start fade-out — tick will be drawn clamped to visible edge
+                const fi = state.isEdgeTimed ? edgeTimeIn : fadeInTime;
+                const fo = state.isEdgeTimed ? edgeTimeOut : fadeOutTime;
+                const currentOpacity = computeOpacity(state, fi, fo, now);
+                state.startOpacity = currentOpacity;
+                state.targetOpacity = 0;
+                state.transitionStart = now;
+                state.isEdgeTimed = true; // convert so it gets clamped + faded in draw loop
             }
         }
     } else {
         // Same level (panning) — instant appear/disappear (spatial mode handles opacity via edgeOpacity())
         for (const key of currentTickKeys) {
             if (!tickFadeState.has(key)) {
-                tickFadeState.set(key, { startOpacity: 1, targetOpacity: 1, transitionStart: now });
+                const info = tickLabelMap.get(key);
+                tickFadeState.set(key, { startOpacity: 1, targetOpacity: 1, transitionStart: now, label: info?.label, isBold: info?.isBold });
             }
         }
         for (const [key, state] of tickFadeState) {
-            if (!currentTickKeys.has(key)) {
+            if (!currentTickKeys.has(key) && state.targetOpacity !== 0) {
+                // Only delete ticks that aren't actively fading out from a level change
                 tickFadeState.delete(key);
             }
         }
@@ -219,11 +258,14 @@ export function drawSpectrogramXAxis() {
 
     let needsAnimation = false;
 
-    // Draw fading-out ticks (not in current set but still visible — zoom level changes only)
+    // Draw fading-out ticks (not in current set but still visible)
     for (const [key, state] of tickFadeState) {
         if (currentTickKeys.has(key)) continue;
 
-        const opacity = computeOpacity(state, fadeInTime, fadeOutTime, now);
+        // Use edge fade durations for edge-timed ticks, zoom durations otherwise
+        const fi = state.isEdgeTimed ? edgeTimeIn : fadeInTime;
+        const fo = state.isEdgeTimed ? edgeTimeOut : fadeOutTime;
+        const opacity = computeOpacity(state, fi, fo, now);
         if (opacity <= 0.001) {
             tickFadeState.delete(key);
             continue;
@@ -232,22 +274,28 @@ export function drawSpectrogramXAxis() {
         needsAnimation = true;
         const tickTime = new Date(key);
         const timeOffsetSeconds = (tickTime.getTime() - startTimeUTC.getTime()) / 1000;
-        const x = (timeOffsetSeconds / actualTimeSpanSeconds) * canvasWidth;
-        if (x < -10 || x > canvasWidth + 10) continue;
+        let x = (timeOffsetSeconds / actualTimeSpanSeconds) * canvasWidth;
 
-        ctx.globalAlpha = opacity * edgeOpacity(x);
+        if (state.isEdgeTimed) {
+            // Clamp to visible area — tick stays at the edge while fading out
+            x = Math.max(4, Math.min(x, canvasWidth - 4));
+        } else {
+            // Zoom-level fade-out: skip if fully off-screen
+            if (x < -10 || x > canvasWidth + 10) continue;
+        }
+
+        ctx.globalAlpha = opacity;
         ctx.strokeStyle = tickColor;
         ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, 8);
         ctx.stroke();
 
-        const label = formatTimeLabel(tickTime);
+        const label = state.label || formatTimeLabel(tickTime);
         ctx.fillStyle = labelColor;
-        ctx.font = `${fontSize} Arial, sans-serif`;
-        if (canvasWidth - x < 5) continue;
+        ctx.font = state.isBold ? `bold ${fontSize} Arial, sans-serif` : `${fontSize} Arial, sans-serif`;
         const halfW = ctx.measureText(label).width / 2;
-        const labelX = Math.max(halfW, x);
+        const labelX = Math.max(halfW, Math.min(x, canvasWidth - halfW));
         ctx.fillText(label, labelX, 10);
     }
 
@@ -255,9 +303,9 @@ export function drawSpectrogramXAxis() {
     ticks.forEach((tick) => {
         const key = tick.utcTime.getTime();
         const state = tickFadeState.get(key);
-        // Edge-timed ticks use edgeFadeAmount as their fade duration
-        const fi = state?.isEdgeTimed ? edgeFadeAmount : fadeInTime;
-        const fo = state?.isEdgeTimed ? edgeFadeAmount : fadeOutTime;
+        // Edge-timed ticks use separate in/out durations
+        const fi = state?.isEdgeTimed ? edgeTimeIn : fadeInTime;
+        const fo = state?.isEdgeTimed ? edgeTimeOut : fadeOutTime;
         const zoomOpacity = state ? computeOpacity(state, fi, fo, now) : 1;
         if (zoomOpacity < 0.999) needsAnimation = true;
 
@@ -281,10 +329,9 @@ export function drawSpectrogramXAxis() {
         } else {
             ctx.font = `${fontSize} Arial, sans-serif`;
         }
-        // Hide label if tick is right at the far right edge; nudge inward at left edge
-        if (canvasWidth - x < 5) return;
+        // Clamp label inward from both edges symmetrically
         const halfW = ctx.measureText(label).width / 2;
-        const labelX = Math.max(halfW, x);
+        const labelX = Math.max(halfW, Math.min(x, canvasWidth - halfW));
         ctx.fillText(label, labelX, 10);
     });
 

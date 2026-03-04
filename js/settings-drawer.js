@@ -348,7 +348,7 @@ export function injectSettingsDrawer() {
                 </div>
                 <div>
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                        <span class="drawer-label" style="min-width: 56px;">Edge:</span>
+                        <span class="drawer-label" style="min-width: 72px;">Edge fade:</span>
                         <select id="tickEdgeFadeMode" class="drawer-input" style="width: 100px; text-align: left;">
                             <option value="spatial" selected>Spatial</option>
                             <option value="time">Time</option>
@@ -370,9 +370,9 @@ export function injectSettingsDrawer() {
                     <span class="drawer-label" style="font-size: 11px; margin-bottom: 6px; display: block;">Width</span>
                     <div style="display: flex; align-items: center; gap: 6px;">
                         <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">0</span>
-                        <input type="range" id="tickEdgeSpatialWidth" class="drawer-input" min="0" max="2" step="0.05" value="0.5" style="flex: 1; margin: 0; padding: 0;">
+                        <input type="range" id="tickEdgeSpatialWidth" class="drawer-input" min="0" max="1" step="0.05" value="0.3" style="flex: 1; margin: 0; padding: 0;">
                         <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">wide</span>
-                        <span id="tickEdgeSpatialWidthLabel" style="font-size: 11px; color: #888; min-width: 32px;">0.50</span>
+                        <span id="tickEdgeSpatialWidthLabel" style="font-size: 11px; color: #888; min-width: 32px;">0.30</span>
                     </div>
                 </div>
                 <!-- Time mode: separate in/out sliders -->
@@ -382,8 +382,8 @@ export function injectSettingsDrawer() {
                             <span class="drawer-label" style="font-size: 11px; margin-bottom: 6px; display: block;">In</span>
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">0s</span>
-                                <input type="range" id="tickEdgeTimeIn" class="drawer-input" min="0" max="2" step="0.05" value="0.5" style="flex: 1; margin: 0; padding: 0;">
-                                <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">2s</span>
+                                <input type="range" id="tickEdgeTimeIn" class="drawer-input" min="0" max="1" step="0.05" value="0.5" style="flex: 1; margin: 0; padding: 0;">
+                                <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">1s</span>
                                 <span id="tickEdgeTimeInLabel" style="font-size: 11px; color: #888; min-width: 32px;">0.50s</span>
                             </div>
                         </div>
@@ -391,8 +391,8 @@ export function injectSettingsDrawer() {
                             <span class="drawer-label" style="font-size: 11px; margin-bottom: 6px; display: block;">Out</span>
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">0s</span>
-                                <input type="range" id="tickEdgeTimeOut" class="drawer-input" min="0" max="2" step="0.05" value="0.3" style="flex: 1; margin: 0; padding: 0;">
-                                <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">2s</span>
+                                <input type="range" id="tickEdgeTimeOut" class="drawer-input" min="0" max="1" step="0.05" value="0.3" style="flex: 1; margin: 0; padding: 0;">
+                                <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">1s</span>
                                 <span id="tickEdgeTimeOutLabel" style="font-size: 11px; color: #888; min-width: 32px;">0.30s</span>
                             </div>
                         </div>

@@ -190,8 +190,8 @@ POTENTIALLY USEFUL:
 ## 🔍 INVESTIGATION COMPLETE
 
 1. **✅ CONFIRMED**: R2 Worker calls both `/api/request` and `/api/request-stream`
-   - `worker/src/index.js:650` → `/api/request-stream` (SSE streaming)
-   - `worker/src/index.js:772` → `/api/request` (non-SSE fallback)
+   - `cloudflare-worker/src/index.js:650` → `/api/request-stream` (SSE streaming)
+   - `cloudflare-worker/src/index.js:772` → `/api/request` (non-SSE fallback)
 
 2. **Check if index.html calls anything besides `/api/stream-audio`**
    - Already confirmed: Only `/api/stream-audio` ✅
