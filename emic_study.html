@@ -343,9 +343,13 @@
             </div>
         </div>
 
-        <!-- EMIC Flags Panel (live display of study state flags) -->
-        <div class="panel" id="emicFlagsPanel" style="padding: 10px 15px; background: var(--accent-bg); border: 2px solid rgba(255, 255, 255, 0.12); display: none;">
-            <div id="emicFlagsContent" style="display: grid; grid-template-columns: auto auto; justify-content: start; gap: 4px 40px; font-family: monospace; font-size: 13px;"></div>
+        <!-- EMIC Flags Panel (floating, always on top — even above overlay) -->
+        <div id="emicFlagsPanel" style="display: none; position: fixed; top: 60px; right: 20px; z-index: 10000; background: rgba(20, 20, 30, 0.95); border: 2px solid rgba(255, 255, 255, 0.2); border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); backdrop-filter: blur(8px); overflow: hidden;">
+            <div id="emicFlagsDragHandle" style="padding: 6px 12px; background: rgba(255,255,255,0.08); border-bottom: 1px solid rgba(255,255,255,0.1); cursor: grab; display: flex; align-items: center; justify-content: space-between; user-select: none;">
+                <span style="font-size: 12px; font-weight: 700; color: #aaa; letter-spacing: 0.5px;">⚑ STUDY FLAGS</span>
+                <span style="font-size: 10px; color: #555;">drag to move</span>
+            </div>
+            <div id="emicFlagsContent" style="padding: 10px 15px; display: grid; grid-template-columns: auto auto; justify-content: start; gap: 4px 40px; font-family: monospace; font-size: 13px;"></div>
         </div>
 
         <!-- Metrics Panel (hidden by default) -->

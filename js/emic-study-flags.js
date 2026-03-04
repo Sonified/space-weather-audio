@@ -10,7 +10,9 @@ export const EMIC_FLAGS = {
     HAS_REGISTERED:             'emic_has_registered',
     HAS_CLOSED_WELCOME:         'emic_has_closed_welcome',
     ACTIVE_FEATURE_COUNT:       'emic_active_feature_count',
-    HAS_COMPLETED_ANALYSIS:     'emic_has_completed_analysis',
+    HAS_CLICKED_COMPLETE:       'emic_has_clicked_complete',
+    HAS_CONFIRMED_COMPLETE:     'emic_has_confirmed_complete',
+    HAS_COMPLETED_ANALYSIS:     'emic_has_completed_analysis', // legacy — kept for compat
     HAS_SUBMITTED:              'emic_has_submitted',
     HAS_SUBMITTED_BACKGROUND:   'emic_has_submitted_background',
     HAS_SUBMITTED_DATA_ANALYSIS:'emic_has_submitted_data_analysis',
@@ -88,12 +90,35 @@ export function initFlagsPanel() {
                 flagChangeListener = null;
             }
         } else {
-            panel.style.display = '';
+            panel.style.display = 'block';
             btn.textContent = 'Hide Flags';
             buildFlagCheckboxes();
             syncFlagCheckboxes();
             flagChangeListener = () => syncFlagCheckboxes();
             window.addEventListener('emic-flag-change', flagChangeListener);
+        }
+    });
+
+    // Make panel draggable
+    const handle = document.getElementById('emicFlagsDragHandle') || panel;
+    let dragging = false, offsetX = 0, offsetY = 0;
+    handle.addEventListener('mousedown', (e) => {
+        dragging = true;
+        offsetX = e.clientX - panel.getBoundingClientRect().left;
+        offsetY = e.clientY - panel.getBoundingClientRect().top;
+        handle.style.cursor = 'grabbing';
+        e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        panel.style.left = (e.clientX - offsetX) + 'px';
+        panel.style.top = (e.clientY - offsetY) + 'px';
+        panel.style.right = 'auto';
+    });
+    document.addEventListener('mouseup', () => {
+        if (dragging) {
+            dragging = false;
+            handle.style.cursor = 'grab';
         }
     });
 }
@@ -114,7 +139,7 @@ function buildFlagCheckboxes() {
     // Two-column layout: flow state (left) and questionnaires (right)
     const flowFlags = [
         'IS_SIMULATING', 'HAS_REGISTERED', 'HAS_CLOSED_WELCOME',
-        'ACTIVE_FEATURE_COUNT', 'HAS_COMPLETED_ANALYSIS', 'HAS_SUBMITTED'
+        'ACTIVE_FEATURE_COUNT', 'HAS_CLICKED_COMPLETE', 'HAS_CONFIRMED_COMPLETE', 'HAS_SUBMITTED'
     ];
     const questionnaireFlags = [
         'HAS_SUBMITTED_BACKGROUND', 'HAS_SUBMITTED_DATA_ANALYSIS',
@@ -177,12 +202,11 @@ function buildFlagCheckboxes() {
     }
 
     container.appendChild(makeColumn('Flow State', flowFlags));
-    const qCol = makeColumn('Questionnaires', questionnaireFlags);
 
-    // Copy button next to questionnaires column
+    // Copy Flags button to the right of questionnaires column, aligned to top
     const copyBtn = document.createElement('button');
-    copyBtn.textContent = '📋 Copy';
-    copyBtn.style.cssText = 'padding: 3px 8px; font-size: 11px; border: 1px solid #555; border-radius: 4px; background: rgba(60,60,60,0.9); color: #ccc; cursor: pointer; margin-top: auto; white-space: nowrap; transition: all 0.15s;';
+    copyBtn.textContent = '📋 Copy Flags';
+    copyBtn.style.cssText = 'padding: 6px 14px; font-size: 13px; font-weight: 600; border: 1px solid #555; border-radius: 4px; background: rgba(60,60,60,0.9); color: #ccc; cursor: pointer; white-space: nowrap; transition: all 0.15s;';
     copyBtn.addEventListener('click', () => {
         const parts = [];
         for (const [name, key] of Object.entries(EMIC_FLAGS)) {
@@ -197,16 +221,15 @@ function buildFlagCheckboxes() {
         const pid = localStorage.getItem('participantId') || '?';
         const text = `flags[${pid}]: ${parts.join(' ')}`;
         navigator.clipboard.writeText(text).then(() => {
-            copyBtn.textContent = '✅ Copied';
-            setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 1500);
+            copyBtn.textContent = '✅ Copied!';
+            setTimeout(() => { copyBtn.textContent = '📋 Copy Flags'; }, 1500);
         });
     });
 
-    const rightWrapper = document.createElement('div');
-    rightWrapper.style.cssText = 'display: flex; gap: 12px; align-items: flex-start;';
-    rightWrapper.appendChild(qCol);
-    rightWrapper.appendChild(copyBtn);
-    container.appendChild(rightWrapper);
+    const qCol = makeColumn('Questionnaires', questionnaireFlags);
+    qCol.appendChild(copyBtn);
+    copyBtn.style.marginTop = '6px';
+    container.appendChild(qCol);
 }
 
 /**
