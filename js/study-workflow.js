@@ -109,7 +109,8 @@ export const STORAGE_KEYS = {
     TOTAL_REGIONS_IDENTIFIED: 'study_total_regions_identified', // cumulative across all sessions
     TOTAL_FEATURES_IDENTIFIED: 'study_total_features_identified', // cumulative across all sessions
     SESSION_COMPLETION_TRACKER: 'study_session_completion_tracker', // tracks which specific sessions are complete
-    BEGIN_ANALYSIS_CLICKED_THIS_SESSION: 'study_begin_analysis_clicked_this_session' // SESSION-LEVEL: cleared each new session
+    BEGIN_ANALYSIS_CLICKED_THIS_SESSION: 'study_begin_analysis_clicked_this_session', // SESSION-LEVEL: cleared each new session
+    SESSION_TIMED_OUT: 'study_session_timed_out' // SESSION-LEVEL: set by session timeout logic
 };
 
 /**
@@ -127,7 +128,7 @@ export function hasSeenParticipantSetup() {
     return localStorage.getItem(STORAGE_KEYS.HAS_SEEN_PARTICIPANT_SETUP) === 'true';
 }
 
-function markParticipantSetupAsSeen() {
+export function markParticipantSetupAsSeen() {
     localStorage.setItem(STORAGE_KEYS.HAS_SEEN_PARTICIPANT_SETUP, 'true');
     console.log('✅ Participant setup marked as seen (forever)');
 }
@@ -147,7 +148,7 @@ export function hasSeenWelcome() {
     return localStorage.getItem(STORAGE_KEYS.HAS_SEEN_WELCOME) === 'true';
 }
 
-function markWelcomeAsSeen() {
+export function markWelcomeAsSeen() {
     localStorage.setItem(STORAGE_KEYS.HAS_SEEN_WELCOME, 'true');
     console.log('✅ Welcome marked as seen (forever)');
 }

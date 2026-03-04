@@ -10,6 +10,7 @@ import { trackSurveyStart } from '../Qualtrics/participant-response-manager.js';
 import { isStudyMode, isStudyCleanMode, isLocalEnvironment } from './master-modes.js';
 import { modalManager } from './modal-manager.js';
 import { startActivityTimer } from './session-management.js';
+import { STORAGE_KEYS, hasSeenParticipantSetup, hasSeenWelcome, markParticipantSetupAsSeen, markWelcomeAsSeen } from './study-workflow.js';
 import { checkUsernameAvailable, registerUsername } from './share-api.js';
 
 
@@ -538,8 +539,7 @@ function wireParticipantModal() {
 
             // Mark participant setup as seen when user submits (not before)
             // Works for both Study mode and Solar Portal mode
-            localStorage.setItem('study_has_seen_participant_setup', 'true');
-            console.log('✅ Participant setup marked as seen');
+            markParticipantSetupAsSeen();
 
             await closeParticipantModal();
 
@@ -564,8 +564,7 @@ function wireWelcomeModal() {
         welcomeSubmitBtn.addEventListener('click', async () => {
             // Mark welcome as seen when user submits (not before opening)
             if (isStudyMode()) {
-                localStorage.setItem('study_has_seen_welcome', 'true');
-                console.log('✅ Welcome marked as seen');
+                markWelcomeAsSeen();
             }
 
             await closeWelcomeModal();
@@ -1045,7 +1044,7 @@ function wireTutorialRevisitModal() {
                 console.log('▶️ Continuing tutorial');
             } else {
                 closeTutorialRevisitModal(false);
-                localStorage.removeItem('study_has_seen_tutorial');
+                localStorage.removeItem(STORAGE_KEYS.TUTORIAL_COMPLETED);
                 console.log('🔄 Tutorial flag cleared - will restart tutorial');
                 setTimeout(async () => {
                     const { runInitialTutorial } = await import('./tutorial-coordinator.js');
@@ -1063,7 +1062,7 @@ function wireTutorialRevisitModal() {
                 closeTutorialRevisitModal(false);
                 const { clearTutorialPhase } = await import('./tutorial-state.js');
                 clearTutorialPhase();
-                localStorage.removeItem('study_has_seen_tutorial');
+                localStorage.removeItem(STORAGE_KEYS.TUTORIAL_COMPLETED);
                 console.log('🔄 Restarting tutorial');
                 setTimeout(async () => {
                     const { runInitialTutorial } = await import('./tutorial-coordinator.js');
@@ -1296,13 +1295,13 @@ export async function closeParticipantModal(keepOverlay = null) {
         // Check if this is a manual open by seeing if we're in the middle of a workflow
         // If workflow is skipped OR if participant setup was already seen, this is manual
         const skipWorkflow = localStorage.getItem('skipStudyWorkflow') === 'true';
-        const hasSeenParticipantSetup = localStorage.getItem('study_has_seen_participant_setup') === 'true';
+        const hasSeenSetup = hasSeenParticipantSetup();
         
         const { isEmicStudyMode } = await import('./master-modes.js');
         if (isEmicStudyMode()) {
             // EMIC mode: always keep overlay (welcome modal follows)
             keepOverlay = true;
-        } else if (skipWorkflow || hasSeenParticipantSetup) {
+        } else if (skipWorkflow || hasSeenSetup) {
             // Manual open - always fade out overlay
             keepOverlay = false;
         } else {
@@ -1458,16 +1457,15 @@ export async function openWelcomeModal() {
             return;
         }
         
-        const hasSeenParticipantSetup = localStorage.getItem('study_has_seen_participant_setup') === 'true';
-        if (!hasSeenParticipantSetup) {
+        const hasSeenSetup = hasSeenParticipantSetup();
+        if (!hasSeenSetup) {
             console.warn('⚠️ Welcome modal: Participant setup must be completed first in Study Mode');
             return;
         }
         
         // In STUDY mode (not clean), only show welcome modal once (first time only)
         if (!isStudyCleanMode()) {
-            const hasSeenWelcome = localStorage.getItem('study_has_seen_welcome') === 'true';
-            if (hasSeenWelcome) {
+            if (hasSeenWelcome()) {
                 console.log('✅ Welcome modal already seen - skipping in STUDY mode');
                 return;
             }

@@ -17,6 +17,7 @@ import {
 import { getRegions } from './region-tracker.js';
 import { CURRENT_MODE, AppMode } from './master-modes.js';
 import * as State from './audio-state.js';
+import { STORAGE_KEYS } from './study-workflow.js';
 
 export function submitParticipantSetup() {
     const participantId = document.getElementById('participantId').value.trim();
@@ -762,9 +763,9 @@ export async function attemptSubmission(fromWorkflow = false) {
             // Cumulative region and feature counts (across all sessions)
             cumulativeStats: (() => {
                 try {
-                    const stored = localStorage.getItem('study_total_regions_identified');
+                    const stored = localStorage.getItem(STORAGE_KEYS.TOTAL_REGIONS_IDENTIFIED);
                     const totalRegions = parseInt(stored || '0') || 0;
-                    const storedFeatures = localStorage.getItem('study_total_features_identified');
+                    const storedFeatures = localStorage.getItem(STORAGE_KEYS.TOTAL_FEATURES_IDENTIFIED);
                     const totalFeatures = parseInt(storedFeatures || '0') || 0;
                     return {
                         totalRegionsIdentified: totalRegions,
@@ -778,7 +779,7 @@ export async function attemptSubmission(fromWorkflow = false) {
             // Session completion tracker (which specific sessions are complete)
             sessionCompletionTracker: (() => {
                 try {
-                    const stored = localStorage.getItem('study_session_completion_tracker');
+                    const stored = localStorage.getItem(STORAGE_KEYS.SESSION_COMPLETION_TRACKER);
                     return stored ? JSON.parse(stored) : {
                         week1: [false, false],
                         week2: [false, false],
@@ -799,21 +800,21 @@ export async function attemptSubmission(fromWorkflow = false) {
                 try {
                     return {
                         // 👤 ONBOARDING
-                        study_has_seen_participant_setup: localStorage.getItem('study_has_seen_participant_setup') === 'true',
-                        study_has_seen_welcome: localStorage.getItem('study_has_seen_welcome') === 'true',
-                        study_tutorial_in_progress: localStorage.getItem('study_tutorial_in_progress') === 'true',
-                        study_tutorial_completed: localStorage.getItem('study_tutorial_completed') === 'true',
+                        study_has_seen_participant_setup: localStorage.getItem(STORAGE_KEYS.HAS_SEEN_PARTICIPANT_SETUP) === 'true',
+                        study_has_seen_welcome: localStorage.getItem(STORAGE_KEYS.HAS_SEEN_WELCOME) === 'true',
+                        study_tutorial_in_progress: localStorage.getItem(STORAGE_KEYS.TUTORIAL_IN_PROGRESS) === 'true',
+                        study_tutorial_completed: localStorage.getItem(STORAGE_KEYS.TUTORIAL_COMPLETED) === 'true',
                         
                         // ⚡ CURRENT SESSION
-                        study_has_seen_welcome_back: localStorage.getItem('study_has_seen_welcome_back') === 'true',
-                        study_pre_survey_completion_date: localStorage.getItem('study_pre_survey_completion_date') || null,
-                        study_begin_analysis_clicked_this_session: localStorage.getItem('study_begin_analysis_clicked_this_session') === 'true',
+                        study_has_seen_welcome_back: localStorage.getItem(STORAGE_KEYS.HAS_SEEN_WELCOME_BACK) === 'true',
+                        study_pre_survey_completion_date: localStorage.getItem(STORAGE_KEYS.PRE_SURVEY_COMPLETION_DATE) || null,
+                        study_begin_analysis_clicked_this_session: localStorage.getItem(STORAGE_KEYS.BEGIN_ANALYSIS_CLICKED_THIS_SESSION) === 'true',
                         
                         // 📅 SESSION COMPLETION (already included above in sessionCompletionTracker)
                         // study_session_completion_tracker: included separately
                         
                         // ⏰ SESSION TIMEOUT
-                        study_session_timed_out: localStorage.getItem('study_session_timed_out') === 'true'
+                        study_session_timed_out: localStorage.getItem(STORAGE_KEYS.SESSION_TIMED_OUT) === 'true'
                     };
                 } catch (e) {
                     console.warn('⚠️ Could not read workflow flags from localStorage:', e);

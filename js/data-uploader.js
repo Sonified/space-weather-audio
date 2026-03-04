@@ -6,6 +6,8 @@
  *   - submissions/{participantId}_Complete_{timestamp}.json (append-only)
  */
 
+import { STORAGE_KEYS } from './study-workflow.js';
+
 // Backend endpoint (production)
 const UPLOAD_ENDPOINT = 'https://volcano-audio-collector-production.up.railway.app/api/upload-user-data';
 
@@ -28,34 +30,34 @@ function gatherUserData(participantId) {
         
         // 🎯 THE 9 CORE WORKFLOW FLAGS (from UX doc)
         // Study progress flags (ONBOARDING)
-        const hasSeenParticipantSetup = localStorage.getItem('study_has_seen_participant_setup') === 'true';
-        const hasSeenWelcome = localStorage.getItem('study_has_seen_welcome') === 'true';
-        const tutorialInProgress = localStorage.getItem('study_tutorial_in_progress') === 'true';
-        const tutorialCompleted = localStorage.getItem('study_tutorial_completed') === 'true';
-        
+        const hasSeenParticipantSetup = localStorage.getItem(STORAGE_KEYS.HAS_SEEN_PARTICIPANT_SETUP) === 'true';
+        const hasSeenWelcome = localStorage.getItem(STORAGE_KEYS.HAS_SEEN_WELCOME) === 'true';
+        const tutorialInProgress = localStorage.getItem(STORAGE_KEYS.TUTORIAL_IN_PROGRESS) === 'true';
+        const tutorialCompleted = localStorage.getItem(STORAGE_KEYS.TUTORIAL_COMPLETED) === 'true';
+
         // Current session flags
-        const hasSeenWelcomeBack = localStorage.getItem('study_has_seen_welcome_back') === 'true';
-        const preSurveyCompletionDate = localStorage.getItem('study_pre_survey_completion_date');
-        const beginAnalysisClickedThisSession = localStorage.getItem('study_begin_analysis_clicked_this_session') === 'true';
-        
+        const hasSeenWelcomeBack = localStorage.getItem(STORAGE_KEYS.HAS_SEEN_WELCOME_BACK) === 'true';
+        const preSurveyCompletionDate = localStorage.getItem(STORAGE_KEYS.PRE_SURVEY_COMPLETION_DATE);
+        const beginAnalysisClickedThisSession = localStorage.getItem(STORAGE_KEYS.BEGIN_ANALYSIS_CLICKED_THIS_SESSION) === 'true';
+
         // Session timeout flag
-        const sessionTimedOut = localStorage.getItem('study_session_timed_out') === 'true';
-        
+        const sessionTimedOut = localStorage.getItem(STORAGE_KEYS.SESSION_TIMED_OUT) === 'true';
+
         // Session tracking
-        const weeklySessionCount = parseInt(localStorage.getItem('study_weekly_session_count') || '0', 10);
-        const weekStartDate = localStorage.getItem('study_week_start_date');
-        const sessionCompletionTracker = localStorage.getItem('study_session_completion_tracker');
-        
-        const totalSessionsStarted = parseInt(localStorage.getItem('study_total_sessions_started') || '0', 10);
-        const totalSessionsCompleted = parseInt(localStorage.getItem('study_total_sessions_completed') || '0', 10);
-        const totalSessionTime = parseInt(localStorage.getItem('study_total_session_time') || '0', 10);
+        const weeklySessionCount = parseInt(localStorage.getItem(STORAGE_KEYS.WEEKLY_SESSION_COUNT) || '0', 10);
+        const weekStartDate = localStorage.getItem(STORAGE_KEYS.WEEK_START_DATE);
+        const sessionCompletionTracker = localStorage.getItem(STORAGE_KEYS.SESSION_COMPLETION_TRACKER);
+
+        const totalSessionsStarted = parseInt(localStorage.getItem(STORAGE_KEYS.TOTAL_SESSIONS_STARTED) || '0', 10);
+        const totalSessionsCompleted = parseInt(localStorage.getItem(STORAGE_KEYS.TOTAL_SESSIONS_COMPLETED) || '0', 10);
+        const totalSessionTime = parseInt(localStorage.getItem(STORAGE_KEYS.TOTAL_SESSION_TIME) || '0', 10);
         const totalSessionTimeHours = parseFloat((totalSessionTime / (1000 * 60 * 60)).toFixed(2));
-        
+
         // Session history
-        const sessionHistory = safeGet('study_session_history', []);
-        
+        const sessionHistory = safeGet(STORAGE_KEYS.SESSION_HISTORY, []);
+
         // Current session (if any)
-        const currentSessionStart = localStorage.getItem('study_current_session_start');
+        const currentSessionStart = localStorage.getItem(STORAGE_KEYS.CURRENT_SESSION_START);
         
         // Preferences
         const selectedVolcano = localStorage.getItem('selectedVolcano');
