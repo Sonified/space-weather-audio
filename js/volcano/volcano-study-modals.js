@@ -6,9 +6,9 @@
  */
 
 import { getParticipantId } from './qualtrics-api.js';
-import { trackSurveyStart } from '../Qualtrics/participant-response-manager.js';
-import { isStudyMode, isLocalEnvironment } from './master-modes.js';
-import { modalManager } from './modal-manager.js';
+import { trackSurveyStart } from '../../Qualtrics/participant-response-manager.js';
+import { isStudyMode, isLocalEnvironment } from '../master-modes.js';
+import { modalManager } from '../modal-manager.js';
 import { startActivityTimer } from './session-management.js';
 import { STORAGE_KEYS } from './study-workflow.js';
 import {
@@ -19,7 +19,7 @@ import {
     wireQuickFill,
     closeAllModals,
     showUIElementsAfterModal
-} from './ui-modals.js';
+} from '../ui-modals.js';
 
 
 // ── Workflow sequence logic ──────────────────────────────────────────────
@@ -235,7 +235,7 @@ export function wireCompleteConfirmationModal() {
     const completeSubmitBtn = completeConfirmationModal.querySelector('.modal-submit');
     if (completeSubmitBtn) {
         completeSubmitBtn.addEventListener('click', async () => {
-            const { hasIdentifiedFeature } = await import('./region-tracker.js');
+            const { hasIdentifiedFeature } = await import('../region-tracker.js');
             if (!hasIdentifiedFeature()) {
                 console.warn('⚠️ Complete button clicked but no feature selected');
                 const statusEl = document.getElementById('status');
@@ -246,11 +246,11 @@ export function wireCompleteConfirmationModal() {
                 return;
             }
 
-            const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+            const { enableAllTutorialRestrictedFeatures } = await import('../tutorial-effects.js');
             enableAllTutorialRestrictedFeatures();
             console.log('✅ Features enabled after feature selection');
 
-            const { isStudyMode } = await import('./master-modes.js');
+            const { isStudyMode } = await import('../master-modes.js');
             // In study mode, use the workflow. Otherwise, open activity level directly
             if (isStudyMode()) {
                 console.log('🎓 Study Mode: Starting submit workflow...');
@@ -278,7 +278,7 @@ export function wireMissingStudyIdModal() {
         enterStudyIdBtn.addEventListener('click', () => {
             closeMissingStudyIdModal();
             setTimeout(async () => {
-                const { openParticipantModal } = await import('./ui-modals.js');
+                const { openParticipantModal } = await import('../ui-modals.js');
                 openParticipantModal();
             }, 100); // Small delay to ensure modal closes first
         });
@@ -315,7 +315,7 @@ export function wirePreSurveyModal() {
 
     if (preSurveySubmitBtn) {
         preSurveySubmitBtn.addEventListener('click', async () => {
-            const { submitPreSurvey } = await import('./ui-surveys.js');
+            const { submitPreSurvey } = await import('../ui-surveys.js');
             await submitPreSurvey();
 
             // Auto-detect next modal using workflow logic
@@ -384,7 +384,7 @@ export function wirePostSurveyModal() {
 
     if (postSurveySubmitBtn) {
         postSurveySubmitBtn.addEventListener('click', async () => {
-            const { submitPostSurvey } = await import('./ui-surveys.js');
+            const { submitPostSurvey } = await import('../ui-surveys.js');
             await submitPostSurvey();
             await closePostSurveyModal();
 
@@ -392,7 +392,7 @@ export function wirePostSurveyModal() {
             if (isStudyMode()) {
                 setTimeout(async () => {
                     try {
-                        const { attemptSubmission } = await import('./ui-controls.js');
+                        const { attemptSubmission } = await import('../ui-controls.js');
                         await attemptSubmission(true);  // fromWorkflow=true
                         console.log('✅ Submission complete');
                     } catch (error) {
@@ -442,7 +442,7 @@ export function wireActivityLevelModal() {
     if (activityLevelSubmitBtn) {
         activityLevelSubmitBtn.addEventListener('click', async () => {
             if (window.pm?.interaction) console.log('🔵 Activity Level submit button clicked');
-            const { submitActivityLevelSurvey } = await import('./ui-surveys.js');
+            const { submitActivityLevelSurvey } = await import('../ui-surveys.js');
             const success = await submitActivityLevelSurvey();
 
             if (!success) {
@@ -454,7 +454,7 @@ export function wireActivityLevelModal() {
             console.log('✅ Activity Level submission successful');
 
             // In study mode, the workflow is waiting for the modal to close via its promise from openModal
-            const { isStudyMode } = await import('./master-modes.js');
+            const { isStudyMode } = await import('../master-modes.js');
             console.log('🔍 isStudyMode:', isStudyMode());
             if (isStudyMode()) {
                 console.log('✅ Activity Level saved - closing modal for workflow...');
@@ -518,7 +518,7 @@ export function wireAwesfModal() {
 
     if (awesfSubmitBtn) {
         awesfSubmitBtn.addEventListener('click', async () => {
-            const { submitAwesfSurvey } = await import('./ui-surveys.js');
+            const { submitAwesfSurvey } = await import('../ui-surveys.js');
             await submitAwesfSurvey();
             await closeAwesfModal();
             // Open post-survey after AWE-SF closes
@@ -628,7 +628,7 @@ export function wireTutorialRevisitModal() {
             closeTutorialRevisitModal(false);
             const { clearTutorialPhase } = await import('./tutorial-state.js');
             clearTutorialPhase();
-            const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+            const { enableAllTutorialRestrictedFeatures } = await import('../tutorial-effects.js');
             await enableAllTutorialRestrictedFeatures();
             const { markTutorialAsSeen } = await import('./study-workflow.js');
             markTutorialAsSeen();
@@ -922,7 +922,7 @@ export async function openCompleteConfirmationModal() {
     const modal = document.getElementById('completeConfirmationModal');
 
     // Get regions and calculate counts
-    const { getRegions } = await import('./region-tracker.js');
+    const { getRegions } = await import('../region-tracker.js');
     const regions = getRegions();
     const regionCount = regions.length;
 

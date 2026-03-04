@@ -21,8 +21,6 @@ import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas } from './spectrog
 import { renderProgressiveSpectrogram, resetProgressiveSpectrogram } from './main-window-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { updateCompleteButtonState, loadRegionsAfterDataFetch } from './region-tracker.js';
-import { isTutorialActive } from './tutorial-state.js';
-
 const WORKER_BASE = 'https://spaceweather.now.audio/emic';
 const INSTRUMENT_SAMPLE_RATE = 10; // Hz — GOES mag high-res cadence
 
@@ -919,9 +917,7 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     if (downloadBtn) downloadBtn.disabled = false;
 
     // Enable analysis button
-    if (!isTutorialActive()) {
-        updateCompleteButtonState();
-    }
+    updateCompleteButtonState();
 
     // Clean up triggered render hook
     if (renderMode === 'triggered') delete window.triggerDataRender;

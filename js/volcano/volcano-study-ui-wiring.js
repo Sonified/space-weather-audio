@@ -16,10 +16,10 @@ import {
     openTutorialRevisitModal
 } from './volcano-study-modals.js';
 import { attemptSubmission } from './volcano-study-surveys.js';
-import { getParticipantId } from './participant-id.js';
-import * as State from './audio-state.js';
-import { zoomState } from './zoom-state.js';
-import { showAddRegionButton, updateCmpltButtonState, updateCompleteButtonState } from './region-tracker.js';
+import { getParticipantId } from '../participant-id.js';
+import * as State from '../audio-state.js';
+import { zoomState } from '../zoom-state.js';
+import { showAddRegionButton, updateCmpltButtonState, updateCompleteButtonState } from '../region-tracker.js';
 
 /**
  * Wire up all volcano study-specific UI buttons and event listeners.
@@ -136,7 +136,7 @@ export function wireVolcanoStudyButtons() {
         }
 
         // Enable region creation after "Begin Analysis" is confirmed
-        const { setRegionCreationEnabled } = await import('./audio-state.js');
+        const { setRegionCreationEnabled } = await import('../audio-state.js');
         setRegionCreationEnabled(true);
         console.log('✅ Region creation ENABLED after Begin Analysis confirmation');
 

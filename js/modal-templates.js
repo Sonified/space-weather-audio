@@ -379,7 +379,7 @@ export async function initializeModals() {
 
     // Volcano study modals — loaded only when NOT in EMIC mode
     if (!isEmicStudyMode()) {
-        const volcanoTemplates = await import('./volcano-modal-templates.js');
+        const volcanoTemplates = await import('./volcano/volcano-modal-templates.js');
         overlay.appendChild(volcanoTemplates.createEndModal());
         overlay.appendChild(volcanoTemplates.createWelcomeBackModal());
         overlay.appendChild(volcanoTemplates.createBeginAnalysisModal());

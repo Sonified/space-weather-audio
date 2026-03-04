@@ -47,7 +47,7 @@ export {
     disableAddFeatureButton,
     enableAddFeatureButton,
     enableAllTutorialRestrictedFeatures
-} from './tutorial-effects.js';
+} from '../tutorial-effects.js';
 
 // Re-export all sequences
 export {

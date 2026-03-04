@@ -4,7 +4,7 @@
  */
 
 // Re-export participant ID utils for backward compatibility (canonical source: participant-id.js)
-export { getParticipantId, storeParticipantId, getParticipantIdFromURL } from './participant-id.js';
+export { getParticipantId, storeParticipantId, getParticipantIdFromURL } from '../participant-id.js';
 
 // Load survey configuration from config.json
 let SURVEY_CONFIG = null;

@@ -7,7 +7,7 @@ import * as ShareAPI from './share-api.js';
 import * as State from './audio-state.js';
 import { getRegions } from './region-tracker.js';
 import { zoomState } from './zoom-state.js';
-import { getParticipantId } from './qualtrics-api.js';
+import { getParticipantId } from './participant-id.js';
 import { getCurrentColormap } from './colormaps.js';
 import { updateDatasetOptions } from './ui-controls.js';
 import { getCurrentComponentIndex } from './component-selector.js';

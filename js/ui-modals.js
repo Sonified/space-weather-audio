@@ -1,18 +1,16 @@
 /**
  * ui-modals.js
- * Shared modal helpers, overlay management, and shared modal handlers (participant + welcome).
- * Volcano-study-only modals live in volcano-study-modals.js.
+ * Modal helpers, overlay management, and modal handlers (participant + welcome).
  * Extracted from ui-controls.js for maintainability.
  */
 
 import * as State from './audio-state.js';
 import { getParticipantId, storeParticipantId, getParticipantIdFromURL } from './participant-id.js';
-import { isStudyMode, isStudyCleanMode, isLocalEnvironment, isEmicStudyMode } from './master-modes.js';
-import { hasSeenParticipantSetup, hasSeenWelcome, markParticipantSetupAsSeen, markWelcomeAsSeen } from './study-workflow.js';
+import { isStudyMode, isLocalEnvironment, isEmicStudyMode } from './master-modes.js';
 import { checkUsernameAvailable, registerUsername } from './share-api.js';
 
 
-// ── Shared helpers (exported for volcano-study-modals.js) ────────────────
+// ── Shared helpers ───────────────────────────────────────────────────────
 
 export function hideUIElementsForModal() {
     const tutorialHelpBtn = document.getElementById('tutorialHelpBtn');
@@ -405,10 +403,6 @@ function wireParticipantModal() {
             const { submitParticipantSetup } = await import('./ui-surveys.js');
             submitParticipantSetup();  // Save data locally
 
-            // Mark participant setup as seen when user submits (not before)
-            // Works for both Study mode and Solar Portal mode
-            markParticipantSetupAsSeen();
-
             await closeParticipantModal();
 
             if (isStudyMode()) {
@@ -430,19 +424,10 @@ function wireWelcomeModal() {
     const welcomeSubmitBtn = welcomeModal.querySelector('.modal-submit');
     if (welcomeSubmitBtn) {
         welcomeSubmitBtn.addEventListener('click', async () => {
-            // Mark welcome as seen when user submits (not before opening)
-            if (isStudyMode()) {
-                markWelcomeAsSeen();
-            }
-
             await closeWelcomeModal();
-            // Open pre-survey after welcome closes (not in EMIC mode)
-            const { isEmicStudyMode: isEmic } = await import('./master-modes.js');
-            if (!isEmic()) {
-                const { openPreSurveyModal } = await import('./volcano-study-modals.js');
-                setTimeout(() => openPreSurveyModal(), 350);
-            } else {
-                // EMIC mode: show instructions with typewriter effect
+
+            // EMIC mode: show instructions with typewriter effect
+            {
                 // Skip for shared/simulate sessions — fetch is auto-triggered
                 const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
                 if (!isSharedSession) {
@@ -491,27 +476,9 @@ export function setupModalEventListeners() {
         removeModalEventListeners();
     }
 
-    // Shared modals (used by both EMIC and volcano study)
+    // Shared modals (used by EMIC study)
     wireParticipantModal();
     wireWelcomeModal();
-
-    // Volcano study modals — skip in EMIC mode (these DOM elements don't exist in emic_study.html)
-    if (!isEmicStudyMode()) {
-        import('./volcano-study-modals.js').then(volcanoModals => {
-            volcanoModals.wireEndModal();
-            volcanoModals.wireBeginAnalysisModal();
-            volcanoModals.wireWelcomeBackModal();
-            volcanoModals.wireCompleteConfirmationModal();
-            volcanoModals.wireMissingStudyIdModal();
-            volcanoModals.wirePreSurveyModal();
-            volcanoModals.wirePostSurveyModal();
-            volcanoModals.wireActivityLevelModal();
-            volcanoModals.wireAwesfModal();
-            volcanoModals.wireTutorialIntroModal();
-            volcanoModals.wireTutorialRevisitModal();
-            volcanoModals.toggleQuickFillButtons();
-        });
-    }
 
     modalListenersSetup = true;
     if (window.pm?.init) console.log('📋 Modal event listeners attached (using ModalManager)');
@@ -680,25 +647,8 @@ export async function openParticipantModal() {
 export async function closeParticipantModal(keepOverlay = null) {
     // Auto-detect if overlay should be kept (if keepOverlay not explicitly provided)
     if (keepOverlay === null) {
-        // If opened manually (not as part of workflow), always fade out overlay
-        // Check if this is a manual open by seeing if we're in the middle of a workflow
-        // If workflow is skipped OR if participant setup was already seen, this is manual
-        const skipWorkflow = localStorage.getItem('skipStudyWorkflow') === 'true';
-        const hasSeenSetup = hasSeenParticipantSetup();
-
-        const { isEmicStudyMode } = await import('./master-modes.js');
-        if (isEmicStudyMode()) {
-            // EMIC mode: always keep overlay (welcome modal follows)
-            keepOverlay = true;
-        } else if (skipWorkflow || hasSeenSetup) {
-            // Manual open - always fade out overlay
-            keepOverlay = false;
-        } else {
-            // Part of workflow - check if there's a next modal
-            const { getNextModalInWorkflow } = await import('./volcano-study-modals.js');
-            const nextModal = await getNextModalInWorkflow('participantModal');
-            keepOverlay = nextModal !== null;
-        }
+        // EMIC mode: always keep overlay (welcome modal follows participant modal)
+        keepOverlay = true;
     }
 
     // Only allow programmatic closing (after submission), not by clicking outside
@@ -832,36 +782,6 @@ export async function openParticipantInfoModal() {
 
 // Welcome Modal Functions
 export async function openWelcomeModal() {
-    // In Study Mode, ONLY allow welcome modal through the workflow - NEVER allow manual opening
-    // EMIC study always shows welcome modal — skip the guards
-    const { isEmicStudyMode } = await import('./master-modes.js');
-    if (isStudyMode() && !isEmicStudyMode()) {
-        // In STUDY mode, welcome modal can ONLY be opened through the workflow
-        // Check if we're in the workflow by checking if pre-survey is already open
-        const preSurveyModal = document.getElementById('preSurveyModal');
-        const isPreSurveyOpen = preSurveyModal && preSurveyModal.style.display !== 'none';
-
-        // If pre-survey is open, we're past the welcome step - don't allow welcome modal
-        if (isPreSurveyOpen) {
-            console.warn('⚠️ Welcome modal: Cannot open - pre-survey is already active');
-            return;
-        }
-
-        const hasSeenSetup = hasSeenParticipantSetup();
-        if (!hasSeenSetup) {
-            console.warn('⚠️ Welcome modal: Participant setup must be completed first in Study Mode');
-            return;
-        }
-
-        // In STUDY mode (not clean), only show welcome modal once (first time only)
-        if (!isStudyCleanMode()) {
-            if (hasSeenWelcome()) {
-                console.log('✅ Welcome modal already seen - skipping in STUDY mode');
-                return;
-            }
-        }
-    }
-
     const welcomeModal = document.getElementById('welcomeModal');
     if (!welcomeModal) {
         console.warn('⚠️ Welcome modal not found');
@@ -900,15 +820,9 @@ export async function openWelcomeModal() {
 }
 
 export async function closeWelcomeModal(keepOverlay = null) {
-    // Auto-detect if overlay should be kept (if keepOverlay not explicitly provided)
-    const { isEmicStudyMode } = await import('./master-modes.js');
-    if (isEmicStudyMode()) {
-        // EMIC: welcome is the last modal, always dismiss overlay
+    // Welcome is the last modal — always dismiss overlay
+    if (keepOverlay === null) {
         keepOverlay = false;
-    } else if (keepOverlay === null) {
-        const { getNextModalInWorkflow } = await import('./volcano-study-modals.js');
-        const nextModal = await getNextModalInWorkflow('welcomeModal');
-        keepOverlay = nextModal !== null;
     }
 
     const modal = document.getElementById('welcomeModal');
@@ -932,8 +846,3 @@ export async function closeWelcomeModal(keepOverlay = null) {
         });
     }
 }
-
-
-// ── Re-exports from volcano-study-modals.js ──────────────────────────────
-// These re-exports ensure existing consumers (ui-controls.js, dynamic imports)
-// can continue importing from ui-modals.js without changes.

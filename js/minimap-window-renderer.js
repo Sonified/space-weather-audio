@@ -14,7 +14,6 @@ import { drawRegionButtons } from './waveform-buttons-renderer.js';
 import { printSelectionDiagnostics } from './selection-diagnostics.js';
 import { drawSpectrogramPlayhead, drawSpectrogramScrubPreview, clearSpectrogramScrubPreview, cleanupPlayheadOverlay } from './spectrogram-playhead.js';
 import { zoomState } from './zoom-state.js';
-import { hideTutorialOverlay, setStatusText } from './tutorial.js';
 import { isStudyMode } from './master-modes.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { restoreViewportState, updateSpectrogramViewportFromZoom, getFullMagnitudeTexture, getSpectrogramParams, notifyInteractionStart, notifyInteractionEnd } from './main-window-renderer.js';
@@ -1523,8 +1522,6 @@ export function setupWaveformInteraction() {
                 }
             }, 2000);
         }
-        hideTutorialOverlay();
-        
         // Mark waveform as clicked (if not already marked)
         if (!State.waveformHasBeenClicked) {
             State.setWaveformHasBeenClicked(true);
@@ -2006,48 +2003,12 @@ export function setupWaveformInteraction() {
                         State.setSelectionTutorialResolve(null);
                         State.setWaitingForSelection(false);
                     } else {
-                        // 🎓 Check if tutorial is active
-                        import('./tutorial-state.js').then(({ isTutorialActive }) => {
-                            // If tutorial is active, let it handle all messages
-                            if (isTutorialActive()) {
-                                // User got ahead or tutorial is guiding them
-                                if (!State.waitingForSelection) {
-                                    statusEl.className = 'status success';
-                                    statusEl.textContent = 'Nice! You just created a selection! Click Add Region or type (R) to create a new region.';
-                                    State.setWaveformHasBeenClicked(true);
-                                    localStorage.setItem('userHasClickedWaveformOnce', 'true');
-                                    State.setWaitingForRegionCreation(true);
-                                }
-                                // Otherwise tutorial is controlling, do nothing
-                                return; // Exit early - tutorial controls messages
-                            }
-                            
-                            // Regular non-tutorial flow
-                            // Check if Begin Analysis has been clicked
-                                import('./study-workflow.js').then(({ hasBegunAnalysisThisSession }) => {
-                                    const hasBegunAnalysis = hasBegunAnalysisThisSession();
-                                    const newMessage = hasBegunAnalysis 
-                                        ? 'Type (R) or click Add Region to create a new region.'
-                                        : ''; // 'Explore mode: select a volcano and click Begin Analysis when ready.';
-                                    
-                                    // Only update if message has changed (check beginning of text)
-                                    if (newMessage && !statusEl.textContent.startsWith(newMessage.substring(0, 20))) {
-                                        statusEl.className = 'status info';
-                                        statusEl.textContent = newMessage;
-                                    }
-                                }).catch(() => {
-                                    // Fallback if import fails - assume no session started
-                                    // const newMessage = 'Explore mode: select a volcano and click Begin Analysis when ready.';
-                                    // if (!statusEl.textContent.startsWith(newMessage.substring(0, 20))) {
-                                    //     statusEl.className = 'status info';
-                                    //     statusEl.textContent = newMessage;
-                                    // }
-                                });
-                        }).catch(() => {
-                            // Fallback if import fails
+                        // Show status message for selection
+                        const newMessage = 'Type (R) or click Add Region to create a new region.';
+                        if (!statusEl.textContent.startsWith(newMessage.substring(0, 20))) {
                             statusEl.className = 'status info';
-                            statusEl.textContent = 'Type (R) or click Add Region to create a new region.';
-                        });
+                            statusEl.textContent = newMessage;
+                        }
                     }
                     }
                 }
@@ -2237,8 +2198,6 @@ export function setupWaveformInteraction() {
         if (waveformContainer) {
             waveformContainer.classList.remove('pulse');
         }
-        hideTutorialOverlay();
-
         // Mark waveform as clicked
         if (!State.waveformHasBeenClicked) {
             State.setWaveformHasBeenClicked(true);

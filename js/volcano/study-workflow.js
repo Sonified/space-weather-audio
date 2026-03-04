@@ -46,8 +46,8 @@
  *   6. End/Confirmation (every session)
  */
 
-import { isStudyMode, isStudyCleanMode } from './master-modes.js';
-import { openParticipantModal, openWelcomeModal } from './ui-controls.js';
+import { isStudyMode, isStudyCleanMode } from '../master-modes.js';
+import { openParticipantModal, openWelcomeModal } from '../ui-controls.js';
 import {
     openPreSurveyModal,
     closePreSurveyModal,
@@ -56,7 +56,7 @@ import {
     openPostSurveyModal,
     openEndModal
 } from './volcano-study-modals.js';
-import { getParticipantId } from './participant-id.js';
+import { getParticipantId } from '../participant-id.js';
 import { 
     saveSurveyResponse,
     trackSurveyStart,
@@ -65,7 +65,7 @@ import {
     exportResponseMetadata,
     getSessionState,
     getSessionResponses
-} from '../Qualtrics/participant-response-manager.js';
+} from '../../Qualtrics/participant-response-manager.js';
 
 // ═══════════════════════════════════════════════════════════
 // 📊 PERSISTENT FLAGS (localStorage)
@@ -726,7 +726,7 @@ export function markPreSurveyCompletedToday() {
 async function clearSessionForNewDay(participantId) {
     if (!participantId) return;
     
-    const { clearSession } = await import('../Qualtrics/participant-response-manager.js');
+    const { clearSession } = await import('../../Qualtrics/participant-response-manager.js');
     clearSession(participantId);
     console.log('🗑️ Cleared session data for new day');
     
@@ -740,7 +740,7 @@ async function clearSessionForNewDay(participantId) {
  * Called on page load - shows appropriate modals based on visit history
  */
 export async function startStudyWorkflow() {
-    const { CURRENT_MODE, isStudyMode } = await import('./master-modes.js');
+    const { CURRENT_MODE, isStudyMode } = await import('../master-modes.js');
     
     // ⛔ GUARD: Only run in Study modes
     if (!isStudyMode()) {
@@ -863,7 +863,7 @@ export async function startStudyWorkflow() {
         console.log('👋 SIMPLE CHECK: Tutorial done, Begin Analysis not clicked → Opening Welcome Back modal');
 
         // Enable all features for returning users (tutorial already completed)
-        const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+        const { enableAllTutorialRestrictedFeatures } = await import('../tutorial-effects.js');
         await enableAllTutorialRestrictedFeatures();
         console.log('✅ All features enabled for returning user (before Welcome Back modal)');
 
@@ -882,7 +882,7 @@ export async function startStudyWorkflow() {
         
         // Create an in-progress session with pre-survey data using saveSurveyResponse
         if (participantId) {
-            const { saveSurveyResponse, trackSurveyStart } = await import('../Qualtrics/participant-response-manager.js');
+            const { saveSurveyResponse, trackSurveyStart } = await import('../../Qualtrics/participant-response-manager.js');
             
             // Track that pre-survey was started
             trackSurveyStart(participantId, 'pre');
@@ -923,7 +923,7 @@ export async function startStudyWorkflow() {
         console.log('   ✅ Set: PRE_SURVEY_COMPLETION_DATE = today (skip Welcome Back modal)');
         
         // Enable region creation (user already clicked Begin Analysis before refresh)
-        const { setRegionCreationEnabled } = await import('./audio-state.js');
+        const { setRegionCreationEnabled } = await import('../audio-state.js');
         setRegionCreationEnabled(true);
         console.log('   ✅ Enabled: region creation (Begin Analysis was clicked before refresh)');
         
@@ -941,7 +941,7 @@ export async function startStudyWorkflow() {
         // Clear session response data (pre-survey responses, session state)
         // This clears the "in-progress" session that makes the app think you're mid-session
         if (participantId) {
-            const { clearSession } = await import('../Qualtrics/participant-response-manager.js');
+            const { clearSession } = await import('../../Qualtrics/participant-response-manager.js');
             clearSession(participantId);
             console.log('   ✅ Cleared: session responses and state (removes in-progress session)');
         }
@@ -986,12 +986,12 @@ export async function startStudyWorkflow() {
     }
     
     // Disable waveform clicks initially (tutorial will enable when ready)
-    const { disableWaveformClicks } = await import('./tutorial-effects.js');
+    const { disableWaveformClicks } = await import('../tutorial-effects.js');
     disableWaveformClicks();
     console.log('🔒 Waveform clicks disabled (will be enabled by tutorial)');
     
     // 🔒 Region creation disabled until tutorial starts OR Begin Analysis is pressed
-    const { setRegionCreationEnabled } = await import('./audio-state.js');
+    const { setRegionCreationEnabled } = await import('../audio-state.js');
     setRegionCreationEnabled(false); // Explicitly disable at start (will be enabled when tutorial starts)
     console.log('🔒 Region creation DISABLED (will be enabled when tutorial starts)');
     
@@ -1038,7 +1038,7 @@ export async function startStudyWorkflow() {
             }
             
             // Enable all features immediately for returning visits (no tutorial needed)
-            const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+            const { enableAllTutorialRestrictedFeatures } = await import('../tutorial-effects.js');
             await enableAllTutorialRestrictedFeatures();
             console.log('✅ All features enabled for returning visit');
             
@@ -1052,11 +1052,11 @@ export async function startStudyWorkflow() {
                 console.log('👋 Welcome back! Hit Fetch Data to resume your session.');
                 
                 // Set status message with typing animation
-                const { setStatusText } = await import('./tutorial-effects.js');
+                const { setStatusText } = await import('../tutorial-effects.js');
                 setStatusText('👋 Welcome back! Hit Fetch Data to resume your session.', 'status info');
                 
                 // Enable region creation (user clicked Begin Analysis before refresh)
-                const { setRegionCreationEnabled } = await import('./audio-state.js');
+                const { setRegionCreationEnabled } = await import('../audio-state.js');
                 setRegionCreationEnabled(true);
                 console.log('✅ Region creation ENABLED (restoring state from before refresh)');
                 
@@ -1092,7 +1092,7 @@ export async function startStudyWorkflow() {
             }
             
             // Button is always visible, just update its disabled state
-            const { updateCompleteButtonState } = await import('./region-tracker.js');
+            const { updateCompleteButtonState } = await import('../region-tracker.js');
             updateCompleteButtonState();
             console.log('✅ Complete button state updated for returning visit');
             
@@ -1165,7 +1165,7 @@ export async function startStudyWorkflow() {
                     console.log('✅ User can proceed directly to experience');
                     // Button was already transformed above in the returning visit section
                     // Hide modal overlay (user is mid-session, no modals needed)
-                    const { fadeOutOverlay } = await import('./ui-controls.js');
+                    const { fadeOutOverlay } = await import('../ui-controls.js');
                     fadeOutOverlay();
                     // Don't show pre-survey modal - user can explore
                     return; // Exit early - user can explore
@@ -1232,7 +1232,7 @@ export async function startStudyWorkflow() {
     } else {
             console.log('✅ Step 4: Tutorial (skipped - already completed)');
         // Enable all features since tutorial won't run
-        const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+        const { enableAllTutorialRestrictedFeatures } = await import('../tutorial-effects.js');
         await enableAllTutorialRestrictedFeatures();
     }
     
@@ -1249,7 +1249,7 @@ export async function startStudyWorkflow() {
     } catch (error) {
         console.error('❌ Error in study workflow:', error);
         // Clean up on error - close any open modals
-        const { closeAllModals } = await import('./ui-controls.js');
+        const { closeAllModals } = await import('../ui-controls.js');
         closeAllModals();
     }
 }
@@ -1265,7 +1265,7 @@ export async function startStudyWorkflow() {
  * - PERSONAL/DEV modes: Direct submission (no surveys)
  */
 export async function handleStudyModeSubmit() {
-    const { CURRENT_MODE, isStudyMode } = await import('./master-modes.js');
+    const { CURRENT_MODE, isStudyMode } = await import('../master-modes.js');
     
     // In STUDY mode: Show post-session surveys
     if (isStudyMode()) {
@@ -1301,7 +1301,7 @@ export async function handleStudyModeSubmit() {
         } catch (error) {
             console.error('❌ Fatal error in handleStudyModeSubmit:', error);
             console.error('Stack trace:', error.stack);
-            const { closeAllModals } = await import('./ui-controls.js');
+            const { closeAllModals } = await import('../ui-controls.js');
             closeAllModals(); // Clean up on error
             return false;
         }

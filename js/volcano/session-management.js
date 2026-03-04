@@ -7,7 +7,7 @@
  * Reports metadata mismatches silently for debugging
  */
 
-import { reportSessionStateInconsistency } from './silent-error-reporter.js';
+import { reportSessionStateInconsistency } from '../silent-error-reporter.js';
 import { STORAGE_KEYS } from './study-workflow.js';
 
 // ===== SESSION TIMEOUT MANAGEMENT =====
@@ -170,7 +170,7 @@ export async function handleSessionTimeout() {
     
     // 1. Stop audio playback
     try {
-        const { pausePlayback } = await import('./audio-player.js');
+        const { pausePlayback } = await import('../audio-player.js');
         pausePlayback();
     } catch (error) {
         console.warn('⚠️ Could not pause playback:', error);
@@ -179,8 +179,8 @@ export async function handleSessionTimeout() {
     // 2. Submit pre-survey data with timeout flag and regions/features
     try {
         const { getParticipantId } = await import('./qualtrics-api.js');
-        const { getSessionResponses, trackUserAction, getSessionState } = await import('../Qualtrics/participant-response-manager.js');
-        const { getRegions } = await import('./region-tracker.js');
+        const { getSessionResponses, trackUserAction, getSessionState } = await import('../../Qualtrics/participant-response-manager.js');
+        const { getRegions } = await import('../region-tracker.js');
         const { submitCombinedSurveyResponse } = await import('./qualtrics-api.js');
         
         const participantId = getParticipantId();
@@ -316,7 +316,7 @@ export async function handleSessionTimeout() {
                 
                 // Upload submission data to R2 (backup)
                 try {
-                    const { uploadSubmissionData } = await import('./data-uploader.js');
+                    const { uploadSubmissionData } = await import('../data-uploader.js');
                     await uploadSubmissionData(participantId, jsonDump);
                 } catch (error) {
                     console.warn('⚠️ Could not upload timeout submission to R2:', error);
@@ -441,7 +441,7 @@ export function showTimeoutMessage() {
 export async function startActivityTimer() {
     // Check if we're in a study mode
     try {
-        const { isStudyMode } = await import('./master-modes.js');
+        const { isStudyMode } = await import('../master-modes.js');
         
         if (!isStudyMode()) {
             console.log('⏱️ Activity timer disabled (not in study mode)');
@@ -515,7 +515,7 @@ async function sendHeartbeatIfActive() {
             return; // No user logged in
         }
 
-        const { sendHeartbeat } = await import('./share-api.js');
+        const { sendHeartbeat } = await import('../share-api.js');
         await sendHeartbeat(username);
 
         // Reset the activity flag

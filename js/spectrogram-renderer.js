@@ -2304,13 +2304,9 @@ export function setupSpectrogramSelection() {
         
         // 🎯 Check if region creation is enabled (requires "Begin Analysis" to be pressed)
         if (!State.isRegionCreationEnabled()) {
-            // User clicked spectrogram before Begin Analysis - show helpful message (only if not in tutorial)
-            import('./tutorial-state.js').then(({ isTutorialActive }) => {
-                if (!isTutorialActive()) {
-                    import('./tutorial-effects.js').then(({ setStatusText }) => {
-                        setStatusText('Click Begin Analysis to create a region and interact with the spectrogram.', 'status info');
-                    });
-                }
+            // User clicked spectrogram before Begin Analysis - show helpful message
+            import('./tutorial-effects.js').then(({ setStatusText }) => {
+                setStatusText('Click Begin Analysis to create a region and interact with the spectrogram.', 'status info');
             });
             return; // Don't allow spectrogram selection
         }

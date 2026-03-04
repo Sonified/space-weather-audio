@@ -3,7 +3,7 @@
  * Detects critical errors and allows users to report them
  */
 
-import { getParticipantId } from './qualtrics-api.js';
+import { getParticipantId } from './participant-id.js';
 
 // Store console logs for error reporting
 const consoleLogs = [];

@@ -5,9 +5,9 @@
  * Contains logic for specific tutorials like speed slider tutorial
  */
 
-import { setStatusText, appendStatusText, showTutorialOverlay, cancelTyping } from './tutorial-effects.js';
-import { resetSpeedTo1, togglePlayPause } from './audio-player.js';
-import * as State from './audio-state.js';
+import { setStatusText, appendStatusText, showTutorialOverlay, cancelTyping } from '../tutorial-effects.js';
+import { resetSpeedTo1, togglePlayPause } from '../audio-player.js';
+import * as State from '../audio-state.js';
 import { setTutorialPhase, clearTutorialPhase } from './tutorial-state.js';
 
 // Speed slider tutorial state

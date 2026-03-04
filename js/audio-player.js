@@ -172,7 +172,7 @@ export function pausePlayback() {
     btn.classList.add('play-active', 'pulse-resume');
     
     // Update status
-    import('./tutorial.js').then(({ setStatusText }) => {
+    import('./tutorial-effects.js').then(({ setStatusText }) => {
         setStatusText('Audio playback paused', 'status');
     });
     

@@ -26,9 +26,7 @@ import { addFeatureBox, removeFeatureBox, updateAllFeatureBoxPositions, renumber
 import { cancelSpectrogramSelection, redrawAllCanvasFeatureBoxes, removeCanvasFeatureBox, closeFeaturePopup, changeColormap, changeFftSize, changeFrequencyScale } from './spectrogram-renderer.js';
 import { switchComponent } from './component-selector.js';
 import { getLogScaleMinFreq } from './spectrogram-axis-renderer.js';
-import { isTutorialActive, getTutorialPhase } from './tutorial-state.js';
 import { isStudyMode, isTutorialEndMode } from './master-modes.js';
-import { hasSeenTutorial } from './study-workflow.js';
 import { log, logGroup, logGroupEnd } from './logger.js';
 
 // ⚠️ DEPRECATED: Region workflow (regionsBySpacecraft, getCurrentRegions, setCurrentRegions, etc.)
@@ -1751,9 +1749,6 @@ export function startFrequencySelection(regionIndex, featureIndex) {
         return;
     }
     
-    // 🎓 Allow feature selection during tutorial (tutorial will manage it)
-    // Removed the check that prevented feature selection during tutorial
-    
     // 🔥 FIX: If already selecting, stop first to prevent state confusion
     if (isSelectingFrequency) {
         console.warn('⚠️ [DEBUG] Already in frequency selection mode - stopping before starting new one');
@@ -2459,9 +2454,9 @@ function createRegionCard(region, index) {
     header.querySelector('.zoom-btn').addEventListener('click', (e) => {
         e.stopPropagation();
         
-        // 🔥 Check if region buttons are disabled (during tutorial)
+        // Check if region buttons are disabled
         if (State.regionButtonsDisabled) {
-            // Check if this specific zoom button is enabled for tutorial
+            // Check if this specific zoom button is enabled
             if (!State.isRegionZoomButtonEnabled(index)) {
                 return;
             }
@@ -2482,9 +2477,9 @@ function createRegionCard(region, index) {
     header.querySelector('.play-btn').addEventListener('click', (e) => {
         e.stopPropagation();
         
-        // 🔥 Check if region buttons are disabled (during tutorial)
+        // Check if region buttons are disabled
         if (State.regionButtonsDisabled) {
-            // Check if this specific play button is enabled for tutorial
+            // Check if this specific play button is enabled
             if (!State.isRegionPlayButtonEnabled(index)) {
                 return;
             }
@@ -2651,11 +2646,11 @@ function renderFeatures(regionId, regionIndex) {
                 <option value="Continuous" ${feature.type === 'Continuous' ? 'selected' : ''}>Continuous</option>
             </select>
             
-            <button class="select-freq-btn ${!zoomState.isInRegion() || isTutorialActive() ? 'disabled' : (!feature.lowFreq || !feature.highFreq || !feature.startTime || !feature.endTime ? 'pulse' : 'completed')}" 
+            <button class="select-freq-btn ${!zoomState.isInRegion() ? 'disabled' : (!feature.lowFreq || !feature.highFreq || !feature.startTime || !feature.endTime ? 'pulse' : 'completed')}"
                     id="select-btn-${regionIndex}-${featureIndex}"
                     data-region-index="${regionIndex}" data-feature-index="${featureIndex}"
-                    ${!zoomState.isInRegion() || isTutorialActive() ? 'disabled' : ''}
-                    title="${!zoomState.isInRegion() ? 'Zoom into region to select features' : isTutorialActive() ? 'Tutorial in progress' : (feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime ? 'click to select' : '')}">
+                    ${!zoomState.isInRegion() ? 'disabled' : ''}
+                    title="${!zoomState.isInRegion() ? 'Zoom into region to select features' : (feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime ? 'click to select' : '')}">
                 ${feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime ? 
                     formatFeatureButtonText(feature) :
                     'Select feature'
@@ -2691,7 +2686,6 @@ function renderFeatures(regionId, regionIndex) {
             if (!zoomState.isInRegion()) {
                 return;
             }
-            // 🎓 Allow feature selection during tutorial (tutorial will manage it)
             startFrequencySelection(regionIndex, featureIndex);
         });
         
@@ -3752,15 +3746,11 @@ export function zoomToRegion(regionIndex) {
     expandRegionAndCollapseOthers(regionIndex);
     
     // Update status message with region number (1-indexed)
-    // 🎓 Suppress standard interaction message during tutorial
     const regionNumber = regionIndex + 1;
     const statusEl = document.getElementById('status');
     if (statusEl) {
-        // Check if tutorial is active - if so, don't override tutorial messages
-        if (!isTutorialActive()) {
-            statusEl.className = 'status info';
-            statusEl.textContent = `Type (${regionNumber}) again to play this region, click and drag to select a feature, (esc) to zoom out.`;
-        }
+        statusEl.className = 'status info';
+        statusEl.textContent = `Type (${regionNumber}) again to play this region, click and drag to select a feature, (esc) to zoom out.`;
     }
 
     // 🔥 FIX: Use timestamps directly instead of converting from samples
@@ -3888,18 +3878,15 @@ export function zoomToRegion(regionIndex) {
     // console.log(`🏛️ Entering the temple - sacred walls at ${regionStartSeconds.toFixed(2)}s - ${regionEndSeconds.toFixed(2)}s`);
     
     // Auto-enter selection mode for the first incomplete feature when zooming in
-    // 🎓 Skip this during tutorial to avoid interrupting tutorial flow
-    if (!isTutorialActive()) {
-        // Find the first feature that needs selection (missing frequency or time data)
-        const firstIncompleteFeatureIndex = region.features.findIndex(feature => 
-            !feature.lowFreq || !feature.highFreq || !feature.startTime || !feature.endTime
-        );
-        
-        if (firstIncompleteFeatureIndex !== -1) {
-            setTimeout(() => {
-                startFrequencySelection(regionIndex, firstIncompleteFeatureIndex);
-            }, 100);
-        }
+    // Find the first feature that needs selection (missing frequency or time data)
+    const firstIncompleteFeatureIndex = region.features.findIndex(feature =>
+        !feature.lowFreq || !feature.highFreq || !feature.startTime || !feature.endTime
+    );
+
+    if (firstIncompleteFeatureIndex !== -1) {
+        setTimeout(() => {
+            startFrequencySelection(regionIndex, firstIncompleteFeatureIndex);
+        }, 100);
     }
 }
 
@@ -4095,14 +4082,12 @@ export function zoomToFull() {
         // Zoom out complete
 
         // Update status text to guide user
-        if (!isTutorialActive()) {
-            const statusEl = document.getElementById('status');
-            if (statusEl) {
-                const regions = getCurrentRegions();
-                if (regions.length > 0) {
-                    statusEl.className = 'status info';
-                    statusEl.textContent = `Scroll to zoom, drag to pan, arrow keys to navigate, click and drag to draw a feature box`;
-                }
+        const statusEl = document.getElementById('status');
+        if (statusEl) {
+            const regions = getCurrentRegions();
+            if (regions.length > 0) {
+                statusEl.className = 'status info';
+                statusEl.textContent = `Scroll to zoom, drag to pan, arrow keys to navigate, click and drag to draw a feature box`;
             }
         }
     });
@@ -4186,17 +4171,6 @@ export async function updateCompleteButtonState() {
     
     // Check if button is in "Begin Analysis" mode (before transformation) or "Complete" mode (after)
     const isBeginAnalysisMode = completeBtn.textContent === 'Begin Analysis';
-    
-    // Check if tutorial is in progress - if so, don't override button state
-    const { isTutorialInProgress } = await import('./study-workflow.js');
-    
-    if (isTutorialInProgress()) {
-        // Tutorial in progress - don't override button state, let tutorial control it
-        if (!isStudyMode()) {
-            console.log('🎓 Tutorial in progress - not changing button state');
-        }
-        return; // Exit early, let tutorial control it
-    }
     
     // Determine what should control the button state
     let shouldDisable;

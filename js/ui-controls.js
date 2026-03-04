@@ -13,7 +13,7 @@ import { log, logGroup, logGroupEnd } from './logger.js';
 // ═══════════════════════════════════════════════════════════════════════════════
 // Re-exports from ui-modals.js (zero-breakage migration — consumers keep importing from here)
 // ═══════════════════════════════════════════════════════════════════════════════
-// Shared + EMIC modal functions only (volcano modals are in volcano-study-modals.js)
+// Modal functions (re-exported for backward compatibility)
 export {
     fadeOutOverlay,
     closeAllModals,
@@ -25,7 +25,7 @@ export {
     closeWelcomeModal
 } from './ui-modals.js';
 
-// Shared survey functions only (volcano surveys are in volcano-study-surveys.js)
+// Survey functions (re-exported for backward compatibility)
 export {
     submitParticipantSetup
 } from './ui-surveys.js';
@@ -96,16 +96,6 @@ export async function loadSavedSpacecraft() {
     // Restore saved date/time settings
     loadSavedDateTime(prefGroupOpen);
 
-    // In study mode: If user has already clicked "Begin Analysis" THIS SESSION, keep spacecraft selector disabled
-    if (isStudyMode()) {
-        const { hasBegunAnalysisThisSession } = await import('./study-workflow.js');
-        if (hasBegunAnalysisThisSession()) {
-            spacecraftSelect.disabled = true;
-            spacecraftSelect.style.opacity = '0.5';
-            spacecraftSelect.style.cursor = 'not-allowed';
-            console.log('🔒 Spacecraft selector disabled (Begin Analysis clicked this session)');
-        }
-    }
 }
 
 /**

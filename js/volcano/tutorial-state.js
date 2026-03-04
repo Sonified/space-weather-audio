@@ -5,8 +5,8 @@
  * Manages tutorial phases, keyboard shortcuts, and sequence coordination
  */
 
-import { skipAnimations, hideTutorialOverlay } from './tutorial-effects.js';
-import { isLocalEnvironment } from './master-modes.js';
+import { skipAnimations, hideTutorialOverlay, setTutorialActiveFlag } from '../tutorial-effects.js';
+import { isLocalEnvironment } from '../master-modes.js';
 
 // Tutorial sequence state machine
 let tutorialPhase = null; // 'well_done', 'volcano_message', 'spectrogram_explanation', 'speed_slider', 'waveform_tutorial', null
@@ -45,6 +45,7 @@ export function setTutorialPhase(phase, timeouts = [], advanceCallback = null, r
     }
     
     tutorialPhase = phase;
+    setTutorialActiveFlag(phase !== null);
     tutorialTimeouts = timeouts;
     tutorialAdvanceCallback = advanceCallback;
     promiseRecreator = recreatePromiseFn; // Store the recreator for potential future use
@@ -55,6 +56,7 @@ export function setTutorialPhase(phase, timeouts = [], advanceCallback = null, r
  */
 export function clearTutorialPhase() {
     tutorialPhase = null;
+    setTutorialActiveFlag(false);
     tutorialTimeouts = [];
     tutorialAdvanceCallback = null;
     // Don't clear history - keep it for navigation
@@ -89,6 +91,7 @@ export async function goBackTutorialStep() {
     
     // Restore previous state
     tutorialPhase = previousStep.phase;
+    setTutorialActiveFlag(previousStep.phase !== null);
     tutorialTimeouts = [];
     tutorialAdvanceCallback = previousStep.callback;
     promiseRecreator = previousStep.recreatePromiseFn;

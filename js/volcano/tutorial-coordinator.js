@@ -53,10 +53,10 @@ import {
     isPauseButtonTutorialActive
 } from './tutorial-sequence.js';
 
-import * as State from './audio-state.js';
-import { zoomState } from './zoom-state.js';
+import * as State from '../audio-state.js';
+import { zoomState } from '../zoom-state.js';
 import { isTutorialActive } from './tutorial-state.js';
-import { getCurrentRegions, getActiveRegionIndex, startFrequencySelection } from './region-tracker.js';
+import { getCurrentRegions, getActiveRegionIndex, startFrequencySelection } from '../region-tracker.js';
 
 // 🔒 SAFETY TIMEOUT: Maximum wait time for user interactions (prevents tutorial from getting stuck)
 const USER_ACTION_TIMEOUT_MS = 15000; // 15 seconds
@@ -2101,7 +2101,7 @@ async function runSecondRegionTutorial() {
         setStatusTextAndTrack('This Tutorial is now complete! Continue your analysis and hit Submit when you are done.', 'status success');
         
         // Enable all features right after "This Tutorial is now complete!" message
-        const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+        const { enableAllTutorialRestrictedFeatures } = await import('../tutorial-effects.js');
         enableAllTutorialRestrictedFeatures();
         
         // Wait 5s
@@ -2183,7 +2183,7 @@ async function runBeginAnalysisTutorial() {
     // ✅ Ensure Complete button shows up after tutorial ends
     // Button was transformed to "Complete" when beginAnalysisConfirmed fired
     // Now that tutorial phase is cleared, ensure it's visible (if data exists)
-    import('./region-tracker.js').then(({ updateCompleteButtonState, updateCmpltButtonState }) => {
+    import('../region-tracker.js').then(({ updateCompleteButtonState, updateCmpltButtonState }) => {
         updateCompleteButtonState(); // Handles visibility (checks !isTutorialActive() which is now true)
         updateCmpltButtonState(); // Handles enable/disable based on features
     });
@@ -2262,7 +2262,7 @@ export async function runStudyEndWalkthrough(startAtMessageIndex = 0) {
         console.log('✅ Tutorial system initialized - Enter key will work');
 
         // Enable all features first
-        const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+        const { enableAllTutorialRestrictedFeatures } = await import('../tutorial-effects.js');
         enableAllTutorialRestrictedFeatures();
 
         // Wait a moment for the end modal to close (skip if debugging)
@@ -2388,7 +2388,7 @@ export async function debugJumpToStudyEnd(startAtMessageIndex = -2) {
         console.log('✅ Tutorial system initialized - Enter key will work');
 
         // Enable all features first (same as beginning of study end)
-        const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+        const { enableAllTutorialRestrictedFeatures } = await import('../tutorial-effects.js');
         enableAllTutorialRestrictedFeatures();
 
         // Wait 4 seconds for user to load data
@@ -2466,7 +2466,7 @@ export async function runInitialTutorial() {
             }
             
             // ✅ Enable region creation NOW (tutorial needs it, but only during tutorial)
-            const { setRegionCreationEnabled } = await import('./audio-state.js');
+            const { setRegionCreationEnabled } = await import('../audio-state.js');
             setRegionCreationEnabled(true);
             console.log('✅ Region creation ENABLED for tutorial');
         }

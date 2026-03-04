@@ -28,8 +28,7 @@ import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { zoomState } from './zoom-state.js';
 import { initKeyboardShortcuts, cleanupKeyboardShortcuts } from './keyboard-shortcuts.js';
 import { initDataViewer, fetchUsers } from './data-viewer.js';
-import { setStatusText, appendStatusText, initTutorial, disableFrequencyScaleDropdown, removeVolumeSliderGlow } from './tutorial.js';
-import { isTutorialActive } from './tutorial-state.js';
+import { setStatusText, appendStatusText } from './tutorial-effects.js';
 import { drawDayMarkers, clearDayMarkers } from './day-markers.js';
 import { initScrollZoom } from './scroll-zoom.js';
 import {
@@ -726,21 +725,12 @@ export async function startStreaming(event, config = null) {
             }
         }
         
-        // Reset waveform click tracking for tutorial flow when loading new data
+        // Reset waveform click tracking when loading new data
         State.setWaveformHasBeenClicked(false);
         const waveformCanvas = document.getElementById('waveform');
         if (waveformCanvas) {
             waveformCanvas.classList.remove('pulse');
         }
-        
-        // Hide tutorial overlay when loading new data
-        const { hideTutorialOverlay, clearTutorialPhase } = await import('./tutorial.js');
-        hideTutorialOverlay();
-        // Clear any active tutorial phase to restart tutorial sequence
-        clearTutorialPhase();
-        
-        // Note: Features are enabled by default - only tutorial disables them
-        // Don't disable speed/volume controls here - tutorial will disable if needed
         
         // 🔥 FIX: Remove add region button to prevent detached DOM leaks
         // Import dynamically to avoid circular dependencies
@@ -943,33 +933,24 @@ async function updateParticipantIdDisplay() {
  */
 async function initializePersonalMode() {
     console.log('👤 PERSONAL MODE: Direct access');
-    
-    // 🧹 Set proper tutorial flags for personal mode (skip tutorial, go straight to analysis)
-    const { markTutorialAsCompleted, STORAGE_KEYS } = await import('./study-workflow.js');
-    markTutorialAsCompleted();
-    localStorage.removeItem(STORAGE_KEYS.BEGIN_ANALYSIS_CLICKED_THIS_SESSION); // Reset so user can click Begin Analysis
-    
+
     // Enable all features immediately
     const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
     enableAllTutorialRestrictedFeatures();
-    
+
     console.log('✅ Personal mode ready - all features enabled');
 }
 
 /**
- * DEV MODE: Tutorial EVERY TIME (for testing/development)
- * Perfect for iterating on the tutorial experience
+ * DEV MODE: Direct access for development/testing
  */
 async function initializeDevMode() {
-    console.log('🔧 DEV MODE: Tutorial runs every time (for testing)');
-    
-    // 🔥 ALWAYS run tutorial in DEV mode (no caching)
-    console.log('🎓 Running tutorial (DEV mode always shows it)');
-    
-    const { runInitialTutorial } = await import('./tutorial.js');
-    await runInitialTutorial();
-    
-    console.log('✅ Tutorial completed');
+    console.log('🔧 DEV MODE: Direct access');
+
+    // Enable all features immediately
+    const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+    enableAllTutorialRestrictedFeatures();
+
     console.log('✅ Dev mode ready');
 }
 
@@ -2441,13 +2422,11 @@ async function initializeEmicStudyMode() {
     const simulatePanel = document.querySelector('.panel-simulate');
     if (simulatePanel) simulatePanel.style.display = 'none';
 
-    // Tutorial is never initialized in EMIC mode (shouldSkipTutorial=true in master-modes.js)
-
     // Enable all features immediately
     const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
     enableAllTutorialRestrictedFeatures();
 
-    // Enable region creation (normally gated behind "Begin Analysis")
+    // Enable region creation
     const { setRegionCreationEnabled } = await import('./audio-state.js');
     setRegionCreationEnabled(true);
 
@@ -2508,10 +2487,6 @@ async function initializeSolarPortalMode() {
         // console.log('✅ Simulate panel hidden');
     }
     
-    // Set tutorial flags (skip tutorial, go straight to analysis)
-    const { markTutorialAsCompleted } = await import('./study-workflow.js');
-    markTutorialAsCompleted();
-
     // Enable all features immediately
     const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
     enableAllTutorialRestrictedFeatures();
@@ -2548,45 +2523,16 @@ async function initializeSolarPortalMode() {
 }
 
 /**
- * STUDY MODE: Full workflow with surveys
+ * STUDY MODE: Placeholder (volcano study workflow removed)
  */
 async function initializeStudyMode() {
-    console.log('🎓 STUDY MODE: Full research workflow');
-    
-    // Check if we should skip workflow (e.g., just opening participant modal)
-    const skipWorkflow = localStorage.getItem('skipStudyWorkflow') === 'true';
-    if (skipWorkflow) {
-        console.log('⏭️ Skipping study workflow (participant modal only)');
-        localStorage.removeItem('skipStudyWorkflow'); // Clean up
-        return;
-    }
-    
-    // Check if we should start at end flow (for testing)
-    const urlParams = new URLSearchParams(window.location.search);
-    const startAt = urlParams.get('startAt') || localStorage.getItem('workflow_start_at');
-    
-    if (startAt === 'end') {
-        console.log('🏁 Starting at END FLOW (Activity Level → AWE-SF → Post-Survey → End)');
-        localStorage.removeItem('workflow_start_at'); // Clear flag after use
-        
-        // Enable features and go straight to submit workflow
-        const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
-        await enableAllTutorialRestrictedFeatures();
-        
-        const { setRegionCreationEnabled } = await import('./audio-state.js');
-        setRegionCreationEnabled(true);
-        
-        // Wait a bit for modals to be fully initialized, then start the end flow
-        setTimeout(async () => {
-            const { handleStudyModeSubmit } = await import('./study-workflow.js');
-            await handleStudyModeSubmit();
-        }, 500);
-    } else {
-        const { startStudyWorkflow } = await import('./study-workflow.js');
-        await startStudyWorkflow();
-    }
-    
-    console.log('✅ Production mode initialized');
+    console.log('🎓 STUDY MODE: No volcano workflow in EMIC codebase');
+
+    // Enable all features immediately
+    const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+    enableAllTutorialRestrictedFeatures();
+
+    console.log('✅ Study mode ready');
 }
 
 
@@ -2626,12 +2572,6 @@ async function initializeApp() {
             await initializeStudyMode();
             break;
             
-        case AppMode.TUTORIAL_END:
-            // Tutorial End mode: Debug mode to test tutorial end walkthrough
-            // Don't initialize any mode - just wait for user to load data then trigger debug jump
-            if (window.pm?.study_flow) console.log('🎬 Tutorial End Mode: Ready. Load data, then type "testend" or it will auto-trigger.');
-            break;
-
         default:
             console.error(`❌ Unknown mode: ${CURRENT_MODE}`);
             await initializeDevMode(); // Fallback to dev
@@ -2789,7 +2729,7 @@ async function initializeMainApp() {
     // ═══════════════════════════════════════════════════════════
     // 🎯 MASTER MODE - Initialize and check configuration
     // ═══════════════════════════════════════════════════════════
-    const { initializeMasterMode, shouldSkipTutorial, isStudyMode, isPersonalMode, isDevMode, isTutorialEndMode, CURRENT_MODE, AppMode } = await import('./master-modes.js');
+    const { initializeMasterMode, isStudyMode, isPersonalMode, isDevMode, CURRENT_MODE, AppMode } = await import('./master-modes.js');
     initializeMasterMode();
     
     // Initialize error reporter early (catches errors during initialization)
@@ -2800,10 +2740,6 @@ async function initializeMainApp() {
 
     // Initialize share modal (for sharing analysis sessions)
     initShareModal();
-
-    // Start heartbeat tracking (updates last_active_at for logged-in users)
-    const { startHeartbeatTracking } = await import('./session-management.js');
-    startHeartbeatTracking();
 
     if (window.pm?.init) console.groupEnd(); // End Core Systems
 
@@ -2824,8 +2760,7 @@ async function initializeMainApp() {
     }
 
     // Don't hide Begin Analysis button initially - let updateCompleteButtonState() handle visibility
-    // Tutorial will hide it when needed, returning visits will keep it visible
-    
+
     // Initialize mode selector dropdown
     const modeSelectorContainer = document.getElementById('modeSelectorContainer');
     const modeSelector = document.getElementById('modeSelector');
@@ -2847,57 +2782,6 @@ async function initializeMainApp() {
             modeSelectorContainer.style.visibility = 'hidden';
             modeSelectorContainer.style.opacity = '0';
         }
-    }
-
-    // 🐛 DEBUG: Secret key sequence to jump to study end walkthrough
-    // Useful for testing the tail end of the tutorial
-    const debugJumpSecret = 'testend';
-    let debugKeySequence = '';
-    let debugKeySequenceTimeout = null;
-
-    function handleDebugJumpListener(e) {
-        // Skip if key is undefined (can happen with some special keys)
-        if (!e.key) {
-            return;
-        }
-
-        // Reset sequence if too much time passes (2 seconds)
-        if (debugKeySequenceTimeout) {
-            clearTimeout(debugKeySequenceTimeout);
-        }
-        debugKeySequenceTimeout = setTimeout(() => {
-            debugKeySequence = '';
-        }, 2000);
-
-        // Add current key to sequence
-        debugKeySequence += e.key.toLowerCase();
-
-        // Keep only last N characters
-        const secretLength = debugJumpSecret.length;
-        if (debugKeySequence.length > secretLength) {
-            debugKeySequence = debugKeySequence.slice(-secretLength);
-        }
-
-        // Check if sequence matches
-        if (debugKeySequence === debugJumpSecret.toLowerCase()) {
-            console.log('🐛 DEBUG: Jumping to study end walkthrough...');
-            debugKeySequence = ''; // Reset
-            if (debugKeySequenceTimeout) {
-                clearTimeout(debugKeySequenceTimeout);
-                debugKeySequenceTimeout = null;
-            }
-
-            // Import and run the debug function
-            import('./tutorial-coordinator.js').then(module => {
-                module.debugJumpToStudyEnd();
-            });
-        }
-    }
-
-    // Add debug key listener (only in local environment)
-    if (isLocal) {
-        window.addEventListener('keydown', handleDebugJumpListener);
-        if (window.pm?.init) console.log('🐛 DEBUG: Type "testend" to jump to study end walkthrough');
     }
 
     // (Mode selector key listener stays active - no need to disable it)
@@ -2936,9 +2820,7 @@ async function initializeMainApp() {
         }
     }
     
-    // Hide simulate panel in Study Mode (surveys are controlled by workflow)
-    // Also hide in Solar Portal mode
-    // But exclude TUTORIAL_END mode - it behaves differently (no initial modals)
+    // Hide simulate panel in Study Mode and Solar Portal mode
     if (isStudyMode() || CURRENT_MODE === AppMode.SOLAR_PORTAL) {
         const simulatePanel = document.querySelector('.panel-simulate');
         if (simulatePanel) {
@@ -2954,33 +2836,16 @@ async function initializeMainApp() {
         // Modal system checks flags and decides whether to show overlay
         if (window.pm?.init) console.log('🎓 Production Mode: Modal system controls overlay (based on workflow flags)');
     } else {
-        // Hide permanent overlay in non-Study modes (Dev, Personal, TUTORIAL_END)
+        // Hide permanent overlay in non-Study modes (Dev, Personal)
         const permanentOverlay = document.getElementById('permanentOverlay');
         if (permanentOverlay) {
             permanentOverlay.style.display = 'none';
-            if (isTutorialEndMode()) {
-                if (window.pm?.study_flow) console.log('🎬 Tutorial End Mode: Permanent overlay hidden (no initial modals)');
-            } else if (!isStudyMode()) {
+            if (!isStudyMode()) {
                 if (window.pm?.init) console.log(`✅ ${CURRENT_MODE.toUpperCase()} Mode: Permanent overlay hidden`);
             }
         }
     }
     
-    // Initialize tutorial system (includes Enter key skip functionality)
-    // Skip if in Personal Mode
-    if (!shouldSkipTutorial()) {
-        initTutorial();
-    }
-
-    // 🐛 DEBUG: Test Study End Mode - Auto-run debug jump after a delay
-    if (isTutorialEndMode()) {
-        console.log('🐛 Test Study End Mode: Auto-trigger in 1 second (then 4s wait for data load)...');
-        console.log('🐛 (Or type "testend" to trigger manually)');
-        setTimeout(async () => {
-            const { debugJumpToStudyEnd } = await import('./tutorial-coordinator.js');
-            debugJumpToStudyEnd();
-        }, 1000);
-    }
 
     // Parse participant ID from URL parameters on page load
     // Qualtrics redirects with: ?ResponseID=${e://Field/ResponseID}
@@ -3062,10 +2927,7 @@ async function initializeMainApp() {
     initRegionTracker();
     
     // Initialize complete button state (disabled until first feature is identified)
-    // During tutorial (first visit), button state is handled by tutorial coordinator
-    if (!isTutorialActive()) {
-        updateCompleteButtonState(); // Begin Analysis button
-    }
+    updateCompleteButtonState(); // Begin Analysis button
     updateCmpltButtonState(); // Complete button
     
     // Setup spectrogram frequency selection
@@ -3791,9 +3653,6 @@ async function initializeMainApp() {
     }
     const volumeSlider = document.getElementById('volumeSlider');
     if (volumeSlider) {
-        // Remove glow on mousedown/touchstart (when user clicks down, not on release)
-        volumeSlider.addEventListener('mousedown', removeVolumeSliderGlow);
-        volumeSlider.addEventListener('touchstart', removeVolumeSliderGlow);
         volumeSlider.addEventListener('input', changeVolume);
     }
     
@@ -3807,13 +3666,6 @@ async function initializeMainApp() {
     // Survey/Modal Buttons
     document.getElementById('participantModalBtn').addEventListener('click', openParticipantModal);
     document.getElementById('welcomeModalBtn').addEventListener('click', openWelcomeModal);
-    // Volcano study buttons (surveys, Begin Analysis, Complete, tutorial help)
-    // Wired from separate file so main.js stays clean for EMIC
-    if (!isEmicStudyMode()) {
-        const { wireVolcanoStudyButtons } = await import('./volcano-study-ui-wiring.js');
-        wireVolcanoStudyButtons();
-    }
-
     document.getElementById('adminModeBtn').addEventListener('click', toggleAdminMode);
 
     // Start event listeners setup group
@@ -4118,13 +3970,13 @@ async function initializeMainApp() {
                 const samples = new Float32Array(recordedSamples);
                 recordedSamples = []; // Clear memory
 
-                // Generate filename with volcano and timestamp
-                const volcano = document.getElementById('spacecraft')?.value || 'audio';
+                // Generate filename with spacecraft and timestamp
+                const spacecraft = document.getElementById('spacecraft')?.value || 'audio';
                 const timestamp = recordingStartTime.toISOString()
                     .replace(/:/g, '-')
                     .replace(/\./g, '-')
                     .slice(0, 19); // YYYY-MM-DDTHH-MM-SS
-                const filename = `${volcano}_recording_${timestamp}.wav`;
+                const filename = `${spacecraft}_recording_${timestamp}.wav`;
 
                 // Create WAV file at 44.1kHz
                 const wavBlob = createWAVBlob(samples, 44100);

@@ -9,6 +9,12 @@ import * as State from './audio-state.js';
 import { getCurrentRegions } from './region-tracker.js';
 import { isStudyMode } from './master-modes.js';
 
+// Tutorial active state — shared so non-volcano files can check without importing volcano modules.
+// The actual tutorial phase tracking lives in volcano/tutorial-state.js which sets this via setTutorialActiveFlag().
+let _tutorialActive = false;
+export function isTutorialActive() { return _tutorialActive; }
+export function setTutorialActiveFlag(active) { _tutorialActive = active; }
+
 // Overlay state
 let tutorialOverlay = null;
 let tutorialOverlayResizeObserver = null; // 🔥 FIX: Track ResizeObserver for cleanup

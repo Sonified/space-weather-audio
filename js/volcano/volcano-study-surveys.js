@@ -14,8 +14,8 @@ import {
     getResponsesForSubmission,
     markSessionAsSubmitted,
     exportResponseMetadata
-} from '../Qualtrics/participant-response-manager.js';
-import { getRegions } from './region-tracker.js';
+} from '../../Qualtrics/participant-response-manager.js';
+import { getRegions } from '../region-tracker.js';
 import { STORAGE_KEYS } from './study-workflow.js';
 
 export async function submitPreSurvey() {
@@ -90,12 +90,12 @@ export async function submitPreSurvey() {
                 }
                 
                 // Check if data has already been fetched
-                const State = await import('./audio-state.js');
+                const State = await import('../audio-state.js');
                 const hasData = State.completeSamplesArray && State.completeSamplesArray.length > 0;
                 
                 // Only show fetch instruction if no data loaded yet
                 // if (!hasData) {
-                //     const { setStatusText } = await import('./tutorial-effects.js');
+                //     const { setStatusText } = await import('../tutorial-effects.js');
                 //     setStatusText('<- Select a volcano to the left and hit Fetch Data to begin.', 'status info');
                 // }
                 // If data exists, the data-fetcher already set "Click Begin Analysis" message
@@ -106,7 +106,7 @@ export async function submitPreSurvey() {
             // No participant ID - show warning modal after pre-survey closes
             // Event handler will close pre-survey modal, then we'll open missing study ID modal
             setTimeout(() => {
-                import('./ui-modals.js').then(m => m.openMissingStudyIdModal());
+                import('../ui-modals.js').then(m => m.openMissingStudyIdModal());
             }, 350); // Wait for modal close animation
         }
         
@@ -342,10 +342,10 @@ async function checkAndSubmitIfComplete(participantId) {
                 // EMIC study mode: upload to EMIC R2 endpoint (emic-data bucket)
                 // Build submission data from what's available in this scope
                 try {
-                    const { isEmicStudyMode: isEmic } = await import('./master-modes.js');
+                    const { isEmicStudyMode: isEmic } = await import('../master-modes.js');
                     if (isEmic()) {
-                        const { uploadEmicSubmission } = await import('./data-uploader.js');
-                        const { getStandaloneFeatures } = await import('./region-tracker.js');
+                        const { uploadEmicSubmission } = await import('../data-uploader.js');
+                        const { getStandaloneFeatures } = await import('../region-tracker.js');
 
                         // Build features from standalone features (EMIC study uses direct canvas drawing)
                         const standalone = getStandaloneFeatures();
@@ -473,7 +473,7 @@ export async function attemptSubmission(fromWorkflow = false) {
     // ═══════════════════════════════════════════════════════════
     // 🎓 STUDY MODE: Route to study workflow for post-session surveys
     // ═══════════════════════════════════════════════════════════
-    const { isStudyMode } = await import('./master-modes.js');
+    const { isStudyMode } = await import('../master-modes.js');
     if (isStudyMode() && !fromWorkflow) {
         console.log('🎓 Study Mode: Routing to study workflow submit handler');
         const { handleStudyModeSubmit } = await import('./study-workflow.js');
@@ -511,7 +511,7 @@ export async function attemptSubmission(fromWorkflow = false) {
             if (fromWorkflow) {
                 console.log('   🔄 Transitioning back to main screen to collect participant ID...');
                 // Close any open modals and fade out overlay
-                const { closeAllModals, fadeOutOverlay, openParticipantModal } = await import('./ui-modals.js');
+                const { closeAllModals, fadeOutOverlay, openParticipantModal } = await import('../ui-modals.js');
                 closeAllModals();
                 fadeOutOverlay();
                 // Open participant modal
