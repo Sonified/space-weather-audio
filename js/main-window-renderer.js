@@ -310,9 +310,10 @@ let frozenWF = {
     canvasHeightAtRender: 0, // Canvas height when strip was rendered
     modeAtRender: null,      // 'timeSeries' | 'both' — for transparency invalidation
     dirty: true,             // Needs re-render
+    lastRenderTime: 0,       // performance.now() of last strip render
 };
-const FROZEN_WF_MULTIPLIER = 3.0;  // Strip covers 3x viewport width
-const FROZEN_WF_BUFFER = 0.33;     // Re-render when 1/3 of buffer consumed
+const FROZEN_WF_MULTIPLIER = 5.0;  // Strip covers 5x viewport width (2x buffer each side)
+const FROZEN_WF_BUFFER = 0.20;     // Re-render when 20% of buffer consumed
 const FROZEN_WF_SETTLE_MS = 200;   // Wait this long after last zoom before freezing
 let lastZoomChangeTime = 0;        // performance.now() of last zoom-level change
 let lastViewSpan = -1;             // Track previous frame's viewSpan for change detection
@@ -917,7 +918,9 @@ async function renderFrozenWaveformStrip(viewStartSec, viewEndSec) {
     waveformMesh.scale.set(0.5, 0.5, 1);
     waveformMesh.visible = true;
 
-    // Hide everything except waveform for offscreen render
+    // Hide all scene children except waveformMesh for the offscreen render.
+    // Frozen quad MUST be hidden (WebGPU read+write hazard on RT texture).
+    // Other meshes hidden to avoid GPU state corruption.
     const savedVisibility = [];
     scene.children.forEach(child => {
         if (child !== waveformMesh) {
@@ -943,7 +946,7 @@ async function renderFrozenWaveformStrip(viewStartSec, viewEndSec) {
 
     threeRenderer.setClearColor(savedClearColor, savedClearAlpha);
 
-    // Restore everything
+    // Restore all visibility
     savedVisibility.forEach(({ obj, vis }) => { obj.visible = vis; });
     waveformMesh.position.copy(savedPos);
     waveformMesh.scale.copy(savedScale);
@@ -964,6 +967,7 @@ async function renderFrozenWaveformStrip(viewStartSec, viewEndSec) {
     frozenWF.modeAtRender = getMainWindowMode();
     frozenWF.dirty = false;
     frozenWF.active = true;
+    frozenWF.lastRenderTime = performance.now();
 
     positionMeshWorldSpace(frozenWF.quad, clampedStart, clampedEnd);
     frozenWF.quad.visible = true;
@@ -1029,7 +1033,12 @@ async function renderFrame() {
                     || camera.right > frozenWF.stripEndSec - viewSpan * FROZEN_WF_BUFFER;
 
                 if (needsRerender) {
-                    await renderFrozenWaveformStrip(camera.left, camera.right);
+                    // Throttle: skip re-render if one just happened (avoids flicker during fast fling)
+                    const timeSinceLastRender = performance.now() - frozenWF.lastRenderTime;
+                    if (frozenWF.dirty || timeSinceLastRender > 150) {
+                        await renderFrozenWaveformStrip(camera.left, camera.right);
+                    }
+                    // else: keep showing existing strip — it still covers most of the view
                 }
                 frozenWF.quad.visible = true;
 
@@ -2303,7 +2312,7 @@ export function clearCompleteSpectrogram() {
         active: false, renderTarget: null, quad: null, quadMaterial: null,
         stripStartSec: 0, stripEndSec: 0, stripCamera: null,
         viewSpanAtRender: 0, canvasWidthAtRender: 0, canvasHeightAtRender: 0,
-        modeAtRender: null, dirty: true,
+        modeAtRender: null, dirty: true, lastRenderTime: 0,
     };
 
     // Dispose pyramid and tile meshes
