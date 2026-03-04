@@ -6,8 +6,11 @@
 import { isInFrequencySelectionMode, startFrequencySelection, stopFrequencySelection, getStandaloneFeatures, deleteStandaloneFeature, renderStandaloneFeaturesList, updateCompleteButtonState, updateCmpltButtonState } from './feature-tracker.js';
 import { zoomState } from './zoom-state.js';
 import * as State from './audio-state.js';
+import { PlaybackState } from './audio-state.js';
 import { changeFrequencyScale, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
-import { isStudyMode, isLocalEnvironment } from './master-modes.js';
+import { isStudyMode, isLocalEnvironment, isPersonalMode, isEmicStudyMode, CURRENT_MODE, AppMode } from './master-modes.js';
+import { togglePlayPause } from './audio-player.js';
+import { getHasPerformedFirstFetch } from './streaming.js';
 import { drawWaveformFromMinMax, notifyPageTurnUserDragged } from './minimap-window-renderer.js';
 import { drawWaveformXAxis } from './waveform-x-axis-renderer.js';
 import { drawSpectrogramXAxis } from './spectrogram-x-axis-renderer.js';
@@ -225,9 +228,77 @@ function handleKeyboardShortcut(event) {
         return;
     }
 
-    // Enter key: Trigger first fetch (only works before first fetch, handled in main.js)
-    // We don't handle it here, but we need to make sure we don't prevent it
-    // The actual handler is in main.js DOMContentLoaded
+    // Spacebar: toggle play/pause (but not when focused on interactive elements)
+    if (event.code === 'Space') {
+        const isSelect = event.target.tagName === 'SELECT';
+        const isButton = event.target.tagName === 'BUTTON';
+        const isZoomButton = isButton && event.target.classList.contains('zoom-btn');
+
+        // Let browser handle spacebar in form elements, except zoom buttons
+        if (isTextInput || isTextarea || isSelect || (isButton && !isZoomButton) || isContentEditable) {
+            return;
+        }
+
+        event.preventDefault();
+
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const playbackState = State.playbackState;
+        const allReceivedData = State.allReceivedData;
+
+        if (!playPauseBtn.disabled && (playbackState !== PlaybackState.STOPPED || (allReceivedData && allReceivedData.length > 0))) {
+            togglePlayPause();
+        }
+        return;
+    }
+
+    // Enter key: Begin Analysis button or trigger first fetch
+    if (event.key === 'Enter' || event.keyCode === 13) {
+        if (isTypingInField) {
+            return;
+        }
+
+        // Check if any modal is open — if so, let the modal handle Enter
+        const modalIds = ['welcomeModal', 'participantModal', 'preSurveyModal', 'postSurveyModal',
+                         'activityLevelModal', 'awesfModal', 'endModal', 'beginAnalysisModal',
+                         'missingStudyIdModal', 'completeConfirmationModal'];
+        const isModalOpen = modalIds.some(modalId => {
+            const modal = document.getElementById(modalId);
+            return modal && modal.style.display !== 'none';
+        });
+
+        if (isModalOpen) {
+            return;
+        }
+
+        // Priority 1: Check if "Begin Analysis" button is visible and enabled
+        const completeBtn = document.getElementById('completeBtn');
+        if (completeBtn &&
+            completeBtn.textContent === 'Begin Analysis' &&
+            !completeBtn.disabled &&
+            completeBtn.style.display !== 'none' &&
+            window.getComputedStyle(completeBtn).display !== 'none') {
+            event.preventDefault();
+            console.log('⌨️ Enter key pressed - triggering Begin Analysis button');
+            completeBtn.click();
+            return;
+        }
+
+        // Priority 2: In Personal Mode, trigger fetch data if fetch button is enabled (only on first load)
+        if ((isPersonalMode() || isEmicStudyMode() || CURRENT_MODE === AppMode.SOLAR_PORTAL) && !getHasPerformedFirstFetch()) {
+            const fetchBtn = document.getElementById('startBtn');
+            if (fetchBtn &&
+                !fetchBtn.disabled &&
+                fetchBtn.style.display !== 'none' &&
+                window.getComputedStyle(fetchBtn).display !== 'none') {
+                event.preventDefault();
+                console.log('⌨️ Enter key pressed - triggering fetch data (first load)');
+                fetchBtn.click();
+                return;
+            }
+        }
+
+        return;
+    }
 }
 
 // --- Arrow key hold system: tap = discrete step, hold = continuous smooth motion ---

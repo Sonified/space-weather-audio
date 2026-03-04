@@ -892,6 +892,22 @@ export function changeVolume() {
 }
 
 
+/**
+ * Calculate slider value for a target playback speed.
+ * Inverse of the logarithmic mapping in updatePlaybackSpeed():
+ *   0-667   → 0.1x to 1.0x  (log base 10)
+ *   667-1000 → 1.0x to 15.0x (log base 15)
+ */
+export function calculateSliderForSpeed(targetSpeed) {
+    if (targetSpeed <= 1.0) {
+        const normalized = Math.log(targetSpeed / 0.1) / Math.log(10);
+        return Math.round(normalized * 667);
+    } else {
+        const normalized = Math.log(targetSpeed) / Math.log(15);
+        return Math.round(667 + normalized * 333);
+    }
+}
+
 export function resetSpeedTo1() {
     const slider = document.getElementById('playbackSpeed');
     slider.value = 667;
