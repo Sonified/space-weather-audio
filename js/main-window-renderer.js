@@ -238,8 +238,18 @@ export function setCatmullSettings({ enabled, threshold, core, feather }) {
     if (wfUCatmullThreshold) wfUCatmullThreshold.value = pendingCatmull.threshold;
     if (wfUCatmullCore) wfUCatmullCore.value = pendingCatmull.core;
     if (wfUCatmullFeather) wfUCatmullFeather.value = pendingCatmull.feather;
+    // Invalidate frozen waveform strip so it re-renders with new settings
+    if (frozenWF) frozenWF.dirty = true;
     // Re-render so the change is visible immediately
     if (wfUCatmullEnabled) renderFrame();
+}
+
+// Waveform pan mode: 'smartFreeze' (render-to-texture) or 'alwaysCompute' (per-frame shader)
+let waveformPanMode = 'smartFreeze';
+export function setWaveformPanMode(mode) {
+    waveformPanMode = mode;
+    if (frozenWF) frozenWF.dirty = true;
+    renderFrame();
 }
 
 // Waveform (time series) — TSL material renders on same WebGPU canvas as spectrogram
@@ -282,6 +292,29 @@ let wfUCatmullFeather = null;   // feather radius in pixels
 let spectrogramOverlay = null;
 let spectrogramOverlayResizeObserver = null;
 const MAX_PLAYBACK_RATE = 15.0;
+
+// ─── Frozen waveform strip (render-to-texture for shimmer-free pan) ──────────
+// When zoomed in, render waveform to a wide offscreen texture once, then pan
+// the camera over it like a spectrogram tile. Re-render when buffer is consumed.
+let frozenWF = {
+    active: false,           // true when using frozen texture mode
+    renderTarget: null,      // THREE.RenderTarget (3x viewport width)
+    quad: null,              // THREE.Mesh sampling the RT texture
+    quadMaterial: null,      // Material for the frozen quad
+    stripStartSec: 0,        // World-space start of the rendered strip
+    stripEndSec: 0,          // World-space end of the rendered strip
+    stripCamera: null,       // Dedicated ortho camera for offscreen render
+    viewSpanAtRender: 0,     // Viewport span (seconds) when strip was rendered
+    canvasWidthAtRender: 0,  // Canvas width when strip was rendered
+    canvasHeightAtRender: 0, // Canvas height when strip was rendered
+    modeAtRender: null,      // 'timeSeries' | 'both' — for transparency invalidation
+    dirty: true,             // Needs re-render
+};
+const FROZEN_WF_MULTIPLIER = 3.0;  // Strip covers 3x viewport width
+const FROZEN_WF_BUFFER = 0.33;     // Re-render when 1/3 of buffer consumed
+const FROZEN_WF_SETTLE_MS = 200;   // Wait this long after last zoom before freezing
+let lastZoomChangeTime = 0;        // performance.now() of last zoom-level change
+let lastViewSpan = -1;             // Track previous frame's viewSpan for change detection
 
 // WebGPU device loss handled via device.lost promise in initThreeScene
 
@@ -615,6 +648,28 @@ async function initThreeScene() {
         waveformMesh.renderOrder = 2;
         waveformMesh.visible = false;
         scene.add(waveformMesh);
+
+        // ─── Frozen waveform quad (world-space, samples from RenderTarget) ───
+        frozenWF.renderTarget = new THREE.RenderTarget(1, 1, {
+            format: THREE.RGBAFormat,
+            type: THREE.UnsignedByteType,
+        });
+        frozenWF.renderTarget.texture.minFilter = THREE.LinearFilter;
+        frozenWF.renderTarget.texture.magFilter = THREE.LinearFilter;
+
+        frozenWF.stripCamera = new THREE.OrthographicCamera(0, 1, 1, 0, 0, 10);
+        frozenWF.stripCamera.position.z = 1;
+
+        const frozenTexNode = tslTexture(frozenWF.renderTarget.texture);
+        const flippedUV = vec2(uv().x, float(1.0).sub(uv().y));  // RT is Y-flipped
+        frozenWF.quadMaterial = new THREE.MeshBasicNodeMaterial();
+        frozenWF.quadMaterial.transparent = true;
+        frozenWF.quadMaterial.depthWrite = false;
+        frozenWF.quadMaterial.colorNode = frozenTexNode.uv(flippedUV);
+        frozenWF.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), frozenWF.quadMaterial);
+        frozenWF.quad.renderOrder = 2;
+        frozenWF.quad.visible = false;
+        scene.add(frozenWF.quad);
     }
 
     // ─── 32 tile meshes (Uint8 pre-normalized → colormap) ────────────

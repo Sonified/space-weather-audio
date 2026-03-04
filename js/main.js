@@ -1255,6 +1255,13 @@ function injectSettingsDrawer() {
                     <span id="catmullFeatherLabel" class="drawer-slider-value">1.0</span>
                 </div>
             </div>
+            <div class="drawer-row">
+                <label for="waveformPanMode" class="drawer-label">Pan rendering</label>
+                <select id="waveformPanMode" class="drawer-input" style="width: 120px; text-align: left;">
+                    <option value="smartFreeze" selected>Smart Freeze</option>
+                    <option value="alwaysCompute">Always Compute</option>
+                </select>
+            </div>
         </div>
         <div class="drawer-section">
             <div class="drawer-section-title">Arrow Key Navigation</div>
@@ -1690,6 +1697,7 @@ function initializeAdvancedControls() {
         { id: 'catmullThreshold', key: 'emic_catmull_threshold', type: 'select' },
         { id: 'catmullCore', key: 'emic_catmull_core', type: 'range' },
         { id: 'catmullFeather', key: 'emic_catmull_feather', type: 'range' },
+        { id: 'waveformPanMode', key: 'emic_waveform_pan_mode', type: 'select' },
         { id: 'renderOrder', key: 'emic_render_order', type: 'select' },
         { id: 'audioQuality', key: 'emic_audio_quality', type: 'select' },
         { id: 'tileChunkSize', key: 'emic_tile_chunk_size', type: 'select' },
