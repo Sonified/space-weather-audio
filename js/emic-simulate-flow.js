@@ -94,9 +94,11 @@ export function initSimulateFlow() {
                 completeBtn.style.cssText = `
                     background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
                     color: white; font-weight: 700; padding: 8px 18px; font-size: 15px;
-                    border: none; border-radius: 6px; cursor: pointer;
+                    border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; cursor: pointer;
                     margin-left: auto; white-space: nowrap;
-                    transition: opacity 0.2s, transform 0.2s;
+                    transition: all 0.2s;
+                    box-shadow: 0 2px 6px rgba(25, 118, 210, 0.4), inset 0 1px 0 rgba(255,255,255,0.15);
+                    text-shadow: 0 1px 1px rgba(0,0,0,0.2);
                 `;
                 completeBtn.addEventListener('mouseenter', () => { completeBtn.style.transform = 'scale(1.03)'; });
                 completeBtn.addEventListener('mouseleave', () => { completeBtn.style.transform = 'scale(1)'; });
@@ -108,6 +110,8 @@ export function initSimulateFlow() {
                 completeBtn.style.display = 'none';
                 setEmicFlag(EMIC_FLAGS.HAS_COMPLETED_ANALYSIS);
                 flowLog('Complete button clicked after refresh-restore');
+                // Resume the flow from Step 5 (confirmation → questionnaires → submission)
+                resumeFromComplete();
             }, { once: true });
         }
     }
@@ -210,6 +214,7 @@ function getEMICMasterList() {
  */
 function cancelFlow() {
     flowLog('Flow cancelled by user');
+    clearAllEmicFlags();
     // Set flag — startFlow()'s async checks will see this and exit,
     // hitting the finally block which calls cleanup().
     // We also need to immediately close visible modals + overlay
@@ -242,6 +247,15 @@ function cancelFlow() {
     modalManager.currentModal = null;
     modalManager.isTransitioning = false;
     
+    // Show cancellation message in status bar
+    const statusEl = document.getElementById('status');
+    if (statusEl) {
+        statusEl.className = 'status info';
+        import('./tutorial-effects.js').then(({ typeText }) => {
+            typeText(statusEl, 'Study flow has been cancelled, click "Simulate Flow" to start again', 30, 10);
+        });
+    }
+
     // Restore user + cleanup immediately (cleanup is idempotent —
     // if startFlow's finally block calls it again, the null checks prevent double-restore)
     restoreRealUser();
@@ -360,8 +374,45 @@ async function startFlow() {
         flowLog('Complete button appeared (features detected)');
 
         if (!flowActive) return;
-        inFlowSequence = true;
 
+        // ─── Steps 5–8: Confirmation → Questionnaires → Submission ───────
+        await resumeFromComplete(testUsername);
+
+    } catch (err) {
+        console.error('❌ Simulate flow error:', err);
+        restoreRealUser();
+    } finally {
+        cleanup();
+    }
+}
+
+/**
+ * Restore the real username after flow completes
+ */
+function restoreRealUser() {
+    if (realUsername) {
+        storeParticipantId(realUsername);
+        const pidValue = document.getElementById('participantIdValue');
+        if (pidValue) pidValue.textContent = realUsername;
+        flowLog(`Real user restored: ${realUsername}`);
+        realUsername = null; // Prevent double-restore
+    }
+}
+
+/**
+ * Resume the flow from Step 5 (confirmation → questionnaires → submission).
+ * Called from both the normal flow and the refresh-restore Complete button handler.
+ * @param {string} [username] - participant ID to use; defaults to current participant
+ */
+async function resumeFromComplete(username) {
+    const testUsername = username || getParticipantId();
+    inFlowSequence = true;
+    flowActive = true;
+
+    // Ensure overlay patch is installed
+    installOverlayPatch();
+
+    try {
         // ─── Step 5: Confirmation ────────────────────────────────────────
         setEmicFlag(EMIC_FLAGS.HAS_COMPLETED_ANALYSIS);
         syncEmicProgress(testUsername, 'analysis_complete');
@@ -413,23 +464,10 @@ async function startFlow() {
         restoreRealUser();
 
     } catch (err) {
-        console.error('❌ Simulate flow error:', err);
+        console.error('❌ Simulate flow error (resumeFromComplete):', err);
         restoreRealUser();
     } finally {
         cleanup();
-    }
-}
-
-/**
- * Restore the real username after flow completes
- */
-function restoreRealUser() {
-    if (realUsername) {
-        storeParticipantId(realUsername);
-        const pidValue = document.getElementById('participantIdValue');
-        if (pidValue) pidValue.textContent = realUsername;
-        flowLog(`Real user restored: ${realUsername}`);
-        realUsername = null; // Prevent double-restore
     }
 }
 
@@ -557,9 +595,11 @@ function showCompleteButton() {
             completeBtn.style.cssText = `
                 background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
                 color: white; font-weight: 700; padding: 8px 18px; font-size: 15px;
-                border: none; border-radius: 6px; cursor: pointer;
+                border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; cursor: pointer;
                 margin-left: auto; display: none; white-space: nowrap;
-                transition: opacity 0.2s, transform 0.2s;
+                transition: all 0.2s;
+                box-shadow: 0 2px 6px rgba(25, 118, 210, 0.4), inset 0 1px 0 rgba(255,255,255,0.15);
+                text-shadow: 0 1px 1px rgba(0,0,0,0.2);
             `;
             completeBtn.addEventListener('mouseenter', () => { completeBtn.style.transform = 'scale(1.03)'; });
             completeBtn.addEventListener('mouseleave', () => { completeBtn.style.transform = 'scale(1)'; });
@@ -616,13 +656,14 @@ function showConfirmModal() {
                         Are you sure you're ready to finish? You won't be able to go back after this.
                     </p>
                     <div style="display: flex; gap: 12px; justify-content: center;">
-                        <button type="button" id="sfConfirmYes" class="modal-submit" style="min-width: 140px;">Yes, I'm done</button>
-                        <button type="button" id="sfConfirmNo" class="modal-submit" style="min-width: 120px; background: #6c757d;">Go back</button>
+                        <button type="button" id="sfConfirmNo" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #c97070 !important; border: 2px solid #c97070 !important; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; min-width: 120px;">Go back</button>
+                        <button type="button" id="sfConfirmYes" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; min-width: 140px;">Yes, I'm done</button>
                     </div>
                 </div>
             </div>
         `;
-        document.body.appendChild(modal);
+        const overlay = document.getElementById('permanentOverlay') || document.body;
+        overlay.appendChild(modal);
 
         modalManager.openModal('simulateFlowConfirmModal');
 
@@ -632,6 +673,7 @@ function showConfirmModal() {
                 resolve(true);
             });
             document.getElementById('sfConfirmNo')?.addEventListener('click', () => {
+                inFlowSequence = false; // Allow overlay to fade out (bypass patch)
                 modalManager.closeModal('simulateFlowConfirmModal').then(() => modal.remove());
                 resolve(false);
             });
@@ -657,11 +699,12 @@ function showIntroModal() {
                     <p style="color: #666; margin: 0 0 24px; font-size: 16px; line-height: 1.6;">
                         You will now be guided through a brief set of questions that should take 2–3 minutes.
                     </p>
-                    <button type="button" class="modal-submit" style="min-width: 140px;">OK</button>
+                    <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; min-width: 140px;">OK</button>
                 </div>
             </div>
         `;
-        document.body.appendChild(modal);
+        const overlay = document.getElementById('permanentOverlay') || document.body;
+        overlay.appendChild(modal);
 
         modalManager.openModal('simulateFlowIntroModal', { keepOverlay: true });
 
@@ -730,7 +773,8 @@ async function runQuestionnaireSequence() {
 function showSubmissionCompleteModal(featureCount) {
     return new Promise((resolve) => {
         const modal = createSubmissionCompleteElement(featureCount);
-        document.body.appendChild(modal);
+        const overlay = document.getElementById('permanentOverlay') || document.body;
+        overlay.appendChild(modal);
         modalManager.openModal('simulateFlowSubmissionModal', { keepOverlay: true });
 
         const closeIt = () => {
@@ -837,7 +881,7 @@ function createSubmissionCompleteElement(featureCount) {
                 <p style="color: #666; margin: 0 0 24px; font-size: 15px; line-height: 1.5;">
                     Your answers have been submitted. You can now close this page.
                 </p>
-                <button type="button" class="modal-submit" style="min-width: 120px;">Close</button>
+                <button type="button" class="modal-submit" style="padding: 10px 16px; font-size: 16px; font-weight: 600; background: #007bff; border: 2px solid #007bff; color: white; border-radius: 6px; cursor: pointer; transition: all 0.2s; min-width: 120px;">Close</button>
             </div>
         </div>
     `;
@@ -850,7 +894,8 @@ function createSubmissionCompleteElement(featureCount) {
 
 export function openSubmissionCompletePreview() {
     const modal = createSubmissionCompleteElement(countFeatures());
-    document.body.appendChild(modal);
+    const overlay = document.getElementById('permanentOverlay') || document.body;
+    overlay.appendChild(modal);
     modalManager.openModal('simulateFlowSubmissionModal');
 
     requestAnimationFrame(() => {
