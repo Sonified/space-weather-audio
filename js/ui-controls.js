@@ -1120,9 +1120,27 @@ export function setupModalEventListeners() {
                                 const { typeText } = await import('./tutorial-effects.js');
                                 statusEl.className = 'status info';
                                 const msg = State.isMobileScreen()
-                                    ? 'Press PLAY to begin playback (or use the space bar). Click and drag on the spectrogram to identify an EMIC wave.'
-                                    : '👈 Press PLAY to begin playback (or use the space bar). Click and drag on the main spectrogram window to identify an EMIC wave.';
-                                typeText(statusEl, msg, 30, 10);
+                                    ? 'Press PLAY to begin playback (or use the space bar).'
+                                    : '👈 Press PLAY to begin playback (or use the space bar).';
+                                typeText(statusEl, msg, 15, 5);
+
+                                // After user clicks play, show the drag instruction
+                                const playBtn = document.getElementById('playPauseBtn');
+                                if (playBtn) {
+                                    playBtn.addEventListener('click', () => {
+                                        setTimeout(async () => {
+                                            const { typeText: typeText2 } = await import('./tutorial-effects.js');
+                                            const statusEl2 = document.getElementById('status');
+                                            if (statusEl2) {
+                                                statusEl2.className = 'status info';
+                                                const dragMsg = State.isMobileScreen()
+                                                    ? 'Click and drag on the spectrogram to identify an EMIC wave.'
+                                                    : 'Click and drag on the main window to identify an EMIC wave.';
+                                                typeText2(statusEl2, dragMsg, 15, 5);
+                                            }
+                                        }, 1000);
+                                    }, { once: true });
+                                }
                             }
                         }, 500);
                     }
@@ -3047,7 +3065,7 @@ export function submitParticipantSetup() {
             const { typeText } = await import('./tutorial-effects.js');
             statusEl.className = 'status info';
             const msg = State.isMobileScreen() ? 'Click Fetch Data to begin' : '👈 click Fetch Data to begin';
-            typeText(statusEl, msg, 30, 10);
+            typeText(statusEl, msg, 15, 5);
         }, 1200);
     }
 
