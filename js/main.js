@@ -1423,8 +1423,8 @@ function injectGearPopovers() {
                 <div class="gear-popover-row">
                     <span class="gear-label">Click:</span>
                     <select id="navBarClick" class="gear-select">
-                        <option value="moveWindow" selected>Move window</option>
-                        <option value="moveAndPlay">Move & play</option>
+                        <option value="moveWindow">Move window</option>
+                        <option value="moveAndPlay" selected>Move & play</option>
                     </select>
                 </div>
                 <div class="gear-popover-row">
