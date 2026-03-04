@@ -408,902 +408,689 @@ function wireQuickFill(modal, radioSelector, maxValue, onUpdate) {
     });
 }
 
-// ── End helpers ──────────────────────────────────────────────────────────
+// ── Per-modal wiring functions ───────────────────────────────────────────
+
+function wireParticipantModal() {
+    const participantModal = document.getElementById('participantModal');
+    if (!participantModal) { console.error('❌ Participant modal not found in DOM'); return; }
+
+    const participantCloseBtn = participantModal.querySelector('.modal-close');
+    const participantSubmitBtn = participantModal.querySelector('.modal-submit');
+    const participantIdInput = document.getElementById('participantId');
+    const usernameStatusEl = document.getElementById('usernameStatus');
+
+    let usernameCheckTimeout = null;
+    let isUsernameAvailable = false;
+
+    const updateParticipantSubmitButton = () => {
+        const hasValue = participantIdInput && participantIdInput.value.trim().length >= 2;
+        if (participantSubmitBtn) {
+            participantSubmitBtn.disabled = !(hasValue && isUsernameAvailable);
+        }
+    };
+
+    const checkUsername = async (username) => {
+        if (!username || username.length < 3) {
+            if (usernameStatusEl) {
+                usernameStatusEl.innerHTML = '<span style="color: #666;">Enter at least 3 characters</span>';
+            }
+            isUsernameAvailable = false;
+            updateParticipantSubmitButton();
+            return;
+        }
+
+        const currentUsername = getParticipantId();
+        if (currentUsername && username.toLowerCase() === currentUsername.toLowerCase()) {
+            if (usernameStatusEl) {
+                usernameStatusEl.innerHTML = '<span style="color: #28a745; font-weight: 600;">✓ Your current username</span>';
+            }
+            isUsernameAvailable = true;
+            updateParticipantSubmitButton();
+            return;
+        }
+
+        if (isLocalEnvironment()) {
+            if (usernameStatusEl) {
+                usernameStatusEl.innerHTML = '<span style="color: #28a745; font-weight: 600;">✓ Local mode (not synced)</span>';
+            }
+            isUsernameAvailable = true;
+            updateParticipantSubmitButton();
+            return;
+        }
+
+        if (usernameStatusEl) {
+            usernameStatusEl.innerHTML = '<span style="color: #666;">Checking availability...</span>';
+        }
+
+        try {
+            const result = await checkUsernameAvailable(username);
+
+            if (result.available) {
+                if (usernameStatusEl) {
+                    usernameStatusEl.innerHTML = result.message
+                        ? `<span style="color: #28a745; font-weight: 600;">✓ ${result.message}</span>`
+                        : '<span style="color: #28a745; font-weight: 600;">✓ Available</span>';
+                }
+                isUsernameAvailable = true;
+            } else if (result.error) {
+                if (usernameStatusEl) {
+                    usernameStatusEl.innerHTML = `<span style="color: #dc3545;">${result.error}</span>`;
+                }
+                isUsernameAvailable = false;
+            } else {
+                if (usernameStatusEl) {
+                    usernameStatusEl.innerHTML = '<span style="color: #dc3545;">✗ Username already taken</span>';
+                }
+                isUsernameAvailable = false;
+            }
+        } catch (error) {
+            console.error('Username check error:', error);
+            if (usernameStatusEl) {
+                usernameStatusEl.innerHTML = '<span style="color: #999;">Could not verify - proceeding anyway</span>';
+            }
+            isUsernameAvailable = true;
+        }
+
+        updateParticipantSubmitButton();
+    };
+
+    const handleUsernameInput = (e) => {
+        const username = e.target.value.trim();
+        if (usernameCheckTimeout) clearTimeout(usernameCheckTimeout);
+        isUsernameAvailable = false;
+        updateParticipantSubmitButton();
+        usernameCheckTimeout = setTimeout(() => checkUsername(username), 300);
+    };
+
+    if (participantIdInput) {
+        participantIdInput.addEventListener('input', handleUsernameInput);
+    }
+
+    preventClickOutside(participantModal);
+
+    if (participantCloseBtn) {
+        participantCloseBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+    }
+
+    if (participantSubmitBtn) {
+        participantSubmitBtn.addEventListener('click', async () => {
+            const username = participantIdInput?.value.trim();
+
+            const { isEmicStudyMode: isEmic } = await import('./master-modes.js');
+            if (username && isUsernameAvailable && (!isLocalEnvironment() || isEmic())) {
+                registerUsername(username)
+                    .then(() => console.log('✅ Username registered:', username))
+                    .catch(error => console.warn('Username registration failed (may already be taken):', error));
+            } else if (username && isLocalEnvironment()) {
+                console.log('🏠 Local mode: username stored locally only (not registered to production)');
+            }
+
+            const { submitParticipantSetup } = await import('./ui-surveys.js');
+            submitParticipantSetup();
+
+            localStorage.setItem('study_has_seen_participant_setup', 'true');
+            console.log('✅ Participant setup marked as seen');
+
+            await closeParticipantModal();
+
+            if (isStudyMode()) {
+                setTimeout(() => openWelcomeModal(), 350);
+            }
+        });
+    }
+
+    wireKeyboardSubmit(participantModal, participantSubmitBtn, { documentLevel: true });
+    updateParticipantSubmitButton();
+}
+
+function wireWelcomeModal() {
+    const welcomeModal = document.getElementById('welcomeModal');
+    if (!welcomeModal) { console.error('❌ Welcome modal not found in DOM'); return; }
+
+    preventClickOutside(welcomeModal);
+
+    const welcomeSubmitBtn = welcomeModal.querySelector('.modal-submit');
+    if (welcomeSubmitBtn) {
+        welcomeSubmitBtn.addEventListener('click', async () => {
+            if (isStudyMode()) {
+                localStorage.setItem('study_has_seen_welcome', 'true');
+                console.log('✅ Welcome marked as seen');
+            }
+
+            await closeWelcomeModal();
+            const { isEmicStudyMode: isEmic } = await import('./master-modes.js');
+            if (!isEmic()) {
+                setTimeout(() => openPreSurveyModal(), 350);
+            } else {
+                const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
+                if (!isSharedSession) {
+                    setTimeout(async () => {
+                        const statusEl = document.getElementById('status');
+                        if (statusEl) {
+                            const { typeText } = await import('./tutorial-effects.js');
+                            statusEl.className = 'status info';
+                            const msg = State.isMobileScreen()
+                                ? 'Press PLAY to begin playback (or use the space bar).'
+                                : '👈 Press PLAY to begin playback (or use the space bar).';
+                            typeText(statusEl, msg, 15, 5);
+
+                            const playBtn = document.getElementById('playPauseBtn');
+                            if (playBtn) {
+                                playBtn.addEventListener('click', () => {
+                                    setTimeout(async () => {
+                                        const { typeText: typeText2 } = await import('./tutorial-effects.js');
+                                        const statusEl2 = document.getElementById('status');
+                                        if (statusEl2) {
+                                            statusEl2.className = 'status info';
+                                            const dragMsg = State.isMobileScreen()
+                                                ? 'Click and drag on the spectrogram to identify an EMIC wave.'
+                                                : 'Click and drag on the main window to identify an EMIC wave.';
+                                            typeText2(statusEl2, dragMsg, 15, 5);
+                                        }
+                                    }, 1000);
+                                }, { once: true });
+                            }
+                        }
+                    }, 500);
+                }
+            }
+        });
+    }
+
+    wireKeyboardSubmit(welcomeModal, welcomeSubmitBtn, { documentLevel: true });
+}
+
+function wireEndModal() {
+    const endModal = document.getElementById('endModal');
+    if (!endModal) { console.error('❌ End modal not found in DOM'); return; }
+
+    preventClickOutside(endModal);
+
+    const endSubmitBtn = endModal.querySelector('.modal-submit');
+    if (endSubmitBtn) {
+        endSubmitBtn.addEventListener('click', () => closeEndModal());
+    }
+}
+
+function wireBeginAnalysisModal() {
+    const beginAnalysisModal = document.getElementById('beginAnalysisModal');
+    if (!beginAnalysisModal) { console.error('❌ Begin Analysis modal not found in DOM'); return; }
+
+    preventClickOutside(beginAnalysisModal);
+
+    const beginAnalysisCancelBtn = beginAnalysisModal.querySelector('.modal-cancel');
+    if (beginAnalysisCancelBtn) {
+        beginAnalysisCancelBtn.addEventListener('click', () => closeBeginAnalysisModal(false));
+    }
+
+    const beginAnalysisSubmitBtn = beginAnalysisModal.querySelector('.modal-submit');
+    if (beginAnalysisSubmitBtn) {
+        beginAnalysisSubmitBtn.addEventListener('click', () => {
+            closeBeginAnalysisModal();
+            window.dispatchEvent(new CustomEvent('beginAnalysisConfirmed'));
+        });
+    }
+
+    // Custom keyboard: Enter confirms + dispatches event, Escape cancels
+    beginAnalysisModal.addEventListener('keydown', (e) => {
+        if (beginAnalysisModal.style.display === 'none') return;
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            closeBeginAnalysisModal();
+            window.dispatchEvent(new CustomEvent('beginAnalysisConfirmed'));
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            closeBeginAnalysisModal(false);
+        }
+    });
+}
+
+function wireWelcomeBackModal() {
+    const welcomeBackModal = document.getElementById('welcomeBackModal');
+    if (!welcomeBackModal) { console.error('❌ Welcome Back modal not found in DOM'); return; }
+
+    preventClickOutside(welcomeBackModal);
+
+    const welcomeBackSubmitBtn = welcomeBackModal.querySelector('.modal-submit');
+    if (welcomeBackSubmitBtn) {
+        welcomeBackSubmitBtn.addEventListener('click', async () => await closeWelcomeBackModal());
+    }
+
+    wireKeyboardSubmit(welcomeBackModal, welcomeBackSubmitBtn);
+}
+
+function wireCompleteConfirmationModal() {
+    const completeConfirmationModal = document.getElementById('completeConfirmationModal');
+    if (!completeConfirmationModal) { console.error('❌ Complete Confirmation modal not found in DOM'); return; }
+
+    preventClickOutside(completeConfirmationModal);
+
+    const completeCancelBtn = completeConfirmationModal.querySelector('.modal-cancel');
+    if (completeCancelBtn) {
+        completeCancelBtn.addEventListener('click', closeCompleteConfirmationModal);
+    }
+
+    const completeSubmitBtn = completeConfirmationModal.querySelector('.modal-submit');
+    if (completeSubmitBtn) {
+        completeSubmitBtn.addEventListener('click', async () => {
+            const { hasIdentifiedFeature } = await import('./region-tracker.js');
+            if (!hasIdentifiedFeature()) {
+                console.warn('⚠️ Complete button clicked but no feature selected');
+                const statusEl = document.getElementById('status');
+                if (statusEl) {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = '❌ Please identify at least one feature before completing.';
+                }
+                return;
+            }
+
+            const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+            enableAllTutorialRestrictedFeatures();
+            console.log('✅ Features enabled after feature selection');
+
+            const { isStudyMode } = await import('./master-modes.js');
+            if (isStudyMode()) {
+                console.log('🎓 Study Mode: Starting submit workflow...');
+                await modalManager.closeModal('completeConfirmationModal', { keepOverlay: true });
+                console.log('✅ Complete Confirmation modal closed (overlay kept for workflow)');
+                const { handleStudyModeSubmit } = await import('./study-workflow.js');
+                await handleStudyModeSubmit();
+            } else {
+                closeCompleteConfirmationModal();
+                openActivityLevelModal();
+            }
+        });
+    }
+}
+
+function wireMissingStudyIdModal() {
+    const missingStudyIdModal = document.getElementById('missingStudyIdModal');
+    if (!missingStudyIdModal) { console.error('❌ Missing Study ID modal not found in DOM'); return; }
+
+    preventClickOutside(missingStudyIdModal);
+
+    const enterStudyIdBtn = missingStudyIdModal.querySelector('.modal-submit');
+    if (enterStudyIdBtn) {
+        enterStudyIdBtn.addEventListener('click', () => {
+            closeMissingStudyIdModal();
+            setTimeout(() => openParticipantModal(), 100);
+        });
+    }
+}
+
+function wirePreSurveyModal() {
+    const preSurveyModal = document.getElementById('preSurveyModal');
+    if (!preSurveyModal) { console.error('❌ Pre-survey modal not found in DOM'); return; }
+
+    const preSurveyCloseBtn = preSurveyModal.querySelector('.modal-close');
+    const preSurveySubmitBtn = preSurveyModal.querySelector('.modal-submit');
+
+    const updatePreSurveySubmitButton = () => {
+        const allAnswered =
+            document.querySelector('input[name="preCalm"]:checked') &&
+            document.querySelector('input[name="preEnergized"]:checked') &&
+            document.querySelector('input[name="preNervous"]:checked') &&
+            document.querySelector('input[name="preFocused"]:checked') &&
+            document.querySelector('input[name="preConnected"]:checked') &&
+            document.querySelector('input[name="preWonder"]:checked');
+        if (preSurveySubmitBtn) preSurveySubmitBtn.disabled = !allAnswered;
+    };
+
+    preSurveyModal.querySelectorAll('input[type="radio"]').forEach(radio => {
+        radio.addEventListener('change', updatePreSurveySubmitButton);
+    });
+
+    preventClickOutside(preSurveyModal);
+
+    if (preSurveyCloseBtn) {
+        preSurveyCloseBtn.addEventListener('click', (e) => { e.stopPropagation(); closePreSurveyModal(); });
+    }
+
+    if (preSurveySubmitBtn) {
+        preSurveySubmitBtn.addEventListener('click', async () => {
+            const { submitPreSurvey } = await import('./ui-surveys.js');
+            await submitPreSurvey();
+
+            const nextModal = await getNextModalInWorkflow('preSurveyModal');
+            console.log('🔍 Pre-Survey submit: nextModal =', nextModal);
+            await closePreSurveyModal(nextModal !== null);
+            startActivityTimer();
+
+            if (isStudyMode() && nextModal) {
+                setTimeout(() => {
+                    if (nextModal === 'tutorialIntroModal') {
+                        console.log('🎓 Opening Tutorial Intro modal...');
+                        openTutorialIntroModal();
+                    } else if (nextModal === 'activityLevelModal') {
+                        console.warn('⚠️ Pre-Survey: Activity Level detected as next modal - this is wrong! Closing overlay and letting user explore.');
+                        fadeOutOverlay();
+                    } else {
+                        console.log('📊 Pre-Survey complete - ready for experience. Activity Level will show after Submit.');
+                        fadeOutOverlay();
+                    }
+                }, 350);
+            } else if (isStudyMode() && !nextModal) {
+                console.log('📊 Pre-Survey complete - no next modal (returning visit). Closing overlay, ready for experience.');
+                fadeOutOverlay();
+            }
+        });
+    }
+
+    wireKeyboardSubmit(preSurveyModal, preSurveySubmitBtn, { documentLevel: true });
+    updatePreSurveySubmitButton();
+    wireQuickFill(preSurveyModal, 'input[name^="pre"]', 5, updatePreSurveySubmitButton);
+}
+
+function wirePostSurveyModal() {
+    const postSurveyModal = document.getElementById('postSurveyModal');
+    if (!postSurveyModal) { console.error('❌ Post-survey modal not found in DOM'); return; }
+
+    const postSurveyCloseBtn = postSurveyModal.querySelector('.modal-close');
+    const postSurveySubmitBtn = postSurveyModal.querySelector('.modal-submit');
+
+    const updatePostSurveySubmitButton = () => {
+        const allAnswered =
+            document.querySelector('input[name="postCalm"]:checked') &&
+            document.querySelector('input[name="postEnergized"]:checked') &&
+            document.querySelector('input[name="postNervous"]:checked') &&
+            document.querySelector('input[name="postFocused"]:checked') &&
+            document.querySelector('input[name="postConnected"]:checked') &&
+            document.querySelector('input[name="postWonder"]:checked');
+        if (postSurveySubmitBtn) postSurveySubmitBtn.disabled = !allAnswered;
+    };
+
+    postSurveyModal.querySelectorAll('input[type="radio"]').forEach(radio => {
+        radio.addEventListener('change', updatePostSurveySubmitButton);
+    });
+
+    preventClickOutside(postSurveyModal);
+
+    if (postSurveyCloseBtn) {
+        postSurveyCloseBtn.addEventListener('click', (e) => { e.stopPropagation(); closePostSurveyModal(); });
+    }
+
+    if (postSurveySubmitBtn) {
+        postSurveySubmitBtn.addEventListener('click', async () => {
+            const { submitPostSurvey } = await import('./ui-surveys.js');
+            await submitPostSurvey();
+            await closePostSurveyModal();
+
+            if (isStudyMode()) {
+                setTimeout(async () => {
+                    try {
+                        const { attemptSubmission } = await import('./ui-controls.js');
+                        await attemptSubmission(true);
+                        console.log('✅ Submission complete');
+                    } catch (error) {
+                        console.error('❌ Error during submission:', error);
+                    }
+
+                    const { getParticipantId } = await import('./qualtrics-api.js');
+                    const { incrementSessionCount } = await import('./study-workflow.js');
+                    const participantId = getParticipantId();
+                    const sessionCount = incrementSessionCount();
+                    console.log('🎉 Opening end modal...', { participantId, sessionCount });
+                    openEndModal(participantId, sessionCount);
+                    console.log('✅ End modal should now be visible');
+                }, 350);
+            }
+        });
+    }
+
+    updatePostSurveySubmitButton();
+    wireQuickFill(postSurveyModal, 'input[name^="post"]', 5, updatePostSurveySubmitButton);
+}
+
+function wireActivityLevelModal() {
+    const activityLevelModal = document.getElementById('activityLevelModal');
+    if (!activityLevelModal) { console.error('❌ Activity Level modal not found in DOM'); return; }
+
+    const activityLevelCloseBtn = activityLevelModal.querySelector('.modal-close');
+    const activityLevelSubmitBtn = activityLevelModal.querySelector('.modal-submit');
+
+    const updateActivityLevelSubmitButton = () => {
+        const answered = document.querySelector('input[name="activityLevel"]:checked');
+        if (activityLevelSubmitBtn) activityLevelSubmitBtn.disabled = !answered;
+    };
+
+    activityLevelModal.querySelectorAll('input[type="radio"]').forEach(radio => {
+        radio.addEventListener('change', updateActivityLevelSubmitButton);
+    });
+
+    preventClickOutside(activityLevelModal);
+
+    if (activityLevelCloseBtn) {
+        activityLevelCloseBtn.addEventListener('click', (e) => { e.stopPropagation(); closeActivityLevelModal(); });
+    }
+
+    if (activityLevelSubmitBtn) {
+        activityLevelSubmitBtn.addEventListener('click', async () => {
+            if (window.pm?.interaction) console.log('🔵 Activity Level submit button clicked');
+            const { submitActivityLevelSurvey } = await import('./ui-surveys.js');
+            const success = await submitActivityLevelSurvey();
+
+            if (!success) {
+                console.log('❌ Activity Level submission failed - keeping modal open');
+                return;
+            }
+
+            console.log('✅ Activity Level submission successful');
+
+            const { isStudyMode } = await import('./master-modes.js');
+            console.log('🔍 isStudyMode:', isStudyMode());
+            if (isStudyMode()) {
+                console.log('✅ Activity Level saved - closing modal for workflow...');
+                await closeActivityLevelModal();
+                const { shouldShowAwesf } = await import('./study-workflow.js');
+                if (shouldShowAwesf()) {
+                    setTimeout(() => openAwesfModal(), 350);
+                } else {
+                    setTimeout(() => openPostSurveyModal(), 350);
+                }
+                console.log('✅ Activity Level modal closed - workflow will continue');
+            } else {
+                await closeActivityLevelModal();
+            }
+        });
+    }
+
+    updateActivityLevelSubmitButton();
+}
+
+function wireAwesfModal() {
+    const awesfModal = document.getElementById('awesfModal');
+    if (!awesfModal) { console.error('❌ AWE-SF modal not found in DOM'); return; }
+
+    const awesfCloseBtn = awesfModal.querySelector('.modal-close');
+    const awesfSubmitBtn = awesfModal.querySelector('.modal-submit');
+
+    const updateAwesfSubmitButton = () => {
+        const allAnswered =
+            document.querySelector('input[name="slowDown"]:checked') &&
+            document.querySelector('input[name="reducedSelf"]:checked') &&
+            document.querySelector('input[name="chills"]:checked') &&
+            document.querySelector('input[name="oneness"]:checked') &&
+            document.querySelector('input[name="grand"]:checked') &&
+            document.querySelector('input[name="diminishedSelf"]:checked') &&
+            document.querySelector('input[name="timeSlowing"]:checked') &&
+            document.querySelector('input[name="awesfConnected"]:checked') &&
+            document.querySelector('input[name="small"]:checked') &&
+            document.querySelector('input[name="vastness"]:checked') &&
+            document.querySelector('input[name="challenged"]:checked') &&
+            document.querySelector('input[name="selfShrink"]:checked');
+        if (awesfSubmitBtn) awesfSubmitBtn.disabled = !allAnswered;
+    };
+
+    // AWE-SF needs extra stopPropagation on radios/labels to prevent event bubbling
+    awesfModal.querySelectorAll('input[type="radio"]').forEach(radio => {
+        radio.addEventListener('change', (e) => { e.stopPropagation(); updateAwesfSubmitButton(); });
+        radio.addEventListener('click', (e) => e.stopPropagation());
+    });
+    awesfModal.querySelectorAll('label').forEach(label => {
+        label.addEventListener('click', (e) => e.stopPropagation());
+    });
+
+    preventClickOutside(awesfModal);
+
+    if (awesfCloseBtn) {
+        awesfCloseBtn.addEventListener('click', (e) => { e.stopPropagation(); closeAwesfModal(); });
+    }
+
+    if (awesfSubmitBtn) {
+        awesfSubmitBtn.addEventListener('click', async () => {
+            const { submitAwesfSurvey } = await import('./ui-surveys.js');
+            await submitAwesfSurvey();
+            await closeAwesfModal();
+            setTimeout(() => openPostSurveyModal(), 350);
+        });
+    }
+
+    updateAwesfSubmitButton();
+    wireQuickFill(awesfModal, 'input[type="radio"]', 7, updateAwesfSubmitButton);
+}
+
+function wireTutorialIntroModal() {
+    const tutorialIntroModal = document.getElementById('tutorialIntroModal');
+    if (!tutorialIntroModal) { console.error('❌ Tutorial Intro modal not found in DOM'); return; }
+
+    preventClickOutside(tutorialIntroModal);
+
+    const tutorialIntroSubmitBtn = tutorialIntroModal.querySelector('.modal-submit');
+    if (tutorialIntroSubmitBtn) {
+        tutorialIntroSubmitBtn.addEventListener('click', async () => {
+            console.log('🎓🔥 BEGIN TUTORIAL BUTTON CLICKED - DISABLING CONTROLS NOW');
+            console.trace('Stack trace for Begin Tutorial click:');
+
+            const { markTutorialAsInProgress } = await import('./study-workflow.js');
+            markTutorialAsInProgress();
+
+            const speedSlider = document.getElementById('playbackSpeed');
+            const volumeSlider = document.getElementById('volumeSlider');
+            const speedLabel = document.getElementById('speedLabel');
+            const volumeLabel = document.getElementById('volumeLabel');
+            if (speedSlider) speedSlider.disabled = true;
+            if (volumeSlider) volumeSlider.disabled = true;
+            if (speedLabel) speedLabel.style.opacity = '0.5';
+            if (volumeLabel) volumeLabel.style.opacity = '0.5';
+            console.log('🔒 Speed and volume controls DISABLED for tutorial');
+
+            closeTutorialIntroModal();
+
+            setTimeout(async () => {
+                const { runInitialTutorial } = await import('./tutorial.js');
+                await runInitialTutorial();
+                const { markTutorialAsSeen } = await import('./study-workflow.js');
+                markTutorialAsSeen();
+            }, 350);
+        });
+    }
+
+    wireKeyboardSubmit(tutorialIntroModal, tutorialIntroSubmitBtn, { documentLevel: true });
+}
+
+function wireTutorialRevisitModal() {
+    const tutorialRevisitModal = document.getElementById('tutorialRevisitModal');
+    if (!tutorialRevisitModal) { console.error('❌ Tutorial Revisit modal not found in DOM'); return; }
+
+    preventClickOutside(tutorialRevisitModal);
+
+    const tutorialRevisitBtn1 = tutorialRevisitModal.querySelector('#tutorialRevisitBtn1');
+    const tutorialRevisitBtn2 = tutorialRevisitModal.querySelector('#tutorialRevisitBtn2');
+    const tutorialRevisitBtn3 = tutorialRevisitModal.querySelector('#tutorialRevisitBtn3');
+
+    if (tutorialRevisitBtn1) {
+        tutorialRevisitBtn1.addEventListener('click', async () => {
+            const { isTutorialActive } = await import('./tutorial-state.js');
+            if (isTutorialActive()) {
+                closeTutorialRevisitModal(false);
+                console.log('▶️ Continuing tutorial');
+            } else {
+                closeTutorialRevisitModal(false);
+                localStorage.removeItem('study_has_seen_tutorial');
+                console.log('🔄 Tutorial flag cleared - will restart tutorial');
+                setTimeout(async () => {
+                    const { runInitialTutorial } = await import('./tutorial-coordinator.js');
+                    await runInitialTutorial();
+                }, 300);
+            }
+        });
+    }
+
+    if (tutorialRevisitBtn2) {
+        tutorialRevisitBtn2.addEventListener('click', async () => {
+            const { isTutorialActive } = await import('./tutorial-state.js');
+            if (isTutorialActive()) {
+                closeTutorialRevisitModal(false);
+                const { clearTutorialPhase } = await import('./tutorial-state.js');
+                clearTutorialPhase();
+                localStorage.removeItem('study_has_seen_tutorial');
+                console.log('🔄 Restarting tutorial');
+                setTimeout(async () => {
+                    const { runInitialTutorial } = await import('./tutorial-coordinator.js');
+                    await runInitialTutorial();
+                }, 300);
+            } else {
+                closeTutorialRevisitModal(false);
+            }
+        });
+    }
+
+    if (tutorialRevisitBtn3) {
+        tutorialRevisitBtn3.addEventListener('click', async () => {
+            closeTutorialRevisitModal(false);
+            const { clearTutorialPhase } = await import('./tutorial-state.js');
+            clearTutorialPhase();
+            const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
+            await enableAllTutorialRestrictedFeatures();
+            const { markTutorialAsSeen } = await import('./study-workflow.js');
+            markTutorialAsSeen();
+            console.log('🚪 Exited tutorial - features enabled');
+        });
+    }
+
+    // Custom keyboard: Enter for first button, Escape to close
+    tutorialRevisitModal.addEventListener('keydown', (e) => {
+        if (tutorialRevisitModal.style.display === 'none') return;
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (tutorialRevisitBtn1) tutorialRevisitBtn1.click();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            closeTutorialRevisitModal(false);
+        }
+    });
+}
+
+// ── Main entry point ─────────────────────────────────────────────────────
 
 export function setupModalEventListeners() {
-    // 🔥 FIX: Prevent duplicate event listener attachment
-    // If listeners are already set up, remove old ones first before re-adding
     if (modalListenersSetup) {
         console.warn('⚠️ Modal listeners already set up - removing old listeners first');
         removeModalEventListeners();
     }
-    
-    // Check if we're in Study Mode (used for other modal behaviors, not click-outside-to-close)
-    // Note: Click-outside-to-close is now DISABLED for ALL modals regardless of mode
-    // Note: This is a synchronous check, so we need to import synchronously
-    let inStudyMode = false;
-    try {
-        // Dynamic import check - we'll check mode at runtime
-        import('./master-modes.js').then(({ isStudyMode }) => {
-            inStudyMode = isStudyMode();
-        }).catch(() => {
-            // If import fails, default to false (not study mode)
-            inStudyMode = false;
-        });
-    } catch (e) {
-        inStudyMode = false;
-    }
-    
-    // For now, check localStorage directly as a synchronous fallback
-    const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
-    inStudyMode = storedMode === 'study' || storedMode === 'study_clean';
-    
-    // Participant modal event listeners
-    const participantModal = document.getElementById('participantModal');
-    if (!participantModal) {
-        console.error('❌ Participant modal not found in DOM');
-    } else {
-        const participantCloseBtn = participantModal.querySelector('.modal-close');
-        const participantSubmitBtn = participantModal.querySelector('.modal-submit');
-        const participantIdInput = document.getElementById('participantId');
-        const usernameStatusEl = document.getElementById('usernameStatus');
 
-        // Track username availability state
-        let usernameCheckTimeout = null;
-        let isUsernameAvailable = false;
+    wireParticipantModal();
+    wireWelcomeModal();
+    wireEndModal();
+    wireBeginAnalysisModal();
+    wireWelcomeBackModal();
+    wireCompleteConfirmationModal();
+    wireMissingStudyIdModal();
+    wirePreSurveyModal();
+    wirePostSurveyModal();
+    wireActivityLevelModal();
+    wireAwesfModal();
+    wireTutorialIntroModal();
+    wireTutorialRevisitModal();
 
-        // Function to update button state based on input value AND availability
-        const updateParticipantSubmitButton = () => {
-            const hasValue = participantIdInput && participantIdInput.value.trim().length >= 2;
-            if (participantSubmitBtn) {
-                participantSubmitBtn.disabled = !(hasValue && isUsernameAvailable);
-            }
-        };
-
-        // Function to check username availability with debounce
-        const checkUsername = async (username) => {
-            if (!username || username.length < 3) {
-                if (usernameStatusEl) {
-                    usernameStatusEl.innerHTML = '<span style="color: #666;">Enter at least 3 characters</span>';
-                }
-                isUsernameAvailable = false;
-                updateParticipantSubmitButton();
-                return;
-            }
-
-            // Check if this is the user's current username (case-insensitive)
-            const currentUsername = getParticipantId();
-            if (currentUsername && username.toLowerCase() === currentUsername.toLowerCase()) {
-                if (usernameStatusEl) {
-                    usernameStatusEl.innerHTML = '<span style="color: #28a745; font-weight: 600;">✓ Your current username</span>';
-                }
-                isUsernameAvailable = true;
-                updateParticipantSubmitButton();
-                return;
-            }
-
-            // Local environment: skip production API check, allow any valid username
-            // Local usernames don't get added to the production pool
-            if (isLocalEnvironment()) {
-                if (usernameStatusEl) {
-                    usernameStatusEl.innerHTML = '<span style="color: #28a745; font-weight: 600;">✓ Local mode (not synced)</span>';
-                }
-                isUsernameAvailable = true;
-                updateParticipantSubmitButton();
-                return;
-            }
-
-            if (usernameStatusEl) {
-                usernameStatusEl.innerHTML = '<span style="color: #666;">Checking availability...</span>';
-            }
-
-            try {
-                const result = await checkUsernameAvailable(username);
-
-                if (result.available) {
-                    if (usernameStatusEl) {
-                        // Check if username exists (logging back in) or is new
-                        if (result.message) {
-                            usernameStatusEl.innerHTML = `<span style="color: #28a745; font-weight: 600;">✓ ${result.message}</span>`;
-                        } else {
-                            usernameStatusEl.innerHTML = '<span style="color: #28a745; font-weight: 600;">✓ Available</span>';
-                        }
-                    }
-                    isUsernameAvailable = true;
-                } else if (result.error) {
-                    if (usernameStatusEl) {
-                        usernameStatusEl.innerHTML = `<span style="color: #dc3545;">${result.error}</span>`;
-                    }
-                    isUsernameAvailable = false;
-                } else {
-                    if (usernameStatusEl) {
-                        usernameStatusEl.innerHTML = '<span style="color: #dc3545;">✗ Username already taken</span>';
-                    }
-                    isUsernameAvailable = false;
-                }
-            } catch (error) {
-                console.error('Username check error:', error);
-                // On error, allow the username (graceful degradation)
-                if (usernameStatusEl) {
-                    usernameStatusEl.innerHTML = '<span style="color: #999;">Could not verify - proceeding anyway</span>';
-                }
-                isUsernameAvailable = true;
-            }
-
-            updateParticipantSubmitButton();
-        };
-
-        // Handle input changes with debounce
-        const handleUsernameInput = (e) => {
-            const username = e.target.value.trim();
-
-            // Clear previous timeout
-            if (usernameCheckTimeout) {
-                clearTimeout(usernameCheckTimeout);
-            }
-
-            // Reset state while typing
-            isUsernameAvailable = false;
-            updateParticipantSubmitButton();
-
-            // Debounce the availability check (300ms)
-            usernameCheckTimeout = setTimeout(() => {
-                checkUsername(username);
-            }, 300);
-        };
-
-        // Listen for input changes
-        if (participantIdInput) {
-            participantIdInput.addEventListener('input', handleUsernameInput);
-        }
-        
-        preventClickOutside(participantModal);
-        
-        if (participantCloseBtn) {
-            participantCloseBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                // Don't allow closing via X button either - it's hidden anyway
-            });
-        }
-        
-        if (participantSubmitBtn) {
-            participantSubmitBtn.addEventListener('click', async () => {
-                const username = participantIdInput?.value.trim();
-
-                // Register the username (claim it) - skip for local environment
-                // Exception: EMIC study always registers (even localhost) so heartbeats + syncs work
-                // Fire-and-forget: don't block modal close on network round-trip
-                const { isEmicStudyMode: isEmic } = await import('./master-modes.js');
-                if (username && isUsernameAvailable && (!isLocalEnvironment() || isEmic())) {
-                    registerUsername(username)
-                        .then(() => console.log('✅ Username registered:', username))
-                        .catch(error => console.warn('Username registration failed (may already be taken):', error));
-                } else if (username && isLocalEnvironment()) {
-                    console.log('🏠 Local mode: username stored locally only (not registered to production)');
-                }
-
-                const { submitParticipantSetup } = await import('./ui-surveys.js');
-                submitParticipantSetup();  // Save data locally
-
-                // Mark participant setup as seen when user submits (not before)
-                // Works for both Study mode and Solar Portal mode
-                localStorage.setItem('study_has_seen_participant_setup', 'true');
-                console.log('✅ Participant setup marked as seen');
-
-                // Close modal (auto-detects next modal and keeps overlay)
-                await closeParticipantModal();
-
-                // In study mode, open welcome modal next
-                if (isStudyMode()) {
-                    setTimeout(() => {
-                        openWelcomeModal();
-                    }, 350);
-                }
-            });
-        }
-        
-        wireKeyboardSubmit(participantModal, participantSubmitBtn, { documentLevel: true });
-        
-        // Initial button state check
-        updateParticipantSubmitButton();
-    }
-    
-    // Welcome modal event listeners
-    const welcomeModal = document.getElementById('welcomeModal');
-    if (!welcomeModal) {
-        console.error('❌ Welcome modal not found in DOM');
-    } else {
-        preventClickOutside(welcomeModal);
-        
-        const welcomeSubmitBtn = welcomeModal.querySelector('.modal-submit');
-        if (welcomeSubmitBtn) {
-            welcomeSubmitBtn.addEventListener('click', async () => {
-                // Mark welcome as seen when user submits (not before opening)
-                if (isStudyMode()) {
-                    localStorage.setItem('study_has_seen_welcome', 'true');
-                    console.log('✅ Welcome marked as seen');
-                }
-                
-                await closeWelcomeModal();
-                // Open pre-survey after welcome closes (not in EMIC mode)
-                const { isEmicStudyMode: isEmic } = await import('./master-modes.js');
-                if (!isEmic()) {
-                    setTimeout(() => {
-                        openPreSurveyModal();
-                    }, 350);
-                } else {
-                    // EMIC mode: show instructions with typewriter effect
-                    // Skip for shared/simulate sessions — fetch is auto-triggered
-                    const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
-                    if (!isSharedSession) {
-                        setTimeout(async () => {
-                            const statusEl = document.getElementById('status');
-                            if (statusEl) {
-                                const { typeText } = await import('./tutorial-effects.js');
-                                statusEl.className = 'status info';
-                                const msg = State.isMobileScreen()
-                                    ? 'Press PLAY to begin playback (or use the space bar).'
-                                    : '👈 Press PLAY to begin playback (or use the space bar).';
-                                typeText(statusEl, msg, 15, 5);
-
-                                // After user clicks play, show the drag instruction
-                                const playBtn = document.getElementById('playPauseBtn');
-                                if (playBtn) {
-                                    playBtn.addEventListener('click', () => {
-                                        setTimeout(async () => {
-                                            const { typeText: typeText2 } = await import('./tutorial-effects.js');
-                                            const statusEl2 = document.getElementById('status');
-                                            if (statusEl2) {
-                                                statusEl2.className = 'status info';
-                                                const dragMsg = State.isMobileScreen()
-                                                    ? 'Click and drag on the spectrogram to identify an EMIC wave.'
-                                                    : 'Click and drag on the main window to identify an EMIC wave.';
-                                                typeText2(statusEl2, dragMsg, 15, 5);
-                                            }
-                                        }, 1000);
-                                    }, { once: true });
-                                }
-                            }
-                        }, 500);
-                    }
-                }
-            });
-        }
-        
-        wireKeyboardSubmit(welcomeModal, welcomeSubmitBtn, { documentLevel: true });
-    }
-    
-    // End modal event listeners
-    const endModal = document.getElementById('endModal');
-    if (!endModal) {
-        console.error('❌ End modal not found in DOM');
-    } else {
-        preventClickOutside(endModal);
-        
-        const endSubmitBtn = endModal.querySelector('.modal-submit');
-        if (endSubmitBtn) {
-            endSubmitBtn.addEventListener('click', async () => {
-                closeEndModal();
-            });
-        }
-    }
-    
-    // Begin Analysis modal event listeners
-    const beginAnalysisModal = document.getElementById('beginAnalysisModal');
-    if (!beginAnalysisModal) {
-        console.error('❌ Begin Analysis modal not found in DOM');
-    } else {
-        preventClickOutside(beginAnalysisModal);
-        
-        const beginAnalysisCancelBtn = beginAnalysisModal.querySelector('.modal-cancel');
-        if (beginAnalysisCancelBtn) {
-            beginAnalysisCancelBtn.addEventListener('click', () => {
-                closeBeginAnalysisModal(false); // Explicitly pass false to ensure overlay fades out
-            });
-        }
-        
-        // The submit button will be handled in main.js to proceed with the workflow
-        const beginAnalysisSubmitBtn = beginAnalysisModal.querySelector('.modal-submit');
-        if (beginAnalysisSubmitBtn) {
-            // Store a reference that main.js can use, or we can handle it here
-            // For now, we'll handle it in main.js to keep the workflow logic together
-            beginAnalysisSubmitBtn.addEventListener('click', () => {
-                closeBeginAnalysisModal();
-                // Trigger the actual workflow - this will be handled by main.js
-                // We'll dispatch a custom event that main.js listens for
-                window.dispatchEvent(new CustomEvent('beginAnalysisConfirmed'));
-            });
-        }
-        
-        // Keyboard support: Enter to confirm, Escape to cancel
-        beginAnalysisModal.addEventListener('keydown', (e) => {
-            // Only handle if modal is visible
-            if (beginAnalysisModal.style.display === 'none') return;
-            
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                e.stopPropagation();
-                closeBeginAnalysisModal();
-                window.dispatchEvent(new CustomEvent('beginAnalysisConfirmed'));
-            } else if (e.key === 'Escape') {
-                e.preventDefault();
-                e.stopPropagation();
-                closeBeginAnalysisModal(false); // Explicitly pass false to ensure overlay fades out
-            }
-        });
-    }
-    
-    // Welcome Back modal event listeners
-    const welcomeBackModal = document.getElementById('welcomeBackModal');
-    if (!welcomeBackModal) {
-        console.error('❌ Welcome Back modal not found in DOM');
-    } else {
-        preventClickOutside(welcomeBackModal);
-        
-        const welcomeBackSubmitBtn = welcomeBackModal.querySelector('.modal-submit');
-        if (welcomeBackSubmitBtn) {
-            welcomeBackSubmitBtn.addEventListener('click', async () => {
-                await closeWelcomeBackModal();
-            });
-        }
-        
-        wireKeyboardSubmit(welcomeBackModal, welcomeBackSubmitBtn);
-    }
-    
-    // Complete Confirmation modal event listeners
-    const completeConfirmationModal = document.getElementById('completeConfirmationModal');
-    if (!completeConfirmationModal) {
-        console.error('❌ Complete Confirmation modal not found in DOM');
-    } else {
-        preventClickOutside(completeConfirmationModal);
-        
-        const completeCancelBtn = completeConfirmationModal.querySelector('.modal-cancel');
-        if (completeCancelBtn) {
-            completeCancelBtn.addEventListener('click', closeCompleteConfirmationModal);
-        }
-        
-        const completeSubmitBtn = completeConfirmationModal.querySelector('.modal-submit');
-        if (completeSubmitBtn) {
-            completeSubmitBtn.addEventListener('click', async () => {
-                // Check if a feature is selected
-                const { hasIdentifiedFeature } = await import('./region-tracker.js');
-                const hasFeature = hasIdentifiedFeature();
-                
-                if (!hasFeature) {
-                    console.warn('⚠️ Complete button clicked but no feature selected');
-                    // Keep modal open and show error
-                    const statusEl = document.getElementById('status');
-                    if (statusEl) {
-                        statusEl.className = 'status error';
-                        statusEl.textContent = '❌ Please identify at least one feature before completing.';
-                    }
-                    return;
-                }
-                
-                // Enable features
-                const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
-                enableAllTutorialRestrictedFeatures();
-                console.log('✅ Features enabled after feature selection');
-                
-                // In study mode, use the workflow. Otherwise, open activity level directly
-                const { isStudyMode } = await import('./master-modes.js');
-                if (isStudyMode()) {
-                    console.log('🎓 Study Mode: Starting submit workflow...');
-                    // Close with keepOverlay: true so overlay stays for Activity Level modal
-                    await modalManager.closeModal('completeConfirmationModal', {
-                        keepOverlay: true
-                    });
-                    console.log('✅ Complete Confirmation modal closed (overlay kept for workflow)');
-                    
-                    const { handleStudyModeSubmit } = await import('./study-workflow.js');
-                    await handleStudyModeSubmit();
-                } else {
-                    // Not in study mode - close normally and open Activity Level modal directly
-                    closeCompleteConfirmationModal();
-                    openActivityLevelModal();
-                }
-            });
-        }
-    }
-    
-    // Missing Study ID modal event listeners
-    const missingStudyIdModal = document.getElementById('missingStudyIdModal');
-    if (!missingStudyIdModal) {
-        console.error('❌ Missing Study ID modal not found in DOM');
-    } else {
-        preventClickOutside(missingStudyIdModal);
-        
-        // "Enter Study ID" button - opens participant modal
-        const enterStudyIdBtn = missingStudyIdModal.querySelector('.modal-submit');
-        if (enterStudyIdBtn) {
-            enterStudyIdBtn.addEventListener('click', () => {
-                closeMissingStudyIdModal();
-                // Small delay to ensure modal closes first
-                setTimeout(() => {
-                    openParticipantModal();
-                }, 100);
-            });
-        }
-    }
-    
-    // Pre-Survey modal event listeners
-    const preSurveyModal = document.getElementById('preSurveyModal');
-    if (!preSurveyModal) {
-        console.error('❌ Pre-survey modal not found in DOM');
-    } else {
-        const preSurveyCloseBtn = preSurveyModal.querySelector('.modal-close');
-        const preSurveySubmitBtn = preSurveyModal.querySelector('.modal-submit');
-    
-        // Function to check if all pre-survey questions are answered
-        const updatePreSurveySubmitButton = () => {
-            const allAnswered = 
-                document.querySelector('input[name="preCalm"]:checked') &&
-                document.querySelector('input[name="preEnergized"]:checked') &&
-                document.querySelector('input[name="preNervous"]:checked') &&
-                document.querySelector('input[name="preFocused"]:checked') &&
-                document.querySelector('input[name="preConnected"]:checked') &&
-                document.querySelector('input[name="preWonder"]:checked');
-            
-            if (preSurveySubmitBtn) {
-                preSurveySubmitBtn.disabled = !allAnswered;
-            }
-        };
-        
-        // Listen for changes to enable/disable submit button
-        preSurveyModal.querySelectorAll('input[type="radio"]').forEach(radio => {
-            radio.addEventListener('change', updatePreSurveySubmitButton);
-        });
-        
-        preventClickOutside(preSurveyModal);
-        
-        if (preSurveyCloseBtn) {
-            preSurveyCloseBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                closePreSurveyModal();
-            });
-        }
-        
-        if (preSurveySubmitBtn) {
-            preSurveySubmitBtn.addEventListener('click', async () => {
-                const { submitPreSurvey } = await import('./ui-surveys.js');
-                await submitPreSurvey();  // Save data
-                
-                // Auto-detect next modal using workflow logic
-                const nextModal = await getNextModalInWorkflow('preSurveyModal');
-                console.log('🔍 Pre-Survey submit: nextModal =', nextModal);
-                
-                await closePreSurveyModal(nextModal !== null);
-                
-                // Start activity timer after pre-survey completion
-                startActivityTimer();
-                
-                // In study mode, open the next modal in workflow
-                if (isStudyMode() && nextModal) {
-                    setTimeout(() => {
-                        // Only open tutorial intro if it's the first visit
-                        // For returning visits, close modal and let user explore (Activity Level comes after Submit)
-                        if (nextModal === 'tutorialIntroModal') {
-                            console.log('🎓 Opening Tutorial Intro modal...');
-                            openTutorialIntroModal();
-                        } else if (nextModal === 'activityLevelModal') {
-                            // This shouldn't happen after pre-survey - Activity Level comes after Submit
-                            // But if it does, we should close overlay and let user explore
-                            console.warn('⚠️ Pre-Survey: Activity Level detected as next modal - this is wrong! Closing overlay and letting user explore.');
-                            fadeOutOverlay();
-                        } else {
-                            // Returning visit: Pre-Survey → Experience (no modal, user explores)
-                            // Activity Level will open when user clicks Submit button
-                            console.log('📊 Pre-Survey complete - ready for experience. Activity Level will show after Submit.');
-                            fadeOutOverlay(); // Make sure overlay is closed
-                        }
-                    }, 350);
-                } else if (isStudyMode() && !nextModal) {
-                    // No next modal - this is correct for returning visits
-                    // Close overlay and let user explore
-                    console.log('📊 Pre-Survey complete - no next modal (returning visit). Closing overlay, ready for experience.');
-                    fadeOutOverlay();
-                }
-            });
-        }
-        
-        wireKeyboardSubmit(preSurveyModal, preSurveySubmitBtn, { documentLevel: true });
-        
-        // Initial button state check
-        updatePreSurveySubmitButton();
-        
-        wireQuickFill(preSurveyModal, 'input[name^="pre"]', 5, updatePreSurveySubmitButton);
-    }
-    
-    // Post-Survey modal event listeners
-    const postSurveyModal = document.getElementById('postSurveyModal');
-    if (!postSurveyModal) {
-        console.error('❌ Post-survey modal not found in DOM');
-    } else {
-        const postSurveyCloseBtn = postSurveyModal.querySelector('.modal-close');
-        const postSurveySubmitBtn = postSurveyModal.querySelector('.modal-submit');
-    
-        // Function to check if all post-survey questions are answered
-        const updatePostSurveySubmitButton = () => {
-            const allAnswered = 
-                document.querySelector('input[name="postCalm"]:checked') &&
-                document.querySelector('input[name="postEnergized"]:checked') &&
-                document.querySelector('input[name="postNervous"]:checked') &&
-                document.querySelector('input[name="postFocused"]:checked') &&
-                document.querySelector('input[name="postConnected"]:checked') &&
-                document.querySelector('input[name="postWonder"]:checked');
-            
-            if (postSurveySubmitBtn) {
-                postSurveySubmitBtn.disabled = !allAnswered;
-            }
-        };
-        
-        // Listen for changes to enable/disable submit button
-        postSurveyModal.querySelectorAll('input[type="radio"]').forEach(radio => {
-            radio.addEventListener('change', updatePostSurveySubmitButton);
-        });
-        
-        preventClickOutside(postSurveyModal);
-        
-        if (postSurveyCloseBtn) {
-            postSurveyCloseBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                closePostSurveyModal();
-            });
-        }
-        
-        if (postSurveySubmitBtn) {
-            postSurveySubmitBtn.addEventListener('click', async () => {
-                const { submitPostSurvey } = await import('./ui-surveys.js');
-                await submitPostSurvey();  // Save data
-                
-                await closePostSurveyModal();
-                
-                // In study mode, submit to Qualtrics and show end modal
-                if (isStudyMode()) {
-                    setTimeout(async () => {
-                        try {
-                            // Submit all surveys to Qualtrics
-                            const { attemptSubmission } = await import('./ui-controls.js');
-                            await attemptSubmission(true);  // fromWorkflow=true
-                            console.log('✅ Submission complete');
-                        } catch (error) {
-                            console.error('❌ Error during submission:', error);
-                            // Continue to show end modal even if submission fails
-                        }
-                        
-                        // Show end modal (always show, even if submission had issues)
-                        const { getParticipantId } = await import('./qualtrics-api.js');
-                        const { incrementSessionCount } = await import('./study-workflow.js');
-                        const participantId = getParticipantId();
-                        const sessionCount = incrementSessionCount();
-                        
-                        console.log('🎉 Opening end modal...', { participantId, sessionCount });
-                        
-                        // Show end modal (openEndModal already updates the content)
-                        openEndModal(participantId, sessionCount);
-                        console.log('✅ End modal should now be visible');
-                    }, 350);
-                }
-            });
-        }
-        
-        // Initial button state check
-        updatePostSurveySubmitButton();
-        
-        wireQuickFill(postSurveyModal, 'input[name^="post"]', 5, updatePostSurveySubmitButton);
-    }
-    
-    // Activity Level modal event listeners
-    const activityLevelModal = document.getElementById('activityLevelModal');
-    if (!activityLevelModal) {
-        console.error('❌ Activity Level modal not found in DOM');
-    } else {
-        const activityLevelCloseBtn = activityLevelModal.querySelector('.modal-close');
-        const activityLevelSubmitBtn = activityLevelModal.querySelector('.modal-submit');
-        
-        // Function to check if activity level question is answered
-        const updateActivityLevelSubmitButton = () => {
-            const answered = document.querySelector('input[name="activityLevel"]:checked');
-            
-            if (activityLevelSubmitBtn) {
-                activityLevelSubmitBtn.disabled = !answered;
-            }
-        };
-        
-        // Listen for changes to enable/disable submit button
-        activityLevelModal.querySelectorAll('input[type="radio"]').forEach(radio => {
-            radio.addEventListener('change', updateActivityLevelSubmitButton);
-        });
-        
-        preventClickOutside(activityLevelModal);
-        
-        if (activityLevelCloseBtn) {
-            activityLevelCloseBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                closeActivityLevelModal();
-            });
-        }
-        
-        if (activityLevelSubmitBtn) {
-            activityLevelSubmitBtn.addEventListener('click', async () => {
-                if (window.pm?.interaction) console.log('🔵 Activity Level submit button clicked');
-                const { submitActivityLevelSurvey } = await import('./ui-surveys.js');
-                const success = await submitActivityLevelSurvey();  // Save data
-
-                if (!success) {
-                    // If submission failed (e.g., no participant ID), don't close modal
-                    // The function already showed an alert, so user can fix the issue
-                    console.log('❌ Activity Level submission failed - keeping modal open');
-                    return;
-                }
-
-                console.log('✅ Activity Level submission successful');
-
-                // If we're in study mode workflow, close the modal so the workflow promise resolves
-                // The workflow is waiting for the modal to close via its promise from openModal
-                const { isStudyMode } = await import('./master-modes.js');
-                console.log('🔍 isStudyMode:', isStudyMode());
-                if (isStudyMode()) {
-                    console.log('✅ Activity Level saved - closing modal for workflow...');
-                    // Close the modal (auto-detects next modal and keeps overlay)
-                    await closeActivityLevelModal();
-                    // Open next survey in workflow
-                    const { shouldShowAwesf } = await import('./study-workflow.js');
-                    const needsAwesf = shouldShowAwesf();
-                    if (needsAwesf) {
-                        setTimeout(() => {
-                            openAwesfModal();
-                        }, 350);
-                    } else {
-                        setTimeout(() => {
-                            openPostSurveyModal();
-                        }, 350);
-                    }
-                    console.log('✅ Activity Level modal closed - workflow will continue');
-                } else {
-                    // Not in workflow - close normally
-                    await closeActivityLevelModal();
-                }
-            });
-        }
-        
-        // Initial button state check
-        updateActivityLevelSubmitButton();
-    }
-    
-    // AWE-SF modal event listeners
-    const awesfModal = document.getElementById('awesfModal');
-    if (!awesfModal) {
-        console.error('❌ AWE-SF modal not found in DOM');
-    } else {
-        const awesfCloseBtn = awesfModal.querySelector('.modal-close');
-        const awesfSubmitBtn = awesfModal.querySelector('.modal-submit');
-        
-        // Function to check if all AWE-SF questions are answered
-        const updateAwesfSubmitButton = () => {
-            const allAnswered = 
-                document.querySelector('input[name="slowDown"]:checked') &&
-                document.querySelector('input[name="reducedSelf"]:checked') &&
-                document.querySelector('input[name="chills"]:checked') &&
-                document.querySelector('input[name="oneness"]:checked') &&
-                document.querySelector('input[name="grand"]:checked') &&
-                document.querySelector('input[name="diminishedSelf"]:checked') &&
-                document.querySelector('input[name="timeSlowing"]:checked') &&
-                document.querySelector('input[name="awesfConnected"]:checked') &&
-                document.querySelector('input[name="small"]:checked') &&
-                document.querySelector('input[name="vastness"]:checked') &&
-                document.querySelector('input[name="challenged"]:checked') &&
-                document.querySelector('input[name="selfShrink"]:checked');
-            
-            if (awesfSubmitBtn) {
-                awesfSubmitBtn.disabled = !allAnswered;
-            }
-        };
-        
-        // Listen for changes to enable/disable submit button
-        awesfModal.querySelectorAll('input[type="radio"]').forEach(radio => {
-            radio.addEventListener('change', (e) => {
-                e.stopPropagation(); // Prevent event from bubbling
-                updateAwesfSubmitButton();
-            });
-            // Also prevent click events from bubbling
-            radio.addEventListener('click', (e) => {
-                e.stopPropagation(); // Prevent click from bubbling to modal/overlay
-            });
-        });
-        
-        // Also prevent label clicks from bubbling (labels are often used with radio buttons)
-        awesfModal.querySelectorAll('label').forEach(label => {
-            label.addEventListener('click', (e) => {
-                e.stopPropagation(); // Prevent label clicks from bubbling
-            });
-        });
-        
-        preventClickOutside(awesfModal);
-        
-        if (awesfCloseBtn) {
-            awesfCloseBtn.addEventListener('click', (e) => {
-                e.stopPropagation(); // Prevent bubble to overlay
-                closeAwesfModal(); // Close without event check
-            });
-        }
-        
-        if (awesfSubmitBtn) {
-            awesfSubmitBtn.addEventListener('click', async () => {
-                const { submitAwesfSurvey } = await import('./ui-surveys.js');
-                await submitAwesfSurvey();  // Save data
-                
-                await closeAwesfModal();
-                // Open post-survey after AWE-SF closes
-                setTimeout(() => {
-                    openPostSurveyModal();
-                }, 350);
-            });
-        }
-        
-        // Initial button state check
-        updateAwesfSubmitButton();
-        
-        wireQuickFill(awesfModal, 'input[type="radio"]', 7, updateAwesfSubmitButton);
-    }
-    
-    // Tutorial Intro modal event listeners
-    const tutorialIntroModal = document.getElementById('tutorialIntroModal');
-    if (!tutorialIntroModal) {
-        console.error('❌ Tutorial Intro modal not found in DOM');
-    } else {
-        preventClickOutside(tutorialIntroModal);
-        
-        const tutorialIntroSubmitBtn = tutorialIntroModal.querySelector('.modal-submit');
-        if (tutorialIntroSubmitBtn) {
-            tutorialIntroSubmitBtn.addEventListener('click', async () => {
-                console.log('🎓🔥 BEGIN TUTORIAL BUTTON CLICKED - DISABLING CONTROLS NOW');
-                console.trace('Stack trace for Begin Tutorial click:');
-                
-                // Mark tutorial as in progress immediately when user clicks "Begin Tutorial"
-                const { markTutorialAsInProgress } = await import('./study-workflow.js');
-                markTutorialAsInProgress();
-                
-                // Disable speed and volume controls during tutorial (tutorial will re-enable at appropriate time)
-                const speedSlider = document.getElementById('playbackSpeed');
-                const volumeSlider = document.getElementById('volumeSlider');
-                const speedLabel = document.getElementById('speedLabel');
-                const volumeLabel = document.getElementById('volumeLabel');
-                if (speedSlider) speedSlider.disabled = true;
-                if (volumeSlider) volumeSlider.disabled = true;
-                if (speedLabel) speedLabel.style.opacity = '0.5';
-                if (volumeLabel) volumeLabel.style.opacity = '0.5';
-                
-                console.log('🔒 Speed and volume controls DISABLED for tutorial');
-                
-                closeTutorialIntroModal();
-                
-                // Start the tutorial after modal closes
-                setTimeout(async () => {
-                    const { runInitialTutorial } = await import('./tutorial.js');
-                    await runInitialTutorial();
-                    
-                    // Mark tutorial as seen after it completes
-                    const { markTutorialAsSeen } = await import('./study-workflow.js');
-                    markTutorialAsSeen();
-                }, 350);
-            });
-        }
-        
-        // Skip link removed - all users must complete tutorial
-        
-        wireKeyboardSubmit(tutorialIntroModal, tutorialIntroSubmitBtn, { documentLevel: true });
-    }
-    
-    // Tutorial Revisit modal event listeners
-    const tutorialRevisitModal = document.getElementById('tutorialRevisitModal');
-    if (!tutorialRevisitModal) {
-        console.error('❌ Tutorial Revisit modal not found in DOM');
-    } else {
-        preventClickOutside(tutorialRevisitModal);
-        
-        const tutorialRevisitBtn1 = tutorialRevisitModal.querySelector('#tutorialRevisitBtn1');
-        const tutorialRevisitBtn2 = tutorialRevisitModal.querySelector('#tutorialRevisitBtn2');
-        const tutorialRevisitBtn3 = tutorialRevisitModal.querySelector('#tutorialRevisitBtn3');
-        
-        // Button 1 handler (Continue when active, Yes when not active)
-        if (tutorialRevisitBtn1) {
-            tutorialRevisitBtn1.addEventListener('click', async () => {
-                const { isTutorialActive } = await import('./tutorial-state.js');
-                const tutorialActive = isTutorialActive();
-                
-                if (tutorialActive) {
-                    // Continue tutorial - just close modal
-                    closeTutorialRevisitModal(false);
-                    console.log('▶️ Continuing tutorial');
-                } else {
-                    // Not active - restart tutorial (Yes button)
-                    closeTutorialRevisitModal(false);
-                    
-                    // Clear tutorial seen flag to restart tutorial
-                    localStorage.removeItem('study_has_seen_tutorial');
-                    console.log('🔄 Tutorial flag cleared - will restart tutorial');
-                    
-                    // Restart the tutorial
-                    setTimeout(async () => {
-                        const { runInitialTutorial } = await import('./tutorial-coordinator.js');
-                        await runInitialTutorial();
-                    }, 300);
-                }
-            });
-        }
-        
-        // Button 2 handler (Restart when active, Cancel when not active)
-        if (tutorialRevisitBtn2) {
-            tutorialRevisitBtn2.addEventListener('click', async () => {
-                const { isTutorialActive } = await import('./tutorial-state.js');
-                const tutorialActive = isTutorialActive();
-                
-                if (tutorialActive) {
-                    // Restart tutorial
-                    closeTutorialRevisitModal(false);
-                    
-                    // Clear tutorial phase and flag
-                    const { clearTutorialPhase } = await import('./tutorial-state.js');
-                    clearTutorialPhase();
-                    localStorage.removeItem('study_has_seen_tutorial');
-                    console.log('🔄 Restarting tutorial');
-                    
-                    // Restart the tutorial
-                    setTimeout(async () => {
-                        const { runInitialTutorial } = await import('./tutorial-coordinator.js');
-                        await runInitialTutorial();
-                    }, 300);
-                } else {
-                    // Cancel - just close modal
-                    closeTutorialRevisitModal(false);
-                }
-            });
-        }
-        
-        // Button 3 handler (Exit - only shown when tutorial is active)
-        if (tutorialRevisitBtn3) {
-            tutorialRevisitBtn3.addEventListener('click', async () => {
-                // Exit tutorial
-                closeTutorialRevisitModal(false);
-                
-                // Clear tutorial phase
-                const { clearTutorialPhase } = await import('./tutorial-state.js');
-                clearTutorialPhase();
-                
-                // Enable all features
-                const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
-                await enableAllTutorialRestrictedFeatures();
-                
-                // Mark tutorial as seen (they've started it, so mark as seen)
-                const { markTutorialAsSeen } = await import('./study-workflow.js');
-                markTutorialAsSeen();
-                
-                console.log('🚪 Exited tutorial - features enabled');
-            });
-        }
-        
-        // Keyboard support: Enter for first button, Escape to close
-        tutorialRevisitModal.addEventListener('keydown', (e) => {
-            if (tutorialRevisitModal.style.display === 'none') return;
-            
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                e.stopPropagation();
-                if (tutorialRevisitBtn1) {
-                    tutorialRevisitBtn1.click();
-                }
-            } else if (e.key === 'Escape') {
-                e.preventDefault();
-                e.stopPropagation();
-                closeTutorialRevisitModal(false);
-            }
-        });
-    }
-    
-    // Enable/disable quick-fill buttons based on mode
     toggleQuickFillButtons();
-    
+
     modalListenersSetup = true;
     if (window.pm?.init) console.log('📋 Modal event listeners attached (using ModalManager)');
 }
