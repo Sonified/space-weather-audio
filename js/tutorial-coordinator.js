@@ -1,3 +1,4 @@
+// ═══ VOLCANO STUDY ONLY — Tutorial step coordination ═══
 /**
  * tutorial-coordinator.js
  * Clean, linear tutorial sequence with async/await

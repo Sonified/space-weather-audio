@@ -1,3 +1,4 @@
+// ═══ VOLCANO STUDY ONLY — Not used by EMIC study (see emic-study-flow.js) ═══
 /**
  * study-workflow.js
  * Orchestrates the full Study Mode workflow with all visit rules

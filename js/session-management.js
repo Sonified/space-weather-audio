@@ -1,3 +1,4 @@
+// ═══ VOLCANO STUDY ONLY — Session timeouts for volcano study workflow ═══
 /**
  * session-management.js
  * Session timeout management with inactivity detection
@@ -7,6 +8,7 @@
  */
 
 import { reportSessionStateInconsistency } from './silent-error-reporter.js';
+import { STORAGE_KEYS } from './study-workflow.js';
 
 // ===== SESSION TIMEOUT MANAGEMENT =====
 
@@ -329,11 +331,11 @@ export async function handleSessionTimeout() {
                 
                 // Clear session-level flags so next session starts fresh
                 try {
-                    localStorage.removeItem('study_has_seen_welcome_back');
-                    localStorage.removeItem('study_pre_survey_completion_date');
-                    localStorage.removeItem('study_begin_analysis_clicked_this_session');
-                    localStorage.removeItem('study_current_session_start');
-                    localStorage.removeItem('study_timeout_session_id');
+                    localStorage.removeItem(STORAGE_KEYS.HAS_SEEN_WELCOME_BACK);
+                    localStorage.removeItem(STORAGE_KEYS.PRE_SURVEY_COMPLETION_DATE);
+                    localStorage.removeItem(STORAGE_KEYS.BEGIN_ANALYSIS_CLICKED_THIS_SESSION);
+                    localStorage.removeItem(STORAGE_KEYS.CURRENT_SESSION_START);
+                    localStorage.removeItem(STORAGE_KEYS.TIMEOUT_SESSION_ID);
                     console.log('🧹 Cleared session flags after timeout (including timeout tracking)');
                 } catch (error) {
                     console.warn('⚠️ Could not clear session flags:', error);

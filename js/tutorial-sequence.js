@@ -1,3 +1,4 @@
+// ═══ VOLCANO STUDY ONLY — Tutorial step definitions ═══
 /**
  * tutorial-sequence.js
  * Individual tutorial sequences

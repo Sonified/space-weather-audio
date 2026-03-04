@@ -1,3 +1,4 @@
+// ═══ EMIC STUDY — Study flow orchestrator for Lauren Blum EMIC wave research ═══
 // TODO: Audit all collected data fields:
 // - Study start time (login)
 // - Each feature identification timestamp  

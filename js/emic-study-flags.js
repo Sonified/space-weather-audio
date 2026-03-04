@@ -1,3 +1,4 @@
+// ═══ EMIC STUDY — Progress flags for EMIC study flow ═══
 /**
  * emic-study-flags.js
  * Lightweight localStorage flag system for EMIC study state persistence.

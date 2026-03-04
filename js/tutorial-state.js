@@ -1,3 +1,4 @@
+// ═══ VOLCANO STUDY ONLY — Tutorial phase/step state tracking ═══
 /**
  * tutorial-state.js
  * High-level tutorial state machine and coordination

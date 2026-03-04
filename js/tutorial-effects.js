@@ -1,3 +1,4 @@
+// ═══ VOLCANO STUDY (shared utilities: typeText, enableAllTutorialRestrictedFeatures) ═══
 /**
  * tutorial-effects.js
  * Visual and UI effects for tutorials

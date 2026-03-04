@@ -1,3 +1,4 @@
+// ═══ VOLCANO STUDY ONLY — Interactive tutorial for volcano study ═══
 /**
  * tutorial.js
  * Tutorial overlay and guidance system
