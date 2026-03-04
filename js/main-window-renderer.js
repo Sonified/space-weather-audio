@@ -255,6 +255,7 @@ export function setWaveformPanMode(mode) {
 // Waveform (time series) — TSL material renders on same WebGPU canvas as spectrogram
 let waveformMesh = null;
 let waveformMaterial = null;
+let wfCenterLineMesh = null;  // Standalone zero-line — never moves, never recomputes
 // Waveform GPU textures + TSL nodes
 let wfSampleTexNode = null;       // TSL TextureNode for raw audio samples
 let wfMipTexNode = null;          // TSL TextureNode for single-level min/max bins
@@ -597,9 +598,6 @@ async function initThreeScene() {
             const cmapColor = wfCmapTexNode.uv(vec2(normalized, float(0.5)));
             const wfColor = vec4(cmapColor.r, cmapColor.g, cmapColor.b, float(1.0));
 
-            const centerThickness = float(1.0).div(wfUCanvasHeight);
-            const isCenterLine = tslAbs(vuv.y.sub(0.5)).lessThan(centerThickness);
-            const centerAlpha = select(wfUTransparentBg.greaterThan(0.5), float(0.6), float(1.0));
             const bgAlpha = select(wfUTransparentBg.greaterThan(0.5), float(0.0), float(1.0));
             const bgColor = vec4(uBgR, uBgG, uBgB, bgAlpha);
 
@@ -635,10 +633,7 @@ async function initThreeScene() {
             const blendedA = tslMax(renderAlpha, bgAlpha);
             const blendedColor = vec4(blendedR, blendedG, blendedB, blendedA);
 
-            return select(isCenterLine,
-                vec4(float(0.4), float(0.4), float(0.4), centerAlpha),
-                blendedColor
-            );
+            return blendedColor;
         });
 
         waveformMaterial = new THREE.MeshBasicNodeMaterial();
@@ -648,6 +643,20 @@ async function initThreeScene() {
         waveformMesh.renderOrder = 2;
         waveformMesh.visible = false;
         scene.add(waveformMesh);
+
+        // ─── Waveform center line (zero-line) — its own mesh, set once, done ─
+        const centerLineMat = new THREE.MeshBasicNodeMaterial();
+        centerLineMat.transparent = true;
+        centerLineMat.depthWrite = false;
+        centerLineMat.colorNode = vec4(float(0.4), float(0.4), float(0.4), float(0.7));
+        wfCenterLineMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), centerLineMat);
+        wfCenterLineMesh.renderOrder = 3;  // Always on top of waveform + frozen quad
+        // Span a huge X range (1M seconds ≈ 11.5 days) so it's always visible.
+        // Y: 1px tall — scale will be updated to match pixel size in renderFrame.
+        wfCenterLineMesh.scale.set(500000, 0.001, 1);
+        wfCenterLineMesh.position.set(500000, 0.5, 0);
+        wfCenterLineMesh.visible = false;
+        scene.add(wfCenterLineMesh);
 
         // ─── Frozen waveform quad (world-space, samples from RenderTarget) ───
         frozenWF.renderTarget = new THREE.RenderTarget(1, 1, {
@@ -982,6 +991,14 @@ async function renderFrame() {
 
         // Waveform: frozen texture mode (zoomed in) or live shader mode (full view)
         const showWaveform = (mode === 'timeSeries' || mode === 'both') && wfTotalSamples > 0;
+        if (wfCenterLineMesh) {
+            wfCenterLineMesh.visible = showWaveform;
+            if (showWaveform) {
+                // 1px tall in world space: camera spans 1.0 vertically over canvas.height pixels
+                const pxInWorld = (camera.top - camera.bottom) / threeRenderer.domElement.height;
+                wfCenterLineMesh.scale.y = pxInWorld / 2;  // PlaneGeometry is 2 units tall
+            }
+        }
         if (waveformMesh && showWaveform && State.dataStartTime && State.dataEndTime) {
             const dataDurationSec = (State.dataEndTime.getTime() - State.dataStartTime.getTime()) / 1000;
             const viewSpan = camera.right - camera.left;
@@ -1051,6 +1068,7 @@ async function renderFrame() {
         } else {
             if (waveformMesh) waveformMesh.visible = false;
             if (frozenWF.quad) frozenWF.quad.visible = false;
+            if (wfCenterLineMesh) wfCenterLineMesh.visible = false;
         }
 
         await threeRenderer.renderAsync(scene, camera);
@@ -2261,6 +2279,12 @@ export function clearCompleteSpectrogram() {
     if (waveformMaterial) {
         waveformMaterial.dispose();
         waveformMaterial = null;
+    }
+    if (wfCenterLineMesh) {
+        wfCenterLineMesh.geometry.dispose();
+        wfCenterLineMesh.material.dispose();
+        if (scene) scene.remove(wfCenterLineMesh);
+        wfCenterLineMesh = null;
     }
     // Dispose waveform textures
     if (wfSampleTexture) { wfSampleTexture.dispose(); wfSampleTexture = null; }
