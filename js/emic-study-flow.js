@@ -10,8 +10,8 @@
 // - Master participant list: emic/participants/_master.json (auto-updated)
 
 /**
- * emic-simulate-flow.js
- * Simulate Flow: walks through the entire participant study flow
+ * emic-study-flow.js
+ * EMIC Study Flow: walks through the entire participant study flow
  * 
  * Instead of trying to clear existing feature boxes (no exported clear function),
  * we create a temporary test user ({username}_TEST1, _TEST2, etc.) which naturally
