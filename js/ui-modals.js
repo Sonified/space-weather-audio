@@ -7,7 +7,7 @@
 import * as State from './audio-state.js';
 import { getParticipantId, storeParticipantId, getParticipantIdFromURL } from './qualtrics-api.js';
 import { trackSurveyStart } from '../Qualtrics/participant-response-manager.js';
-import { isStudyMode, isStudyCleanMode, isLocalEnvironment } from './master-modes.js';
+import { isStudyMode, isStudyCleanMode, isLocalEnvironment, isEmicStudyMode } from './master-modes.js';
 import { modalManager } from './modal-manager.js';
 import { startActivityTimer } from './session-management.js';
 import { STORAGE_KEYS, hasSeenParticipantSetup, hasSeenWelcome, markParticipantSetupAsSeen, markWelcomeAsSeen } from './study-workflow.js';
@@ -1111,21 +1111,25 @@ export function setupModalEventListeners() {
         removeModalEventListeners();
     }
 
+    // Shared modals (used by both EMIC and volcano study)
     wireParticipantModal();
     wireWelcomeModal();
-    wireEndModal();
-    wireBeginAnalysisModal();
-    wireWelcomeBackModal();
-    wireCompleteConfirmationModal();
-    wireMissingStudyIdModal();
-    wirePreSurveyModal();
-    wirePostSurveyModal();
-    wireActivityLevelModal();
-    wireAwesfModal();
-    wireTutorialIntroModal();
-    wireTutorialRevisitModal();
 
-    toggleQuickFillButtons();
+    // Volcano study modals — skip in EMIC mode (these DOM elements don't exist in emic_study.html)
+    if (!isEmicStudyMode()) {
+        wireEndModal();
+        wireBeginAnalysisModal();
+        wireWelcomeBackModal();
+        wireCompleteConfirmationModal();
+        wireMissingStudyIdModal();
+        wirePreSurveyModal();
+        wirePostSurveyModal();
+        wireActivityLevelModal();
+        wireAwesfModal();
+        wireTutorialIntroModal();
+        wireTutorialRevisitModal();
+        toggleQuickFillButtons();
+    }
 
     modalListenersSetup = true;
     if (window.pm?.init) console.log('📋 Modal event listeners attached (using ModalManager)');
