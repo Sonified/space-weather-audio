@@ -1693,7 +1693,8 @@
             settings.overlapSlider = overlapSlider.value;
             settings.mouseSmoothSlider = document.getElementById('mouseSmoothSlider').value;
             settings.platterInertiaSlider = document.getElementById('platterInertiaSlider').value;
-            settings.scrubAdaptSlider = document.getElementById('scrubAdaptSlider').value;
+            const saSliderEl = document.getElementById('scrubAdaptSlider');
+            if (saSliderEl) settings.scrubAdaptSlider = saSliderEl.value;
             settings.lastTrackFile = lastLoadedTrackFile;
             try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch {}
         }
@@ -1741,10 +1742,12 @@
             }
             if (settings.scrubAdaptSlider !== undefined) {
                 const saSlider = document.getElementById('scrubAdaptSlider');
-                saSlider.value = settings.scrubAdaptSlider;
-                scrubAdapt = parseInt(settings.scrubAdaptSlider);
-                document.getElementById('scrubAdaptValue').textContent = scrubAdapt;
-                updateSliderFill(saSlider);
+                if (saSlider) {
+                    saSlider.value = settings.scrubAdaptSlider;
+                    scrubAdapt = parseInt(settings.scrubAdaptSlider);
+                    document.getElementById('scrubAdaptValue').textContent = scrubAdapt;
+                    updateSliderFill(saSlider);
+                }
             }
 
             // Restore window value display
@@ -2926,15 +2929,18 @@
             saveSettings();
         });
 
-        document.getElementById('scrubAdaptSlider').addEventListener('input', (e) => {
-            scrubAdapt = parseInt(e.target.value);
-            document.getElementById('scrubAdaptValue').textContent = scrubAdapt;
-            updateSliderFill(e.target);
-            if (stretchNode && currentAlgorithm === 'resample') {
-                stretchNode.port.postMessage({ type: 'set-scrub-adapt', data: { value: scrubAdapt } });
-            }
-            saveSettings();
-        });
+        const scrubAdaptSliderEl = document.getElementById('scrubAdaptSlider');
+        if (scrubAdaptSliderEl) {
+            scrubAdaptSliderEl.addEventListener('input', (e) => {
+                scrubAdapt = parseInt(e.target.value);
+                document.getElementById('scrubAdaptValue').textContent = scrubAdapt;
+                updateSliderFill(e.target);
+                if (stretchNode && currentAlgorithm === 'resample') {
+                    stretchNode.port.postMessage({ type: 'set-scrub-adapt', data: { value: scrubAdapt } });
+                }
+                saveSettings();
+            });
+        }
 
         // GPU parameter changes — auto re-render when settings change
         let gpuParamRestretchTimeout = null;
