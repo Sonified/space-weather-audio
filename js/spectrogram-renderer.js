@@ -1129,6 +1129,7 @@ function showFeaturePopup(box) {
         <button class="feature-popup-save" disabled>Save</button>
     `;
 
+    popup.style.visibility = 'hidden';
     document.body.appendChild(popup);
     featurePopupEl = popup;
 
@@ -1186,8 +1187,10 @@ function showFeaturePopup(box) {
 
     applyPopupSettings();
 
-    // Position beside the feature box
-    positionPopupBesideRect(popup, box.screenRect, null);
+    // Position beside the feature box (hidden until positioned to prevent jump)
+    const sr = box.screenRect || getScreenRectForBox(box);
+    positionPopupBesideRect(popup, sr, null);
+    popup.style.visibility = '';
 
     // Forward wheel events to the spectrogram canvas so pan momentum isn't killed
     popup.addEventListener('wheel', (e) => {
