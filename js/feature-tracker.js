@@ -1,5 +1,5 @@
 /**
- * region-tracker.js
+ * feature-tracker.js
  * Feature tracking for standalone spectrogram annotations (EMIC study)
  *
  * The old region-based workflow (multi-step selection, zoom, play buttons, region

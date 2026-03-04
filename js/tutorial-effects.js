@@ -920,7 +920,7 @@ export async function enableAllTutorialRestrictedFeatures() {
     }
 
     // Update Begin Analysis button visibility (show it now that tutorial is complete)
-    import('./region-tracker.js').then(({ updateCompleteButtonState }) => {
+    import('./feature-tracker.js').then(({ updateCompleteButtonState }) => {
         updateCompleteButtonState();
     });
 }

@@ -6,7 +6,7 @@
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate, getYPositionForFrequencyScaled, getScaleTransitionState, getLogScaleMinFreq } from './spectrogram-axis-renderer.js';
-import { handleSpectrogramSelection, isInFrequencySelectionMode, getStandaloneFeatures, saveStandaloneFeatures, startFrequencySelection, getFlatFeatureNumber, deleteStandaloneFeature, renderStandaloneFeaturesList } from './region-tracker.js';
+import { handleSpectrogramSelection, isInFrequencySelectionMode, getStandaloneFeatures, saveStandaloneFeatures, startFrequencySelection, getFlatFeatureNumber, deleteStandaloneFeature, renderStandaloneFeaturesList } from './feature-tracker.js';
 import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, resetSpectrogramState, updateElasticFriendInBackground, onColormapChanged, setScrollZoomHiRes } from './main-window-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { isStudyMode } from './master-modes.js';
@@ -555,7 +555,7 @@ function deviceXToTimestamp(deviceX, canvasWidth) {
 
 /**
  * Convert a device-pixel Y position to a frequency (Hz).
- * Inverse of getYPositionForFrequencyScaled — inlined from region-tracker.js
+ * Inverse of getYPositionForFrequencyScaled — inlined from feature-tracker.js
  */
 function deviceYToFrequency(deviceY, canvasHeight) {
     const originalNyquist = State.originalDataFrequencyRange?.max || 50;

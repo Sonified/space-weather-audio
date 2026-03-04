@@ -18,7 +18,7 @@ import { modalManager } from './modal-manager.js';
 import { initErrorReporter } from './error-reporter.js';
 import { initSilentErrorReporter } from './silent-error-reporter.js';
 import { resizeAxisCanvas, drawFrequencyAxis, setMinFreqMultiplier, getMinFreqMultiplier } from './spectrogram-axis-renderer.js';
-import { startFrequencySelection, updateCompleteButtonState, updateCmpltButtonState } from './region-tracker.js';
+import { startFrequencySelection, updateCompleteButtonState, updateCmpltButtonState } from './feature-tracker.js';
 import { zoomState } from './zoom-state.js';
 import { initKeyboardShortcuts } from './keyboard-shortcuts.js';
 import { setStatusText } from './tutorial-effects.js';

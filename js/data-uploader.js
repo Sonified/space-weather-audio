@@ -58,7 +58,7 @@ export async function uploadEmicSubmission(participantId, submissionData) {
 export async function syncEmicProgress(participantId, milestone) {
     if (!participantId) return;
     try {
-        const { getStandaloneFeatures } = await import('./region-tracker.js');
+        const { getStandaloneFeatures } = await import('./feature-tracker.js');
         const { EMIC_FLAGS, getEmicFlag, getEmicFlagNumber } = await import('./emic-study-flags.js');
 
         const standalone = getStandaloneFeatures();

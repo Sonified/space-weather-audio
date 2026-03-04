@@ -1255,7 +1255,7 @@ export function stopZoomTransition() {
         drawWaveformWithSelection();
         
         // 🔥 CRITICAL: Ensure final spectrogram canvas is displayed
-        // The normal completion path relies on the promise chain in region-tracker.js
+        // The normal completion path relies on the promise chain in feature-tracker.js
         // to call updateSpectrogramViewport(), but if we're stopping early, we need
         // to ensure the viewport is updated. However, we must be careful not to
         // interfere with the normal promise chain completion.

@@ -19,7 +19,7 @@ const LOG_THROTTLE_MS = 1000; // Only log once per second
 
 /**
  * Initialize with region tracker functions
- * Called from region-tracker.js to avoid circular dependencies
+ * Called from feature-tracker.js to avoid circular dependencies
  */
 export function initButtonsRenderer(regionTracker) {
     getCurrentRegions = regionTracker.getCurrentRegions;

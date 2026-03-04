@@ -12,7 +12,7 @@ import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCan
 import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas } from './spectrogram-x-axis-renderer.js';
 import { startCompleteVisualization, clearCompleteSpectrogram } from './main-window-renderer.js';
 import { zoomState } from './zoom-state.js';
-import { updateCompleteButtonState, loadRegionsAfterDataFetch } from './region-tracker.js';
+import { updateCompleteButtonState, loadRegionsAfterDataFetch } from './feature-tracker.js';
 import { isStudyMode } from './master-modes.js';
 import { storeAudioData, getAudioData, updateCacheWithAllComponents } from './cdaweb-cache.js';
 import { log, logGroup, logGroupEnd } from './logger.js';

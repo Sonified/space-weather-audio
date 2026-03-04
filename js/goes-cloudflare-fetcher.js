@@ -20,7 +20,7 @@ import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCan
 import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas } from './spectrogram-x-axis-renderer.js';
 import { renderProgressiveSpectrogram, resetProgressiveSpectrogram } from './main-window-renderer.js';
 import { zoomState } from './zoom-state.js';
-import { updateCompleteButtonState, loadRegionsAfterDataFetch } from './region-tracker.js';
+import { updateCompleteButtonState, loadRegionsAfterDataFetch } from './feature-tracker.js';
 const WORKER_BASE = 'https://spaceweather.now.audio/emic';
 const INSTRUMENT_SAMPLE_RATE = 10; // Hz — GOES mag high-res cadence
 

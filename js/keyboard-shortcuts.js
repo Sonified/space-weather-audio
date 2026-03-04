@@ -3,7 +3,7 @@
  * Keyboard shortcuts for feature drawing and navigation
  */
 
-import { isInFrequencySelectionMode, startFrequencySelection, stopFrequencySelection, getStandaloneFeatures, deleteStandaloneFeature, renderStandaloneFeaturesList, updateCompleteButtonState, updateCmpltButtonState } from './region-tracker.js';
+import { isInFrequencySelectionMode, startFrequencySelection, stopFrequencySelection, getStandaloneFeatures, deleteStandaloneFeature, renderStandaloneFeaturesList, updateCompleteButtonState, updateCmpltButtonState } from './feature-tracker.js';
 import { zoomState } from './zoom-state.js';
 import * as State from './audio-state.js';
 import { changeFrequencyScale, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
