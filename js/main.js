@@ -8,8 +8,8 @@ import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, cancelAllRAFLoops, setResizeRAFRef, switchStretchAlgorithm, primeStretchProcessors } from './audio-player.js';
 import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWaveformFromMinMax, drawWaveformWithSelection, changeWaveformFilter, updatePlaybackIndicator, startPlaybackIndicator, clearWaveformRenderer } from './minimap-window-renderer.js';
-import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection, redrawAllCanvasFeatureBoxes, clearAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
-import { clearCompleteSpectrogram, startMemoryMonitoring, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, aggressiveCleanup, setTileShaderMode, resizeRendererToDisplaySize, setLevelTransitionMode, setCrossfadePower, setCatmullSettings, setWaveformPanMode } from './main-window-renderer.js';
+import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, startVisualization, setupSpectrogramSelection, redrawAllCanvasFeatureBoxes, clearAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
+import { clearCompleteSpectrogram, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, setTileShaderMode, resizeRendererToDisplaySize, setLevelTransitionMode, setCrossfadePower, setCatmullSettings, setWaveformPanMode } from './main-window-renderer.js';
 import { setPyramidReduceMode, rebuildUpperLevels } from './spectrogram-pyramid.js';
 import { loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, openParticipantInfoModal } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './participant-id.js';
@@ -20,13 +20,13 @@ import { initErrorReporter } from './error-reporter.js';
 import { initSilentErrorReporter } from './silent-error-reporter.js';
 import { positionAxisCanvas, resizeAxisCanvas, drawFrequencyAxis, initializeAxisPlaybackRate, setMinFreqMultiplier, getMinFreqMultiplier } from './spectrogram-axis-renderer.js';
 import { positionWaveformAxisCanvas, resizeWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
-import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate, initializeMaxCanvasWidth, cancelZoomTransitionRAF, stopZoomTransition } from './waveform-x-axis-renderer.js';
+import { positionWaveformXAxisCanvas, resizeWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, resizeWaveformDateCanvas, drawWaveformDate, initializeMaxCanvasWidth } from './waveform-x-axis-renderer.js';
 import { positionWaveformButtonsCanvas, resizeWaveformButtonsCanvas, drawRegionButtons } from './waveform-buttons-renderer.js';
 import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas, resizeSpectrogramXAxisCanvas } from './spectrogram-x-axis-renderer.js';
 import { initRegionTracker, toggleRegion, toggleRegionPlay, addFeature, updateFeature, deleteRegion, startFrequencySelection, createTestRegion, setSelectionFromActiveRegionIfExists, getActivePlayingRegionIndex, clearActivePlayingRegion, switchSpacecraftRegions, updateCompleteButtonState, updateCmpltButtonState, showAddRegionButton } from './region-tracker.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { zoomState } from './zoom-state.js';
-import { initKeyboardShortcuts, cleanupKeyboardShortcuts } from './keyboard-shortcuts.js';
+import { initKeyboardShortcuts } from './keyboard-shortcuts.js';
 import { initDataViewer, fetchUsers } from './data-viewer.js';
 import { setStatusText } from './tutorial-effects.js';
 import { drawDayMarkers, clearDayMarkers } from './day-markers.js';
@@ -44,6 +44,11 @@ import {
 import { initShareModal, openShareModal, checkAndLoadSharedSession, applySharedSession, updateShareButtonState } from './share-modal.js';
 import { log, logGroup, logGroupEnd, pm } from './logger.js';
 import { upgradeAllSelects } from './custom-select.js';
+import { injectSettingsDrawer, injectGearPopovers } from './settings-drawer.js';
+import { checkAppVersion } from './version-check.js';
+import { createWAVBlob } from './wav-recording.js';
+import { setupLifecycleHandlers } from './lifecycle-cleanup.js';
+import { loadRecentSearches, restoreRecentSearch, saveRecentSearch } from './recent-searches.js';
 
 // console.groupCollapsed('📦 [MODULE] Loading');
 // console.log('✅ ALL IMPORTS COMPLETE');
@@ -67,63 +72,6 @@ function safeIsStudyMode() {
     }
 }
 
-/**
- * Create a WAV file blob from Float32Array samples
- * @param {Float32Array} samples - Audio samples (normalized -1 to 1)
- * @param {number} sampleRate - Sample rate in Hz
- * @returns {Blob} WAV file blob
- */
-function createWAVBlob(samples, sampleRate) {
-    const numChannels = 1; // Mono
-    const bitsPerSample = 16; // 16-bit PCM
-    const bytesPerSample = bitsPerSample / 8;
-    const blockAlign = numChannels * bytesPerSample;
-    const byteRate = sampleRate * blockAlign;
-    const dataSize = samples.length * bytesPerSample;
-    const fileSize = 44 + dataSize; // 44-byte header + data
-    
-    // Create ArrayBuffer for WAV file
-    const buffer = new ArrayBuffer(fileSize);
-    const view = new DataView(buffer);
-    
-    // Write WAV header
-    let offset = 0;
-    
-    // RIFF chunk descriptor
-    writeString(view, offset, 'RIFF'); offset += 4;
-    view.setUint32(offset, fileSize - 8, true); offset += 4;
-    writeString(view, offset, 'WAVE'); offset += 4;
-    
-    // fmt sub-chunk
-    writeString(view, offset, 'fmt '); offset += 4;
-    view.setUint32(offset, 16, true); offset += 4; // Subchunk size
-    view.setUint16(offset, 1, true); offset += 2; // Audio format (1 = PCM)
-    view.setUint16(offset, numChannels, true); offset += 2;
-    view.setUint32(offset, sampleRate, true); offset += 4;
-    view.setUint32(offset, byteRate, true); offset += 4;
-    view.setUint16(offset, blockAlign, true); offset += 2;
-    view.setUint16(offset, bitsPerSample, true); offset += 2;
-    
-    // data sub-chunk
-    writeString(view, offset, 'data'); offset += 4;
-    view.setUint32(offset, dataSize, true); offset += 4;
-    
-    // Write sample data (convert Float32 to Int16)
-    for (let i = 0; i < samples.length; i++) {
-        const sample = Math.max(-1, Math.min(1, samples[i])); // Clamp to [-1, 1]
-        const int16 = Math.round(sample * 32767); // Convert to 16-bit integer
-        view.setInt16(offset, int16, true);
-        offset += 2;
-    }
-    
-    return new Blob([buffer], { type: 'audio/wav' });
-}
-
-function writeString(view, offset, string) {
-    for (let i = 0; i < string.length; i++) {
-        view.setUint8(offset + i, string.charCodeAt(i));
-    }
-}
 
 // console.log('🟡 Defined safeIsStudyMode');
 
@@ -954,703 +902,6 @@ async function initializeDevMode() {
     console.log('✅ Dev mode ready');
 }
 
-/**
- * SHARED ADVANCED CONTROLS: Gear popovers, settings drawer, localStorage persistence.
- * Called from both EMIC Study and Solar Portal modes.
- */
-function injectSettingsDrawer() {
-    // Skip if already injected
-    if (document.getElementById('settingsDrawer')) return;
-
-    // Hamburger button (fixed, top-left)
-    const hamburger = document.createElement('div');
-    hamburger.id = 'hamburgerBtn';
-    hamburger.className = 'hamburger-btn';
-    hamburger.title = 'Settings drawer';
-    hamburger.innerHTML = '&#9776;';
-    document.body.appendChild(hamburger);
-
-    // Settings drawer
-    const drawer = document.createElement('div');
-    drawer.id = 'settingsDrawer';
-    drawer.className = 'settings-drawer';
-    drawer.innerHTML = `
-        <div class="drawer-header">
-            <span class="drawer-title">Master Settings</span>
-            <span id="drawerClose" class="drawer-close" title="Close">&times;</span>
-        </div>
-        <div class="drawer-section">
-            <div class="drawer-section-title">Session</div>
-            <div class="drawer-row">
-                <label for="skipLoginWelcome" class="drawer-label">Skip Login & Welcome</label>
-                <input type="checkbox" id="skipLoginWelcome" class="drawer-checkbox">
-            </div>
-        </div>
-        <div class="drawer-section">
-            <div class="drawer-section-title">Data Loading</div>
-            <div class="drawer-row">
-                <label for="dataSource" class="drawer-label">Source</label>
-                <select id="dataSource" class="drawer-input" style="width: 150px; text-align: left;">
-                    <option value="cdaweb" selected>GOES CDAWeb</option>
-                    <option value="cloudflare">GOES Cloudflare</option>
-                </select>
-            </div>
-            <div class="drawer-row" style="margin-top: 6px;">
-                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="drawerBypassCache" style="width: 16px; height: 16px; cursor: pointer;">
-                    Do not use cache
-                </label>
-            </div>
-            <div class="drawer-row" style="margin-top: 6px;">
-                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="silentDownload" style="width: 16px; height: 16px; cursor: pointer;">
-                    Silent download
-                </label>
-            </div>
-            <div class="drawer-row" style="margin-top: 6px;">
-                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="autoDownload" style="width: 16px; height: 16px; cursor: pointer;">
-                    Auto download
-                </label>
-            </div>
-            <div class="drawer-row" style="margin-top: 6px;">
-                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="autoPlay" style="width: 16px; height: 16px; cursor: pointer;">
-                    Auto play
-                </label>
-            </div>
-            <div class="drawer-row" style="margin-top: 6px;">
-                <label for="dataRendering" class="drawer-label">Rendering</label>
-                <select id="dataRendering" class="drawer-input" style="width: 130px; text-align: left;">
-                    <option value="progressive" selected>Progressive</option>
-                    <option value="onComplete">On Complete</option>
-                    <option value="triggered">Triggered</option>
-                </select>
-            </div>
-        </div>
-        <div class="drawer-section">
-            <div class="drawer-section-title">Feature Boxes</div>
-            <div class="drawer-row">
-                <label for="featureBoxesVisible" class="drawer-label">Show Boxes</label>
-                <input type="checkbox" id="featureBoxesVisible" class="drawer-checkbox" checked>
-            </div>
-        </div>
-        <div class="drawer-section">
-            <div class="drawer-section-title">Feature Box Annotations</div>
-            <div class="drawer-row">
-                <label for="annotationAlignment" class="drawer-label">Align</label>
-                <select id="annotationAlignment" class="drawer-input" style="width: 100px; text-align: left;">
-                    <option value="center" selected>Center</option>
-                    <option value="left">Left</option>
-                </select>
-            </div>
-            <div class="drawer-row">
-                <label for="annotationWidth" class="drawer-label">Width</label>
-                <div class="drawer-spinner">
-                    <button class="spinner-btn spinner-dec" data-for="annotationWidth">−</button>
-                    <input type="text" id="annotationWidth" class="spinner-value" inputmode="numeric" data-min="100" data-max="800" data-step="25">
-                    <button class="spinner-btn spinner-inc" data-for="annotationWidth">+</button>
-                </div>
-            </div>
-            <div class="drawer-row">
-                <label for="annotationFontSize" class="drawer-label">Font Size</label>
-                <div class="drawer-spinner">
-                    <button class="spinner-btn spinner-dec" data-for="annotationFontSize">−</button>
-                    <input type="text" id="annotationFontSize" class="spinner-value" inputmode="numeric" data-min="8" data-max="28" data-step="1">
-                    <button class="spinner-btn spinner-inc" data-for="annotationFontSize">+</button>
-                </div>
-            </div>
-        </div>
-        <div class="drawer-section">
-            <div class="drawer-section-title">Display on Load</div>
-            <div class="drawer-row">
-                <label for="displayOnLoad" class="drawer-label">Initial View</label>
-                <select id="displayOnLoad" class="drawer-input" style="width: 130px; text-align: left;">
-                    <option value="all" selected>All Data</option>
-                    <option value="beginning">Start at Beginning</option>
-                </select>
-            </div>
-            <div id="initialHoursRow" class="drawer-row" style="display: none;">
-                <label for="initialHours" class="drawer-label">Show first</label>
-                <select id="initialHours" class="drawer-input" style="width: 70px; text-align: left;">
-                    ${Array.from({length: 24}, (_, i) => i + 1).map(h =>
-                        `<option value="${h}"${h === 12 ? ' selected' : ''}>${h}h</option>`
-                    ).join('')}
-                </select>
-            </div>
-        </div>
-        <div class="drawer-section">
-            <div class="drawer-section-title">Layout</div>
-            <div class="drawer-row">
-                <label for="minUIWidth" class="drawer-label">Min Width (px)</label>
-                <div class="drawer-spinner">
-                    <button class="spinner-btn spinner-dec" data-for="minUIWidth">−</button>
-                    <input type="text" id="minUIWidth" class="spinner-value" inputmode="numeric" data-min="0" data-max="3000" data-step="50">
-                    <button class="spinner-btn spinner-inc" data-for="minUIWidth">+</button>
-                </div>
-            </div>
-        </div>
-        <div class="drawer-section">
-            <div class="drawer-section-title">Panel Heights (px)</div>
-            <div class="drawer-row">
-                <label for="heightMinimap" class="drawer-label">Minimap</label>
-                <div class="drawer-spinner">
-                    <button class="spinner-btn spinner-dec" data-for="heightMinimap">−</button>
-                    <input type="text" id="heightMinimap" class="spinner-value" inputmode="numeric" data-min="50" data-max="400" data-step="1">
-                    <button class="spinner-btn spinner-inc" data-for="heightMinimap">+</button>
-                </div>
-            </div>
-            <div class="drawer-row">
-                <label for="heightSpectrogram" class="drawer-label">Spectrogram</label>
-                <div class="drawer-spinner">
-                    <button class="spinner-btn spinner-dec" data-for="heightSpectrogram">−</button>
-                    <input type="text" id="heightSpectrogram" class="spinner-value" inputmode="numeric" data-min="200" data-max="1200" data-step="1">
-                    <button class="spinner-btn spinner-inc" data-for="heightSpectrogram">+</button>
-                </div>
-            </div>
-        </div>
-        <div class="drawer-section">
-            <div class="drawer-section-title">Audio Quality</div>
-            <div class="drawer-row">
-                <label for="audioQuality" class="drawer-label">Sample format</label>
-                <select id="audioQuality" class="drawer-input" style="width: 100px; text-align: left;">
-                    <option value="16">16 Bit</option>
-                    <option value="32">32 Bit</option>
-                </select>
-            </div>
-        </div>
-        <div class="drawer-section">
-            <div class="drawer-section-title">Tile Compression</div>
-            <div class="drawer-row">
-                <label for="tileCompression" class="drawer-label">Format</label>
-                <select id="tileCompression" class="drawer-input" style="width: 100px; text-align: left;">
-                    <option value="uint8">Uint8</option>
-                    <option value="bc4">BC4</option>
-                </select>
-            </div>
-        </div>
-        <div class="drawer-section">
-            <div class="drawer-section-title">FFT Tile Edge Mode</div>
-            <div class="drawer-row">
-                <label for="tileEdgeMode" class="drawer-label">Stitching</label>
-                <select id="tileEdgeMode" class="drawer-input" style="width: 130px; text-align: left;">
-                    <option value="standard" selected>Standard</option>
-                    <option value="crossfade" disabled>Crossfade (coming soon)</option>
-                </select>
-            </div>
-            <div class="drawer-row">
-                <label for="tileChunkSize" class="drawer-label">Chunk size</label>
-                <select id="tileChunkSize" class="drawer-input" style="width: 130px; text-align: left;">
-                    ${(() => {
-                        const def = window.__DEFAULT_TILE_CHUNK || 'adaptive';
-                        const opts = [`<option value="adaptive"${def === 'adaptive' ? ' selected' : ''}>Adaptive</option>`];
-                        for (const m of [1,2,5,10,15,20,25,30,35,40,45,50,55]) {
-                            opts.push(`<option value="${m * 60}"${def === String(m * 60) ? ' selected' : ''}>${m} min</option>`);
-                        }
-                        for (const h of [1,2,3,4,5,6,12]) {
-                            const s = h * 3600;
-                            opts.push(`<option value="${s}"${def === String(s) ? ' selected' : ''}>${h} hr</option>`);
-                        }
-                        const dayS = 86400;
-                        opts.push(`<option value="${dayS}"${def === String(dayS) ? ' selected' : ''}>1 day</option>`);
-                        return opts.join('');
-                    })()}
-                </select>
-            </div>
-        </div>
-        <div class="drawer-section">
-            <div class="drawer-section-title">Zoom Out Mode</div>
-            <div class="drawer-row">
-                <label for="mainWindowZoomOut" class="drawer-label">Reduction</label>
-                <select id="mainWindowZoomOut" class="drawer-input" style="width: 120px; text-align: left;">
-                    <option value="average" selected>Show Average</option>
-                    <option value="balanced">Balanced</option>
-                    <option value="peak">Show Peak</option>
-                </select>
-            </div>
-            <div class="drawer-row">
-                <label for="levelTransition" class="drawer-label">Transition</label>
-                <select id="levelTransition" class="drawer-input" style="width: 120px; text-align: left;">
-                    <option value="stepped">Stepped</option>
-                    <option value="crossfade" selected>Crossfade</option>
-                </select>
-            </div>
-            <div id="crossfadePowerRow" style="display: none; flex-direction: column; gap: 10px; padding: 4px 0;">
-                <span class="drawer-label">Blend curve:</span>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">smooth</span>
-                    <input type="range" id="crossfadePower" class="drawer-input" min="0.5" max="6" step="0.5" value="1" style="width: 80px; flex: none; margin: 0; padding: 0;">
-                    <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">sharp</span>
-                    <span id="crossfadePowerLabel" style="font-size: 11px; color: #888; margin-left: 2px; min-width: 24px;">2.0</span>
-                </div>
-            </div>
-        </div>
-        <div class="drawer-section">
-            <div class="drawer-section-title">Render Order</div>
-            <div class="drawer-row">
-                <label for="renderOrder" class="drawer-label">Pipeline</label>
-                <select id="renderOrder" class="drawer-input" style="width: 120px; text-align: left;">
-                    <option value="all-then-pyramid">All → Pyramid</option>
-                    <option value="pyramid-only" selected>Pyramid Only</option>
-                </select>
-            </div>
-        </div>
-        <div class="drawer-section">
-            <div class="drawer-section-title">Waveform Zoom</div>
-            <div class="drawer-row">
-                <label for="catmullMode" class="drawer-label">Zoomed-in style</label>
-                <select id="catmullMode" class="drawer-input" style="width: 110px; text-align: left;">
-                    <option value="default" selected>Rounded bins</option>
-                    <option value="smooth">Smooth curve</option>
-                </select>
-            </div>
-            <div id="catmullSubControls" style="display: none;">
-                <div class="drawer-row">
-                    <label for="catmullThreshold" class="drawer-label">Transition (spp)</label>
-                    <select id="catmullThreshold" class="drawer-input" style="width: 70px; text-align: left;">
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="4">4</option>
-                        <option value="8">8</option>
-                        <option value="16">16</option>
-                        <option value="32">32</option>
-                        <option value="64">64</option>
-                        <option value="128" selected>128</option>
-                        <option value="256">256</option>
-                    </select>
-                </div>
-                <div class="drawer-row drawer-slider-row">
-                    <label for="catmullCore" class="drawer-label" style="flex: 0 0 62px;">Thickness</label>
-                    <input type="range" id="catmullCore" min="0.01" max="1.0" step="0.01" value="1.0" style="flex: 1;">
-                    <span id="catmullCoreLabel" class="drawer-slider-value">1.00</span>
-                </div>
-                <div class="drawer-row drawer-slider-row">
-                    <label for="catmullFeather" class="drawer-label" style="flex: 0 0 62px;">Feather</label>
-                    <input type="range" id="catmullFeather" min="0.1" max="5.0" step="0.1" value="1.0" style="flex: 1;">
-                    <span id="catmullFeatherLabel" class="drawer-slider-value">1.0</span>
-                </div>
-            </div>
-            <div class="drawer-row">
-                <label for="waveformPanMode" class="drawer-label">Pan rendering</label>
-                <select id="waveformPanMode" class="drawer-input" style="width: 120px; text-align: left;">
-                    <option value="smartFreeze" selected>Smart Freeze</option>
-                    <option value="alwaysCompute">Always Compute</option>
-                </select>
-            </div>
-        </div>
-        <div class="drawer-section">
-            <div class="drawer-section-title">Arrow Key Navigation</div>
-            <div class="drawer-row">
-                <label for="arrowZoomStep" class="drawer-label">Zoom Step</label>
-                <select id="arrowZoomStep" class="drawer-input" style="width: 70px; text-align: left;">
-                    <option value="5">5%</option>
-                    <option value="10">10%</option>
-                    <option value="15" selected>15%</option>
-                    <option value="20">20%</option>
-                    <option value="25">25%</option>
-                    <option value="30">30%</option>
-                </select>
-            </div>
-            <div class="drawer-row">
-                <label for="arrowPanStep" class="drawer-label">Pan Step</label>
-                <select id="arrowPanStep" class="drawer-input" style="width: 70px; text-align: left;">
-                    <option value="5">5%</option>
-                    <option value="10" selected>10%</option>
-                    <option value="15">15%</option>
-                    <option value="20">20%</option>
-                    <option value="25">25%</option>
-                    <option value="30">30%</option>
-                </select>
-            </div>
-        </div>
-        <div class="drawer-section">
-            <div class="drawer-section-title">X-Axis Ticks</div>
-            <div style="display: flex; flex-direction: column; gap: 10px; padding: 4px 0;">
-                <div>
-                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                        <span class="drawer-label" style="min-width: 56px;">Fade in:</span>
-                        <select id="tickFadeInCurve" class="drawer-input" style="width: 100px; text-align: left;">
-                            <option value="linear">Linear</option>
-                            <option value="easeIn">Ease In</option>
-                            <option value="easeOut" selected>Ease Out</option>
-                            <option value="easeInOut">Ease In-Out</option>
-                        </select>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
-                        <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">0s</span>
-                        <input type="range" id="tickFadeInTime" class="drawer-input" min="0" max="2" step="0.05" value="0.9" style="flex: 1; margin: 0; padding: 0;">
-                        <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">2s</span>
-                        <span id="tickFadeInLabel" style="font-size: 11px; color: #888; min-width: 32px;">0.90s</span>
-                    </div>
-                </div>
-                <div>
-                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                        <span class="drawer-label" style="min-width: 56px;">Fade out:</span>
-                        <select id="tickFadeOutCurve" class="drawer-input" style="width: 100px; text-align: left;">
-                            <option value="linear">Linear</option>
-                            <option value="easeIn">Ease In</option>
-                            <option value="easeOut" selected>Ease Out</option>
-                            <option value="easeInOut">Ease In-Out</option>
-                        </select>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
-                        <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">0s</span>
-                        <input type="range" id="tickFadeOutTime" class="drawer-input" min="0" max="2" step="0.05" value="0.3" style="flex: 1; margin: 0; padding: 0;">
-                        <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">2s</span>
-                        <span id="tickFadeOutLabel" style="font-size: 11px; color: #888; min-width: 32px;">0.30s</span>
-                    </div>
-                </div>
-                <div>
-                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                        <span class="drawer-label" style="min-width: 56px;">Edge:</span>
-                        <select id="tickEdgeFadeMode" class="drawer-input" style="width: 100px; text-align: left;">
-                            <option value="spatial" selected>Spatial</option>
-                            <option value="time">Time</option>
-                            <option value="none">None</option>
-                        </select>
-                    </div>
-                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px;">
-                        <span class="drawer-label" style="min-width: 56px;">Curve:</span>
-                        <select id="tickEdgeFadeCurve" class="drawer-input" style="width: 100px; text-align: left;">
-                            <option value="linear">Linear</option>
-                            <option value="easeIn">Ease In</option>
-                            <option value="easeOut" selected>Ease Out</option>
-                            <option value="easeInOut">Ease In-Out</option>
-                        </select>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
-                        <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">0</span>
-                        <input type="range" id="tickEdgeFadeAmount" class="drawer-input" min="0" max="2" step="0.05" value="0.3" style="flex: 1; margin: 0; padding: 0;">
-                        <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">max</span>
-                        <span id="tickEdgeFadeAmountLabel" style="font-size: 11px; color: #888; min-width: 32px;">0.30</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="drawer-section">
-            <div class="drawer-section-title">Feature Box Playback</div>
-            <div class="drawer-row">
-                <label for="featurePlaybackMode" class="drawer-label">At page edge</label>
-                <select id="featurePlaybackMode" class="drawer-input" style="width: 105px; text-align: left;">
-                    <option value="continue" selected>No change</option>
-                    <option value="stop">Stop audio</option>
-                    <option value="clamp">Clamp view</option>
-                </select>
-            </div>
-        </div>
-        <div class="drawer-section">
-            <div class="drawer-section-title">Page Scroll</div>
-            <div class="drawer-row" style="margin-top: 6px;">
-                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="lockPageScroll" style="width: 16px; height: 16px; cursor: pointer;">
-                    Lock page scroll
-                </label>
-            </div>
-        </div>
-        <div class="drawer-section">
-            <div class="drawer-section-title">Prints</div>
-            <div class="drawer-row" style="margin-top: 6px;">
-                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="printInit" style="width: 16px; height: 16px; cursor: pointer;">
-                    Initialization
-                </label>
-            </div>
-            <div class="drawer-row" style="margin-top: 4px;">
-                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="printGPU" style="width: 16px; height: 16px; cursor: pointer;">
-                    Rendering
-                </label>
-            </div>
-            <div class="drawer-row" style="margin-top: 4px;">
-                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="printMemory" style="width: 16px; height: 16px; cursor: pointer;">
-                    Memory
-                </label>
-            </div>
-            <div class="drawer-row" style="margin-top: 4px;">
-                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="printAudio" style="width: 16px; height: 16px; cursor: pointer;">
-                    Audio
-                </label>
-            </div>
-            <div class="drawer-row" style="margin-top: 4px;">
-                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="printStudy" style="width: 16px; height: 16px; cursor: pointer;">
-                    Study Flow
-                </label>
-            </div>
-            <div class="drawer-row" style="margin-top: 4px;">
-                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="printFeatures" style="width: 16px; height: 16px; cursor: pointer;">
-                    Features
-                </label>
-            </div>
-            <div class="drawer-row" style="margin-top: 4px;">
-                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="printData" style="width: 16px; height: 16px; cursor: pointer;">
-                    Data
-                </label>
-            </div>
-            <div class="drawer-row" style="margin-top: 4px;">
-                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="printInteraction" style="width: 16px; height: 16px; cursor: pointer;">
-                    Interaction
-                </label>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(drawer);
-}
-
-function injectGearPopovers() {
-    // Nav Bar gear
-    const navGear = document.getElementById('navBarGear');
-    if (navGear && !navGear.querySelector('.gear-btn')) {
-        navGear.innerHTML = `
-            <span class="gear-btn" role="button" aria-label="Navigation bar settings">&#9881;</span>
-            <div class="gear-popover" id="navBarPopover">
-                <div class="gear-popover-title">Navigation Bar</div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">Show:</span>
-                    <select id="miniMapView" class="gear-select">
-                        <option value="linePlot">Line Plot</option>
-                        <option value="spectrogram" selected>Spectrogram</option>
-                        <option value="both">Combination</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">Mode:</span>
-                    <select id="viewingMode" class="gear-select">
-                        <option value="full">Region Creation</option>
-                        <option value="pageTurn" selected>Windowed Page Turn</option>
-                        <option value="scroll">Windowed Scroll</option>
-                        <option value="static">Windowed Static</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">Click:</span>
-                    <select id="navBarClick" class="gear-select">
-                        <option value="moveWindow" selected>Move window</option>
-                        <option value="moveAndPlay">Move & play</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">Markers:</span>
-                    <select id="navBarMarkers" class="gear-select">
-                        <option value="daily" selected>Daily</option>
-                        <option value="none">None</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">Feat Boxes:</span>
-                    <select id="navBarFeatureBoxes" class="gear-select">
-                        <option value="show" selected>Show</option>
-                        <option value="hide">Hide</option>
-                    </select>
-                </div>
-                <div class="gear-popover-title">Scroll</div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">V-Scroll:</span>
-                    <select id="navBarScroll" class="gear-select">
-                        <option value="zoom" selected>Zoom</option>
-                        <option value="none">No action</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">V-Sens:</span>
-                    <select id="navBarVSens" class="gear-select" data-paired="navBarScroll">
-                        <option value="25">25%</option>
-                        <option value="50">50%</option>
-                        <option value="75">75%</option>
-                        <option value="100" selected>100%</option>
-                        <option value="150">150%</option>
-                        <option value="200">200%</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">H-Scroll:</span>
-                    <select id="navBarHScroll" class="gear-select">
-                        <option value="pan" selected>Pan</option>
-                        <option value="none">No action</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">H-Sens:</span>
-                    <select id="navBarHSens" class="gear-select" data-paired="navBarHScroll">
-                        <option value="10">10%</option>
-                        <option value="25">25%</option>
-                        <option value="50">50%</option>
-                        <option value="75">75%</option>
-                        <option value="100" selected>100%</option>
-                        <option value="150">150%</option>
-                        <option value="200">200%</option>
-                    </select>
-                </div>
-            </div>
-        `;
-    }
-
-    // Main Window gear
-    const mainGear = document.getElementById('mainWindowGear');
-    if (mainGear && !mainGear.querySelector('.gear-btn')) {
-        mainGear.innerHTML = `
-            <span class="gear-btn" role="button" aria-label="Main window settings">&#9881;</span>
-            <div class="gear-popover" id="mainWindowPopover">
-                <div class="gear-popover-title">Main Window</div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">Show:</span>
-                    <select id="mainWindowView" class="gear-select">
-                        <option value="spectrogram" selected>Spectrogram</option>
-                        <option value="both">Combination</option>
-                        <option value="timeSeries">Time Series</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">Mode:</span>
-                    <select id="mainWindowMode" class="gear-select">
-                        <option value="full">Region Creation</option>
-                        <option value="pageTurn" selected>Windowed Page Turn</option>
-                        <option value="scroll">Windowed Scroll</option>
-                        <option value="static">Windowed Static</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">Click:</span>
-                    <select id="mainWindowClick" class="gear-select">
-                        <option value="noAction" selected>No action</option>
-                        <option value="playAudio">Play audio</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">Release:</span>
-                    <select id="mainWindowRelease" class="gear-select">
-                        <option value="playAudio" selected>Play audio</option>
-                        <option value="noAction">No action</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">Drag:</span>
-                    <select id="mainWindowDrag" class="gear-select">
-                        <option value="drawFeature" selected>Draw feature</option>
-                        <option value="noAction">No action</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">Markers:</span>
-                    <select id="mainWindowMarkers" class="gear-select">
-                        <option value="daily" selected>Daily</option>
-                        <option value="none">None</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">X-Axis:</span>
-                    <select id="mainWindowXAxis" class="gear-select">
-                        <option value="show" selected>Show Ticks</option>
-                        <option value="hide">Hide Ticks</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">Shader:</span>
-                    <select id="mainWindowBoxFilter" class="gear-select">
-                        <option value="linear" selected>Linear</option>
-                        <option value="box">Box</option>
-                        <option value="nearest">Nearest</option>
-                    </select>
-                </div>
-                <div class="gear-popover-title">Scroll</div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">V-Scroll:</span>
-                    <select id="mainWindowScroll" class="gear-select">
-                        <option value="zoom" selected>Zoom</option>
-                        <option value="none">No action</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">V-Sens:</span>
-                    <select id="mainWindowVSens" class="gear-select" data-paired="mainWindowScroll">
-                        <option value="25">25%</option>
-                        <option value="50">50%</option>
-                        <option value="75">75%</option>
-                        <option value="100" selected>100%</option>
-                        <option value="150">150%</option>
-                        <option value="200">200%</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">H-Scroll:</span>
-                    <select id="mainWindowHScroll" class="gear-select">
-                        <option value="pan" selected>Pan</option>
-                        <option value="none">No action</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">H-Sens:</span>
-                    <select id="mainWindowHSens" class="gear-select" data-paired="mainWindowHScroll">
-                        <option value="10">10%</option>
-                        <option value="25">25%</option>
-                        <option value="50">50%</option>
-                        <option value="75">75%</option>
-                        <option value="100" selected>100%</option>
-                        <option value="150">150%</option>
-                        <option value="200">200%</option>
-                    </select>
-                </div>
-                <div class="gear-popover-title">Feature Numbers</div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">Color:</span>
-                    <select id="mainWindowNumbers" class="gear-select">
-                        <option value="hide">Hide</option>
-                        <option value="white" selected>White</option>
-                        <option value="black">Black</option>
-                        <option value="red">Red</option>
-                        <option value="outline">Outline</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">Location:</span>
-                    <select id="mainWindowNumbersLoc" class="gear-select">
-                        <option value="above">Above box</option>
-                        <option value="inside" selected>Inside box</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">Weight:</span>
-                    <select id="mainWindowNumbersWeight" class="gear-select">
-                        <option value="normal" selected>Normal</option>
-                        <option value="500">Medium</option>
-                        <option value="bold">Bold</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">Size:</span>
-                    <select id="mainWindowNumbersSize" class="gear-select">
-                        <option value="8">8px</option>
-                        <option value="9">9px</option>
-                        <option value="10">10px</option>
-                        <option value="11">11px</option>
-                        <option value="12">12px</option>
-                        <option value="13" selected>13px</option>
-                        <option value="14">14px</option>
-                        <option value="15">15px</option>
-                        <option value="16">16px</option>
-                        <option value="17">17px</option>
-                        <option value="18">18px</option>
-                        <option value="19">19px</option>
-                        <option value="20">20px</option>
-                    </select>
-                </div>
-                <div class="gear-popover-row">
-                    <span class="gear-label">Shadow:</span>
-                    <select id="mainWindowNumbersShadow" class="gear-select">
-                        <option value="on" selected>On</option>
-                        <option value="off">Off</option>
-                    </select>
-                </div>
-            </div>
-        `;
-    }
-}
-
 function initializeAdvancedControls() {
     // Inject the settings drawer + hamburger button into the DOM
     injectSettingsDrawer();
@@ -1714,7 +965,9 @@ function initializeAdvancedControls() {
         { id: 'tickFadeOutCurve', key: 'emic_tick_fade_out_curve', type: 'select' },
         { id: 'tickEdgeFadeMode', key: 'emic_tick_edge_fade_mode', type: 'select' },
         { id: 'tickEdgeFadeCurve', key: 'emic_tick_edge_fade_curve', type: 'select' },
-        { id: 'tickEdgeFadeAmount', key: 'emic_tick_edge_fade_amount', type: 'range' },
+        { id: 'tickEdgeSpatialWidth', key: 'emic_tick_edge_spatial_width', type: 'range' },
+        { id: 'tickEdgeTimeIn', key: 'emic_tick_edge_time_in', type: 'range' },
+        { id: 'tickEdgeTimeOut', key: 'emic_tick_edge_time_out', type: 'range' },
         { id: 'printInit', key: 'emic_print_init', type: 'checkbox' },
         { id: 'printGPU', key: 'emic_print_gpu', type: 'checkbox' },
         { id: 'printMemory', key: 'emic_print_memory', type: 'checkbox' },
@@ -2370,7 +1623,9 @@ function initializeAdvancedControls() {
     for (const { sliderId, labelId, storageKey, suffix } of [
         { sliderId: 'tickFadeInTime', labelId: 'tickFadeInLabel', storageKey: 'emic_tick_fade_in', suffix: 's' },
         { sliderId: 'tickFadeOutTime', labelId: 'tickFadeOutLabel', storageKey: 'emic_tick_fade_out', suffix: 's' },
-        { sliderId: 'tickEdgeFadeAmount', labelId: 'tickEdgeFadeAmountLabel', storageKey: 'emic_tick_edge_fade_amount', suffix: '' },
+        { sliderId: 'tickEdgeSpatialWidth', labelId: 'tickEdgeSpatialWidthLabel', storageKey: 'emic_tick_edge_spatial_width', suffix: '' },
+        { sliderId: 'tickEdgeTimeIn', labelId: 'tickEdgeTimeInLabel', storageKey: 'emic_tick_edge_time_in', suffix: 's' },
+        { sliderId: 'tickEdgeTimeOut', labelId: 'tickEdgeTimeOutLabel', storageKey: 'emic_tick_edge_time_out', suffix: 's' },
     ]) {
         const slider = document.getElementById(sliderId);
         const label = document.getElementById(labelId);
@@ -2381,6 +1636,20 @@ function initializeAdvancedControls() {
             localStorage.setItem(storageKey, slider.value);
         });
         update();
+    }
+
+    // Show/hide edge fade sub-controls based on mode
+    const edgeModeSelect = document.getElementById('tickEdgeFadeMode');
+    const spatialControls = document.getElementById('tickEdgeSpatialControls');
+    const timeControls = document.getElementById('tickEdgeTimeControls');
+    function updateEdgeFadeControls() {
+        const mode = edgeModeSelect?.value || 'spatial';
+        if (spatialControls) spatialControls.style.display = mode === 'spatial' ? '' : 'none';
+        if (timeControls) timeControls.style.display = mode === 'time' ? '' : 'none';
+    }
+    if (edgeModeSelect) {
+        edgeModeSelect.addEventListener('change', updateEdgeFadeControls);
+        updateEdgeFadeControls();
     }
 
     // Toggle regions panel + top bar controls visibility based on viewing mode
@@ -2640,52 +1909,6 @@ function updateSpacecraftDropdownLabels(loadedSpacecraft, selectedSpacecraft) {
 }
 
 // console.log('🟢 REACHED LINE 1289 - About to define initialization');
-
-// =============================================================================
-// 🔄 VERSION CHECK - Auto-refresh when new code is deployed
-// GitHub Action updates version.json on every push - fully automatic!
-// =============================================================================
-async function checkAppVersion() {
-    if (window.pm?.init) console.log('🔍 Checking for app updates...');
-    try {
-        // Fetch version.json with cache-busting
-        const res = await fetch(`/version.json?_=${Date.now()}`, { cache: 'no-store' });
-        if (!res.ok) {
-            console.log('⚠️ Version check: Could not fetch version.json');
-            return false;
-        }
-
-        // Read version from JSON content (updated automatically by GitHub Action on every push)
-        const data = await res.json();
-        const serverVersion = data.version;
-        if (!serverVersion) {
-            console.log('⚠️ Version check: No version found in version.json');
-            return false;
-        }
-
-        const localVersion = localStorage.getItem('app_version');
-        // Parse version string (YYYYMMDD.HHMMSS) into a readable date
-        const versionParts = serverVersion.match(/(\d{4})(\d{2})(\d{2})\.(\d{2})(\d{2})(\d{2})/);
-        const serverTime = versionParts
-            ? new Date(Date.UTC(versionParts[1], versionParts[2]-1, versionParts[3], versionParts[4], versionParts[5], versionParts[6])).toLocaleString()
-            : serverVersion;
-        if (window.pm?.init) console.log(`📋 Version check: Local="${localVersion || '(first visit)'}" vs Server="${serverVersion}"`);
-
-        if (localVersion && localVersion !== serverVersion) {
-            console.log('%c🔄 NEW VERSION DETECTED - Refreshing page...', 'color: #FF9800; font-weight: bold; font-size: 14px');
-            localStorage.setItem('app_version', serverVersion);
-            location.reload();
-            return true; // Will reload
-        }
-
-        localStorage.setItem('app_version', serverVersion);
-        if (window.pm?.init) console.log(`%c✅ App is up to date (built ${serverTime})`, 'color: #4CAF50; font-weight: bold');
-    } catch (e) {
-        // Silently fail - version check is non-critical
-        console.log('⚠️ Version check skipped (offline or error)', e.message);
-    }
-    return false;
-}
 
 // Main initialization function
 async function initializeMainApp() {
@@ -3493,116 +2716,8 @@ async function initializeMainApp() {
         }
     }, 100);
     
-    // 🔍 RECENT SEARCHES SYSTEM (using IndexedDB cache)
-    
-    /**
-     * Load recent searches from IndexedDB cache and populate dropdown
-     */
-    async function loadRecentSearches() {
-        if (isEmicStudyMode()) return; // EMIC uses fixed dataset, no recent searches
-        const dropdown = document.getElementById('recentSearches');
-        if (!dropdown) return;
-        
-        // Clear existing options (except placeholder)
-        dropdown.innerHTML = '<option value="">-- Select Recent Search --</option>';
-        
-        try {
-            // Get recent searches from IndexedDB cache
-            const { listRecentSearches, formatCacheEntryForDisplay } = await import('./cdaweb-cache.js');
-            const recentSearches = await listRecentSearches();
-            
-            // Add each search as an option
-            recentSearches.forEach((entry, index) => {
-                const option = document.createElement('option');
-                option.value = entry.id; // Use cache ID as value
-                option.textContent = formatCacheEntryForDisplay(entry);
-                option.dataset.cacheEntry = JSON.stringify({
-                    spacecraft: entry.spacecraft,
-                    dataset: entry.dataset,
-                    startTime: entry.startTime,
-                    endTime: entry.endTime
-                });
-                dropdown.appendChild(option);
-            });
-            
-            console.log(`📋 Loaded ${recentSearches.length} recent searches from cache`);
-            startMemoryMonitoring();
-        } catch (e) {
-            console.warn('Could not load recent searches:', e);
-            startMemoryMonitoring();
-        }
-    }
-
     // Expose loadRecentSearches globally so startStreaming can call it
     window.loadRecentSearches = loadRecentSearches;
-    
-    /**
-     * Restore a search from recent searches by loading from cache
-     */
-    async function restoreRecentSearch(selectedOption) {
-        try {
-            if (!selectedOption.dataset.cacheEntry) return;
-
-            // Bump this search to the top of the recent list
-            const { touchCacheEntry } = await import('./cdaweb-cache.js');
-            await touchCacheEntry(selectedOption.value);
-
-            const cacheData = JSON.parse(selectedOption.dataset.cacheEntry);
-
-            // Parse start/end times to populate form fields
-            const startDate = new Date(cacheData.startTime);
-            const endDate = new Date(cacheData.endTime);
-
-            // Format for date inputs (YYYY-MM-DD)
-            const startDateStr = startDate.toISOString().split('T')[0];
-            const endDateStr = endDate.toISOString().split('T')[0];
-
-            // Format for time inputs (HH:MM:SS.mmm)
-            const startTimeStr = startDate.toISOString().split('T')[1].replace('Z', '');
-            const endTimeStr = endDate.toISOString().split('T')[1].replace('Z', '');
-
-            // Populate form fields - ORDER MATTERS!
-            // 1. Set spacecraft first
-            document.getElementById('spacecraft').value = cacheData.spacecraft;
-            // 2. Update dataset dropdown options for the selected spacecraft
-            updateDatasetOptions();
-            // 3. Now set the dataset (after options are populated)
-            document.getElementById('dataType').value = cacheData.dataset;
-            // 4. Set date/time fields
-            document.getElementById('startDate').value = startDateStr;
-            document.getElementById('startTime').value = startTimeStr;
-            document.getElementById('endDate').value = endDateStr;
-            document.getElementById('endTime').value = endTimeStr;
-
-            // 5. Save all restored values to localStorage for persistence
-            localStorage.setItem('selectedSpacecraft', cacheData.spacecraft);
-            localStorage.setItem('selectedDataType', cacheData.dataset);
-            saveDateTime();
-
-            console.log(`🔍 Restored recent search: ${selectedOption.textContent}`);
-            
-            // Automatically fetch the data from cache
-            const startBtn = document.getElementById('startBtn');
-            if (startBtn && !startBtn.disabled) {
-                console.log(`🚀 Auto-fetching restored search data...`);
-                startBtn.click();
-            } else {
-                console.warn('⚠️ Cannot auto-fetch: startBtn disabled or not found');
-            }
-            
-        } catch (e) {
-            console.warn('Could not restore recent search:', e);
-        }
-    }
-    
-    /**
-     * Save current search - handled automatically by fetchCDAWebAudio caching
-     * This function is kept for backward compatibility but does nothing
-     */
-    function saveRecentSearch() {
-        // Searches are now automatically saved to IndexedDB cache by fetchCDAWebAudio
-        // This function is intentionally empty
-    }
     
     // 🎯 SETUP EVENT LISTENERS (replaces onclick handlers to prevent memory leaks)
     // All event listeners are properly scoped and don't create permanent closures on window.*
@@ -4128,104 +3243,7 @@ async function initializeMainApp() {
     // Close the event listeners group
     if (listenersGroupOpen) logGroupEnd();
     
-    // 🔥 FIX: Cancel all RAF callbacks on page unload to prevent detached document leaks
-    // This ensures RAF callbacks scheduled before page unload are cancelled
-    // 🔥 FIX: Use static imports instead of dynamic imports to prevent Context leaks
-    // Dynamic imports create new Context instances each time, causing massive memory leaks
-    // Since waveform-x-axis-renderer.js is already imported statically at the top, use it directly
-    if (!window._solarAudioCleanupHandlers) {
-        window._solarAudioCleanupHandlers = {};
-        
-        // Import only modules that aren't already statically imported
-    import('./audio-player.js').then(audioPlayerModule => {
-        import('./spectrogram-axis-renderer.js').then(axisModule => {
-                // 🔥 FIX: Use statically imported functions instead of dynamic import
-                // This prevents creating new Context instances (147k+ Context leak!)
-                const cleanupOnUnload = () => {
-                    // Cancel all animation loops
-                    audioPlayerModule.cancelAllRAFLoops();
-                    axisModule.cancelScaleTransitionRAF();
-                    cancelZoomTransitionRAF();
-
-                    // Cleanup event listeners
-                    cleanupSpectrogramSelection();
-                    cleanupKeyboardShortcuts();
-
-                    // Dispose GPU resources (Three.js textures, materials, geometry)
-                    clearCompleteSpectrogram();
-                    clearWaveformRenderer();
-
-                    // Terminate waveform worker
-                    if (State.waveformWorker) {
-                        State.waveformWorker.terminate();
-                        State.setWaveformWorker(null);
-                    }
-
-                    // Close AudioContext (releases system audio resources)
-                    if (State.audioContext && State.audioContext.state !== 'closed') {
-                        State.audioContext.close().catch(() => {});
-                    }
-
-                    // Null large data arrays to help GC
-                    aggressiveCleanup();
-                    window.rawWaveformData = null;
-                    window.displayWaveformData = null;
-                };
-                window._solarAudioCleanupHandlers.cleanupOnUnload = cleanupOnUnload;
-            
-                // 🔥 FIX: Only set window.stopZoomTransition once to prevent function accumulation
-                // Use statically imported function instead of dynamic import
-                if (!window.stopZoomTransition) {
-                    window.stopZoomTransition = stopZoomTransition;
-                }
-            
-                // 🔥 FIX: Remove old listeners before adding new ones to prevent accumulation
-                // Use stored reference so removeEventListener can match
-                if (window._solarAudioCleanupHandlers.beforeunload) {
-                    window.removeEventListener('beforeunload', window._solarAudioCleanupHandlers.beforeunload);
-                }
-                if (window._solarAudioCleanupHandlers.pagehide) {
-                    window.removeEventListener('pagehide', window._solarAudioCleanupHandlers.pagehide);
-                }
-                window.addEventListener('beforeunload', cleanupOnUnload);
-                window._solarAudioCleanupHandlers.beforeunload = cleanupOnUnload;
-                
-                // Also handle pagehide (more reliable than beforeunload in some browsers)
-                window.addEventListener('pagehide', cleanupOnUnload);
-                window._solarAudioCleanupHandlers.pagehide = cleanupOnUnload;
-                
-                // 🔥 FIX: Store visibility change handler reference for cleanup
-                const visibilityChangeHandler = () => {
-                    if (document.hidden) {
-                        // Aggressive cleanup when hidden - save memory, stop animations
-                        if (window.pm?.render) console.log('💤 Page hidden - aggressive cleanup');
-                        audioPlayerModule.cancelAllRAFLoops();
-                        axisModule.cancelScaleTransitionRAF();
-                        cleanupSpectrogramSelection(); // Destroy canvas overlay
-                    } else {
-                        // Page visible again - recreate everything and restore state
-                        if (window.pm?.render) console.log('👁️ Page visible again - recreating canvas and restoring state');
-                        
-                        // Recreate spectrogram selection canvas
-                        setupSpectrogramSelection();
-                        
-                        // Redraw all feature boxes on fresh canvas
-                        redrawAllCanvasFeatureBoxes();
-                        
-                        // Restart playhead if playing when tab becomes visible again
-                        if (State.playbackState === PlaybackState.PLAYING) {
-                            startPlaybackIndicator();
-                        }
-                    }
-                };
-                if (window._solarAudioCleanupHandlers.visibilitychange) {
-                    document.removeEventListener('visibilitychange', window._solarAudioCleanupHandlers.visibilitychange);
-                }
-                document.addEventListener('visibilitychange', visibilityChangeHandler);
-                window._solarAudioCleanupHandlers.visibilitychange = visibilityChangeHandler;
-        });
-    });
-    } // End if (!window._solarAudioCleanupHandlers)
+    setupLifecycleHandlers();
     
     if (window.pm?.init) console.groupEnd(); // End Event Listeners
 } // End initializeMainApp
