@@ -124,7 +124,7 @@
             <div style="flex: 1; display: flex; justify-content: flex-end; align-items: flex-end; gap: 8px;">
                 <button id="aboutInfoBtn" type="button" class="header-info-btn" title="About this portal">i</button>
                 <div id="participantIdDisplay" style="display: block; margin-bottom: 0;">
-                    <span id="participantIdText" style="font-size: 13px; color: #aaa; cursor: pointer; user-select: none; white-space: nowrap; padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(100, 100, 100, 0.6); background: rgba(40, 40, 40, 0.4); transition: background-color 0.2s; display: inline-block;" title="Click to open Participant Setup">
+                    <span id="participantIdText" title="Click to open Participant Setup">
                         User Name: <span id="participantIdValue" style="font-weight: 600; color: #bbb;">--</span>
                     </span>
                 </div>
@@ -269,13 +269,9 @@
                     <label for="playbackSpeed" id="speedLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0x">Speed: <span id="speedValue">1.0x</span></label>
                     <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="667" style="flex: 1; min-width: 0;">
                 </div>
-                <div id="stretchAlgorithmContainer" style="display: flex; align-items: center; gap: 8px; padding: 0 5px;">
-                    <label for="stretchAlgorithm" style="font-weight: 600; white-space: nowrap; font-size: 16px; flex-shrink: 0;">Stretch:</label>
-                    <select id="stretchAlgorithm" style="min-width: 120px;">
-                        <option value="resample">Resample</option>
-                        <option value="granular">Granular</option>
-                        <option value="paul" selected>Paul Stretch</option>
-                        <option value="wavelet" disabled style="display: none;">Wavelet (coming soon)</option>
+                <div id="stretchAlgorithmContainer" style="display: none;">
+                    <select id="stretchAlgorithm">
+                        <option value="resample" selected>Resample</option>
                     </select>
                 </div>
                 <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 180px; max-width: min(350px, 100%); gap: 10px; padding: 0 15px 0 5px; box-sizing: border-box;">
@@ -396,13 +392,13 @@
             
             <!-- Download Audio Buttons (floating below panel in lower right) -->
             <div id="downloadAudioContainer" style="position: absolute; bottom: -50px; right: 0; display: none; z-index: 100; gap: 8px;">
-                <button type="button" id="recordAudioBtn" style="padding: 9px 18px; background: linear-gradient(135deg, #b85050 0%, #963030 100%); color: #ffffff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); white-space: nowrap; height: 38px;" onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 5px 12px rgba(160, 70, 70, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15)'; this.style.background='linear-gradient(135deg, #c86060 0%, #a64040 100%)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 6px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15)'; this.style.background='linear-gradient(135deg, #b85050 0%, #963030 100%)';">
+                <button type="button" id="recordAudioBtn" class="audio-btn audio-btn-record">
                     🔴 Begin Recording
                 </button>
-                <button type="button" id="downloadAllComponentsBtn" style="padding: 9px 18px; background: linear-gradient(135deg, #aa6655 0%, #884433 100%); color: #ffffff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); white-space: nowrap; display: none; height: 38px;" onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 5px 12px rgba(136, 68, 51, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15)'; this.style.background='linear-gradient(135deg, #bb7766 0%, #995544 100%)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 6px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15)'; this.style.background='linear-gradient(135deg, #aa6655 0%, #884433 100%)';">
+                <button type="button" id="downloadAllComponentsBtn" class="audio-btn audio-btn-download" style="display: none;">
                     📦 Download All Components
                 </button>
-                <button type="button" id="downloadAudioBtn" style="padding: 9px 18px; background: linear-gradient(135deg, #aa6655 0%, #884433 100%); color: #ffffff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); white-space: nowrap; height: 38px;" onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 5px 12px rgba(136, 68, 51, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15)'; this.style.background='linear-gradient(135deg, #bb7766 0%, #995544 100%)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 6px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15)'; this.style.background='linear-gradient(135deg, #aa6655 0%, #884433 100%)';">
+                <button type="button" id="downloadAudioBtn" class="audio-btn audio-btn-download">
                     📥 Download This Component
                 </button>
             </div>
