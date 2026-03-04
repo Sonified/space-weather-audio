@@ -30,6 +30,21 @@ function getTickFadeCurve(direction) {
     return el ? el.value : 'easeOut';
 }
 
+function getTickEdgeFadeMode() {
+    const el = document.getElementById('tickEdgeFadeMode');
+    return el ? el.value : 'spatial';
+}
+
+function getTickEdgeFadeAmount() {
+    const el = document.getElementById('tickEdgeFadeAmount');
+    return el ? parseFloat(el.value) : 0.3;
+}
+
+function getTickEdgeFadeCurve() {
+    const el = document.getElementById('tickEdgeFadeCurve');
+    return el ? el.value : 'easeOut';
+}
+
 const easingFunctions = {
     linear: t => t,
     easeIn: t => t * t,
@@ -129,16 +144,38 @@ export function drawSpectrogramXAxis() {
         currentTickKeys.add(tick.utcTime.getTime());
     }
 
+    // Edge fade: applies symmetrically to both left and right edges during pan.
+    // Mode "spatial" = position-based opacity gradient at edges.
+    // Mode "time" = time-based fade-in when tick first appears at either edge.
+    // Mode "none" = instant appear/disappear (original behavior).
+    const edgeFadeMode = getTickEdgeFadeMode();
+    const edgeFadeAmount = getTickEdgeFadeAmount();
+    const EDGE_PX_PER_UNIT = 80;
+    const edgeFadePx = edgeFadeAmount * EDGE_PX_PER_UNIT;
+    const edgeCurve = easingFunctions[getTickEdgeFadeCurve()] || easingFunctions.easeOut;
+
+    /** Spatial edge opacity — symmetric fade at both edges */
+    function edgeOpacity(x) {
+        if (edgeFadeMode !== 'spatial' || edgeFadePx <= 0) return 1;
+        // Left edge
+        if (x < edgeFadePx) {
+            return edgeCurve(Math.max(0, x / edgeFadePx));
+        }
+        // Right edge
+        if (x > canvasWidth - edgeFadePx) {
+            return edgeCurve(Math.max(0, (canvasWidth - x) / edgeFadePx));
+        }
+        return 1;
+    }
+
     if (levelChanged) {
         // Level changed — fade in new ticks, fade out departed ticks
         for (const key of currentTickKeys) {
             if (!tickFadeState.has(key)) {
-                // Brand new tick at this level — fade in
                 tickFadeState.set(key, { startOpacity: 0, targetOpacity: 1, transitionStart: now });
             } else {
                 const state = tickFadeState.get(key);
                 if (state.targetOpacity !== 1) {
-                    // Was fading out, reverse from current opacity
                     state.startOpacity = computeOpacity(state, fadeInTime, fadeOutTime, now);
                     state.targetOpacity = 1;
                     state.transitionStart = now;
@@ -152,18 +189,29 @@ export function drawSpectrogramXAxis() {
                 state.transitionStart = now;
             }
         }
-    } else {
-        // Same level (panning) — new edge ticks appear instantly, no fade needed
+    } else if (edgeFadeMode === 'time' && edgeFadeAmount > 0) {
+        // Same level (panning) — time-based fade at both edges
         for (const key of currentTickKeys) {
             if (!tickFadeState.has(key)) {
-                // Scrolled into view at the same level — show immediately
+                // New tick at either edge — fade in over time
+                tickFadeState.set(key, { startOpacity: 0, targetOpacity: 1, transitionStart: now, isEdgeTimed: true });
+            }
+        }
+        for (const [key, state] of tickFadeState) {
+            if (!currentTickKeys.has(key)) {
+                // Can't visually fade out off-screen ticks, so just remove
+                tickFadeState.delete(key);
+            }
+        }
+    } else {
+        // Same level (panning) — instant appear/disappear (spatial mode handles opacity via edgeOpacity())
+        for (const key of currentTickKeys) {
+            if (!tickFadeState.has(key)) {
                 tickFadeState.set(key, { startOpacity: 1, targetOpacity: 1, transitionStart: now });
             }
         }
         for (const [key, state] of tickFadeState) {
-            if (!currentTickKeys.has(key) && state.targetOpacity !== 0) {
-                // Scrolled out at same level — remove immediately (no fade for panning)
-                // But leave ticks that are already fading out from a level change
+            if (!currentTickKeys.has(key)) {
                 tickFadeState.delete(key);
             }
         }
@@ -171,7 +219,7 @@ export function drawSpectrogramXAxis() {
 
     let needsAnimation = false;
 
-    // Draw fading-out ticks (not in current set but still visible — only after level changes)
+    // Draw fading-out ticks (not in current set but still visible — zoom level changes only)
     for (const [key, state] of tickFadeState) {
         if (currentTickKeys.has(key)) continue;
 
@@ -187,7 +235,7 @@ export function drawSpectrogramXAxis() {
         const x = (timeOffsetSeconds / actualTimeSpanSeconds) * canvasWidth;
         if (x < -10 || x > canvasWidth + 10) continue;
 
-        ctx.globalAlpha = opacity;
+        ctx.globalAlpha = opacity * edgeOpacity(x);
         ctx.strokeStyle = tickColor;
         ctx.beginPath();
         ctx.moveTo(x, 0);
@@ -207,14 +255,19 @@ export function drawSpectrogramXAxis() {
     ticks.forEach((tick) => {
         const key = tick.utcTime.getTime();
         const state = tickFadeState.get(key);
-        const opacity = state ? computeOpacity(state, fadeInTime, fadeOutTime, now) : 1;
-        if (opacity < 0.999) needsAnimation = true;
+        // Edge-timed ticks use edgeFadeAmount as their fade duration
+        const fi = state?.isEdgeTimed ? edgeFadeAmount : fadeInTime;
+        const fo = state?.isEdgeTimed ? edgeFadeAmount : fadeOutTime;
+        const zoomOpacity = state ? computeOpacity(state, fi, fo, now) : 1;
+        if (zoomOpacity < 0.999) needsAnimation = true;
 
         const timeOffsetSeconds = (tick.utcTime.getTime() - startTimeUTC.getTime()) / 1000;
         const x = (timeOffsetSeconds / actualTimeSpanSeconds) * canvasWidth;
         if (x < -10 || x > canvasWidth + 10) return;
 
-        ctx.globalAlpha = opacity;
+        const finalOpacity = zoomOpacity * edgeOpacity(x);
+        if (finalOpacity < 0.999) needsAnimation = true;
+        ctx.globalAlpha = finalOpacity;
         ctx.strokeStyle = tickColor;
         ctx.beginPath();
         ctx.moveTo(x, 0);
