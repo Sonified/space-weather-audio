@@ -1302,8 +1302,16 @@ function injectSettingsDrawer() {
                 </div>
                 <div>
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                        <span class="drawer-label" style="min-width: 56px;">Edge in:</span>
-                        <select id="tickEdgeFadeInCurve" class="drawer-input" style="width: 100px; text-align: left;">
+                        <span class="drawer-label" style="min-width: 56px;">Edge:</span>
+                        <select id="tickEdgeFadeMode" class="drawer-input" style="width: 100px; text-align: left;">
+                            <option value="spatial" selected>Spatial</option>
+                            <option value="time">Time</option>
+                            <option value="none">None</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px;">
+                        <span class="drawer-label" style="min-width: 56px;">Curve:</span>
+                        <select id="tickEdgeFadeCurve" class="drawer-input" style="width: 100px; text-align: left;">
                             <option value="linear">Linear</option>
                             <option value="easeIn">Ease In</option>
                             <option value="easeOut" selected>Ease Out</option>
@@ -1311,27 +1319,10 @@ function injectSettingsDrawer() {
                         </select>
                     </div>
                     <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
-                        <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">0s</span>
-                        <input type="range" id="tickEdgeFadeInTime" class="drawer-input" min="0" max="2" step="0.05" value="0.3" style="flex: 1; margin: 0; padding: 0;">
-                        <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">2s</span>
-                        <span id="tickEdgeFadeInLabel" style="font-size: 11px; color: #888; min-width: 32px;">0.30s</span>
-                    </div>
-                </div>
-                <div>
-                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                        <span class="drawer-label" style="min-width: 56px;">Edge out:</span>
-                        <select id="tickEdgeFadeOutCurve" class="drawer-input" style="width: 100px; text-align: left;">
-                            <option value="linear">Linear</option>
-                            <option value="easeIn">Ease In</option>
-                            <option value="easeOut" selected>Ease Out</option>
-                            <option value="easeInOut">Ease In-Out</option>
-                        </select>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
-                        <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">0s</span>
-                        <input type="range" id="tickEdgeFadeOutTime" class="drawer-input" min="0" max="2" step="0.05" value="0.3" style="flex: 1; margin: 0; padding: 0;">
-                        <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">2s</span>
-                        <span id="tickEdgeFadeOutLabel" style="font-size: 11px; color: #888; min-width: 32px;">0.30s</span>
+                        <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">0</span>
+                        <input type="range" id="tickEdgeFadeAmount" class="drawer-input" min="0" max="2" step="0.05" value="0.3" style="flex: 1; margin: 0; padding: 0;">
+                        <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">max</span>
+                        <span id="tickEdgeFadeAmountLabel" style="font-size: 11px; color: #888; min-width: 32px;">0.30</span>
                     </div>
                 </div>
             </div>
@@ -1721,10 +1712,9 @@ function initializeAdvancedControls() {
         { id: 'tickFadeOutTime', key: 'emic_tick_fade_out', type: 'range' },
         { id: 'tickFadeInCurve', key: 'emic_tick_fade_in_curve', type: 'select' },
         { id: 'tickFadeOutCurve', key: 'emic_tick_fade_out_curve', type: 'select' },
-        { id: 'tickEdgeFadeInTime', key: 'emic_tick_edge_fade_in', type: 'range' },
-        { id: 'tickEdgeFadeOutTime', key: 'emic_tick_edge_fade_out', type: 'range' },
-        { id: 'tickEdgeFadeInCurve', key: 'emic_tick_edge_fade_in_curve', type: 'select' },
-        { id: 'tickEdgeFadeOutCurve', key: 'emic_tick_edge_fade_out_curve', type: 'select' },
+        { id: 'tickEdgeFadeMode', key: 'emic_tick_edge_fade_mode', type: 'select' },
+        { id: 'tickEdgeFadeCurve', key: 'emic_tick_edge_fade_curve', type: 'select' },
+        { id: 'tickEdgeFadeAmount', key: 'emic_tick_edge_fade_amount', type: 'range' },
         { id: 'printInit', key: 'emic_print_init', type: 'checkbox' },
         { id: 'printGPU', key: 'emic_print_gpu', type: 'checkbox' },
         { id: 'printMemory', key: 'emic_print_memory', type: 'checkbox' },
@@ -2377,16 +2367,15 @@ function initializeAdvancedControls() {
     }
 
     // Tick fade slider labels
-    for (const { sliderId, labelId, storageKey } of [
-        { sliderId: 'tickFadeInTime', labelId: 'tickFadeInLabel', storageKey: 'emic_tick_fade_in' },
-        { sliderId: 'tickFadeOutTime', labelId: 'tickFadeOutLabel', storageKey: 'emic_tick_fade_out' },
-        { sliderId: 'tickEdgeFadeInTime', labelId: 'tickEdgeFadeInLabel', storageKey: 'emic_tick_edge_fade_in' },
-        { sliderId: 'tickEdgeFadeOutTime', labelId: 'tickEdgeFadeOutLabel', storageKey: 'emic_tick_edge_fade_out' },
+    for (const { sliderId, labelId, storageKey, suffix } of [
+        { sliderId: 'tickFadeInTime', labelId: 'tickFadeInLabel', storageKey: 'emic_tick_fade_in', suffix: 's' },
+        { sliderId: 'tickFadeOutTime', labelId: 'tickFadeOutLabel', storageKey: 'emic_tick_fade_out', suffix: 's' },
+        { sliderId: 'tickEdgeFadeAmount', labelId: 'tickEdgeFadeAmountLabel', storageKey: 'emic_tick_edge_fade_amount', suffix: '' },
     ]) {
         const slider = document.getElementById(sliderId);
         const label = document.getElementById(labelId);
         if (!slider) continue;
-        const update = () => { if (label) label.textContent = parseFloat(slider.value).toFixed(2) + 's'; };
+        const update = () => { if (label) label.textContent = parseFloat(slider.value).toFixed(2) + suffix; };
         slider.addEventListener('input', () => {
             update();
             localStorage.setItem(storageKey, slider.value);
