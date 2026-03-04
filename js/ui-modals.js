@@ -313,6 +313,103 @@ export function toggleQuickFillButtons() {
     });
 }
 
+// ── Shared modal-wiring helpers ──────────────────────────────────────────
+
+/** Block clicks on the overlay backdrop so modals can't be dismissed by clicking outside. */
+function preventClickOutside(modal) {
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }
+    });
+}
+
+/**
+ * Wire Enter (and optionally Escape) key handling for a modal.
+ * @param {HTMLElement} modal
+ * @param {HTMLButtonElement|null} submitBtn - clicked on Enter (respects .disabled)
+ * @param {Object} opts
+ * @param {Function} [opts.onEscape] - called on Escape
+ * @param {boolean} [opts.documentLevel] - attach to document instead of modal
+ */
+function wireKeyboardSubmit(modal, submitBtn, opts = {}) {
+    const handler = (e) => {
+        if (modal.style.display === 'none' || modal.style.display === '') return;
+        if (e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+        if (e.target.tagName === 'INPUT' && e.target.type === 'text') return;
+        if (e.key === 'Enter') {
+            if (!submitBtn || !submitBtn.disabled) {
+                e.preventDefault();
+                e.stopPropagation();
+                submitBtn?.click();
+            }
+        } else if (e.key === 'Escape' && opts.onEscape) {
+            e.preventDefault();
+            e.stopPropagation();
+            opts.onEscape();
+        }
+    };
+    if (opts.documentLevel) {
+        document.addEventListener('keydown', handler);
+        modal._keyHandler = handler;
+    } else {
+        modal.addEventListener('keydown', handler);
+    }
+}
+
+/**
+ * Wire quick-fill buttons and Enter-key random fill for survey modals.
+ * @param {HTMLElement} modal
+ * @param {string} radioSelector - CSS selector for radio inputs (e.g. 'input[name^="pre"]')
+ * @param {number} maxValue - max random value (e.g. 5 or 7)
+ * @param {Function} [onUpdate] - called after filling (e.g. to update submit button state)
+ */
+function wireQuickFill(modal, radioSelector, maxValue, onUpdate) {
+    const flashBtn = (btn) => {
+        btn.style.background = '#4CAF50';
+        btn.style.color = 'white';
+        setTimeout(() => { btn.style.background = 'white'; btn.style.color = '#666'; }, 200);
+    };
+
+    modal.querySelectorAll('.quick-fill-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            const value = btn.getAttribute('data-value');
+            modal.querySelectorAll(radioSelector).forEach(radio => {
+                if (radio.value === value) {
+                    radio.checked = true;
+                    radio.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            });
+            if (onUpdate) onUpdate();
+            flashBtn(btn);
+        });
+    });
+
+    modal.addEventListener('keydown', (e) => {
+        if (modal.style.display === 'none') return;
+        if (e.key === 'Enter' && !e.target.matches('input[type="text"], input[type="number"], button')) {
+            e.preventDefault();
+            e.stopPropagation();
+            const randomValue = Math.floor(Math.random() * maxValue) + 1;
+            modal.querySelectorAll(radioSelector).forEach(radio => {
+                if (radio.value === randomValue.toString()) {
+                    radio.checked = true;
+                    radio.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            });
+            if (onUpdate) onUpdate();
+            const quickFillBtn = modal.querySelector(`.quick-fill-btn[data-value="${randomValue}"]`);
+            if (quickFillBtn) flashBtn(quickFillBtn);
+        }
+    });
+}
+
+// ── End helpers ──────────────────────────────────────────────────────────
+
 export function setupModalEventListeners() {
     // 🔥 FIX: Prevent duplicate event listener attachment
     // If listeners are already set up, remove old ones first before re-adding
@@ -460,15 +557,7 @@ export function setupModalEventListeners() {
             participantIdInput.addEventListener('input', handleUsernameInput);
         }
         
-        // Don't allow closing by clicking outside - prevent overlay clicks
-        participantModal.addEventListener('click', (e) => {
-            // Only allow clicks on the modal content itself, not the overlay
-            if (e.target === participantModal) {
-                e.preventDefault();
-                e.stopPropagation();
-                return false;
-            }
-        });
+        preventClickOutside(participantModal);
         
         if (participantCloseBtn) {
             participantCloseBtn.addEventListener('click', (e) => {
@@ -513,32 +602,7 @@ export function setupModalEventListeners() {
             });
         }
         
-        // Keyboard support: Enter to submit (if button is enabled)
-        // Use document-level listener to catch Enter key reliably
-        const participantKeyHandler = (e) => {
-            // Only handle if modal is visible
-            if (participantModal.style.display === 'none' || participantModal.style.display === '') return;
-            
-            // Don't trigger if user is typing in a textarea or contenteditable
-            if (e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
-                return;
-            }
-            
-            if (e.key === 'Enter') {
-                // Only submit if button is enabled (participant ID entered)
-                if (participantSubmitBtn && !participantSubmitBtn.disabled) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    participantSubmitBtn.click(); // Trigger the submit button click
-                }
-            }
-        };
-        
-        // Attach to document so it works even when input loses focus
-        document.addEventListener('keydown', participantKeyHandler);
-        
-        // Store handler for potential cleanup later
-        participantModal._keyHandler = participantKeyHandler;
+        wireKeyboardSubmit(participantModal, participantSubmitBtn, { documentLevel: true });
         
         // Initial button state check
         updateParticipantSubmitButton();
@@ -549,14 +613,7 @@ export function setupModalEventListeners() {
     if (!welcomeModal) {
         console.error('❌ Welcome modal not found in DOM');
     } else {
-        // Prevent closing by clicking outside - clicks outside modal are ignored
-        welcomeModal.addEventListener('click', (e) => {
-            if (e.target === welcomeModal) {
-                e.preventDefault();
-                e.stopPropagation();
-                return false;
-            }
-        });
+        preventClickOutside(welcomeModal);
         
         const welcomeSubmitBtn = welcomeModal.querySelector('.modal-submit');
         if (welcomeSubmitBtn) {
@@ -613,31 +670,7 @@ export function setupModalEventListeners() {
             });
         }
         
-        // Keyboard support: Enter to confirm/close
-        // Use document-level listener to catch Enter key even when modal isn't focused
-        const welcomeKeyHandler = (e) => {
-            // Only handle if modal is visible
-            if (welcomeModal.style.display === 'none' || welcomeModal.style.display === '') return;
-            
-            // Don't trigger if user is typing in an input field
-            if (e.target.tagName === 'INPUT' && e.target.type === 'text') {
-                return;
-            }
-            
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                e.stopPropagation();
-                if (welcomeSubmitBtn) {
-                    welcomeSubmitBtn.click(); // Trigger the submit button click
-                }
-            }
-        };
-        
-        // Attach to document so it works even if modal isn't focused
-        document.addEventListener('keydown', welcomeKeyHandler);
-        
-        // Store handler for potential cleanup later
-        welcomeModal._keyHandler = welcomeKeyHandler;
+        wireKeyboardSubmit(welcomeModal, welcomeSubmitBtn, { documentLevel: true });
     }
     
     // End modal event listeners
@@ -645,14 +678,7 @@ export function setupModalEventListeners() {
     if (!endModal) {
         console.error('❌ End modal not found in DOM');
     } else {
-        // Prevent closing by clicking outside - clicks outside modal are ignored
-        endModal.addEventListener('click', (e) => {
-            if (e.target === endModal) {
-                e.preventDefault();
-                e.stopPropagation();
-                return false;
-            }
-        });
+        preventClickOutside(endModal);
         
         const endSubmitBtn = endModal.querySelector('.modal-submit');
         if (endSubmitBtn) {
@@ -667,14 +693,7 @@ export function setupModalEventListeners() {
     if (!beginAnalysisModal) {
         console.error('❌ Begin Analysis modal not found in DOM');
     } else {
-        // Prevent closing by clicking outside - clicks outside modal are ignored
-        beginAnalysisModal.addEventListener('click', (e) => {
-            if (e.target === beginAnalysisModal) {
-                e.preventDefault();
-                e.stopPropagation();
-                return false;
-            }
-        });
+        preventClickOutside(beginAnalysisModal);
         
         const beginAnalysisCancelBtn = beginAnalysisModal.querySelector('.modal-cancel');
         if (beginAnalysisCancelBtn) {
@@ -719,14 +738,7 @@ export function setupModalEventListeners() {
     if (!welcomeBackModal) {
         console.error('❌ Welcome Back modal not found in DOM');
     } else {
-        // Prevent closing by clicking outside - clicks outside modal are ignored
-        welcomeBackModal.addEventListener('click', (e) => {
-            if (e.target === welcomeBackModal) {
-                e.preventDefault();
-                e.stopPropagation();
-                return false;
-            }
-        });
+        preventClickOutside(welcomeBackModal);
         
         const welcomeBackSubmitBtn = welcomeBackModal.querySelector('.modal-submit');
         if (welcomeBackSubmitBtn) {
@@ -735,17 +747,7 @@ export function setupModalEventListeners() {
             });
         }
         
-        // Keyboard support: Enter to confirm
-        welcomeBackModal.addEventListener('keydown', (e) => {
-            // Only handle if modal is visible
-            if (welcomeBackModal.style.display === 'none') return;
-            
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                e.stopPropagation();
-                closeWelcomeBackModal();
-            }
-        });
+        wireKeyboardSubmit(welcomeBackModal, welcomeBackSubmitBtn);
     }
     
     // Complete Confirmation modal event listeners
@@ -753,14 +755,7 @@ export function setupModalEventListeners() {
     if (!completeConfirmationModal) {
         console.error('❌ Complete Confirmation modal not found in DOM');
     } else {
-        // Prevent closing by clicking outside - clicks outside modal are ignored
-        completeConfirmationModal.addEventListener('click', (e) => {
-            if (e.target === completeConfirmationModal) {
-                e.preventDefault();
-                e.stopPropagation();
-                return false;
-            }
-        });
+        preventClickOutside(completeConfirmationModal);
         
         const completeCancelBtn = completeConfirmationModal.querySelector('.modal-cancel');
         if (completeCancelBtn) {
@@ -816,14 +811,7 @@ export function setupModalEventListeners() {
     if (!missingStudyIdModal) {
         console.error('❌ Missing Study ID modal not found in DOM');
     } else {
-        // Prevent closing by clicking outside - clicks outside modal are ignored
-        missingStudyIdModal.addEventListener('click', (e) => {
-            if (e.target === missingStudyIdModal) {
-                e.preventDefault();
-                e.stopPropagation();
-                return false;
-            }
-        });
+        preventClickOutside(missingStudyIdModal);
         
         // "Enter Study ID" button - opens participant modal
         const enterStudyIdBtn = missingStudyIdModal.querySelector('.modal-submit');
@@ -866,14 +854,7 @@ export function setupModalEventListeners() {
             radio.addEventListener('change', updatePreSurveySubmitButton);
         });
         
-        // Prevent closing by clicking outside - clicks outside modal are ignored
-        preSurveyModal.addEventListener('click', (e) => {
-            if (e.target === preSurveyModal) {
-                e.preventDefault();
-                e.stopPropagation();
-                return false;
-            }
-        });
+        preventClickOutside(preSurveyModal);
         
         if (preSurveyCloseBtn) {
             preSurveyCloseBtn.addEventListener('click', (e) => {
@@ -925,90 +906,12 @@ export function setupModalEventListeners() {
             });
         }
         
-        // Keyboard support: Enter to submit (if button is enabled)
-        // Use document-level listener to catch Enter key reliably
-        const preSurveyKeyHandler = (e) => {
-            // Only handle if modal is visible
-            if (preSurveyModal.style.display === 'none' || preSurveyModal.style.display === '') return;
-            
-            // Don't trigger if user is typing in an input field
-            if (e.target.tagName === 'INPUT' && e.target.type === 'text') {
-                return;
-            }
-            
-            if (e.key === 'Enter') {
-                // Only submit if button is enabled (all questions answered)
-                if (preSurveySubmitBtn && !preSurveySubmitBtn.disabled) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    preSurveySubmitBtn.click(); // Trigger the submit button click
-                }
-            }
-        };
-        
-        // Attach to document so it works even when modal isn't focused
-        document.addEventListener('keydown', preSurveyKeyHandler);
-        
-        // Store handler for potential cleanup later
-        preSurveyModal._keyHandler = preSurveyKeyHandler;
+        wireKeyboardSubmit(preSurveyModal, preSurveySubmitBtn, { documentLevel: true });
         
         // Initial button state check
         updatePreSurveySubmitButton();
         
-        // Quick-fill button handlers for pre-survey
-        preSurveyModal.querySelectorAll('.quick-fill-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const value = btn.getAttribute('data-value');
-                // Fill all pre-survey radio buttons with this value
-                preSurveyModal.querySelectorAll(`input[name^="pre"]`).forEach(radio => {
-                    if (radio.value === value) {
-                        radio.checked = true;
-                        radio.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                });
-                // Visual feedback
-                btn.style.background = '#4CAF50';
-                btn.style.color = 'white';
-                setTimeout(() => {
-                    btn.style.background = 'white';
-                    btn.style.color = '#666';
-                }, 200);
-            });
-        });
-        
-        // Keyboard shortcut: Enter key picks random number and fills all
-        preSurveyModal.addEventListener('keydown', (e) => {
-            // Only handle if modal is visible
-            if (preSurveyModal.style.display === 'none') return;
-            
-            // Enter key: pick random number (1-5) and fill all
-            if (e.key === 'Enter' && !e.target.matches('input[type="text"], input[type="number"], button')) {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                // Pick random number between 1 and 5
-                const randomValue = Math.floor(Math.random() * 5) + 1;
-                
-                // Fill all pre-survey radio buttons with this value
-                preSurveyModal.querySelectorAll(`input[name^="pre"]`).forEach(radio => {
-                    if (radio.value === randomValue.toString()) {
-                        radio.checked = true;
-                        radio.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                });
-                
-                // Visual feedback on the button
-                const quickFillBtn = preSurveyModal.querySelector(`.quick-fill-btn[data-value="${randomValue}"]`);
-                if (quickFillBtn) {
-                    quickFillBtn.style.background = '#4CAF50';
-                    quickFillBtn.style.color = 'white';
-                    setTimeout(() => {
-                        quickFillBtn.style.background = 'white';
-                        quickFillBtn.style.color = '#666';
-                    }, 200);
-                }
-            }
-        });
+        wireQuickFill(preSurveyModal, 'input[name^="pre"]', 5, updatePreSurveySubmitButton);
     }
     
     // Post-Survey modal event listeners
@@ -1039,14 +942,7 @@ export function setupModalEventListeners() {
             radio.addEventListener('change', updatePostSurveySubmitButton);
         });
         
-        // Prevent closing by clicking outside - clicks outside modal are ignored
-        postSurveyModal.addEventListener('click', (e) => {
-            if (e.target === postSurveyModal) {
-                e.preventDefault();
-                e.stopPropagation();
-                return false;
-            }
-        });
+        preventClickOutside(postSurveyModal);
         
         if (postSurveyCloseBtn) {
             postSurveyCloseBtn.addEventListener('click', (e) => {
@@ -1094,60 +990,7 @@ export function setupModalEventListeners() {
         // Initial button state check
         updatePostSurveySubmitButton();
         
-        // Quick-fill button handlers for post-survey
-        postSurveyModal.querySelectorAll('.quick-fill-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const value = btn.getAttribute('data-value');
-                // Fill all post-survey radio buttons with this value
-                postSurveyModal.querySelectorAll(`input[name^="post"]`).forEach(radio => {
-                    if (radio.value === value) {
-                        radio.checked = true;
-                        radio.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                });
-                // Visual feedback
-                btn.style.background = '#4CAF50';
-                btn.style.color = 'white';
-                setTimeout(() => {
-                    btn.style.background = 'white';
-                    btn.style.color = '#666';
-                }, 200);
-            });
-        });
-        
-        // Keyboard shortcut: Enter key picks random number and fills all
-        postSurveyModal.addEventListener('keydown', (e) => {
-            // Only handle if modal is visible
-            if (postSurveyModal.style.display === 'none') return;
-            
-            // Enter key: pick random number (1-5) and fill all
-            if (e.key === 'Enter' && !e.target.matches('input[type="text"], input[type="number"], button')) {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                // Pick random number between 1 and 5
-                const randomValue = Math.floor(Math.random() * 5) + 1;
-                
-                // Fill all post-survey radio buttons with this value
-                postSurveyModal.querySelectorAll(`input[name^="post"]`).forEach(radio => {
-                    if (radio.value === randomValue.toString()) {
-                        radio.checked = true;
-                        radio.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                });
-                
-                // Visual feedback on the button
-                const quickFillBtn = postSurveyModal.querySelector(`.quick-fill-btn[data-value="${randomValue}"]`);
-                if (quickFillBtn) {
-                    quickFillBtn.style.background = '#4CAF50';
-                    quickFillBtn.style.color = 'white';
-                    setTimeout(() => {
-                        quickFillBtn.style.background = 'white';
-                        quickFillBtn.style.color = '#666';
-                    }, 200);
-                }
-            }
-        });
+        wireQuickFill(postSurveyModal, 'input[name^="post"]', 5, updatePostSurveySubmitButton);
     }
     
     // Activity Level modal event listeners
@@ -1172,14 +1015,7 @@ export function setupModalEventListeners() {
             radio.addEventListener('change', updateActivityLevelSubmitButton);
         });
         
-        // Prevent closing by clicking outside - clicks outside modal are ignored
-        activityLevelModal.addEventListener('click', (e) => {
-            if (e.target === activityLevelModal) {
-                e.preventDefault();
-                e.stopPropagation();
-                return false;
-            }
-        });
+        preventClickOutside(activityLevelModal);
         
         if (activityLevelCloseBtn) {
             activityLevelCloseBtn.addEventListener('click', (e) => {
@@ -1283,15 +1119,7 @@ export function setupModalEventListeners() {
             });
         });
         
-        // Prevent closing by clicking outside - clicks outside modal are ignored
-        awesfModal.addEventListener('click', (e) => {
-            // Only prevent if clicking directly on modal background
-            if (e.target === awesfModal) {
-                e.preventDefault();
-                e.stopPropagation();
-                return false;
-            }
-        });
+        preventClickOutside(awesfModal);
         
         if (awesfCloseBtn) {
             awesfCloseBtn.addEventListener('click', (e) => {
@@ -1316,72 +1144,7 @@ export function setupModalEventListeners() {
         // Initial button state check
         updateAwesfSubmitButton();
         
-        // Quick-fill button handlers for AWE-SF
-        awesfModal.querySelectorAll('.quick-fill-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation(); // Prevent event from bubbling to modal/overlay
-                e.preventDefault(); // Prevent any default behavior
-                
-                const value = btn.getAttribute('data-value');
-                if (window.pm?.interaction) console.log(`🔵 Quick-fill button clicked: filling all AWE-SF questions with value ${value}`);
-                
-                // Fill all AWE-SF radio buttons with this value
-                awesfModal.querySelectorAll('input[type="radio"]').forEach(radio => {
-                    if (radio.value === value) {
-                        radio.checked = true;
-                        radio.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                });
-                
-                // Update submit button state after filling
-                updateAwesfSubmitButton();
-                
-                // Visual feedback
-                btn.style.background = '#4CAF50';
-                btn.style.color = 'white';
-                setTimeout(() => {
-                    btn.style.background = 'white';
-                    btn.style.color = '#666';
-                }, 200);
-            });
-        });
-        
-        // Keyboard shortcut: Enter key picks random number and fills all (1-7 for AWESF)
-        awesfModal.addEventListener('keydown', (e) => {
-            // Only handle if modal is visible
-            if (awesfModal.style.display === 'none') return;
-            
-            // Enter key: pick random number (1-7) and fill all
-            if (e.key === 'Enter' && !e.target.matches('input[type="text"], input[type="number"], button')) {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                // Pick random number between 1 and 7
-                const randomValue = Math.floor(Math.random() * 7) + 1;
-                
-                // Fill all AWE-SF radio buttons with this value
-                awesfModal.querySelectorAll('input[type="radio"]').forEach(radio => {
-                    if (radio.value === randomValue.toString()) {
-                        radio.checked = true;
-                        radio.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                });
-                
-                // Update submit button state after filling
-                updateAwesfSubmitButton();
-                
-                // Visual feedback on the button
-                const quickFillBtn = awesfModal.querySelector(`.quick-fill-btn[data-value="${randomValue}"]`);
-                if (quickFillBtn) {
-                    quickFillBtn.style.background = '#4CAF50';
-                    quickFillBtn.style.color = 'white';
-                    setTimeout(() => {
-                        quickFillBtn.style.background = 'white';
-                        quickFillBtn.style.color = '#666';
-                    }, 200);
-                }
-            }
-        });
+        wireQuickFill(awesfModal, 'input[type="radio"]', 7, updateAwesfSubmitButton);
     }
     
     // Tutorial Intro modal event listeners
@@ -1389,14 +1152,7 @@ export function setupModalEventListeners() {
     if (!tutorialIntroModal) {
         console.error('❌ Tutorial Intro modal not found in DOM');
     } else {
-        // Prevent closing by clicking outside - clicks outside modal are ignored
-        tutorialIntroModal.addEventListener('click', (e) => {
-            if (e.target === tutorialIntroModal) {
-                e.preventDefault();
-                e.stopPropagation();
-                return false;
-            }
-        });
+        preventClickOutside(tutorialIntroModal);
         
         const tutorialIntroSubmitBtn = tutorialIntroModal.querySelector('.modal-submit');
         if (tutorialIntroSubmitBtn) {
@@ -1436,27 +1192,7 @@ export function setupModalEventListeners() {
         
         // Skip link removed - all users must complete tutorial
         
-        // Keyboard support: Enter to begin tutorial
-        const tutorialIntroKeyHandler = (e) => {
-            // Only handle if modal is visible
-            if (tutorialIntroModal.style.display === 'none' || tutorialIntroModal.style.display === '') return;
-            
-            // Don't trigger if user is typing in an input field
-            if (e.target.tagName === 'INPUT' && e.target.type === 'text') {
-                return;
-            }
-            
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                e.stopPropagation();
-                if (tutorialIntroSubmitBtn) {
-                    tutorialIntroSubmitBtn.click();
-                }
-            }
-        };
-        
-        document.addEventListener('keydown', tutorialIntroKeyHandler);
-        tutorialIntroModal._keyHandler = tutorialIntroKeyHandler;
+        wireKeyboardSubmit(tutorialIntroModal, tutorialIntroSubmitBtn, { documentLevel: true });
     }
     
     // Tutorial Revisit modal event listeners
@@ -1464,14 +1200,7 @@ export function setupModalEventListeners() {
     if (!tutorialRevisitModal) {
         console.error('❌ Tutorial Revisit modal not found in DOM');
     } else {
-        // Prevent closing by clicking outside - clicks outside modal are ignored
-        tutorialRevisitModal.addEventListener('click', (e) => {
-            if (e.target === tutorialRevisitModal) {
-                e.preventDefault();
-                e.stopPropagation();
-                return false;
-            }
-        });
+        preventClickOutside(tutorialRevisitModal);
         
         const tutorialRevisitBtn1 = tutorialRevisitModal.querySelector('#tutorialRevisitBtn1');
         const tutorialRevisitBtn2 = tutorialRevisitModal.querySelector('#tutorialRevisitBtn2');
