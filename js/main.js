@@ -11,10 +11,9 @@ import { initWaveformWorker, setupWaveformInteraction, drawWaveform, drawWavefor
 import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, startVisualization, setupSpectrogramSelection, cleanupSpectrogramSelection, redrawAllCanvasFeatureBoxes, clearAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, startMemoryMonitoring, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, aggressiveCleanup, setTileShaderMode, resizeRendererToDisplaySize, setLevelTransitionMode, setCrossfadePower, setCatmullSettings, setWaveformPanMode } from './main-window-renderer.js';
 import { setPyramidReduceMode, rebuildUpperLevels } from './spectrogram-pyramid.js';
-import { loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal, openParticipantInfoModal } from './ui-controls.js';
+import { loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, openParticipantInfoModal } from './ui-controls.js';
 import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './participant-id.js';
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
-import { trackUserAction } from '../Qualtrics/participant-response-manager.js';
 import { initializeModals } from './modal-templates.js';
 import { modalManager } from './modal-manager.js';
 import { initErrorReporter } from './error-reporter.js';
@@ -3808,169 +3807,13 @@ async function initializeMainApp() {
     // Survey/Modal Buttons
     document.getElementById('participantModalBtn').addEventListener('click', openParticipantModal);
     document.getElementById('welcomeModalBtn').addEventListener('click', openWelcomeModal);
-    document.getElementById('preSurveyModalBtn').addEventListener('click', openPreSurveyModal);
-    document.getElementById('activityLevelModalBtn').addEventListener('click', openActivityLevelModal);
-    document.getElementById('awesfModalBtn').addEventListener('click', openAwesfModal);
-    document.getElementById('postSurveyModalBtn').addEventListener('click', openPostSurveyModal);
-    document.getElementById('endModalBtn').addEventListener('click', () => {
-        // Show end modal with test data
-        const participantId = getParticipantId() || 'TEST123';
-        openEndModal(participantId, 1);
-    });
-    // Test submit button (admin panel) - direct submission for testing
-    // Hide when zoomed out, show when zoomed in
-    const submitBtn = document.getElementById('submitBtn');
-    if (submitBtn) {
-        submitBtn.addEventListener('click', attemptSubmission);
-        
-        // Function to update submit button visibility based on zoom state
-        // Export to window so zoom functions can call it
-        window.updateSubmitButtonVisibility = () => {
-            if (zoomState.isInRegion()) {
-                submitBtn.style.display = 'inline-block';
-            } else {
-                submitBtn.style.display = 'none';
-            }
-        };
-        
-        // Initial state
-        window.updateSubmitButtonVisibility();
+    // Volcano study buttons (surveys, Begin Analysis, Complete, tutorial help)
+    // Wired from separate file so main.js stays clean for EMIC
+    if (!isEmicStudyMode()) {
+        const { wireVolcanoStudyButtons } = await import('./volcano-study-ui-wiring.js');
+        wireVolcanoStudyButtons();
     }
-    
-    // Complete button (Begin Analysis) - shows confirmation modal first
-    const completeBtn = document.getElementById('completeBtn');
-    if (completeBtn) {
-        completeBtn.addEventListener('click', (e) => {
-            // 🔒 Prevent clicks when button is disabled (during tutorial)
-            if (completeBtn.disabled) {
-                e.preventDefault();
-                e.stopPropagation();
-                console.log('🔒 Begin Analysis button click blocked - button is disabled');
-                return;
-            }
-            
-            e.preventDefault();
-            e.stopPropagation();
-            if (window.pm?.interaction) console.log('🔵 Begin Analysis button clicked');
 
-            // Check if tutorial is waiting for this click
-            if (State.waitingForBeginAnalysisClick && State._beginAnalysisClickResolve) {
-                console.log('✅ Tutorial waiting - skipping modal and transitioning to analysis mode');
-                State.setWaitingForBeginAnalysisClick(false);
-
-                // Fire the beginAnalysisConfirmed event to transition into analysis mode
-                window.dispatchEvent(new CustomEvent('beginAnalysisConfirmed'));
-
-                // Resolve the tutorial promise
-                State._beginAnalysisClickResolve();
-                State.setBeginAnalysisClickResolve(null);
-            } else {
-                // Normal flow - show confirmation modal
-                openBeginAnalysisModal();
-            }
-        });
-    } else {
-        console.warn('⚠️ Begin Analysis button (completeBtn) not found in DOM');
-    }
-    
-    // Listen for confirmation to proceed with workflow
-    window.addEventListener('beginAnalysisConfirmed', async () => {
-        // Mark tutorial as completed (Begin Analysis was clicked) - PERSISTENT flag
-        const { markTutorialAsCompleted, markBeginAnalysisClickedThisSession } = await import('./study-workflow.js');
-        markTutorialAsCompleted();
-        
-        // Mark Begin Analysis as clicked THIS SESSION - SESSION flag (cleared each new session)
-        markBeginAnalysisClickedThisSession();
-        
-        // Disable auto play checkbox after Begin Analysis is confirmed
-        const autoPlayCheckbox = document.getElementById('autoPlay');
-        if (autoPlayCheckbox) {
-            autoPlayCheckbox.checked = false;
-            autoPlayCheckbox.disabled = true;
-        }
-        console.log('✅ Auto play disabled after Begin Analysis confirmation');
-        
-        // Configure interaction dropdowns for analysis mode after Begin Analysis
-        const mainDragSelect = document.getElementById('mainWindowDrag');
-        if (mainDragSelect) {
-            mainDragSelect.value = 'drawFeature';
-            localStorage.setItem('emic_main_drag', 'drawFeature');
-        }
-        const mainReleaseSelect = document.getElementById('mainWindowRelease');
-        if (mainReleaseSelect) {
-            mainReleaseSelect.value = 'playAudio';
-            localStorage.setItem('emic_main_release', 'playAudio');
-        }
-        console.log('✅ Main window interaction set for analysis: drag=drawFeature, release=playAudio');
-        // Also disable the hidden playOnClick checkbox
-        const playOnClickCheckbox = document.getElementById('playOnClick');
-        if (playOnClickCheckbox) {
-            playOnClickCheckbox.checked = false;
-            playOnClickCheckbox.disabled = true;
-        }
-        
-        // Enable region creation after "Begin Analysis" is confirmed
-        const { setRegionCreationEnabled } = await import('./audio-state.js');
-        setRegionCreationEnabled(true);
-        console.log('✅ Region creation ENABLED after Begin Analysis confirmation');
-        
-        // If a region has already been selected, show the "Add Region" button
-        // This puts the user in the mode where they can click 'r' to select that region
-        if (State.selectionStart !== null && State.selectionEnd !== null && !zoomState.isInRegion()) {
-            showAddRegionButton(State.selectionStart, State.selectionEnd);
-            console.log('🎯 Showing Add Region button for existing selection');
-        }
-        
-        // Disable spacecraft switching after confirmation
-        const volcanoSelect = document.getElementById('spacecraft');
-        if (volcanoSelect) {
-            volcanoSelect.disabled = true;
-            volcanoSelect.style.opacity = '0.6';
-            volcanoSelect.style.cursor = 'not-allowed';
-            console.log('🔒 Spacecraft switching disabled after Begin Analysis confirmation');
-        }
-        
-        // Transform Begin Analysis button into Complete button
-        const completeBtn = document.getElementById('completeBtn');
-        if (completeBtn) {
-            // Update button text and styling
-            completeBtn.textContent = 'Complete';
-            completeBtn.style.background = '#28a745';
-            completeBtn.style.borderColor = '#28a745';
-            completeBtn.style.border = '2px solid #28a745';
-            completeBtn.style.color = 'white';
-            completeBtn.className = ''; // Remove begin-analysis-btn class to remove sparkle effect
-            completeBtn.removeAttribute('onmouseover');
-            completeBtn.removeAttribute('onmouseout');
-            
-            // Remove old click handler and add new one
-            const newBtn = completeBtn.cloneNode(true);
-            completeBtn.parentNode.replaceChild(newBtn, completeBtn);
-            
-            // Add Complete button click handler
-            newBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                console.log('✅ Complete button clicked');
-                openCompleteConfirmationModal();
-            });
-            
-            // Initially disable until features are identified
-            newBtn.disabled = true;
-            newBtn.style.opacity = '0.5';
-            newBtn.style.cursor = 'not-allowed';
-            
-            // Update state based on features AND visibility
-            // updateCompleteButtonState() handles visibility (checks hasData && !isTutorialActive())
-            // updateCmpltButtonState() handles enable/disable based on features
-            const { updateCompleteButtonState } = await import('./region-tracker.js');
-            updateCompleteButtonState();
-            updateCmpltButtonState();
-            
-            console.log('🔄 Begin Analysis button transformed into Complete button');
-        }
-    });
-    
     document.getElementById('adminModeBtn').addEventListener('click', toggleAdminMode);
 
     // Start event listeners setup group
@@ -3991,35 +3834,6 @@ async function initializeMainApp() {
         });
         participantIdText.addEventListener('mouseleave', function() {
             this.style.backgroundColor = 'rgba(40, 40, 40, 0.4)';
-        });
-    }
-    
-    // Tutorial help button click handler (only show in study mode)
-    const tutorialHelpBtn = document.getElementById('tutorialHelpBtn');
-    if (tutorialHelpBtn) {
-        // Show button only in study mode
-        if (isStudyMode()) {
-            tutorialHelpBtn.style.display = 'flex';
-        }
-        
-        tutorialHelpBtn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log('❓ Tutorial help button clicked');
-            const { openTutorialRevisitModal } = await import('./ui-controls.js');
-            openTutorialRevisitModal();
-        });
-        
-        // Add hover effect
-        tutorialHelpBtn.addEventListener('mouseenter', function() {
-            this.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
-            this.style.borderColor = '#ddd';
-            this.style.color = '#ddd';
-        });
-        tutorialHelpBtn.addEventListener('mouseleave', function() {
-            this.style.backgroundColor = 'transparent';
-            this.style.borderColor = '#aaa';
-            this.style.color = '#aaa';
         });
     }
     

@@ -47,17 +47,16 @@
  */
 
 import { isStudyMode, isStudyCleanMode } from './master-modes.js';
-import { 
-    openParticipantModal,
-    openWelcomeModal,
+import { openParticipantModal, openWelcomeModal } from './ui-controls.js';
+import {
     openPreSurveyModal,
     closePreSurveyModal,
     openActivityLevelModal,
     openAwesfModal,
     openPostSurveyModal,
     openEndModal
-} from './ui-controls.js';
-import { getParticipantId } from './qualtrics-api.js';
+} from './volcano-study-modals.js';
+import { getParticipantId } from './participant-id.js';
 import { 
     saveSurveyResponse,
     trackSurveyStart,
@@ -854,21 +853,21 @@ export async function startStudyWorkflow() {
     // 🔥 STUCK STATE: Tutorial started but not completed? Resume tutorial
     if (isTutorialInProgress() && !tutorialCompleted()) {
         console.log('🔄 Tutorial in progress - opening tutorial intro modal to resume');
-        const { openTutorialIntroModal } = await import('./ui-controls.js');
+        const { openTutorialIntroModal } = await import('./volcano-study-modals.js');
         openTutorialIntroModal();
         return; // Exit - tutorial modal will handle continuation
     }
-    
+
     // 🔥 SIMPLE CHECK: Tutorial done but Begin Analysis not clicked? Show Welcome Back
     if (tutorialCompleted() && !hasBegunAnalysisThisSession()) {
         console.log('👋 SIMPLE CHECK: Tutorial done, Begin Analysis not clicked → Opening Welcome Back modal');
-        
+
         // Enable all features for returning users (tutorial already completed)
         const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
         await enableAllTutorialRestrictedFeatures();
         console.log('✅ All features enabled for returning user (before Welcome Back modal)');
-        
-        const { openWelcomeBackModal } = await import('./ui-controls.js');
+
+        const { openWelcomeBackModal } = await import('./volcano-study-modals.js');
         openWelcomeBackModal();
         return; // Exit - modal will handle workflow continuation
     }
@@ -1033,7 +1032,7 @@ export async function startStudyWorkflow() {
             // Check if tutorial is completed - if NOT, show tutorial intro modal
             if (!tutorialCompleted()) {
                 console.log('🎓 Tutorial not completed - opening Tutorial Intro modal');
-                const { openTutorialIntroModal } = await import('./ui-controls.js');
+                const { openTutorialIntroModal } = await import('./volcano-study-modals.js');
                 openTutorialIntroModal();
                 return; // Exit - tutorial modal will handle continuation
             }
@@ -1074,7 +1073,7 @@ export async function startStudyWorkflow() {
                     completeBtn.removeAttribute('onmouseout');
                     
                     // 🔥 FIX: Replace click handler to open Complete modal instead of Begin Analysis modal
-                    const { openCompleteConfirmationModal } = await import('./ui-controls.js');
+                    const { openCompleteConfirmationModal } = await import('./volcano-study-modals.js');
                     const newBtn = completeBtn.cloneNode(true);
                     completeBtn.parentNode.replaceChild(newBtn, completeBtn);
                     
@@ -1196,7 +1195,7 @@ export async function startStudyWorkflow() {
             if (!hasSeenWelcomeBack() || !hasBegunAnalysisThisSession()) {
                 console.log('👋 Step 2.5: Welcome Back (returning visit - not yet begun analysis)');
                 // For returning visits, show welcome back modal first, then pre-survey
-                const { openWelcomeBackModal } = await import('./ui-controls.js');
+                const { openWelcomeBackModal } = await import('./volcano-study-modals.js');
                 openWelcomeBackModal();
                 console.log('👋 Welcome Back modal opened (returning visit)');
                 // Welcome Back modal will close and open pre-survey when user clicks "Start Now"
@@ -1311,7 +1310,7 @@ export async function handleStudyModeSubmit() {
     // In PERSONAL/DEV mode: Direct submission (no surveys)
     console.log(`💾 ${CURRENT_MODE} Mode: Direct submission (no surveys)`);
     
-    const { attemptSubmission } = await import('./ui-controls.js');
+    const { attemptSubmission } = await import('./volcano-study-surveys.js');
     await attemptSubmission(false);  // Direct submission
     
     return true;

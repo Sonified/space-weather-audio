@@ -750,7 +750,7 @@ function showIntroModal() {
                     <h3 class="modal-title">📋 Post-Study Questions</h3>
                 </div>
                 <div class="modal-body">
-                    <p style="color: #666; margin: 0 0 24px; font-size: 16px; line-height: 1.6;">
+                    <p style="color: #666; margin: 0; padding: 8px 16px 32px; font-size: 16px; line-height: 1.6; font-weight: 600;">
                         You will now be guided through a brief set of questions that should take 2–3 minutes.
                     </p>
                     <button type="button" class="modal-submit" style="min-width: 140px;">OK</button>

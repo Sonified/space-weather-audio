@@ -424,7 +424,7 @@ export function showTimeoutMessage() {
         
         // Show pre-survey modal (your existing function)
         try {
-            const { openPreSurveyModal } = await import('./ui-controls.js');
+            const { openPreSurveyModal } = await import('./volcano-study-modals.js');
             openPreSurveyModal();
         } catch (error) {
             console.error('❌ Could not open pre-survey modal:', error);

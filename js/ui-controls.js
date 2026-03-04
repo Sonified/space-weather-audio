@@ -13,47 +13,21 @@ import { log, logGroup, logGroupEnd } from './logger.js';
 // ═══════════════════════════════════════════════════════════════════════════════
 // Re-exports from ui-modals.js (zero-breakage migration — consumers keep importing from here)
 // ═══════════════════════════════════════════════════════════════════════════════
+// Shared + EMIC modal functions only (volcano modals are in volcano-study-modals.js)
 export {
     fadeOutOverlay,
     closeAllModals,
-    toggleQuickFillButtons,
     setupModalEventListeners,
     openParticipantModal,
     closeParticipantModal,
     openParticipantInfoModal,
     openWelcomeModal,
-    closeWelcomeModal,
-    openEndModal,
-    closeEndModal,
-    openBeginAnalysisModal,
-    closeBeginAnalysisModal,
-    openWelcomeBackModal,
-    closeWelcomeBackModal,
-    openCompleteConfirmationModal,
-    closeCompleteConfirmationModal,
-    openTutorialIntroModal,
-    closeTutorialIntroModal,
-    openTutorialRevisitModal,
-    closeTutorialRevisitModal,
-    openMissingStudyIdModal,
-    closeMissingStudyIdModal,
-    openPreSurveyModal,
-    closePreSurveyModal,
-    openPostSurveyModal,
-    closePostSurveyModal,
-    openActivityLevelModal,
-    closeActivityLevelModal,
-    openAwesfModal,
-    closeAwesfModal
+    closeWelcomeModal
 } from './ui-modals.js';
 
+// Shared survey functions only (volcano surveys are in volcano-study-surveys.js)
 export {
-    submitParticipantSetup,
-    submitPreSurvey,
-    submitPostSurvey,
-    submitActivityLevelSurvey,
-    submitAwesfSurvey,
-    attemptSubmission
+    submitParticipantSetup
 } from './ui-surveys.js';
 
 export function loadStations() {

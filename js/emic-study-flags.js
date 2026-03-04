@@ -14,6 +14,7 @@ export const EMIC_FLAGS = {
     HAS_CLICKED_COMPLETE:       'emic_has_clicked_complete',
     HAS_CONFIRMED_COMPLETE:     'emic_has_confirmed_complete',
     HAS_COMPLETED_ANALYSIS:     'emic_has_completed_analysis', // legacy — kept for compat
+    HAS_CLICKED_POST_OK:        'emic_has_clicked_post_ok',
     HAS_SUBMITTED:              'emic_has_submitted',
     HAS_SUBMITTED_BACKGROUND:   'emic_has_submitted_background',
     HAS_SUBMITTED_DATA_ANALYSIS:'emic_has_submitted_data_analysis',
@@ -140,7 +141,8 @@ function buildFlagCheckboxes() {
     // Two-column layout: flow state (left) and questionnaires (right)
     const flowFlags = [
         'IS_SIMULATING', 'HAS_REGISTERED', 'HAS_CLOSED_WELCOME',
-        'ACTIVE_FEATURE_COUNT', 'HAS_CLICKED_COMPLETE', 'HAS_CONFIRMED_COMPLETE', 'HAS_SUBMITTED'
+        'ACTIVE_FEATURE_COUNT', 'HAS_CLICKED_COMPLETE', 'HAS_CONFIRMED_COMPLETE',
+        'HAS_CLICKED_POST_OK', 'HAS_SUBMITTED'
     ];
     const questionnaireFlags = [
         'HAS_SUBMITTED_BACKGROUND', 'HAS_SUBMITTED_DATA_ANALYSIS',

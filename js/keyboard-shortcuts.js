@@ -7,7 +7,7 @@ import { zoomToRegion, zoomToFull, getCurrentRegions, getActiveRegionIndex, isIn
 import { zoomState } from './zoom-state.js';
 import * as State from './audio-state.js';
 import { changeFrequencyScale, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
-import { isStudyMode } from './master-modes.js';
+import { isStudyMode, isLocalEnvironment } from './master-modes.js';
 import { drawWaveformFromMinMax, notifyPageTurnUserDragged } from './minimap-window-renderer.js';
 import { drawWaveformXAxis } from './waveform-x-axis-renderer.js';
 import { drawSpectrogramXAxis } from './spectrogram-x-axis-renderer.js';
@@ -134,13 +134,15 @@ function handleKeyboardShortcut(event) {
         return;
     }
     
-    // 'f' key: DEPRECATED - no longer needed, click-to-draw is always active when zoomed in
-    // Keeping this here commented out for reference, can be removed later
-    // if (event.key === 'f' || event.key === 'F') {
-    //     // Feature drawing is now always enabled when zoomed into a region
-    //     // Just clicking and dragging on the spectrogram will create features
-    //     return;
-    // }
+    // 'f' key: Toggle flags panel (localhost only)
+    if ((event.key === 'f' || event.key === 'F') && isLocalEnvironment()) {
+        const btn = document.getElementById('showFlagsBtn');
+        if (btn) {
+            event.preventDefault();
+            btn.click();
+        }
+        return;
+    }
     
     // 'r' key: Confirm/add region from current selection
     if (event.key === 'r' || event.key === 'R') {

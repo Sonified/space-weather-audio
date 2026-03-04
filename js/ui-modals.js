@@ -6,7 +6,7 @@
  */
 
 import * as State from './audio-state.js';
-import { getParticipantId, storeParticipantId, getParticipantIdFromURL } from './qualtrics-api.js';
+import { getParticipantId, storeParticipantId, getParticipantIdFromURL } from './participant-id.js';
 import { isStudyMode, isStudyCleanMode, isLocalEnvironment, isEmicStudyMode } from './master-modes.js';
 import { hasSeenParticipantSetup, hasSeenWelcome, markParticipantSetupAsSeen, markWelcomeAsSeen } from './study-workflow.js';
 import { checkUsernameAvailable, registerUsername } from './share-api.js';
@@ -742,7 +742,7 @@ export async function openParticipantInfoModal() {
     closeAllModals();
 
     // Populate the current participant ID
-    const { getParticipantId, storeParticipantId } = await import('./qualtrics-api.js');
+    const { getParticipantId, storeParticipantId } = await import('./participant-id.js');
     const participantId = getParticipantId();
     const idDisplay = document.getElementById('participantInfoId');
     const idInput = document.getElementById('participantInfoInput');
@@ -937,30 +937,3 @@ export async function closeWelcomeModal(keepOverlay = null) {
 // ── Re-exports from volcano-study-modals.js ──────────────────────────────
 // These re-exports ensure existing consumers (ui-controls.js, dynamic imports)
 // can continue importing from ui-modals.js without changes.
-
-export {
-    getNextModalInWorkflow,
-    toggleQuickFillButtons,
-    openEndModal,
-    closeEndModal,
-    openBeginAnalysisModal,
-    closeBeginAnalysisModal,
-    openWelcomeBackModal,
-    closeWelcomeBackModal,
-    openCompleteConfirmationModal,
-    closeCompleteConfirmationModal,
-    openTutorialIntroModal,
-    closeTutorialIntroModal,
-    openTutorialRevisitModal,
-    closeTutorialRevisitModal,
-    openMissingStudyIdModal,
-    closeMissingStudyIdModal,
-    openPreSurveyModal,
-    closePreSurveyModal,
-    openPostSurveyModal,
-    closePostSurveyModal,
-    openActivityLevelModal,
-    closeActivityLevelModal,
-    openAwesfModal,
-    closeAwesfModal
-} from './volcano-study-modals.js';

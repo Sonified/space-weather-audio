@@ -4,7 +4,7 @@
  * Volcano-specific survey submission (Qualtrics) moved to volcano-study-surveys.js.
  */
 
-import { storeParticipantId } from './qualtrics-api.js';
+import { storeParticipantId } from './participant-id.js';
 import { CURRENT_MODE, AppMode } from './master-modes.js';
 import * as State from './audio-state.js';
 
@@ -64,12 +64,3 @@ export function submitParticipantSetup() {
     // Let the button handler and ModalManager do their job!
     // The workflow is waiting for the modal to properly close through ModalManager.
 }
-
-// Re-export volcano survey functions for backward compatibility
-export {
-    submitPreSurvey,
-    submitPostSurvey,
-    submitActivityLevelSurvey,
-    submitAwesfSurvey,
-    attemptSubmission
-} from './volcano-study-surveys.js';
