@@ -4,7 +4,7 @@
  * Does NOT show UI to users - just logs and submits to backend
  */
 
-import { getParticipantId } from './qualtrics-api.js';
+import { getParticipantId } from './participant-id.js';
 
 // Track reported errors to prevent spam (max 1 of each type per session)
 const reportedErrors = new Set();

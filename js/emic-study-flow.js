@@ -28,7 +28,7 @@
 
 import { modalManager } from './modal-manager.js';
 import { getStandaloneFeatures } from './region-tracker.js';
-import { getParticipantId, storeParticipantId } from './qualtrics-api.js';
+import { getParticipantId, storeParticipantId } from './participant-id.js';
 import { uploadEmicSubmission, syncEmicProgress } from './data-uploader.js';
 import { EMIC_FLAGS, getEmicFlag, setEmicFlag, clearAllEmicFlags, updateActiveFeatureCount } from './emic-study-flags.js';
 

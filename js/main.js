@@ -12,7 +12,7 @@ import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap,
 import { clearCompleteSpectrogram, startMemoryMonitoring, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, aggressiveCleanup, setTileShaderMode, resizeRendererToDisplaySize, setLevelTransitionMode, setCrossfadePower, setCatmullSettings, setWaveformPanMode } from './main-window-renderer.js';
 import { setPyramidReduceMode, rebuildUpperLevels } from './spectrogram-pyramid.js';
 import { loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, closeParticipantModal, submitParticipantSetup, openWelcomeModal, closeWelcomeModal, openEndModal, closeEndModal, openPreSurveyModal, closePreSurveyModal, submitPreSurvey, openPostSurveyModal, closePostSurveyModal, submitPostSurvey, openActivityLevelModal, closeActivityLevelModal, submitActivityLevelSurvey, openAwesfModal, closeAwesfModal, submitAwesfSurvey, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, attemptSubmission, openBeginAnalysisModal, openCompleteConfirmationModal, openTutorialRevisitModal, openParticipantInfoModal } from './ui-controls.js';
-import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './qualtrics-api.js';
+import { getParticipantIdFromURL, storeParticipantId, getParticipantId } from './participant-id.js';
 import { initAdminMode, isAdminMode, toggleAdminMode } from './admin-mode.js';
 import { trackUserAction } from '../Qualtrics/participant-response-manager.js';
 import { initializeModals } from './modal-templates.js';
@@ -946,14 +946,9 @@ async function initializePersonalMode() {
     console.log('👤 PERSONAL MODE: Direct access');
     
     // 🧹 Set proper tutorial flags for personal mode (skip tutorial, go straight to analysis)
-    localStorage.setItem('study_tutorial_in_progress', 'false');
-    localStorage.setItem('study_tutorial_completed', 'true');
-    localStorage.setItem('study_has_seen_tutorial', 'true');
-    localStorage.removeItem('study_begin_analysis_clicked_this_session'); // Reset so user can click Begin Analysis
-    
-    if (!isStudyMode()) {
-        console.log('🧹 Set personal mode tutorial flags: completed=true, in_progress=false');
-    }
+    const { markTutorialAsCompleted, STORAGE_KEYS } = await import('./study-workflow.js');
+    markTutorialAsCompleted();
+    localStorage.removeItem(STORAGE_KEYS.BEGIN_ANALYSIS_CLICKED_THIS_SESSION); // Reset so user can click Begin Analysis
     
     // Enable all features immediately
     const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
@@ -2448,9 +2443,8 @@ async function initializeEmicStudyMode() {
     if (simulatePanel) simulatePanel.style.display = 'none';
 
     // Skip tutorial entirely
-    localStorage.setItem('study_tutorial_in_progress', 'false');
-    localStorage.setItem('study_tutorial_completed', 'true');
-    localStorage.setItem('study_has_seen_tutorial', 'true');
+    const { markTutorialAsCompleted } = await import('./study-workflow.js');
+    markTutorialAsCompleted();
 
     // Enable all features immediately
     const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
@@ -2518,16 +2512,15 @@ async function initializeSolarPortalMode() {
     }
     
     // Set tutorial flags (skip tutorial, go straight to analysis)
-    localStorage.setItem('study_tutorial_in_progress', 'false');
-    localStorage.setItem('study_tutorial_completed', 'true');
-    localStorage.setItem('study_has_seen_tutorial', 'true');
-    
+    const { markTutorialAsCompleted } = await import('./study-workflow.js');
+    markTutorialAsCompleted();
+
     // Enable all features immediately
     const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
     enableAllTutorialRestrictedFeatures();
     
     // Check if user has a username set - if not, show participant setup
-    const { getParticipantId } = await import('./qualtrics-api.js');
+    const { getParticipantId } = await import('./participant-id.js');
     const participantId = getParticipantId();
     const hasUsername = participantId && participantId.trim() !== '';
 

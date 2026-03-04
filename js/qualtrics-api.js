@@ -3,6 +3,9 @@
  * Handles submission of survey responses to Qualtrics API
  */
 
+// Re-export participant ID utils for backward compatibility (canonical source: participant-id.js)
+export { getParticipantId, storeParticipantId, getParticipantIdFromURL } from './participant-id.js';
+
 // Load survey configuration from config.json
 let SURVEY_CONFIG = null;
 
@@ -606,61 +609,5 @@ export async function submitSurveyResponse(responseData, participantId = null) {
     }
 }
 
-/**
- * Parse participant ID from URL parameters
- * Qualtrics typically uses ResponseID in redirect URLs: ?ResponseID=${e://Field/ResponseID}
- * Also supports common parameter names: ParticipantID, participantId, participant_id, id, pid
- * @returns {string|null} - Participant ID if found, null otherwise
- */
-export function getParticipantIdFromURL() {
-    const params = new URLSearchParams(window.location.search);
-    
-    // Try parameter names in order of likelihood
-    // ResponseID is Qualtrics' standard field name for redirects
-    const paramNames = ['ResponseID', 'responseId', 'ParticipantID', 'participantId', 'participant_id', 'id', 'pid'];
-    
-    for (const paramName of paramNames) {
-        const value = params.get(paramName);
-        if (value && value.trim()) {
-            return value.trim();
-        }
-    }
-    
-    return null;
-}
-
-/**
- * Store participant ID in localStorage
- * @param {string} participantId - The participant ID to store
- */
-export function storeParticipantId(participantId) {
-    if (participantId && participantId.trim()) {
-        localStorage.setItem('participantId', participantId.trim());
-        console.log('💾 Stored participant ID:', participantId.trim());
-    }
-}
-
-/**
- * Get participant ID from localStorage or URL
- * Checks URL first, then falls back to localStorage
- * @returns {string|null} - Participant ID if found, null otherwise
- */
-export function getParticipantId() {
-    // First check URL parameters (takes precedence)
-    const urlId = getParticipantIdFromURL();
-    if (urlId) {
-        // Store it for future use
-        storeParticipantId(urlId);
-        return urlId;
-    }
-    
-    // 🔥 REMOVED: STUDY_CLEAN mode check here
-    // We already clear participant ID at the START of startStudyWorkflow()
-    // This check was preventing IDs entered during the current session from being found!
-    // STUDY_CLEAN mode should clear at workflow start, but allow IDs entered during that session.
-    
-    // Fall back to localStorage
-    const storedId = localStorage.getItem('participantId');
-    return storedId || null;
-}
+// Participant ID functions moved to participant-id.js — re-exported above for backward compatibility
 
