@@ -44,7 +44,6 @@ export function initDataViewer() {
  */
 export async function fetchUsers() {
     const userSelect = document.getElementById('dvUserSelect');
-    const display = document.getElementById('dvDataDisplay');
     if (!userSelect) return;
 
     userSelect.innerHTML = '<option value="">Loading users...</option>';
@@ -70,15 +69,11 @@ export async function fetchUsers() {
             userSelect.appendChild(opt);
         }
 
-        if (display) {
-            display.innerHTML = `<p style="color:#aaa; font-style:italic;">${currentUsers.length} registered users loaded</p>`;
-        }
+        setStatusText(`${currentUsers.length} registered users loaded`);
     } catch (err) {
         console.error('Data Viewer: failed to fetch users', err);
         userSelect.innerHTML = '<option value="">Error loading users</option>';
-        if (display) {
-            display.innerHTML = `<p style="color:#f66;">Failed to fetch users: ${err.message}</p>`;
-        }
+        setStatusText(`Failed to fetch users: ${err.message}`, '#f66');
     }
 }
 
@@ -87,7 +82,6 @@ export async function fetchUsers() {
  */
 async function fetchSessions(username) {
     const sessionSelect = document.getElementById('dvSessionSelect');
-    const display = document.getElementById('dvDataDisplay');
     if (!sessionSelect) return;
 
     sessionSelect.innerHTML = '<option value="">Loading sessions...</option>';
@@ -98,9 +92,7 @@ async function fetchSessions(username) {
 
         if (!data.success || !data.sessions?.length) {
             sessionSelect.innerHTML = '<option value="">No sessions found</option>';
-            if (display) {
-                display.innerHTML = `<p style="color:#aaa; font-style:italic;">No sessions for ${username}</p>`;
-            }
+            setStatusText(`No sessions for ${username}`);
             return;
         }
 
@@ -116,9 +108,7 @@ async function fetchSessions(username) {
             sessionSelect.appendChild(opt);
         }
 
-        if (display) {
-            display.innerHTML = `<p style="color:#aaa; font-style:italic;">${currentSessions.length} session(s) for ${username}</p>`;
-        }
+        setStatusText(`${currentSessions.length} session(s) for ${username}`);
     } catch (err) {
         console.error('Data Viewer: failed to fetch sessions', err);
         sessionSelect.innerHTML = '<option value="">Error loading sessions</option>';
@@ -230,6 +220,15 @@ function renderSessionData(session, container) {
 function clearDataDisplay() {
     const display = document.getElementById('dvDataDisplay');
     if (display) display.innerHTML = '';
+    setStatusText('');
+}
+
+function setStatusText(text, color = '#aaa') {
+    const el = document.getElementById('dvStatusText');
+    if (el) {
+        el.textContent = text;
+        el.style.color = color;
+    }
 }
 
 function formatDate(iso) {
