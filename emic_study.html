@@ -205,15 +205,7 @@
 
         /* Settings drawer styles in styles.css */
 
-        /* Post-study questionnaire radio choices */
-        .radio-choice:hover {
-            background: rgba(0, 123, 255, 0.06);
-            border-color: #aac8e8;
-        }
-        .radio-choice:has(input:checked) {
-            background: rgba(0, 123, 255, 0.1);
-            border-color: #007bff;
-        }
+        /* Radio choice styles moved to styles.css */
 
         /* Playback bar: hidden-scrollbar horizontal scroll */
         .panel-playback > div {
@@ -268,7 +260,7 @@
             <div style="flex: 1; display: flex; justify-content: flex-end; align-items: flex-end; gap: 8px;">
                 <button id="aboutInfoBtn" type="button" class="header-info-btn" title="About this study">i</button>
                 <div id="participantIdDisplay" style="display: block; margin-bottom: 0;">
-                    <span id="participantIdText" style="font-size: 13px; color: #aaa; cursor: pointer; user-select: none; white-space: nowrap; padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(100, 100, 100, 0.6); background: rgba(40, 40, 40, 0.4); transition: background-color 0.2s; display: inline-block;" title="Click to view your participant info">
+                    <span id="participantIdText" title="Click to view your participant info">
                         Participant ID: <span id="participantIdValue" style="font-weight: 600; color: #bbb;">--</span>
                     </span>
                 </div>
@@ -277,7 +269,7 @@
         
         <!-- Data Viewer Panel (localhost only, hidden by default) -->
         <div id="dataViewerPanel" style="display: none; padding: 12px 16px; margin-bottom: 8px; background: linear-gradient(135deg, rgba(30,35,60,0.95), rgba(20,25,45,0.95)); border: 1px solid rgba(100,120,200,0.3); border-radius: 8px; color: #ddd; font-family: system-ui, sans-serif;">
-            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 10px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
                 <span style="font-weight: 700; font-size: 15px; color: #8af;">Data Viewer</span>
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <label for="dvUserSelect" style="font-size: 13px; font-weight: 600; color: #aaa;">User:</label>
@@ -291,8 +283,9 @@
                         <option value="">-- select session --</option>
                     </select>
                 </div>
+                <span id="dvStatusText" style="font-size: 12px; color: #aaa; font-style: italic;"></span>
             </div>
-            <div id="dvDataDisplay" style="max-height: 400px; overflow-y: auto;"></div>
+            <div id="dvDataDisplay" style="max-height: 400px; overflow-y: auto; margin-top: 0;"></div>
         </div>
 
         <!-- EMIC Study Controls: Stretch Algorithm + Speed -->
@@ -437,7 +430,7 @@
 
             <!-- Main Window gear (content injected by main.js) -->
             <div class="panel-gear" id="mainWindowGear"></div>
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px 30px; margin-top: 8px; padding-top: 4px; padding-bottom: 0; padding-left: 8px; padding-right: 40px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 12px 30px; margin-top: 8px; padding-top: 4px; padding-bottom: 0; padding-left: 8px; padding-right: 40px; flex-wrap: wrap;">
                 <div id="oscilloscope-panel" style="display: block; pointer-events: none;">
                     <div style="position: relative; border-radius: 5px; padding: 4px; background: linear-gradient(135deg, rgba(40, 40, 70, 0.85) 0%, rgba(25, 25, 55, 0.8) 100%); box-shadow: 0 0 5px rgba(102, 126, 234, 0.2), inset 0 0 20px rgba(80, 90, 130, 0.5);">
                         <canvas id="oscilloscope" width="106" height="28" style="display: block; width: 106px; height: 28px; border-radius: 2px; background: rgba(3, 3, 8, 0.98);"></canvas>
@@ -514,9 +507,9 @@
                 <div id="regionsList"></div>
             </div>
             <div id="downloadAudioContainer" style="position: absolute; bottom: -50px; right: 0; display: none; z-index: 100; gap: 8px;">
-                <button type="button" id="recordAudioBtn" style="padding: 9px 18px; background: linear-gradient(135deg, #b85050 0%, #963030 100%); color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; height: 38px;">🔴 Begin Recording</button>
-                <button type="button" id="downloadAllComponentsBtn" style="display: none; padding: 9px 18px; background: linear-gradient(135deg, #aa6655 0%, #884433 100%); color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; height: 38px;">📦 Download All Components</button>
-                <button type="button" id="downloadAudioBtn" style="padding: 9px 18px; background: linear-gradient(135deg, #aa6655 0%, #884433 100%); color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; height: 38px;">📥 Download This Component</button>
+                <button type="button" id="recordAudioBtn" class="audio-btn audio-btn-record">🔴 Begin Recording</button>
+                <button type="button" id="downloadAllComponentsBtn" class="audio-btn audio-btn-download" style="display: none;">📦 Download All Components</button>
+                <button type="button" id="downloadAudioBtn" class="audio-btn audio-btn-download">📥 Download This Component</button>
             </div>
         </div>
         
