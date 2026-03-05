@@ -1530,7 +1530,7 @@ input[type="checkbox"] {
 }
 
 .modal-title {
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 700;
     color: #550000;
     text-shadow: 1px 1px 3px rgba(255, 200, 200, 0.5);
@@ -1728,6 +1728,14 @@ input[type="checkbox"] {
     opacity: 0.5;
     cursor: not-allowed;
     box-shadow: none;
+}
+.modal-back.modal-submit {
+    transition: background 0.15s, color 0.15s;
+}
+.modal-back.modal-submit:hover {
+    background: #d6d6d6 !important;
+    color: #333 !important;
+    box-shadow: none !important;
 }
 
 .mood-survey-intro {
@@ -4375,24 +4383,32 @@ select.csel-native {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 10px 14px;
+    padding: 8px 14px;
+    font-size: 16px;
     border-radius: 8px;
-    border: 1px solid #ddd;
+    border: 1px solid transparent;
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background 0.15s, border-color 0.15s;
 }
 .radio-choice:hover {
     background: rgba(0, 123, 255, 0.06);
-    border-color: #aac8e8;
 }
 .radio-choice:has(input:checked) {
-    background: rgba(0, 123, 255, 0.1);
-    border-color: #007bff;
+    background: rgba(0, 123, 255, 0.08);
+    border-color: transparent;
 }
 .radio-choice input[type="radio"] {
     width: 18px;
     height: 18px;
     accent-color: #007bff;
+}
+.radio-choice strong {
+    color: #222;
+    font-weight: 700;
+}
+.radio-choice span {
+    color: #888;
+    font-weight: 400;
 }
 
 /* ============================================================
@@ -4748,24 +4764,28 @@ html[data-display-mode="participant"] #speedGroup {
     width: 80% !important;
 }
 .emic-page #backgroundQuestionModal .modal-content,
-.emic-page #dataAnalysisQuestionModal .modal-content {
-    max-width: 612px !important;
-    min-width: 320px !important;
-    width: 85% !important;
-    padding: 24px 28px !important;
-}
-.emic-page #musicalExperienceQuestionModal .modal-content {
-    max-width: 660px !important;
-    min-width: 320px !important;
-    width: 88% !important;
-    padding: 24px 28px !important;
-}
+.emic-page #dataAnalysisQuestionModal .modal-content,
+.emic-page #musicalExperienceQuestionModal .modal-content,
 .emic-page #feedbackQuestionModal .modal-content,
-.emic-page #referralQuestionModal .modal-content {
-    max-width: 680px !important;
+.emic-page #referralQuestionModal .modal-content,
+.emic-page .emic-questionnaire-modal {
+    max-width: 620px !important;
     min-width: 320px !important;
+    height: 460px !important;
     width: 88% !important;
     padding: 24px 28px !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+.emic-page #backgroundQuestionModal .modal-body,
+.emic-page #dataAnalysisQuestionModal .modal-body,
+.emic-page #musicalExperienceQuestionModal .modal-body,
+.emic-page #feedbackQuestionModal .modal-body,
+.emic-page #referralQuestionModal .modal-body {
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
 }
 .emic-page #welcomeModal .modal-content,
 .emic-page #emicAboutModal .modal-content {

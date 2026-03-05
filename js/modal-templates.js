@@ -175,36 +175,44 @@ export function createBackgroundQuestionModal() {
         <div class="modal-content" style="max-width: 750px;">
             <div class="modal-header">
                 <h3 class="modal-title">📋 Questionnaire</h3>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 13px; color: #999; font-weight: 500; white-space: nowrap;">1 / 5</span>
+                    <div style="width: 120px; height: 4px; background: #e0e0e0; border-radius: 2px;">
+                        <div style="height: 100%; width: 20%; background: #2196F3; border-radius: 2px; transition: width 0.3s;"></div>
+                    </div>
+                </div>
             </div>
             <div class="modal-body">
-                <div style="font-size: 18px; color: #550000; margin-top: 24px; margin-bottom: 28px; text-align: left; font-weight: 700;">
+                <div style="font-size: 18px; color: #550000; margin-top: 12px; margin-bottom: 16px; text-align: left; font-weight: 700;">
                     1. What is your background in physics or space science?
                 </div>
 
-                <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
+                <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;">
                     <label class="radio-choice">
                         <input type="radio" name="backgroundLevel" value="1">
-                        <div><strong>None</strong> <span style="color: #444;">: No prior background</span></div>
+                        <div><strong>None:</strong> <span style="color: #666; font-size: 0.92em;">No prior background</span></div>
                     </label>
                     <label class="radio-choice">
                         <input type="radio" name="backgroundLevel" value="2">
-                        <div><strong>Minimal</strong> <span style="color: #444;">: Less than 1 year of coursework or experience</span></div>
+                        <div><strong>Minimal:</strong> <span style="color: #666; font-size: 0.92em;">Less than 1 year of coursework or experience</span></div>
                     </label>
                     <label class="radio-choice">
                         <input type="radio" name="backgroundLevel" value="3">
-                        <div><strong>Some</strong> <span style="color: #444;">: 1–2 years of coursework or experience</span></div>
+                        <div><strong>Some:</strong> <span style="color: #666; font-size: 0.92em;">1–2 years of coursework or experience</span></div>
                     </label>
                     <label class="radio-choice">
                         <input type="radio" name="backgroundLevel" value="4">
-                        <div><strong>Considerable</strong> <span style="color: #444;">: 3–5 years of coursework or professional experience</span></div>
+                        <div><strong>Considerable:</strong> <span style="color: #666; font-size: 0.92em;">3–5 years of coursework or professional experience</span></div>
                     </label>
                     <label class="radio-choice">
                         <input type="radio" name="backgroundLevel" value="5">
-                        <div><strong>Extensive</strong> <span style="color: #444;">: 5+ years of coursework or professional experience</span></div>
+                        <div><strong>Extensive:</strong> <span style="color: #666; font-size: 0.92em;">5+ years of coursework or professional experience</span></div>
                     </label>
                 </div>
 
-                <button type="button" class="modal-submit" disabled>✓ Submit</button>
+                <div style="text-align: center;">
+                    <button type="button" class="modal-submit" style="width: auto; min-width: 140px;" disabled>Next →</button>
+                </div>
             </div>
         </div>
     `;
@@ -220,36 +228,47 @@ export function createDataAnalysisQuestionModal() {
         <div class="modal-content" style="max-width: 750px;">
             <div class="modal-header">
                 <h3 class="modal-title">📋 Questionnaire</h3>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 13px; color: #999; font-weight: 500; white-space: nowrap;">2 / 5</span>
+                    <div style="width: 120px; height: 4px; background: #e0e0e0; border-radius: 2px;">
+                        <div style="height: 100%; width: 40%; background: #2196F3; border-radius: 2px; transition: width 0.3s;"></div>
+                    </div>
+                </div>
             </div>
             <div class="modal-body">
-                <div style="font-size: 18px; color: #550000; margin-top: 24px; margin-bottom: 28px; text-align: left; font-weight: 700;">
+                <div style="font-size: 18px; color: #550000; margin-top: 12px; margin-bottom: 16px; text-align: left; font-weight: 700;">
                     2. Have you previously analyzed scientific data?<br><span style="font-size: 14px; color: #888; font-weight: normal;">(e.g., time series, spectrograms, satellite measurements)</span>
                 </div>
 
-                <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
+                <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;">
                     <label class="radio-choice">
                         <input type="radio" name="dataAnalysisLevel" value="1">
-                        <div><strong>Never</strong> <span style="color: #444;">: This was my first time working with scientific data</span></div>
+                        <div><strong>Never:</strong> <span style="color: #666; font-size: 0.92em;">This was my first time working with scientific data</span></div>
                     </label>
                     <label class="radio-choice">
                         <input type="radio" name="dataAnalysisLevel" value="2">
-                        <div><strong>Rarely</strong> <span style="color: #444;">: A few times in coursework or casually</span></div>
+                        <div><strong>Rarely:</strong> <span style="color: #666; font-size: 0.92em;">A few times in coursework or casually</span></div>
                     </label>
                     <label class="radio-choice">
                         <input type="radio" name="dataAnalysisLevel" value="3">
-                        <div><strong>Occasionally</strong> <span style="color: #444;">: Regular coursework or some research involvement</span></div>
+                        <div><strong>Occasionally:</strong> <span style="color: #666; font-size: 0.92em;">Regular coursework or some research involvement</span></div>
                     </label>
                     <label class="radio-choice">
                         <input type="radio" name="dataAnalysisLevel" value="4">
-                        <div><strong>Frequently</strong> <span style="color: #444;">: Ongoing research or professional work</span></div>
+                        <div><strong>Frequently:</strong> <span style="color: #666; font-size: 0.92em;">Ongoing research or professional work</span></div>
                     </label>
                     <label class="radio-choice">
                         <input type="radio" name="dataAnalysisLevel" value="5">
-                        <div><strong>Extensively</strong> <span style="color: #444;">: Multiple years of hands-on data analysis experience</span></div>
+                        <div><strong>Extensively:</strong> <span style="color: #666; font-size: 0.92em;">Multiple years of hands-on data analysis experience</span></div>
                     </label>
                 </div>
 
-                <button type="button" class="modal-submit" disabled>✓ Submit</button>
+                <div style="text-align: center;">
+                    <div style="display: inline-flex; gap: 12px; align-items: center;">
+                        <button type="button" class="modal-back modal-submit" style="background: #e0e0e0; color: #555; box-shadow: none; text-shadow: none; width: auto; min-width: 100px;">← Back</button>
+                        <button type="button" class="modal-submit" style="width: auto; min-width: 140px;" disabled>Next →</button>
+                    </div>
+                </div>
             </div>
         </div>
     `;
@@ -265,36 +284,47 @@ export function createMusicalExperienceQuestionModal() {
         <div class="modal-content" style="max-width: 950px;">
             <div class="modal-header">
                 <h3 class="modal-title">📋 Questionnaire</h3>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 13px; color: #999; font-weight: 500; white-space: nowrap;">3 / 5</span>
+                    <div style="width: 120px; height: 4px; background: #e0e0e0; border-radius: 2px;">
+                        <div style="height: 100%; width: 60%; background: #2196F3; border-radius: 2px; transition: width 0.3s;"></div>
+                    </div>
+                </div>
             </div>
             <div class="modal-body">
-                <div style="font-size: 18px; color: #550000; margin-top: 24px; margin-bottom: 28px; text-align: left; font-weight: 700;">
+                <div style="font-size: 18px; color: #550000; margin-top: 12px; margin-bottom: 16px; text-align: left; font-weight: 700;">
                     3. What is your level of musical experience?
                 </div>
 
-                <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
+                <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;">
                     <label class="radio-choice">
                         <input type="radio" name="musicalExperienceLevel" value="1">
-                        <div><strong>None</strong> <span style="color: #444;">: No musical training or experience</span></div>
+                        <div><strong>None:</strong> <span style="color: #666; font-size: 0.92em;">No musical training or experience</span></div>
                     </label>
                     <label class="radio-choice">
                         <input type="radio" name="musicalExperienceLevel" value="2">
-                        <div><strong>Minimal</strong> <span style="color: #444;">: Some informal exposure (e.g., basic music classes in school)</span></div>
+                        <div><strong>Minimal:</strong> <span style="color: #666; font-size: 0.92em;">Some informal exposure (e.g., basic music classes in school)</span></div>
                     </label>
                     <label class="radio-choice">
                         <input type="radio" name="musicalExperienceLevel" value="3">
-                        <div><strong>Some</strong> <span style="color: #444;">: 1–3 years of musical training or playing an instrument</span></div>
+                        <div><strong>Some:</strong> <span style="color: #666; font-size: 0.92em;">1–3 years of musical training or playing an instrument</span></div>
                     </label>
                     <label class="radio-choice">
                         <input type="radio" name="musicalExperienceLevel" value="4">
-                        <div><strong>Considerable</strong> <span style="color: #444;">: 4+ years of training, active musician or regular performer</span></div>
+                        <div><strong>Considerable:</strong> <span style="color: #666; font-size: 0.92em;">4+ years of training, active musician or regular performer</span></div>
                     </label>
                     <label class="radio-choice">
                         <input type="radio" name="musicalExperienceLevel" value="5">
-                        <div><strong>Extensive</strong> <span style="color: #444;">: Professional musician, music degree, or lifelong serious practice</span></div>
+                        <div><strong>Extensive:</strong> <span style="color: #666; font-size: 0.92em;">Professional musician, music degree, or lifelong serious practice</span></div>
                     </label>
                 </div>
 
-                <button type="button" class="modal-submit" disabled>✓ Submit</button>
+                <div style="text-align: center;">
+                    <div style="display: inline-flex; gap: 12px; align-items: center;">
+                        <button type="button" class="modal-back modal-submit" style="background: #e0e0e0; color: #555; box-shadow: none; text-shadow: none; width: auto; min-width: 100px;">← Back</button>
+                        <button type="button" class="modal-submit" style="width: auto; min-width: 140px;" disabled>Next →</button>
+                    </div>
+                </div>
             </div>
         </div>
     `;
@@ -310,15 +340,26 @@ export function createFeedbackQuestionModal() {
         <div class="modal-content" style="max-width: 750px;">
             <div class="modal-header">
                 <h3 class="modal-title">📋 Questionnaire</h3>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 13px; color: #999; font-weight: 500; white-space: nowrap;">4 / 5</span>
+                    <div style="width: 120px; height: 4px; background: #e0e0e0; border-radius: 2px;">
+                        <div style="height: 100%; width: 80%; background: #2196F3; border-radius: 2px; transition: width 0.3s;"></div>
+                    </div>
+                </div>
             </div>
             <div class="modal-body">
-                <div style="font-size: 18px; color: #550000; margin-top: 24px; margin-bottom: 28px; text-align: left; font-weight: 700;">
-                    3. Do you have any additional feedback you'd like to share?
+                <div style="font-size: 18px; color: #550000; margin-top: 12px; margin-bottom: 16px; text-align: left; font-weight: 700;">
+                    4. Do you have any additional feedback you'd like to share?
                 </div>
 
                 <textarea id="feedbackText" placeholder="Type your response here (optional)..." style="width: 100%; min-height: 200px; padding: 14px; font-size: 15px; font-family: inherit; border: 1px solid #ddd; border-radius: 8px; resize: vertical; box-sizing: border-box; line-height: 1.5; color: #333; transition: border-color 0.15s;" onfocus="this.style.borderColor='#007bff'" onblur="this.style.borderColor='#ddd'"></textarea>
 
-                <button type="button" class="modal-submit" id="feedbackSubmitBtn">Skip</button>
+                <div style="text-align: center;">
+                    <div style="display: inline-flex; gap: 12px; align-items: center;">
+                        <button type="button" class="modal-back modal-submit" style="background: #e0e0e0; color: #555; box-shadow: none; text-shadow: none; width: auto; min-width: 100px;">← Back</button>
+                        <button type="button" class="modal-submit" style="width: auto; min-width: 140px;" id="feedbackSubmitBtn">Next →</button>
+                    </div>
+                </div>
             </div>
         </div>
     `;
@@ -334,15 +375,26 @@ export function createReferralQuestionModal() {
         <div class="modal-content" style="max-width: 750px;">
             <div class="modal-header">
                 <h3 class="modal-title">📋 Questionnaire</h3>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 13px; color: #999; font-weight: 500; white-space: nowrap;">5 / 5</span>
+                    <div style="width: 120px; height: 4px; background: #e0e0e0; border-radius: 2px;">
+                        <div style="height: 100%; width: 100%; background: #2196F3; border-radius: 2px; transition: width 0.3s;"></div>
+                    </div>
+                </div>
             </div>
             <div class="modal-body">
-                <div style="font-size: 18px; color: #550000; margin-top: 24px; margin-bottom: 28px; text-align: left; font-weight: 700;">
-                    4. How did you learn about this experiment?
+                <div style="font-size: 18px; color: #550000; margin-top: 12px; margin-bottom: 16px; text-align: left; font-weight: 700;">
+                    5. How did you learn about this experiment?
                 </div>
 
-                <textarea id="referralText" placeholder="Type your response here (optional)..." style="width: 100%; min-height: 100px; padding: 14px; font-size: 15px; font-family: inherit; border: 1px solid #ddd; border-radius: 8px; resize: vertical; box-sizing: border-box; line-height: 1.5; color: #333; transition: border-color 0.15s;" onfocus="this.style.borderColor='#007bff'" onblur="this.style.borderColor='#ddd'"></textarea>
+                <textarea id="referralText" placeholder="Type your response here (optional)..." style="width: 100%; min-height: 200px; padding: 14px; font-size: 15px; font-family: inherit; border: 1px solid #ddd; border-radius: 8px; resize: vertical; box-sizing: border-box; line-height: 1.5; color: #333; transition: border-color 0.15s;" onfocus="this.style.borderColor='#007bff'" onblur="this.style.borderColor='#ddd'"></textarea>
 
-                <button type="button" class="modal-submit" id="referralSubmitBtn">Skip</button>
+                <div style="text-align: center;">
+                    <div style="display: inline-flex; gap: 12px; align-items: center;">
+                        <button type="button" class="modal-back modal-submit" style="background: #e0e0e0; color: #555; box-shadow: none; text-shadow: none; width: auto; min-width: 100px;">← Back</button>
+                        <button type="button" class="modal-submit" style="width: auto; min-width: 140px;" id="referralSubmitBtn">✓ Submit</button>
+                    </div>
+                </div>
             </div>
         </div>
     `;
