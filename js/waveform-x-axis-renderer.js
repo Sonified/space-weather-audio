@@ -957,19 +957,13 @@ export function formatTickLabel(tick) {
 
     const hm = `${utcHours}:${String(utcMinutes).padStart(2, '0')}`;
 
-    if (tick.showMilliseconds) {
+    if (tick.showMilliseconds && utcMillis > 0) {
         const ss = String(utcSeconds).padStart(2, '0');
-        if (utcMillis === 0) {
-            // On whole-second boundaries, just show H:MM:SS
-            return `${hm}:${ss}`;
-        }
-        // Show H:MM:SS.mmm with trailing zeros dropped
-        // e.g. 500 → ".5", 100 → ".1", 50 → ".05", 123 → ".123"
         const msStr = String(utcMillis).padStart(3, '0').replace(/0+$/, '');
         return `${hm}:${ss}.${msStr}`;
     }
 
-    if (tick.showSeconds) {
+    if ((tick.showSeconds || tick.showMilliseconds) && utcSeconds > 0) {
         return `${hm}:${String(utcSeconds).padStart(2, '0')}`;
     }
 
