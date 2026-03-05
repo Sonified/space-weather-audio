@@ -117,6 +117,20 @@ export function initFlagsPanel() {
         showPanel();
     }
 
+    // Select All button — sets all boolean flags to true
+    const selectAllBtn = document.getElementById('emicFlagsSelectAll');
+    if (selectAllBtn) {
+        selectAllBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Don't trigger drag
+            Object.entries(EMIC_FLAGS).forEach(([, key]) => {
+                if (key !== EMIC_FLAGS.ACTIVE_FEATURE_COUNT) {
+                    setEmicFlag(key, true);
+                }
+            });
+            syncFlagCheckboxes();
+        });
+    }
+
     // Make panel draggable
     const handle = document.getElementById('emicFlagsDragHandle') || panel;
     let dragging = false, offsetX = 0, offsetY = 0;

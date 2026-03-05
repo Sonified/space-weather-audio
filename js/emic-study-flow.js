@@ -750,8 +750,6 @@ function resetQuestionnaireInputs() {
         if (!modal) return;
         const textarea = modal.querySelector('textarea');
         if (textarea) textarea.value = '';
-        const submit = modal.querySelector('.modal-submit');
-        if (submit) submit.textContent = 'Skip';
     });
 }
 
@@ -967,23 +965,35 @@ async function runQuestionnaireSequence() {
             if (submitBtn && checked) submitBtn.disabled = false;
         }
 
-        // Wire one-time back button listener (modals 2+ only)
+        // Wire one-time back and skip button listeners
         let wentBack = false;
+        let skipped = false;
         const backBtn = modal.querySelector('.modal-back');
+        const skipBtn = modal.querySelector('.modal-skip');
         const onBack = () => {
             wentBack = true;
+            modalManager.closeModal(q.modalId, { keepOverlay: true });
+        };
+        const onSkip = () => {
+            skipped = true;
             modalManager.closeModal(q.modalId, { keepOverlay: true });
         };
         if (backBtn) {
             backBtn.addEventListener('click', onBack, { once: true });
         }
+        if (skipBtn) {
+            skipBtn.addEventListener('click', onSkip, { once: true });
+        }
 
-        // Open this questionnaire (resolves when submit or back closes it)
+        // Open this questionnaire (resolves when submit or back or skip closes it)
         await modalManager.openModal(q.modalId, { keepOverlay: true });
 
-        // Clean up back listener if submit was clicked instead
+        // Clean up listeners if a different button was clicked
         if (backBtn && !wentBack) {
             backBtn.removeEventListener('click', onBack);
+        }
+        if (skipBtn && !skipped) {
+            skipBtn.removeEventListener('click', onSkip);
         }
 
         if (wentBack) {
@@ -996,6 +1006,15 @@ async function runQuestionnaireSequence() {
                 flowLog(`Going back: cleared flag for "${QUESTIONNAIRE_CONFIG[prevIndex].key}"`);
             }
             i = Math.max(0, i - 1);
+            continue;
+        }
+
+        if (skipped) {
+            // Skip: advance without saving answer, but mark as completed
+            setEmicFlag(resolvedFlag);
+            syncEmicProgress(getParticipantId(), q.milestone);
+            flowLog(`Questionnaire "${q.key}" skipped`);
+            i++;
             continue;
         }
 

@@ -941,16 +941,13 @@ export function wireQuestionnaireModals(modalMgr) {
             closeBtn.addEventListener('click', () => modalMgr.closeModal(q.modalId));
         }
 
-        const submitBtn = modal.querySelector('.modal-submit:not(.modal-back)');
+        const submitBtn = modal.querySelector('.modal-submit:not(.modal-back):not(.modal-skip)');
 
         if (q.type === 'radio') {
             // Enable submit when any radio is selected
             modal.querySelectorAll('input[type="radio"]').forEach(radio => {
                 radio.addEventListener('change', () => { submitBtn.disabled = false; });
             });
-        } else {
-            // No toggle needed — button text set in template
-            // (non-last = "Next →", last = "✓ Submit")
         }
 
         // Submit handler

@@ -100,8 +100,8 @@ function handleKeyboardShortcut(event) {
         return;
     }
 
-    // 'f' key: Toggle flags panel (localhost only)
-    if ((event.key === 'f' || event.key === 'F') && isLocalEnvironment()) {
+    // 'f' key: Toggle flags panel
+    if (event.key === 'f' || event.key === 'F') {
         const btn = document.getElementById('showFlagsBtn');
         if (btn) {
             event.preventDefault();

@@ -217,12 +217,7 @@ export async function startStreaming(event, config = null) {
                 statusDiv.className = 'status info';
             }
         }
-        if (!userHasClickedWaveformOnce) {
-            const waveformEl = document.getElementById('waveform');
-            if (waveformEl) {
-                waveformEl.classList.add('pulse');
-            }
-        }
+        // Pulse removed — was distracting
 
         // Reload recent searches dropdown (function is defined in DOMContentLoaded)
         if (typeof window.loadRecentSearches === 'function') {
