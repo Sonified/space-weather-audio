@@ -30,6 +30,7 @@ import { loadRecentSearches, restoreRecentSearch, saveRecentSearch } from './rec
 import { setupResizeHandler } from './resize-handler.js';
 import { detectGPUCapability } from './gpu-detection.js';
 import { initializeApp, updateParticipantIdDisplay } from './mode-initializers.js';
+import { initScrollZoom } from './scroll-zoom.js';
 
 if (window.pm?.init) console.log('✅ CONSTANTS DEFINED');
 
@@ -38,6 +39,9 @@ export { startStreaming } from './streaming.js';
 
 // Main initialization function
 async function initializeMainApp() {
+    // Capture wheel events on canvases immediately to prevent page scroll before data loads
+    initScrollZoom();
+
     if (window.pm?.gpu) {
         console.log('════════════════════');
         console.log('☀️ SOLAR AUDIFICATION PORTAL - INITIALIZING!');

@@ -185,9 +185,11 @@ function onWheel(e) {
     const hasHorizontal = eventAxis === 'horizontal' && absX > 0 && hPanEnabled;
 
     if (!hasVertical && !hasHorizontal) return;
-    if (!State.dataStartTime || !State.dataEndTime) return;
 
+    // Always prevent page scroll over canvases, even before data loads
     e.preventDefault();
+
+    if (!State.dataStartTime || !State.dataEndTime) return;
     notifyPageTurnUserDragged();
     notifyInteractionStart();
 
