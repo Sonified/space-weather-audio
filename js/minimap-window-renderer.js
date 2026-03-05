@@ -2281,7 +2281,7 @@ export function initWaveformWorker() {
     const worker = new Worker('workers/waveform-worker.js');
     State.setWaveformWorker(worker);
     
-    worker.onmessage = (e) => {
+    worker.onmessage = async (e) => {
         const { type } = e.data;
         // console.log(`🔍 [PIPELINE] Worker message received: type=${type}`);
 
@@ -2304,6 +2304,20 @@ export function initWaveformWorker() {
             // Note: We've already copied the data to State, so it's safe to clear here
             e.data.waveformData = null;
         } else if (type === 'reset-complete') {
+            // Clear old waveform so stale data doesn't flash on next render
+            State.setWaveformMinMaxData(null);
+            State.setIsShowingFinalWaveform(false);
+            wfLastUploadedSamples = null;
+            wfTotalSamples = 0;
+            // Clear the GPU texture so old waveform doesn't show
+            if (wfSampleTexture) {
+                const zeros = new Float32Array(wfSampleTexture.image.width * wfSampleTexture.image.height);
+                wfSampleTexture.image.data.set(zeros);
+                wfSampleTexture.needsUpdate = true;
+            }
+            if (wfRenderer && wfScene && wfCamera) {
+                await wfRenderer.renderAsync(wfScene, wfCamera);
+            }
             if (!isStudyMode()) {
                 console.log('🎨 Waveform worker reset complete');
             }

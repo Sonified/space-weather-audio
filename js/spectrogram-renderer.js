@@ -130,7 +130,6 @@ function updateHoveredBox(cssX, cssY) {
     const box = (cssX !== null) ? getBoxAtPoint(cssX, cssY) : null;
     const newKey = box ? `${box.regionIndex}-${box.featureIndex}` : null;
     if (newKey !== hoveredBoxKey) {
-        console.log(`🔍 [HOVER] ${hoveredBoxKey} → ${newKey}`);
         hoveredBoxKey = newKey;
         redrawCanvasBoxes();
         // Drive the annotation fade animation — redrawCanvasBoxes runs the

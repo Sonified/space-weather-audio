@@ -264,6 +264,11 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     const logTime = () => `[${Math.round(performance.now() - window.streamingStartTime)}ms]`;
     const statusEl = document.getElementById('status');
 
+    // Reset waveform worker so old data doesn't bleed into new fetch
+    if (State.waveformWorker) {
+        State.waveformWorker.postMessage({ type: 'reset' });
+    }
+
     if (window.pm?.data) {
         console.log(`☁️ [CLOUDFLARE] Progressive fetch: ${spacecraft} ${dataset}`);
         console.log(`☁️ ${logTime()} Time range: ${startTimeISO} → ${endTimeISO}`);
@@ -411,11 +416,10 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     const BUFFER_THRESHOLD = 44100; // ~1 second at 44.1kHz — enough buffer before starting playback
     let spectrogramRenderInProgress = false;
     // Data rendering mode: progressive | onComplete | triggered
-    const renderMode = document.getElementById('dataRendering')?.value || 'progressive';
+    // Read live from dropdown so mid-download changes take effect immediately
+    const dataRenderingEl = document.getElementById('dataRendering');
     let renderTriggered = false;
-    if (renderMode === 'triggered') {
-        window.triggerDataRender = () => { renderTriggered = true; };
-    }
+    window.triggerDataRender = () => { renderTriggered = true; };
     let totalBytesDownloaded = 0;
     const progressiveT0 = performance.now();
     let lastRenderTime = 0;
@@ -722,11 +726,13 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
         sendChunksInOrder();
 
         // Feed to waveform worker in order (progressive waveform drawing)
-        sendToWaveformInOrder();
+        // Respect rendering mode — don't draw waveform until triggered
+        const renderMode = dataRenderingEl?.value || 'progressive';
+        const allowMidStreamRender = renderMode === 'progressive' || (renderMode === 'triggered' && renderTriggered);
+        if (allowMidStreamRender) sendToWaveformInOrder();
 
         // Throttle visual rendering so the audio worklet gets CPU/GPU breathing room
         // Rendering mode: progressive (always), onComplete (skip mid-stream), triggered (wait for trigger then progressive)
-        const allowMidStreamRender = renderMode === 'progressive' || (renderMode === 'triggered' && renderTriggered);
         const now = performance.now();
         const shouldRender = allowMidStreamRender && (now - lastRenderTime) >= RENDER_THROTTLE_MS;
 
@@ -862,24 +868,7 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
         });
     }
 
-    // Final waveform build with DC removal
-    if (window.pm?.render) console.log(`🎨 ${logTime()} Requesting final waveform (${totalWorkletSamples.toLocaleString()} samples)`);
-    const canvas = document.getElementById('waveform');
-    const removeDC = document.getElementById('removeDCOffset')?.checked || false;
-    const slider = document.getElementById('waveformFilterSlider');
-    const alpha = slider ? 0.9 + (parseInt(slider.value) / 1000) : 0.99;
-
-    State.waveformWorker.postMessage({
-        type: 'build-waveform',
-        canvasWidth: canvas.offsetWidth * window.devicePixelRatio,
-        canvasHeight: canvas.offsetHeight * window.devicePixelRatio,
-        removeDC: removeDC,
-        alpha: alpha,
-        isComplete: true,
-        totalExpectedSamples: totalWorkletSamples,
-    });
-
-    // Draw waveform axis
+    // Draw waveform axis (labels only — no data rendering)
     positionWaveformAxisCanvas();
     drawWaveformAxis();
 
@@ -919,10 +908,36 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     // Enable analysis button
     updateCompleteButtonState();
 
-    // Clean up triggered render hook
-    if (renderMode === 'triggered') delete window.triggerDataRender;
-
     // Final spectrogram render with complete data
+    // In triggered mode, wait for the trigger before rendering
+    const finalRenderMode = dataRenderingEl?.value || 'progressive';
+    if (finalRenderMode === 'triggered' && !renderTriggered) {
+        await new Promise(resolve => {
+            window.triggerDataRender = () => { renderTriggered = true; resolve(); };
+        });
+    }
+    delete window.triggerDataRender;
+
+    // Send any unsent waveform chunks now that rendering is allowed
+    sendToWaveformInOrder();
+
+    // Final waveform build with DC removal
+    if (window.pm?.render) console.log(`🎨 ${logTime()} Requesting final waveform (${totalWorkletSamples.toLocaleString()} samples)`);
+    const canvas = document.getElementById('waveform');
+    const removeDC = document.getElementById('removeDCOffset')?.checked || false;
+    const slider = document.getElementById('waveformFilterSlider');
+    const alpha = slider ? 0.9 + (parseInt(slider.value) / 1000) : 0.99;
+
+    State.waveformWorker.postMessage({
+        type: 'build-waveform',
+        canvasWidth: canvas.offsetWidth * window.devicePixelRatio,
+        canvasHeight: canvas.offsetHeight * window.devicePixelRatio,
+        removeDC: removeDC,
+        alpha: alpha,
+        isComplete: true,
+        totalExpectedSamples: totalWorkletSamples,
+    });
+
     if (window.pm?.render) console.log(`🎨 ${logTime()} Final spectrogram render with complete data...`);
     await renderProgressiveSpectrogram(State.completeSamplesArray, { isComplete: true });
 
