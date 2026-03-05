@@ -85,6 +85,9 @@ export function initializeAdvancedControls() {
         { id: 'tickFadeOutTime', key: 'emic_tick_fade_out', type: 'range' },
         { id: 'tickFadeInCurve', key: 'emic_tick_fade_in_curve', type: 'select' },
         { id: 'tickFadeOutCurve', key: 'emic_tick_fade_out_curve', type: 'select' },
+        { id: 'tickZoomFadeMode', key: 'emic_tick_zoom_fade_mode', type: 'select' },
+        { id: 'tickZoomSpatialCurve', key: 'emic_tick_zoom_spatial_curve', type: 'select' },
+        { id: 'tickZoomSpatialWidth', key: 'emic_tick_zoom_spatial_width', type: 'range' },
         { id: 'tickEdgeFadeMode', key: 'emic_tick_edge_fade_mode', type: 'select' },
         { id: 'tickEdgeFadeCurve', key: 'emic_tick_edge_fade_curve', type: 'select' },
         { id: 'tickEdgeSpatialWidth', key: 'emic_tick_edge_spatial_width', type: 'range' },
@@ -745,6 +748,7 @@ export function initializeAdvancedControls() {
     for (const { sliderId, labelId, storageKey, suffix } of [
         { sliderId: 'tickFadeInTime', labelId: 'tickFadeInLabel', storageKey: 'emic_tick_fade_in', suffix: 's' },
         { sliderId: 'tickFadeOutTime', labelId: 'tickFadeOutLabel', storageKey: 'emic_tick_fade_out', suffix: 's' },
+        { sliderId: 'tickZoomSpatialWidth', labelId: 'tickZoomSpatialWidthLabel', storageKey: 'emic_tick_zoom_spatial_width', suffix: '' },
         { sliderId: 'tickEdgeSpatialWidth', labelId: 'tickEdgeSpatialWidthLabel', storageKey: 'emic_tick_edge_spatial_width', suffix: '' },
         { sliderId: 'tickEdgeTimeIn', labelId: 'tickEdgeTimeInLabel', storageKey: 'emic_tick_edge_time_in', suffix: 's' },
         { sliderId: 'tickEdgeTimeOut', labelId: 'tickEdgeTimeOutLabel', storageKey: 'emic_tick_edge_time_out', suffix: 's' },
@@ -758,6 +762,20 @@ export function initializeAdvancedControls() {
             localStorage.setItem(storageKey, slider.value);
         });
         update();
+    }
+
+    // Show/hide zoom fade sub-controls based on mode
+    const zoomModeSelect = document.getElementById('tickZoomFadeMode');
+    const zoomTimeControls = document.getElementById('tickZoomTimeControls');
+    const zoomSpatialControls = document.getElementById('tickZoomSpatialControls');
+    function updateZoomFadeControls() {
+        const mode = zoomModeSelect?.value || 'time';
+        if (zoomTimeControls) zoomTimeControls.style.display = mode === 'time' ? '' : 'none';
+        if (zoomSpatialControls) zoomSpatialControls.style.display = mode === 'spatial' ? '' : 'none';
+    }
+    if (zoomModeSelect) {
+        zoomModeSelect.addEventListener('change', updateZoomFadeControls);
+        updateZoomFadeControls();
     }
 
     // Show/hide edge fade sub-controls based on mode

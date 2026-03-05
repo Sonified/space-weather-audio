@@ -314,6 +314,16 @@ export function injectSettingsDrawer() {
             <div style="display: flex; flex-direction: column; gap: 18px; padding: 8px 0;">
                 <div>
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                        <span class="drawer-label" style="min-width: 72px;">Zoom fade:</span>
+                        <select id="tickZoomFadeMode" class="drawer-input" style="width: 100px; text-align: left;">
+                            <option value="time" selected>Time</option>
+                            <option value="spatial">Spatial</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="tickZoomTimeControls">
+                <div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                         <span class="drawer-label" style="min-width: 56px;">Fade in:</span>
                         <select id="tickFadeInCurve" class="drawer-input" style="width: 100px; text-align: left;">
                             <option value="linear">Linear</option>
@@ -344,6 +354,27 @@ export function injectSettingsDrawer() {
                         <input type="range" id="tickFadeOutTime" class="drawer-input" min="0" max="2" step="0.05" value="0.3" style="flex: 1; margin: 0; padding: 0;">
                         <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">2s</span>
                         <span id="tickFadeOutLabel" style="font-size: 11px; color: #888; min-width: 32px;">0.30s</span>
+                    </div>
+                </div>
+                </div>
+                <div id="tickZoomSpatialControls" style="display: none;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                        <span class="drawer-label" style="min-width: 56px;">Curve:</span>
+                        <select id="tickZoomSpatialCurve" class="drawer-input" style="width: 100px; text-align: left;">
+                            <option value="linear">Linear</option>
+                            <option value="easeIn">Ease In</option>
+                            <option value="easeOut" selected>Ease Out</option>
+                            <option value="easeInOut">Ease In-Out</option>
+                        </select>
+                    </div>
+                    <div style="margin-top: 8px;">
+                        <span class="drawer-label" style="font-size: 11px; margin-bottom: 6px; display: block;">Width</span>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">sharp</span>
+                            <input type="range" id="tickZoomSpatialWidth" class="drawer-input" min="0" max="2" step="0.05" value="0.5" style="flex: 1; margin: 0; padding: 0;">
+                            <span style="font-size: 12px; color: #999; white-space: nowrap; line-height: 1;">wide</span>
+                            <span id="tickZoomSpatialWidthLabel" style="font-size: 11px; color: #888; min-width: 32px;">0.50</span>
+                        </div>
                     </div>
                 </div>
                 <div>
@@ -486,9 +517,9 @@ export function injectGearPopovers() {
                 <div class="gear-popover-row">
                     <span class="gear-label">Show:</span>
                     <select id="miniMapView" class="gear-select">
-                        <option value="linePlot">Line Plot</option>
                         <option value="spectrogram" selected>Spectrogram</option>
                         <option value="both">Combination</option>
+                        <option value="linePlot">Line Plot</option>
                     </select>
                 </div>
                 <div class="gear-popover-row">

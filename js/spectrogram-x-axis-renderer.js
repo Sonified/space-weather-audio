@@ -5,6 +5,7 @@
 
 import {
     chooseTicks,
+    chooseTicksMultiLevel,
     formatTickLabel,
     getInterpolatedTimeRange
 } from './waveform-x-axis-renderer.js';
@@ -52,6 +53,21 @@ function getTickEdgeTimeOut() {
 
 function getTickEdgeFadeCurve() {
     const el = document.getElementById('tickEdgeFadeCurve');
+    return el ? el.value : 'easeOut';
+}
+
+function getTickZoomFadeMode() {
+    const el = document.getElementById('tickZoomFadeMode');
+    return el ? el.value : 'time';
+}
+
+function getTickZoomSpatialWidth() {
+    const el = document.getElementById('tickZoomSpatialWidth');
+    return el ? parseFloat(el.value) : 0.5;
+}
+
+function getTickZoomSpatialCurve() {
+    const el = document.getElementById('tickZoomSpatialCurve');
     return el ? el.value : 'easeOut';
 }
 
@@ -137,6 +153,56 @@ export function drawSpectrogramXAxis() {
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
 
+    // Spatial zoom fade mode: multi-level pulse-based rendering
+    if (getTickZoomFadeMode() === 'spatial') {
+        const fadeWidth = getTickZoomSpatialWidth();
+        const curveFn = easingFunctions[getTickZoomSpatialCurve()] || easingFunctions.easeOut;
+        const levels = chooseTicksMultiLevel(startTimeUTC, endTimeUTC, canvasWidth, fadeWidth, curveFn);
+
+        // Edge fade still applies independently
+        const edgeFadeMode = getTickEdgeFadeMode();
+        const edgeSpatialWidth = getTickEdgeSpatialWidth();
+        const EDGE_PX_PER_UNIT = 80;
+        const edgeFadePx = edgeSpatialWidth * EDGE_PX_PER_UNIT;
+        const edgeCurve = easingFunctions[getTickEdgeFadeCurve()] || easingFunctions.easeOut;
+        function spatialEdgeOpacity(x) {
+            if (edgeFadeMode !== 'spatial' || edgeFadePx <= 0) return 1;
+            if (x < edgeFadePx) return edgeCurve(Math.max(0, x / edgeFadePx));
+            if (x > canvasWidth - edgeFadePx) return edgeCurve(Math.max(0, (canvasWidth - x) / edgeFadePx));
+            return 1;
+        }
+
+        // Draw all visible levels — coarsest first (already sorted by chooseTicksMultiLevel)
+        for (const level of levels) {
+            for (const tick of level.ticks) {
+                const timeOffsetSeconds = (tick.utcTime.getTime() - startTimeUTC.getTime()) / 1000;
+                const x = (timeOffsetSeconds / actualTimeSpanSeconds) * canvasWidth;
+                if (x < -10 || x > canvasWidth + 10) continue;
+
+                const finalOpacity = level.opacity * spatialEdgeOpacity(x);
+                if (finalOpacity < 0.005) continue;
+
+                ctx.globalAlpha = finalOpacity;
+                ctx.strokeStyle = tickColor;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, 8);
+                ctx.stroke();
+
+                const label = formatTickLabel(tick);
+                ctx.fillStyle = labelColor;
+                ctx.font = tick.isDayCrossing ? `bold ${fontSize} Arial, sans-serif` : `${fontSize} Arial, sans-serif`;
+                const halfW = ctx.measureText(label).width / 2;
+                const labelX = Math.max(halfW, Math.min(x, canvasWidth - halfW));
+                ctx.fillText(label, labelX, 10);
+            }
+        }
+
+        ctx.globalAlpha = 1;
+        return; // Skip the time-based fade state machine entirely
+    }
+
+    // Time-based zoom fade mode (existing behavior)
     // Choose ticks adaptively based on both time span AND pixel density
     const ticks = chooseTicks(startTimeUTC, endTimeUTC, canvasWidth);
     const fadeInTime = getTickFadeInTime();

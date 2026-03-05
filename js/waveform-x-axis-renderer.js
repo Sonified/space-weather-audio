@@ -666,6 +666,106 @@ export function chooseTicks(startUTC, endUTC, canvasWidth, minPixelsPerTick = 44
 }
 
 /**
+ * Multi-level tick generation for spatial zoom fade mode.
+ * Returns all tick levels that have opacity > 0 at the current zoom,
+ * each with its unique ticks (no duplicates across levels).
+ *
+ * Each level's opacity is a pure function of zoom position:
+ *   logRatio = log2(pixelsPerTick / minPx)
+ *   opacity  = curve(clamp(logRatio / fadeWidth, 0, 1))
+ *
+ * Ticks are assigned to their coarsest matching level to avoid duplicates.
+ *
+ * @param {Date} startUTC
+ * @param {Date} endUTC
+ * @param {number} canvasWidth
+ * @param {number} fadeWidth - Ramp width in log2 units (0 = hard edge, 2 = very gradual)
+ * @param {function} curve - Easing function (t => t)
+ * @param {number} [minPixelsPerTick=44]
+ * @returns {Array<{ ticks: Array, opacity: number, intervalSec: number }>}
+ */
+export function chooseTicksMultiLevel(startUTC, endUTC, canvasWidth, fadeWidth, curve, minPixelsPerTick = 44) {
+    const timeSpanSeconds = (endUTC.getTime() - startUTC.getTime()) / 1000;
+    if (timeSpanSeconds <= 0 || !isFinite(timeSpanSeconds)) return [];
+    const timeSpanHours = timeSpanSeconds / 3600;
+
+    const intervals = [
+        [0.1,       (s, e) => calculateSubMinuteTicks(s, e, 100),    0,    0.003,  100],
+        [0.5,       (s, e) => calculateSubMinuteTicks(s, e, 500),    0,    0.015,  100],
+        [1,         (s, e) => calculateSubMinuteTicks(s, e, 1000),   0,    0.03,   80],
+        [5,         (s, e) => calculateSubMinuteTicks(s, e, 5000),   0,    0.1,    80],
+        [10,        (s, e) => calculateSubMinuteTicks(s, e, 10000),  0,    0.2,    80],
+        [30,        (s, e) => calculateSubMinuteTicks(s, e, 30000),  0,    0.5,    80],
+        [60,        calculateOneMinuteTicks,      0,    1],
+        [300,       calculateFiveMinuteTicks,      0,    6],
+        [600,       calculateTenMinuteTicks,       0.15, 8],
+        [1800,      calculateThirtyMinuteTicks,    0.3,  24],
+        [3600,      calculateHourlyTicks,          1,    72],
+        [7200,      calculateTwoHourTicks,         2,    168],
+        [21600,     calculateSixHourTicks,         6,    Infinity],
+        [43200,     calculateTwelveHourTicks,      12,   Infinity],
+        [86400,     calculateDailyTicks,           24,   Infinity],
+    ];
+
+    // Compute opacity for each level based on current zoom
+    const visibleLevels = [];
+    for (const [intervalSec, calcFn, minSpanH, maxSpanH, overrideMinPx] of intervals) {
+        if (timeSpanHours < minSpanH || timeSpanHours > maxSpanH) continue;
+
+        const estTickCount = timeSpanSeconds / intervalSec;
+        const pixelsPerTick = canvasWidth / estTickCount;
+        const effectiveMinPx = overrideMinPx || minPixelsPerTick;
+
+        // Compute opacity: log2(pixelsPerTick / minPx) mapped through fadeWidth
+        const logRatio = Math.log2(pixelsPerTick / effectiveMinPx);
+        let opacity;
+        if (fadeWidth <= 0) {
+            // Hard edge: fully visible once past threshold, invisible before
+            opacity = logRatio >= 0 ? 1 : 0;
+        } else {
+            opacity = curve(Math.max(0, Math.min(1, logRatio / fadeWidth)));
+        }
+
+        if (opacity > 0.001) {
+            visibleLevels.push({ intervalSec, calcFn, opacity });
+        }
+    }
+
+    if (visibleLevels.length === 0) {
+        // Fallback: daily ticks at full opacity
+        return [{ ticks: calculateDailyTicks(startUTC, endUTC), opacity: 1, intervalSec: 86400 }];
+    }
+
+    // Sort coarsest first (largest interval)
+    visibleLevels.sort((a, b) => b.intervalSec - a.intervalSec);
+
+    // Generate ticks for each level, filtering out positions already claimed by coarser levels
+    const claimedPositions = new Set(); // tick timestamp ms
+    const result = [];
+
+    for (const level of visibleLevels) {
+        const allTicks = level.calcFn(startUTC, endUTC);
+        // Filter to unique ticks not claimed by coarser levels
+        const uniqueTicks = allTicks.filter(tick => {
+            const key = tick.utcTime.getTime();
+            if (claimedPositions.has(key)) return false;
+            claimedPositions.add(key);
+            return true;
+        });
+
+        if (uniqueTicks.length > 0) {
+            result.push({
+                ticks: uniqueTicks,
+                opacity: level.opacity,
+                intervalSec: level.intervalSec,
+            });
+        }
+    }
+
+    return result;
+}
+
+/**
  * Calculate 4-hour tick positions starting at UTC midnight
  * Quantizes at 4-hour boundaries (00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC)
  */
