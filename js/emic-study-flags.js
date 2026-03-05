@@ -15,12 +15,12 @@ export const EMIC_FLAGS = {
     HAS_CONFIRMED_COMPLETE:     'emic_has_confirmed_complete',
     HAS_COMPLETED_ANALYSIS:     'emic_has_completed_analysis', // legacy — kept for compat
     HAS_CLICKED_POST_OK:        'emic_has_clicked_post_ok',
-    HAS_SUBMITTED:              'emic_has_submitted',
-    HAS_SUBMITTED_BACKGROUND:   'emic_has_submitted_background',
-    HAS_SUBMITTED_DATA_ANALYSIS:'emic_has_submitted_data_analysis',
-    HAS_SUBMITTED_MUSICAL:      'emic_has_submitted_musical',
-    HAS_SUBMITTED_REFERRAL:     'emic_has_submitted_referral',
-    HAS_SUBMITTED_FEEDBACK:     'emic_has_submitted_feedback',
+    ANSWERED_1_BACKGROUND:        'emic_answered_1_background',
+    ANSWERED_2_DATA_ANALYSIS:     'emic_answered_2_data_analysis',
+    ANSWERED_3_MUSICAL:           'emic_answered_3_musical',
+    ANSWERED_4_FEEDBACK:          'emic_answered_4_feedback',
+    ANSWERED_5_LEARNED:           'emic_answered_5_learned',
+    HAS_SUBMITTED_TO_R2:          'emic_has_submitted_to_r2',
 };
 
 // ── Getters ──────────────────────────────────────────────────────────────────
@@ -50,8 +50,13 @@ export function clearEmicFlag(key) {
 /** Clear all EMIC flags (for reset / new test session) */
 export function clearAllEmicFlags() {
     Object.values(EMIC_FLAGS).forEach(key => {
-        localStorage.removeItem(key);
-        window.dispatchEvent(new CustomEvent('emic-flag-change', { detail: { key, value: null } }));
+        if (key === EMIC_FLAGS.ACTIVE_FEATURE_COUNT) {
+            localStorage.setItem(key, '0');
+            window.dispatchEvent(new CustomEvent('emic-flag-change', { detail: { key, value: 0 } }));
+        } else {
+            localStorage.removeItem(key);
+            window.dispatchEvent(new CustomEvent('emic-flag-change', { detail: { key, value: null } }));
+        }
     });
 }
 
@@ -82,24 +87,35 @@ export function initFlagsPanel() {
         btn.style.display = simBtn.style.display;
     }
 
-    btn.addEventListener('click', () => {
-        const showing = panel.style.display !== 'none';
-        if (showing) {
-            panel.style.display = 'none';
-            btn.textContent = 'Show Flags';
-            if (flagChangeListener) {
-                window.removeEventListener('emic-flag-change', flagChangeListener);
-                flagChangeListener = null;
-            }
-        } else {
-            panel.style.display = 'block';
-            btn.textContent = 'Hide Flags';
-            buildFlagCheckboxes();
-            syncFlagCheckboxes();
-            flagChangeListener = () => syncFlagCheckboxes();
-            window.addEventListener('emic-flag-change', flagChangeListener);
+    function showPanel() {
+        panel.style.display = 'block';
+        btn.textContent = 'Hide Flags';
+        buildFlagCheckboxes();
+        syncFlagCheckboxes();
+        flagChangeListener = () => syncFlagCheckboxes();
+        window.addEventListener('emic-flag-change', flagChangeListener);
+        localStorage.setItem('emic_flags_panel_visible', 'true');
+    }
+
+    function hidePanel() {
+        panel.style.display = 'none';
+        btn.textContent = 'Show Flags';
+        if (flagChangeListener) {
+            window.removeEventListener('emic-flag-change', flagChangeListener);
+            flagChangeListener = null;
         }
+        localStorage.removeItem('emic_flags_panel_visible');
+    }
+
+    btn.addEventListener('click', () => {
+        if (panel.style.display !== 'none') hidePanel();
+        else showPanel();
     });
+
+    // Restore visibility from last session
+    if (localStorage.getItem('emic_flags_panel_visible') === 'true') {
+        showPanel();
+    }
 
     // Make panel draggable
     const handle = document.getElementById('emicFlagsDragHandle') || panel;
@@ -142,11 +158,12 @@ function buildFlagCheckboxes() {
     const flowFlags = [
         'IS_SIMULATING', 'HAS_REGISTERED', 'HAS_CLOSED_WELCOME',
         'ACTIVE_FEATURE_COUNT', 'HAS_CLICKED_COMPLETE', 'HAS_CONFIRMED_COMPLETE',
-        'HAS_CLICKED_POST_OK', 'HAS_SUBMITTED'
+        'HAS_CLICKED_POST_OK'
     ];
     const questionnaireFlags = [
-        'HAS_SUBMITTED_BACKGROUND', 'HAS_SUBMITTED_DATA_ANALYSIS',
-        'HAS_SUBMITTED_MUSICAL', 'HAS_SUBMITTED_REFERRAL', 'HAS_SUBMITTED_FEEDBACK'
+        'ANSWERED_1_BACKGROUND', 'ANSWERED_2_DATA_ANALYSIS',
+        'ANSWERED_3_MUSICAL', 'ANSWERED_4_FEEDBACK', 'ANSWERED_5_LEARNED',
+        'HAS_SUBMITTED_TO_R2'
     ];
 
     function makeColumn(title, flagNames) {
@@ -213,7 +230,7 @@ function buildFlagCheckboxes() {
     copyBtn.addEventListener('click', () => {
         const parts = [];
         for (const [name, key] of Object.entries(EMIC_FLAGS)) {
-            const short = name.replace(/^HAS_/, '').replace(/^IS_/, '').replace(/SUBMITTED_?/, 'SUB_');
+            const short = name.replace(/^HAS_/, '').replace(/^IS_/, '').replace(/^ANSWERED_/, 'ANS_').replace(/SUBMITTED_?/, 'SUB_');
             const val = localStorage.getItem(key);
             if (key === EMIC_FLAGS.ACTIVE_FEATURE_COUNT) {
                 parts.push(`${short}=${val || '0'}`);

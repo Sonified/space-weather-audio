@@ -871,7 +871,7 @@ export const QUESTIONNAIRE_CONFIG = [
         modalId: 'backgroundQuestionModal',
         type: 'radio',
         inputName: 'backgroundLevel',
-        flag: 'HAS_SUBMITTED_BACKGROUND',
+        flag: 'ANSWERED_1_BACKGROUND',
         milestone: 'questionnaire_background',
         logLabel: 'Background level'
     },
@@ -881,7 +881,7 @@ export const QUESTIONNAIRE_CONFIG = [
         modalId: 'dataAnalysisQuestionModal',
         type: 'radio',
         inputName: 'dataAnalysisLevel',
-        flag: 'HAS_SUBMITTED_DATA_ANALYSIS',
+        flag: 'ANSWERED_2_DATA_ANALYSIS',
         milestone: 'questionnaire_data_analysis',
         logLabel: 'Data analysis level'
     },
@@ -891,7 +891,7 @@ export const QUESTIONNAIRE_CONFIG = [
         modalId: 'musicalExperienceQuestionModal',
         type: 'radio',
         inputName: 'musicalExperienceLevel',
-        flag: 'HAS_SUBMITTED_MUSICAL',
+        flag: 'ANSWERED_3_MUSICAL',
         milestone: 'questionnaire_musical',
         logLabel: 'Musical experience level'
     },
@@ -901,7 +901,7 @@ export const QUESTIONNAIRE_CONFIG = [
         modalId: 'feedbackQuestionModal',
         type: 'textarea',
         inputName: 'feedbackText',
-        flag: 'HAS_SUBMITTED_FEEDBACK',
+        flag: 'ANSWERED_4_FEEDBACK',
         milestone: 'questionnaire_feedback',
         logLabel: 'Feedback'
     },
@@ -911,7 +911,7 @@ export const QUESTIONNAIRE_CONFIG = [
         modalId: 'referralQuestionModal',
         type: 'textarea',
         inputName: 'referralText',
-        flag: 'HAS_SUBMITTED_REFERRAL',
+        flag: 'ANSWERED_5_LEARNED',
         milestone: 'questionnaire_referral',
         logLabel: 'Referral'
     }

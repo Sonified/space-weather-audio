@@ -78,11 +78,11 @@ export async function syncEmicProgress(participantId, milestone) {
             closedWelcome: getEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME),
             featureCount: getEmicFlagNumber(EMIC_FLAGS.ACTIVE_FEATURE_COUNT),
             completedAnalysis: getEmicFlag(EMIC_FLAGS.HAS_COMPLETED_ANALYSIS),
-            submittedBackground: getEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_BACKGROUND),
-            submittedDataAnalysis: getEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_DATA_ANALYSIS),
-            submittedMusical: getEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_MUSICAL),
-            submittedReferral: getEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_REFERRAL),
-            submittedFeedback: getEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_FEEDBACK),
+            answered1Background: getEmicFlag(EMIC_FLAGS.ANSWERED_1_BACKGROUND),
+            answered2DataAnalysis: getEmicFlag(EMIC_FLAGS.ANSWERED_2_DATA_ANALYSIS),
+            answered3Musical: getEmicFlag(EMIC_FLAGS.ANSWERED_3_MUSICAL),
+            answered4Feedback: getEmicFlag(EMIC_FLAGS.ANSWERED_4_FEEDBACK),
+            answered5Learned: getEmicFlag(EMIC_FLAGS.ANSWERED_5_LEARNED),
         };
 
         await uploadEmicSubmission(participantId, {
