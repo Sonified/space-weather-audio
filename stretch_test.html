@@ -746,25 +746,25 @@
                 <span id="gpuBadge" style="display:none;">GPU Accelerated</span>
             </div>
 
-            <!-- Primary: Stretch factor — the big fader -->
+            <!-- Primary: Speed — the big fader -->
             <div style="padding: 16px 0 12px 0;">
                 <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px;">
-                    <label style="color: #999; font-size: 0.75em; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">Stretch Factor</label>
+                    <label style="color: #999; font-size: 0.75em; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">Speed</label>
                     <span id="stretchValue" style="color: #C4954A; font-weight: 600; font-size: 0.9em; background: rgba(196, 149, 74, 0.1); padding: 1px 8px; border-radius: 3px;">1.0x</span>
                 </div>
                 <div style="position: relative;">
-                    <input type="range" id="stretchSlider" min="0" max="1000" step="1" value="435" style="width: 100%;">
+                    <input type="range" id="stretchSlider" min="0" max="1000" step="1" value="565" style="width: 100%;">
                     <div style="font-size: 0.65em; color: #888; margin-top: 6px; position: relative; height: 12px; margin-left: 10px; margin-right: 10px;">
-                        <span style="position:absolute; left:0%; transform:translateX(-50%);">0.1x</span>
-                        <span style="position:absolute; left:calc(0% + 22px); font-size:11px;">Shorter</span>
-                        <span style="position:absolute; left:17.3%; transform:translateX(-50%);">.25x</span>
-                        <span style="position:absolute; left:30.4%; transform:translateX(-50%);">0.5x</span>
-                        <span style="position:absolute; left:43.5%; transform:translateX(-50%);">1x</span>
-                        <span style="position:absolute; left:56.6%; transform:translateX(-50%);">2x</span>
-                        <span style="position:absolute; left:73.9%; transform:translateX(-50%);">5x</span>
-                        <span style="position:absolute; left:86.9%; transform:translateX(-50%);">10x</span>
-                        <span style="position:absolute; right:calc(0% + 22px); font-size:11px;">Longer</span>
-                        <span style="position:absolute; left:100%; transform:translateX(-50%);">20x</span>
+                        <span style="position:absolute; left:0%; transform:translateX(-50%);">0.05x</span>
+                        <span style="position:absolute; left:calc(0% + 28px); font-size:11px;">Slower</span>
+                        <span style="position:absolute; left:13.1%; transform:translateX(-50%);">0.1x</span>
+                        <span style="position:absolute; left:30.4%; transform:translateX(-50%);">0.25x</span>
+                        <span style="position:absolute; left:43.5%; transform:translateX(-50%);">0.5x</span>
+                        <span style="position:absolute; left:56.5%; transform:translateX(-50%);">1x</span>
+                        <span style="position:absolute; left:69.6%; transform:translateX(-50%);">2x</span>
+                        <span style="position:absolute; left:86.9%; transform:translateX(-50%);">5x</span>
+                        <span style="position:absolute; right:calc(0% + 22px); font-size:11px;">Faster</span>
+                        <span style="position:absolute; left:100%; transform:translateX(-50%);">10x</span>
                     </div>
                 </div>
             </div>
@@ -773,12 +773,12 @@
             <div class="param-zone" id="paramZone">
                 <div id="resampleParamsRow" class="controls" style="display:none;">
                     <div class="slider-group" style="flex: none; min-width: auto;">
-                        <label><span>Drag Smoothing: <span id="mouseSmoothValue">10</span></span></label>
-                        <input type="range" id="mouseSmoothSlider" min="1" max="100" step="1" value="10">
+                        <label><span>Drag Smoothing: <span id="mouseSmoothValue">100</span></span></label>
+                        <input type="range" id="mouseSmoothSlider" min="1" max="100" step="1" value="100">
                     </div>
                     <div class="slider-group" style="flex: none; min-width: auto;">
-                        <label><span>Inertia: <span id="platterInertiaValue">50</span></span></label>
-                        <input type="range" id="platterInertiaSlider" min="1" max="100" step="1" value="50">
+                        <label><span>Inertia: <span id="platterInertiaValue">90</span></span></label>
+                        <input type="range" id="platterInertiaSlider" min="1" max="100" step="1" value="90">
                     </div>
                 </div>
                 <div class="controls" id="windowOverlapRow">
@@ -1644,11 +1644,15 @@
 
         // ===== UTILITY FUNCTIONS =====
 
-        // Log mapping for stretch slider: more resolution at low values
-        // slider 0-1000 → stretch 0.1x-20x  (slider 435 ≈ 1x)
-        // f(x) = 0.1 * 200^(x/1000)
+        // Log mapping for speed slider: more resolution at low values
+        // slider 0-1000 → speed 0.05x-10x  (slider 565 ≈ 1x)
+        // f(x) = 0.05 * 200^(x/1000)
+        function sliderToSpeed(sliderValue) {
+            return 0.05 * Math.pow(200, sliderValue / 1000);
+        }
+        // Stretch factor is inverse of speed (speed 2x = stretch 0.5x)
         function sliderToStretch(sliderValue) {
-            return 0.1 * Math.pow(200, sliderValue / 1000);
+            return 1 / sliderToSpeed(sliderValue);
         }
 
 
@@ -1679,8 +1683,8 @@
             'rtpghiPhaseSelect', 'rtpghiTolSelect', 'rtpghiGammaSelect'
         ];
 
-        let mouseSmoothing = 10; // mouse smoothing (kills 60fps staircase)
-        let platterInertia = 50; // platter weight (how heavy the record feels)
+        let mouseSmoothing = 100; // mouse smoothing (kills 60fps staircase)
+        let platterInertia = 90; // platter weight (how heavy the record feels)
         let scrubAdapt = 50; // adaptivity 0-100
 
         function saveSettings() {
@@ -1714,12 +1718,9 @@
             }
 
             // Restore sliders
-            if (settings.stretchSlider !== undefined) {
-                stretchSlider.value = settings.stretchSlider;
-                const stretch = sliderToStretch(parseFloat(settings.stretchSlider));
-                stretchValue.textContent = (stretch < 10 ? stretch.toFixed(1) : Math.round(stretch)) + 'x';
-                updateSliderFill(stretchSlider);
-            }
+            // Note: stretchSlider not restored — mapping changed from stretch→speed,
+            // old saved values would give wrong speed. Defaults to 565 (1x speed).
+
             if (settings.overlapSlider !== undefined) {
                 overlapSlider.value = settings.overlapSlider;
                 overlapValue.textContent = parseFloat(settings.overlapSlider).toFixed(1);
@@ -2193,6 +2194,8 @@
             gpuIsProcessing = true;
 
             const stretchFactor = sliderToStretch(parseFloat(stretchSlider.value));
+            const speed = sliderToSpeed(parseFloat(stretchSlider.value));
+            const speedLabel = speed < 10 ? speed.toFixed(2) : Math.round(speed);
             const algo = currentAlgorithm; // 'cwt', 'cqt', or 'rtpghi'
 
             try {
@@ -2212,14 +2215,14 @@
 
                     if (rtpghiWasmReady) {
                         // WASM async path — chunked for progress updates
-                        setStatus(`Processing RTPGHI stretch via WASM (${stretchFactor.toFixed(1)}x)...`, 'active');
+                        setStatus(`Processing RTPGHI at ${speedLabel}x speed...`, 'active');
                         showProgress(0);
                         stretched = await rtpghiStretchWASMAsync(sourceBuffer, stretchFactor,
                             { M, hopDiv, windowType, phaseMode, tol, gamma,
                               onProgress: (frac) => showProgress(frac) });
                     } else {
                         // JS fallback with progress bar
-                        setStatus(`Processing RTPGHI stretch (${stretchFactor.toFixed(1)}x)...`, 'active');
+                        setStatus(`Processing RTPGHI at ${speedLabel}x speed...`, 'active');
                         showProgress(0);
                         await new Promise(r => requestAnimationFrame(r));
                         const stretcher = new RTPGHIStretcher({ M, hopDiv, windowType, phaseMode, tol, gamma });
@@ -2248,7 +2251,7 @@
                         opts.minBW = parseFloat(document.getElementById('minBWSelect').value);
                     }
 
-                    setStatus(`Processing ${algo.toUpperCase()} stretch (${stretchFactor.toFixed(1)}x)...`, 'active');
+                    setStatus(`Processing ${algo.toUpperCase()} at ${speedLabel}x speed...`, 'active');
                     showProgress(0);
 
                     opts.onChunkDone = (ci, total) => {
@@ -2771,10 +2774,10 @@
         const algoNames = { resample: 'Resample', spectral: 'Spectral', paul: 'Paul Stretch', granular: 'Granular', cwt: 'CWT', cqt: 'CQT', rtpghi: 'RTPGHI' };
 
         function playingStatus() {
-            const stretch = sliderToStretch(parseFloat(stretchSlider.value));
+            const speed = sliderToSpeed(parseFloat(stretchSlider.value));
             const name = algoNames[currentAlgorithm] || currentAlgorithm;
-            const val = stretch < 10 ? stretch.toFixed(1) : Math.round(stretch);
-            return `Playing ${name} at ${val}x...`;
+            const val = speed < 10 ? speed.toFixed(2) : Math.round(speed);
+            return `Playing ${name} at ${val}x speed...`;
         }
 
         function setStatus(message, type = '') {
@@ -2841,7 +2844,8 @@
         stretchSlider.addEventListener('input', (e) => {
             const sliderValue = parseFloat(e.target.value);
             const stretch = sliderToStretch(sliderValue);
-            stretchValue.textContent = (stretch < 10 ? stretch.toFixed(1) : Math.round(stretch)) + 'x';
+            const speed = sliderToSpeed(sliderValue);
+            stretchValue.textContent = (speed < 10 ? speed.toFixed(2) : Math.round(speed)) + 'x';
             updateStats({ stretchFactor: stretch });
 
             if (isPlaying) setStatus(playingStatus(), 'active');
@@ -3405,12 +3409,14 @@
             if (!sourceBuffer) return;
 
             const stretchFactor = sliderToStretch(parseFloat(stretchSlider.value));
+            const speed = sliderToSpeed(parseFloat(stretchSlider.value));
+            const speedLabel = speed < 10 ? speed.toFixed(2) : Math.round(speed);
             const sampleRate = audioContext ? audioContext.sampleRate : 48000;
             const outputLength = Math.ceil(sourceBuffer.length * stretchFactor);
             const algo = algorithmSelect.value;
 
             downloadBtn.disabled = true;
-            downloadStatus.textContent = `Rendering ${algo} at ${stretchFactor.toFixed(1)}x stretch...`;
+            downloadStatus.textContent = `Rendering ${algo} at ${speedLabel}x speed...`;
             downloadStatus.className = 'status active';
 
             try {
@@ -3447,7 +3453,7 @@
                     };
                 } else if (algo === 'cwt' || algo === 'cqt' || algo === 'rtpghi') {
                     // Offline algorithms — process directly, skip OfflineAudioContext
-                    downloadStatus.textContent = `Processing ${algo.toUpperCase()} stretch...`;
+                    downloadStatus.textContent = `Processing ${algo.toUpperCase()} at ${speedLabel}x speed...`;
                     const buf = gpuProcessedBuffer || await runOfflineStretch();
                     if (!buf) throw new Error('Processing failed');
                     const outputSamples = buf.getChannelData(0);
@@ -3458,7 +3464,7 @@
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `stretched_${algo}_${stretchFactor.toFixed(1)}x.wav`;
+                    a.download = `speed_${algo}_${speedLabel}x.wav`;
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
@@ -3501,7 +3507,7 @@
                 const a = document.createElement('a');
                 a.href = url;
                 const algoNames = { resample: 'resample', spectral: 'spectral', paul: 'paulstretch', granular: 'granular', cwt: 'cwt', cqt: 'cqt' };
-                a.download = `stretched_${algoNames[algo] || algo}_${stretchFactor.toFixed(1)}x.wav`;
+                a.download = `speed_${algoNames[algo] || algo}_${speedLabel}x.wav`;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
