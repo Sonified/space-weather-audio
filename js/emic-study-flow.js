@@ -1209,7 +1209,7 @@ function createSubmissionCompleteElement(featureCount) {
                     <p style="margin: 0;">
                         If you have additional questions or feedback, please reach out to the study coordinator:
                     </p>
-                    <a href="mailto:lauren.blum@nasa.gov" style="color: #2196F3; text-decoration: none; font-size: 16px;">lauren.blum@nasa.gov</a>
+                    <a href="mailto:lewilliams@smith.edu" style="color: #2196F3; text-decoration: none; font-size: 16px;">lewilliams@smith.edu</a>
                 </div>
                 <p style="margin: 0 0 8px; color: #999;">
                     You may now close this page.

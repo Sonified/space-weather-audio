@@ -357,7 +357,6 @@ export function createFeedbackQuestionModal() {
                 <div style="text-align: center;">
                     <div style="display: inline-flex; gap: 12px; align-items: center;">
                         <button type="button" class="modal-back modal-submit" style="background: #e0e0e0; color: #555; box-shadow: none; text-shadow: none; width: auto; min-width: 100px;">← Back</button>
-                        <button type="button" class="modal-skip modal-submit" style="background: #f5f5f5; color: #888; box-shadow: none; text-shadow: none; width: auto; min-width: 100px;" id="feedbackSkipBtn">Skip</button>
                         <button type="button" class="modal-submit" style="width: auto; min-width: 140px;" id="feedbackSubmitBtn">Next →</button>
                     </div>
                 </div>
