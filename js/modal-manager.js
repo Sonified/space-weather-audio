@@ -50,8 +50,9 @@ class ModalManager {
             } else if (this.currentModal === '__overlay_active__' && keepOverlay) {
                 // Overlay is already up from a previous keepOverlay close — just show the new modal
                 if (window.pm?.interaction) console.log(`🔧 openModal: OVERLAY ACTIVE, showing ${modalId} directly (no swap delay)`);
+                // Instant show — no fade between sequential modals
+                modal.style.transition = 'none';
                 modal.style.display = 'flex';
-                modal.offsetHeight; // reflow
                 modal.classList.add('modal-visible');
                 this.currentModal = modalId;
                 if (onOpen) onOpen();
@@ -68,6 +69,7 @@ class ModalManager {
                 this.disableBackgroundScroll();
                 
                 await this.fadeInOverlay();
+                modal.style.transition = '';  // Restore CSS transition for fresh opens
                 modal.style.display = 'flex';
                 // Trigger reflow so the opacity transition plays
                 modal.offsetHeight;
@@ -143,9 +145,11 @@ class ModalManager {
             }
             
             // Hide modal
+            modal.style.transition = 'none';
             modal.classList.remove('modal-visible');
             modal.style.display = 'none';
-            
+            // Don't restore transition — next open will handle it
+
             // Fade out overlay unless keeping it for next modal
             if (!keepOverlay) {
                 await this.fadeOutOverlay();
@@ -183,35 +187,15 @@ class ModalManager {
             return null;
         }
         
-        // Quick fade between modals
+        // Instant swap — no fade between questionnaire modals
         if (oldModal) {
-            oldModal.style.opacity = '1';
-            oldModal.style.transition = 'opacity 0.15s ease-out';
-            oldModal.style.opacity = '0';
-            
-            await new Promise(resolve => setTimeout(resolve, 150));
-            
+            oldModal.classList.remove('modal-visible');
             oldModal.style.display = 'none';
-            oldModal.style.opacity = '1';
-            oldModal.style.transition = '';
         }
-        
-        // Brief pause for visual clarity
-        await new Promise(resolve => setTimeout(resolve, this.MODAL_SWAP_DELAY));
-        
-        // Fade in new modal
-        newModal.style.opacity = '0';
+
         newModal.style.display = 'flex';
-        newModal.style.transition = 'opacity 0.15s ease-in';
-        
-        // Force reflow
-        void newModal.offsetHeight;
-        
-        newModal.style.opacity = '1';
-        
-        await new Promise(resolve => setTimeout(resolve, 150));
-        
-        newModal.style.transition = '';
+        newModal.offsetHeight; // reflow
+        newModal.classList.add('modal-visible');
         this.currentModal = newModalId;
         
         if (onOpen) onOpen();
@@ -228,7 +212,14 @@ class ModalManager {
      */
     async fadeInOverlay() {
         if (!this.overlay) return;
-        
+
+        // Skip fade if overlay is already visible
+        if (this.overlay.style.display !== 'none' && parseFloat(this.overlay.style.opacity) > 0) {
+            this.overlay.style.display = 'flex';
+            this.overlay.style.opacity = '1';
+            return;
+        }
+
         this.overlay.style.opacity = '0';
         this.overlay.style.display = 'flex';
         

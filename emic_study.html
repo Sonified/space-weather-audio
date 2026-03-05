@@ -58,7 +58,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20260305.003104.003047.003019.002750.082311.082257.081801.081750">
+    <link rel="stylesheet" href="styles.css?v=20260305.021527.003104.003047.003019.002750.082311.082257.081801.081750">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <!-- All styles moved to styles.css (EMIC Study section) -->
 </head>
@@ -382,12 +382,11 @@
 
     <!-- Permanent Modal Overlay -->
     <script>
-        // Hide overlay immediately if skip login is set — prevents flash
-        if (localStorage.getItem('emic_skip_login_welcome') === 'true') {
-            document.write('<div id="permanentOverlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.65); z-index: 1000; align-items: center; justify-content: center; opacity: 0;"></div>');
-        } else {
-            document.write('<div id="permanentOverlay" style="display: flex; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.65); z-index: 1000; align-items: center; justify-content: center; opacity: 1;"></div>');
-        }
+        // Show overlay immediately if login needed or mid-simulation — prevents flash of app content
+        var skipLogin = localStorage.getItem('emic_skip_login_welcome') === 'true';
+        var isSimulating = localStorage.getItem('emic_is_simulating') === 'true';
+        var showOverlay = !skipLogin || isSimulating;
+        document.write('<div id="permanentOverlay" style="display: ' + (showOverlay ? 'flex' : 'none') + '; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.65); z-index: 1000; align-items: center; justify-content: center; opacity: ' + (showOverlay ? '1' : '0') + ';"></div>');
     </script>
     
     <!-- Hidden participant ID/name elements that existing JS may reference -->
@@ -456,7 +455,7 @@
     </script>
 
     <!-- APPLICATION LAYER -->
-    <script type="module" src="js/main.js?v=20260305.003104.003047.003019.002750.082311.082257.081801.081750"></script>
+    <script type="module" src="js/main.js?v=20260305.021527.003104.003047.003019.002750.082311.082257.081801.081750"></script>
     
     <!-- EMIC Study: Hook fetch button for IndexedDB caching + status updates -->
     <script type="module">
