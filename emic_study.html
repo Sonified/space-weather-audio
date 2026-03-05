@@ -58,7 +58,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20260305.022155.021611.021604.021600.021539.021527.003104.003047.003019.002750.082311.082257.081801.081750">
+    <link rel="stylesheet" href="styles.css?v=20260305.023919.022155.021611.021604.021600.021539.021527.003104.003047.003019.002750.082311.082257.081801.081750">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <!-- All styles moved to styles.css (EMIC Study section) -->
 </head>
@@ -348,7 +348,10 @@
         <div id="emicFlagsPanel" style="display: none; position: fixed; top: 60px; right: 20px; z-index: 10000; background: rgba(20, 20, 30, 0.95); border: 2px solid rgba(255, 255, 255, 0.2); border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); backdrop-filter: blur(8px); overflow: hidden;">
             <div id="emicFlagsDragHandle" style="padding: 6px 12px; background: rgba(255,255,255,0.08); border-bottom: 1px solid rgba(255,255,255,0.1); cursor: grab; display: flex; align-items: center; justify-content: space-between; user-select: none;">
                 <span style="font-size: 12px; font-weight: 700; color: #aaa; letter-spacing: 0.5px;">⚑ STUDY FLAGS</span>
-                <span style="font-size: 10px; color: #555;">drag to move</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button id="emicFlagsSelectAll" style="font-size: 10px; padding: 2px 6px; border: 1px solid #555; border-radius: 3px; background: rgba(60,60,60,0.8); color: #aaa; cursor: pointer; white-space: nowrap;">Select All</button>
+                    <span style="font-size: 10px; color: #555;">drag to move</span>
+                </div>
             </div>
             <div id="emicFlagsContent" style="padding: 10px 15px; display: grid; grid-template-columns: auto auto; justify-content: start; gap: 4px 40px; font-family: monospace; font-size: 13px;"></div>
         </div>
@@ -455,7 +458,7 @@
     </script>
 
     <!-- APPLICATION LAYER -->
-    <script type="module" src="js/main.js?v=20260305.022155.021611.021604.021600.021539.021527.003104.003047.003019.002750.082311.082257.081801.081750"></script>
+    <script type="module" src="js/main.js?v=20260305.023919.022155.021611.021604.021600.021539.021527.003104.003047.003019.002750.082311.082257.081801.081750"></script>
     
     <!-- EMIC Study: Hook fetch button for IndexedDB caching + status updates -->
     <script type="module">

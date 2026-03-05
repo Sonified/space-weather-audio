@@ -69,33 +69,27 @@ export async function initializeEmicStudyMode() {
 
     // Advanced controls already initialized early in initializeMainApp()
 
-    const skipLogin = localStorage.getItem('emic_skip_login_welcome') === 'true';
+    // Login/welcome modals are handled entirely by simulate flow (emic-study-flow.js)
+    // Hide overlay unless mid-simulation (flow manages its own overlay)
+    const isSimulating = getEmicFlag(EMIC_FLAGS.IS_SIMULATING);
+    if (!isSimulating) {
+        const overlay = document.getElementById('permanentOverlay');
+        if (overlay) { overlay.style.display = 'none'; overlay.style.opacity = '0'; }
+    }
 
-    if (!skipLogin) {
-        // Show participant setup immediately
-        openParticipantModal();
-    } else {
-        // Hide overlay, go straight to app — unless mid-simulation (flow will manage overlay)
-        const isSimulating = getEmicFlag(EMIC_FLAGS.IS_SIMULATING);
-        if (!isSimulating) {
-            const overlay = document.getElementById('permanentOverlay');
-            if (overlay) { overlay.style.display = 'none'; overlay.style.opacity = '0'; }
-        }
-
-        // Show "click Fetch Data to begin" prompt (same as Solar Portal)
-        // Skip if mid-simulation — the simulate flow handles its own status text on resume
-        const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
-        if (!isSharedSession && !isSimulating) {
-            setTimeout(async () => {
-                const { typeText } = await import('./tutorial-effects.js');
-                const statusEl = document.getElementById('status');
-                if (statusEl) {
-                    statusEl.className = 'status info';
-                    const msg = State.isMobileScreen() ? 'Click Fetch Data to begin' : '👈 click Fetch Data to begin';
-                    typeText(statusEl, msg, 30, 10);
-                }
-            }, 500);
-        }
+    // Show "click Fetch Data to begin" prompt
+    // Skip if mid-simulation — the simulate flow handles its own status text on resume
+    const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
+    if (!isSharedSession && !isSimulating) {
+        setTimeout(async () => {
+            const { typeText } = await import('./tutorial-effects.js');
+            const statusEl = document.getElementById('status');
+            if (statusEl) {
+                statusEl.className = 'status info';
+                const msg = State.isMobileScreen() ? 'Click Fetch Data to begin' : '👈 click Fetch Data to begin';
+                typeText(statusEl, msg, 30, 10);
+            }
+        }, 500);
     }
 
     if (window.pm?.study_flow) console.log('🔬 EMIC Study mode initialized (skipLogin:', skipLogin, ')');
