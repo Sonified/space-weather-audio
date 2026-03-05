@@ -922,7 +922,10 @@ export const QUESTIONNAIRE_CONFIG = [
  * Replaces ~160 lines of copy-paste in main.js.
  */
 export function wireQuestionnaireModals(modalMgr) {
-    for (const q of QUESTIONNAIRE_CONFIG) {
+    const lastIndex = QUESTIONNAIRE_CONFIG.length - 1;
+    for (let qi = 0; qi < QUESTIONNAIRE_CONFIG.length; qi++) {
+        const q = QUESTIONNAIRE_CONFIG[qi];
+        const isLast = qi === lastIndex;
         const btn = document.getElementById(q.btnId);
         const modal = document.getElementById(q.modalId);
         if (!btn || !modal) continue;
@@ -938,7 +941,7 @@ export function wireQuestionnaireModals(modalMgr) {
             closeBtn.addEventListener('click', () => modalMgr.closeModal(q.modalId));
         }
 
-        const submitBtn = modal.querySelector('.modal-submit');
+        const submitBtn = modal.querySelector('.modal-submit:not(.modal-back)');
 
         if (q.type === 'radio') {
             // Enable submit when any radio is selected
@@ -946,13 +949,8 @@ export function wireQuestionnaireModals(modalMgr) {
                 radio.addEventListener('change', () => { submitBtn.disabled = false; });
             });
         } else {
-            // Textarea: toggle submit text between Skip and Submit
-            const textarea = modal.querySelector(`#${q.inputName}`);
-            if (textarea) {
-                textarea.addEventListener('input', () => {
-                    submitBtn.textContent = textarea.value.trim() ? '✓ Submit' : 'Skip';
-                });
-            }
+            // No toggle needed — button text set in template
+            // (non-last = "Next →", last = "✓ Submit")
         }
 
         // Submit handler

@@ -75,14 +75,16 @@ export async function initializeEmicStudyMode() {
         // Show participant setup immediately
         openParticipantModal();
     } else {
-        // Hide overlay, go straight to app
-        const overlay = document.getElementById('permanentOverlay');
-        if (overlay) { overlay.style.display = 'none'; overlay.style.opacity = '0'; }
+        // Hide overlay, go straight to app — unless mid-simulation (flow will manage overlay)
+        const isSimulating = getEmicFlag(EMIC_FLAGS.IS_SIMULATING);
+        if (!isSimulating) {
+            const overlay = document.getElementById('permanentOverlay');
+            if (overlay) { overlay.style.display = 'none'; overlay.style.opacity = '0'; }
+        }
 
         // Show "click Fetch Data to begin" prompt (same as Solar Portal)
         // Skip if mid-simulation — the simulate flow handles its own status text on resume
         const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
-        const isSimulating = getEmicFlag(EMIC_FLAGS.IS_SIMULATING);
         if (!isSharedSession && !isSimulating) {
             setTimeout(async () => {
                 const { typeText } = await import('./tutorial-effects.js');

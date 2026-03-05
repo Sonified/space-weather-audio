@@ -101,23 +101,24 @@ export function initSimulateFlow() {
             // Clicked complete but didn't confirm — show confirmation modal
             flowLog('Resuming after refresh: clicked complete, showing confirmation');
             resumeFromComplete();
-        } else if (getEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME)) {
-            // Still drawing features — re-show complete button
-            flowLog('Restoring Complete button after page refresh (immediate show)');
-            if (!completeBtn) {
-                completeBtn = document.createElement('button');
-                completeBtn.id = 'simulateFlowCompleteBtn';
-                completeBtn.type = 'button';
-                completeBtn.textContent = '✓ Complete';
-                completeBtn.className = 'complete-btn';
-                const playbackBar = document.querySelector('.panel-playback > div');
-                if (playbackBar) playbackBar.appendChild(completeBtn);
+        } else if (!getEmicFlag(EMIC_FLAGS.HAS_REGISTERED)) {
+            // Not registered yet — show registration, then welcome, then drawing
+            flowLog('Resuming after refresh: not registered, showing login');
+            resumeFromUnregistered();
+        } else if (!getEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME)) {
+            // Registered but hasn't seen welcome — show welcome modal
+            flowLog('Resuming after refresh: showing welcome');
+            resumeFromPreWelcome();
+        } else {
+            // Drawing phase — hide visuals until welcome-back "Start Now" is clicked
+            const renderSelect = document.getElementById('dataRendering');
+            if (renderSelect) {
+                savedDataRendering = renderSelect.value;
+                renderSelect.value = 'triggered';
+                renderSelect.dispatchEvent(new Event('change', { bubbles: true }));
             }
-            completeBtn.style.display = '';
-            completeBtn.addEventListener('click', () => {
-                flowLog('Complete button clicked after refresh-restore');
-                resumeFromComplete();
-            }, { once: true });
+            flowLog('Resuming after refresh: drawing phase, showing welcome back');
+            resumeFromDrawing();
         }
     }
 
@@ -229,6 +230,7 @@ function getEMICMasterList() {
 function cancelFlow() {
     flowLog('Flow cancelled by user');
     clearAllEmicFlags();
+    clearSavedAnswers();
     // Set flag — startFlow()'s async checks will see this and exit,
     // hitting the finally block which calls cleanup().
     // We also need to immediately close visible modals + overlay
@@ -349,6 +351,7 @@ async function startFlow() {
 
     // Clear all EMIC flags for clean test session
     clearAllEmicFlags();
+    clearSavedAnswers();
     setEmicFlag(EMIC_FLAGS.IS_SIMULATING, true);
 
     // Reset questionnaire form inputs (not the user's features — those belong to real user)
@@ -414,6 +417,7 @@ async function startFlow() {
         console.error('❌ Simulate flow error:', err);
         restoreRealUser();
         clearAllEmicFlags();
+    clearSavedAnswers();
     } finally {
         cleanup();
     }
@@ -433,6 +437,60 @@ function restoreRealUser() {
 }
 
 /**
+ * Resume from drawing phase: show welcome-back modal, then Complete button.
+ * Called on refresh when HAS_CLOSED_WELCOME is set but CLICKED_COMPLETE is not.
+ */
+async function resumeFromDrawing() {
+    await showWelcomeBackModal();
+    // Trigger spectrogram render and restore rendering mode
+    if (window.triggerDataRender) window.triggerDataRender();
+    const renderSelect = document.getElementById('dataRendering');
+    if (renderSelect && savedDataRendering) {
+        renderSelect.value = savedDataRendering;
+        renderSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        savedDataRendering = null;
+    }
+    flowLog('Welcome back modal closed, restoring Complete button');
+    await showCompleteButton();
+    flowLog('Complete button clicked after welcome back');
+    resumeFromComplete();
+}
+
+/**
+ * Resume from pre-welcome: show welcome modal, then resume drawing.
+ * Called on refresh when HAS_REGISTERED is set but HAS_CLOSED_WELCOME is not.
+ */
+async function resumeFromPreWelcome() {
+    const { openWelcomeModal } = await import('./ui-modals.js');
+    openWelcomeModal();
+    // Wait for the welcome modal to close (sets HAS_CLOSED_WELCOME flag)
+    await new Promise(resolve => {
+        function onFlagChange(e) {
+            if (e.detail?.key === EMIC_FLAGS.HAS_CLOSED_WELCOME) {
+                window.removeEventListener('emic-flag-change', onFlagChange);
+                resolve();
+            }
+        }
+        window.addEventListener('emic-flag-change', onFlagChange);
+    });
+    flowLog('Welcome modal closed after refresh, resuming drawing');
+    resumeFromDrawing();
+}
+
+/**
+ * Resume from unregistered: show login, then welcome, then drawing.
+ * Called on refresh when IS_SIMULATING is set but HAS_REGISTERED is not.
+ */
+async function resumeFromUnregistered() {
+    const testUsername = getParticipantId() || 'Participant';
+    await openLoginWithTestUser(testUsername);
+    setEmicFlag(EMIC_FLAGS.HAS_REGISTERED);
+    syncEmicProgress(testUsername, 'registered');
+    flowLog('Registration completed after refresh, showing welcome');
+    resumeFromPreWelcome();
+}
+
+/**
  * Resume from after confirmation (Step 6+): questionnaire intro → questionnaires → submission.
  * Called on refresh when HAS_CONFIRMED_COMPLETE is set.
  */
@@ -445,11 +503,14 @@ async function resumeFromConfirmed(username) {
     installOverlayPatch();
 
     try {
-        // ─── Step 6: Questionnaire intro ─────────────────────────────────
-        flowLog('Resuming from confirmed: showing questionnaire intro');
-        await showIntroModal();
-
-        if (!flowActive) return;
+        // ─── Step 6: Questionnaire intro (skip if already clicked OK) ────
+        if (!getEmicFlag(EMIC_FLAGS.HAS_CLICKED_POST_OK)) {
+            flowLog('Resuming from confirmed: showing questionnaire intro');
+            await showIntroModal();
+            if (!flowActive) return;
+        } else {
+            flowLog('Resuming from confirmed: intro already seen, skipping');
+        }
 
         // ─── Step 7: Questionnaire sequence (skips already-completed ones) ──
         const questionnaireData = await runQuestionnaireSequence();
@@ -459,24 +520,27 @@ async function resumeFromConfirmed(username) {
         // ─── Step 8: Save + Submission Complete ──────────────────────────
         const submissionData = buildSubmissionData(questionnaireData, testUsername);
         saveToLocalStorage(submissionData);
-        setEmicFlag(EMIC_FLAGS.HAS_SUBMITTED);
         flowLog('Submission saved to localStorage');
 
         flowLog('Upload to server started');
+        showSubmittingModal();
         await uploadToServer(submissionData);
+        setEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_TO_R2);
 
         flowLog('Submission complete modal shown');
-        await showSubmissionCompleteModal(submissionData.featureCount);
+        showSubmissionCompleteModal(submissionData.featureCount);
 
         // ─── Restore real user and clear flags ──────────────────────────
         restoreRealUser();
         clearAllEmicFlags();
+    clearSavedAnswers();
         flowLog('Flow completed successfully — all flags cleared');
 
     } catch (err) {
         console.error('❌ Simulate flow error (resumeFromConfirmed):', err);
         restoreRealUser();
         clearAllEmicFlags();
+    clearSavedAnswers();
     } finally {
         cleanup();
     }
@@ -539,11 +603,14 @@ async function resumeFromComplete(username) {
         setEmicFlag(EMIC_FLAGS.HAS_CONFIRMED_COMPLETE);
         flowLog('Complete confirmed');
 
-        // ─── Step 6: Questionnaire intro ─────────────────────────────────
-        flowLog('Questionnaire intro shown');
-        await showIntroModal();
-
-        if (!flowActive) return;
+        // ─── Step 6: Questionnaire intro (skip if already clicked OK) ────
+        if (!getEmicFlag(EMIC_FLAGS.HAS_CLICKED_POST_OK)) {
+            flowLog('Questionnaire intro shown');
+            await showIntroModal();
+            if (!flowActive) return;
+        } else {
+            flowLog('Intro already seen, skipping');
+        }
 
         // ─── Step 7: Questionnaire sequence ──────────────────────────────
         const questionnaireData = await runQuestionnaireSequence();
@@ -553,24 +620,27 @@ async function resumeFromComplete(username) {
         // ─── Step 8: Save + Submission Complete ──────────────────────────
         const submissionData = buildSubmissionData(questionnaireData, testUsername);
         saveToLocalStorage(submissionData);
-        setEmicFlag(EMIC_FLAGS.HAS_SUBMITTED);
         flowLog('Submission saved to localStorage');
 
         flowLog('Upload to server started');
+        showSubmittingModal();
         await uploadToServer(submissionData);
+        setEmicFlag(EMIC_FLAGS.HAS_SUBMITTED_TO_R2);
 
         flowLog('Submission complete modal shown');
-        await showSubmissionCompleteModal(submissionData.featureCount);
+        showSubmissionCompleteModal(submissionData.featureCount);
 
         // ─── Restore real user and clear flags ──────────────────────────
         restoreRealUser();
         clearAllEmicFlags();
+    clearSavedAnswers();
         flowLog('Flow completed successfully — all flags cleared');
 
     } catch (err) {
         console.error('❌ Simulate flow error (resumeFromComplete):', err);
         restoreRealUser();
         clearAllEmicFlags();
+    clearSavedAnswers();
     } finally {
         cleanup();
     }
@@ -746,7 +816,7 @@ function showConfirmModal() {
                     <h3 class="modal-title">Complete?</h3>
                 </div>
                 <div class="modal-body">
-                    <p style="color: #666; margin: 0 0 24px; padding: 16px; font-size: 16px; line-height: 1.5; font-weight: bold;">
+                    <p style="color: #333; margin: 0 0 24px; padding: 16px; font-size: 18px; line-height: 1.5; font-weight: normal;">
                         Are you sure you're ready to finish? You won't be able to go back after this.
                     </p>
                     <div style="display: flex; gap: 24px; justify-content: center; align-items: center;">
@@ -778,6 +848,39 @@ function showConfirmModal() {
 /**
  * Questionnaire intro modal
  */
+function showWelcomeBackModal() {
+    return new Promise((resolve) => {
+        const modal = document.createElement('div');
+        modal.id = 'simulateFlowWelcomeBackModal';
+        modal.className = 'modal-window';
+        modal.style.display = 'none';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 460px; text-align: center;">
+                <div class="modal-header">
+                    <h3 class="modal-title">Welcome Back!</h3>
+                </div>
+                <div class="modal-body">
+                    <p style="color: #333; font-size: 18px; line-height: 1.6; font-weight: normal;">
+                        Your progress has been saved. Click below to pick up where you left off.
+                    </p>
+                    <button type="button" class="modal-submit" style="min-width: 140px;">Start Now</button>
+                </div>
+            </div>
+        `;
+        const overlay = document.getElementById('permanentOverlay') || document.body;
+        overlay.appendChild(modal);
+
+        modalManager.openModal('simulateFlowWelcomeBackModal', { keepOverlay: true });
+
+        requestAnimationFrame(() => {
+            modal.querySelector('.modal-submit')?.addEventListener('click', () => {
+                modalManager.closeModal('simulateFlowWelcomeBackModal').then(() => modal.remove());
+                resolve();
+            });
+        });
+    });
+}
+
 function showIntroModal() {
     return new Promise((resolve) => {
         const modal = document.createElement('div');
@@ -789,8 +892,8 @@ function showIntroModal() {
                 <div class="modal-header">
                     <h3 class="modal-title">📋 Post-Study Questions</h3>
                 </div>
-                <div class="modal-body" style="display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1;">
-                    <p style="color: #666; margin: 0; padding: 8px 16px 32px; font-size: 16px; line-height: 1.6; font-weight: 600;">
+                <div class="modal-body">
+                    <p style="color: #333; font-size: 18px; line-height: 1.6;">
                         You will now be guided through a brief set of questions that should take 2–3 minutes.
                     </p>
                     <button type="button" class="modal-submit" style="min-width: 140px;">OK</button>
@@ -804,6 +907,7 @@ function showIntroModal() {
 
         requestAnimationFrame(() => {
             modal.querySelector('.modal-submit')?.addEventListener('click', () => {
+                setEmicFlag(EMIC_FLAGS.HAS_CLICKED_POST_OK, true);
                 modalManager.closeModal('simulateFlowIntroModal', { keepOverlay: true }).then(() => modal.remove());
                 resolve();
             });
@@ -818,28 +922,84 @@ function showIntroModal() {
  */
 async function runQuestionnaireSequence() {
     const questionnaireData = {};
+    let i = 0;
 
+    // Restore saved answers from localStorage and re-populate DOM
     for (const q of QUESTIONNAIRE_CONFIG) {
-        const resolvedFlag = EMIC_FLAGS[q.flag];
-
-        // Skip already-completed questionnaires (resume after refresh)
-        if (getEmicFlag(resolvedFlag)) {
-            flowLog(`Skipping already-completed questionnaire: ${q.key}`);
-            continue;
+        const saved = localStorage.getItem(`emic_answer_${q.key}`);
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                questionnaireData[q.key] = parsed;
+                // Restore radio selection or textarea value in the DOM
+                if (q.type === 'radio' && parsed.responses?.[q.inputName]) {
+                    const radio = document.querySelector(`input[name="${q.inputName}"][value="${parsed.responses[q.inputName]}"]`);
+                    if (radio) radio.checked = true;
+                } else if (parsed.responses?.[q.key + 'Text']) {
+                    const textarea = document.getElementById(q.inputName);
+                    if (textarea) textarea.value = parsed.responses[q.key + 'Text'];
+                }
+            } catch (e) { /* ignore corrupt data */ }
         }
+    }
+
+    // Skip past already-completed questionnaires (resume after refresh)
+    while (i < QUESTIONNAIRE_CONFIG.length && getEmicFlag(EMIC_FLAGS[QUESTIONNAIRE_CONFIG[i].flag])) {
+        flowLog(`Skipping already-completed questionnaire: ${QUESTIONNAIRE_CONFIG[i].key}`);
+        i++;
+    }
+
+    while (i < QUESTIONNAIRE_CONFIG.length) {
+        const q = QUESTIONNAIRE_CONFIG[i];
+        const resolvedFlag = EMIC_FLAGS[q.flag];
         const modal = document.getElementById(q.modalId);
         if (!modal) {
             console.warn(`⚠️ Questionnaire modal not found: ${q.modalId}, skipping`);
+            i++;
             continue;
         }
         if (!flowActive) break;
 
-        // Open this questionnaire (swap from previous, overlay stays)
-        await modalManager.openModal(q.modalId, { keepOverlay: true });
-        // ↑ This promise resolves when the existing submit handler in main.js
-        //   calls modalManager.closeModal() — patched to keepOverlay:true
+        // If a radio is already selected (going back), enable submit
+        if (q.type === 'radio') {
+            const submitBtn = modal.querySelector('.modal-submit:not(.modal-back)');
+            const checked = modal.querySelector(`input[name="${q.inputName}"]:checked`);
+            if (submitBtn && checked) submitBtn.disabled = false;
+        }
 
-        // Collect responses after modal closes
+        // Wire one-time back button listener (modals 2+ only)
+        let wentBack = false;
+        const backBtn = modal.querySelector('.modal-back');
+        const onBack = () => {
+            wentBack = true;
+            modalManager.closeModal(q.modalId, { keepOverlay: true });
+        };
+        if (backBtn) {
+            backBtn.addEventListener('click', onBack, { once: true });
+        }
+
+        // Open this questionnaire (resolves when submit or back closes it)
+        await modalManager.openModal(q.modalId, { keepOverlay: true });
+
+        // Clean up back listener if submit was clicked instead
+        if (backBtn && !wentBack) {
+            backBtn.removeEventListener('click', onBack);
+        }
+
+        if (wentBack) {
+            // Go back: clear previous questionnaire's flag so it re-shows
+            const prevIndex = i - 1;
+            if (prevIndex >= 0) {
+                const prevFlag = EMIC_FLAGS[QUESTIONNAIRE_CONFIG[prevIndex].flag];
+                setEmicFlag(prevFlag, false);
+                delete questionnaireData[QUESTIONNAIRE_CONFIG[prevIndex].key];
+                flowLog(`Going back: cleared flag for "${QUESTIONNAIRE_CONFIG[prevIndex].key}"`);
+            }
+            i = Math.max(0, i - 1);
+            continue;
+        }
+
+        // Collect responses after modal closes (submit path)
         const responses = {};
         if (q.type === 'radio') {
             responses[q.inputName] = document.querySelector(`input[name="${q.inputName}"]:checked`)?.value || '';
@@ -852,9 +1012,12 @@ async function runQuestionnaireSequence() {
             responses,
             completedAt: new Date().toISOString()
         };
+        // Persist answer to localStorage for resume after refresh
+        localStorage.setItem(`emic_answer_${q.key}`, JSON.stringify(questionnaireData[q.key]));
         setEmicFlag(resolvedFlag);
         syncEmicProgress(getParticipantId(), q.milestone);
         flowLog(`Questionnaire "${q.key}" completed: ${JSON.stringify(responses)}`);
+        i++;
     }
 
     return questionnaireData;
@@ -863,21 +1026,40 @@ async function runQuestionnaireSequence() {
 /**
  * Submission Complete modal
  */
+function showSubmittingModal() {
+    const modal = createSubmittingElement();
+    const overlay = document.getElementById('permanentOverlay') || document.body;
+    overlay.appendChild(modal);
+    modalManager.openModal('simulateFlowSubmissionModal', { keepOverlay: true });
+    return modal;
+}
+
 function showSubmissionCompleteModal(featureCount) {
     return new Promise((resolve) => {
+        // Remove the submitting modal if it exists
+        const existing = document.getElementById('simulateFlowSubmissionModal');
+        if (existing) {
+            existing.classList.remove('modal-visible');
+            existing.style.display = 'none';
+            existing.remove();
+            modalManager.currentModal = '__overlay_active__';
+        }
+
         const modal = createSubmissionCompleteElement(featureCount);
         const overlay = document.getElementById('permanentOverlay') || document.body;
         overlay.appendChild(modal);
         modalManager.openModal('simulateFlowSubmissionModal', { keepOverlay: true });
 
-        const closeIt = () => {
-            modalManager.closeModal('simulateFlowSubmissionModal').then(() => modal.remove());
-            resolve();
-        };
-        requestAnimationFrame(() => {
-            modal.querySelector('.modal-close')?.addEventListener('click', closeIt);
-            modal.querySelector('.modal-submit')?.addEventListener('click', closeIt);
-        });
+        // Wire close button to dismiss modal and restore interface
+        const closeBtn = modal.querySelector('.modal-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                modalManager.closeModal('simulateFlowSubmissionModal').then(() => modal.remove());
+                const overlayEl = document.getElementById('permanentOverlay');
+                if (overlayEl) { overlayEl.style.display = 'none'; overlayEl.style.opacity = ''; }
+            });
+        }
+        resolve();
     });
 }
 
@@ -909,6 +1091,12 @@ function buildSubmissionData(questionnaireData, testUsername) {
         featureCount: features.length,
         isSimulation: true
     };
+}
+
+function clearSavedAnswers() {
+    for (const q of QUESTIONNAIRE_CONFIG) {
+        localStorage.removeItem(`emic_answer_${q.key}`);
+    }
 }
 
 function saveToLocalStorage(submissionData) {
@@ -953,6 +1141,29 @@ async function uploadToServer(submissionData) {
  * Create the Submission Complete modal element (shared by flow and preview).
  * Returns a detached DOM element — caller is responsible for appending + opening.
  */
+function createSubmittingElement() {
+    const existing = document.getElementById('simulateFlowSubmissionModal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'simulateFlowSubmissionModal';
+    modal.className = 'modal-window';
+    modal.style.display = 'none';
+    modal.innerHTML = `
+        <div class="modal-content emic-questionnaire-modal" style="text-align: center;">
+            <div class="modal-header">
+                <h3 class="modal-title">📡 Submitting</h3>
+            </div>
+            <div class="modal-body" style="display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1;">
+                <div class="submitting-spinner" style="width: 40px; height: 40px; border: 3px solid #e0e0e0; border-top: 3px solid #2196F3; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 24px;"></div>
+                <p style="font-size: 18px; color: #666; margin: 0;">Submitting responses...</p>
+            </div>
+        </div>
+        <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+    `;
+    return modal;
+}
+
 function createSubmissionCompleteElement(featureCount) {
     const existing = document.getElementById('simulateFlowSubmissionModal');
     if (existing) existing.remove();
@@ -962,19 +1173,28 @@ function createSubmissionCompleteElement(featureCount) {
     modal.className = 'modal-window';
     modal.style.display = 'none';
     modal.innerHTML = `
-        <div class="modal-content" style="max-width: 480px; text-align: center; position: relative;">
-            <button type="button" class="modal-close" title="Close">&times;</button>
+        <div class="modal-content emic-questionnaire-modal" style="text-align: center; position: relative;">
+            <button type="button" class="modal-close" style="position: absolute; top: 12px; right: 16px; background: none; border: none; font-size: 22px; cursor: pointer; color: #999; line-height: 1; padding: 4px 8px;" aria-label="Close">&times;</button>
             <div class="modal-header">
                 <h3 class="modal-title">📡 Submission Complete</h3>
             </div>
-            <div class="modal-body">
-                <p style="font-size: 18px; margin: 0 0 12px; color: #333;">
-                    You have submitted <strong>${featureCount}</strong> feature${featureCount !== 1 ? 's' : ''}.
+            <div class="modal-body" style="display: flex; flex-direction: column; align-items: center; flex: 1; font-size: 16px; color: #333; line-height: 1.6;">
+                <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">🚀</div>
+                    <p style="margin: 0 0 16px;">
+                        <span style="color: #550000; font-size: 24px; font-weight: 700;">${featureCount}</span> feature${featureCount !== 1 ? 's' : ''} identified and recorded.
+                    </p>
+                    <p style="margin: 0 0 16px;">
+                        Thank you for taking part in this study!
+                    </p>
+                    <p style="margin: 0;">
+                        If you have additional questions or feedback, please reach out to the study coordinator:
+                    </p>
+                    <a href="mailto:lauren.blum@nasa.gov" style="color: #2196F3; text-decoration: none; font-size: 16px;">lauren.blum@nasa.gov</a>
+                </div>
+                <p style="margin: 0 0 8px; color: #999;">
+                    You may now close this page.
                 </p>
-                <p style="color: #666; margin: 0 0 24px; font-size: 15px; line-height: 1.5;">
-                    Your answers have been submitted. You can now close this page.
-                </p>
-                <button type="button" class="modal-submit" style="min-width: 120px;">Close</button>
             </div>
         </div>
     `;
@@ -991,13 +1211,14 @@ export function openSubmissionCompletePreview() {
     overlay.appendChild(modal);
     modalManager.openModal('simulateFlowSubmissionModal');
 
-    requestAnimationFrame(() => {
-        const closeIt = () => {
+    // Close on overlay click (preview only)
+    const closeIt = (e) => {
+        if (e.target === overlay) {
+            overlay.removeEventListener('click', closeIt);
             modalManager.closeModal('simulateFlowSubmissionModal').then(() => modal.remove());
-        };
-        modal.querySelector('.modal-close')?.addEventListener('click', closeIt);
-        modal.querySelector('.modal-submit')?.addEventListener('click', closeIt);
-    });
+        }
+    };
+    overlay.addEventListener('click', closeIt);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
