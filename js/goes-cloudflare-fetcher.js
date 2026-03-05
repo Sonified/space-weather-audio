@@ -384,15 +384,20 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
         }
     }
 
-    // Draw axes with metadata (before data arrives — they're ready now)
+    // Position axis canvases (layout only — no visible ticks yet if triggered)
     positionAxisCanvas();
     initializeAxisPlaybackRate();
     positionWaveformXAxisCanvas();
-    drawWaveformXAxis();
     positionSpectrogramXAxisCanvas();
-    drawSpectrogramXAxis();
     positionWaveformDateCanvas();
-    drawWaveformDate();
+
+    // Draw axis ticks — skip in triggered mode (they'll draw when rendering starts)
+    const initRenderMode = document.getElementById('dataRendering')?.value || 'progressive';
+    if (initRenderMode !== 'triggered') {
+        drawWaveformXAxis();
+        drawSpectrogramXAxis();
+        drawWaveformDate();
+    }
 
     // Component selector — 3 components (bx, by, bz)
     const allFileUrls = COMPONENT_MAP.map(c => `${satellite}/mag/${c}`);
@@ -868,9 +873,12 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
         });
     }
 
-    // Draw waveform axis (labels only — no data rendering)
+    // Position waveform axis canvas; draw labels only if not waiting for trigger
     positionWaveformAxisCanvas();
-    drawWaveformAxis();
+    const completeRenderMode = dataRenderingEl?.value || 'progressive';
+    if (completeRenderMode !== 'triggered' || renderTriggered) {
+        drawWaveformAxis();
+    }
 
     // Use running buffer for completeSamplesArray (already stitched during download)
     growProgressiveBuffer(); // ensure any remaining chunks are appended
