@@ -2,6 +2,7 @@
 
 import * as State from './audio-state.js';
 import { getParticipantId } from './participant-id.js';
+import { getEmicFlag, EMIC_FLAGS } from './emic-study-flags.js';
 import { openParticipantModal } from './ui-controls.js';
 import {
     CURRENT_MODE,
@@ -79,8 +80,10 @@ export async function initializeEmicStudyMode() {
         if (overlay) { overlay.style.display = 'none'; overlay.style.opacity = '0'; }
 
         // Show "click Fetch Data to begin" prompt (same as Solar Portal)
+        // Skip if mid-simulation — the simulate flow handles its own status text on resume
         const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
-        if (!isSharedSession) {
+        const isSimulating = getEmicFlag(EMIC_FLAGS.IS_SIMULATING);
+        if (!isSharedSession && !isSimulating) {
             setTimeout(async () => {
                 const { typeText } = await import('./tutorial-effects.js');
                 const statusEl = document.getElementById('status');

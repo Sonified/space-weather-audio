@@ -9,7 +9,7 @@ import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { changeFrequencyScale, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
 import { isStudyMode, isLocalEnvironment, isPersonalMode, isEmicStudyMode, CURRENT_MODE, AppMode } from './master-modes.js';
-import { togglePlayPause } from './audio-player.js';
+import { getEmicFlag, EMIC_FLAGS } from './emic-study-flags.js';
 import { getHasPerformedFirstFetch } from './streaming.js';
 import { drawWaveformFromMinMax, notifyPageTurnUserDragged } from './minimap-window-renderer.js';
 import { drawWaveformXAxis } from './waveform-x-axis-renderer.js';
@@ -241,12 +241,17 @@ function handleKeyboardShortcut(event) {
 
         event.preventDefault();
 
+        // In EMIC study flow, don't allow playback until welcome "Begin" has been clicked
+        if (getEmicFlag(EMIC_FLAGS.IS_SIMULATING) && !getEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME)) {
+            return;
+        }
+
         const playPauseBtn = document.getElementById('playPauseBtn');
         const playbackState = State.playbackState;
         const allReceivedData = State.allReceivedData;
 
         if (!playPauseBtn.disabled && (playbackState !== PlaybackState.STOPPED || (allReceivedData && allReceivedData.length > 0))) {
-            togglePlayPause();
+            playPauseBtn.click();
         }
         return;
     }

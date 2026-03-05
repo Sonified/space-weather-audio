@@ -420,6 +420,20 @@ function wireWelcomeModal() {
         welcomeSubmitBtn.addEventListener('click', async () => {
             await closeWelcomeModal();
 
+            // Ensure keyboard shortcuts work immediately (space bar for play)
+            document.activeElement?.blur();
+            document.body.focus();
+
+            // Trigger spectrogram rendering and switch to progressive mode
+            if (typeof window.triggerDataRender === 'function') {
+                window.triggerDataRender();
+            }
+            const renderSelect = document.getElementById('dataRendering');
+            if (renderSelect) {
+                renderSelect.value = 'progressive';
+                renderSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
             // EMIC mode: show instructions with typewriter effect
             {
                 // Skip for shared/simulate sessions — fetch is auto-triggered

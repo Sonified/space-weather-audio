@@ -33,6 +33,7 @@ import { getParticipantId, storeParticipantId } from './participant-id.js';
 import { uploadEmicSubmission, syncEmicProgress } from './data-uploader.js';
 import { EMIC_FLAGS, getEmicFlag, setEmicFlag, clearAllEmicFlags, updateActiveFeatureCount } from './emic-study-flags.js';
 import { QUESTIONNAIRE_CONFIG } from './ui-modals.js';
+import { pausePlayback } from './audio-player.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FLOW LOGGING
@@ -49,6 +50,7 @@ let flowRunning = false; // Keeps button visible during flow regardless of displ
 let savedDisplayMode = null; // Display mode before flow started
 let savedSilentDownload = null; // silentDownload checkbox state before flow
 let savedAutoDownload = null; // autoDownload checkbox state before flow
+let savedDataRendering = null; // dataRendering mode before flow
 let studyStartTime = null;
 let completeTime = null;
 let completeBtn = null;
@@ -83,6 +85,12 @@ export function initSimulateFlow() {
         btn.style.backgroundColor = '#dc3545';
         btn.style.background = '#dc3545';
         flowLog('Restored Cancel Flow button after page refresh');
+
+        // Save settings so cancel can restore them (startFlow won't run on resume)
+        const renderSelect = document.getElementById('dataRendering');
+        if (renderSelect) savedDataRendering = renderSelect.value;
+        const displayModeSelect = document.getElementById('displayMode');
+        if (displayModeSelect) savedDisplayMode = displayModeSelect.value;
 
         // Resume flow based on flag state after page refresh
         if (getEmicFlag(EMIC_FLAGS.HAS_CONFIRMED_COMPLETE)) {
@@ -258,7 +266,7 @@ function cancelFlow() {
     if (statusEl) {
         statusEl.className = 'status info';
         import('./tutorial-effects.js').then(({ typeText }) => {
-            typeText(statusEl, 'Study flow has been cancelled, click "Simulate Flow" to start again', 30, 10);
+            typeText(statusEl, 'Study flow has been cancelled, click "Simulate Flow" to begin again.', 30, 10);
         });
     }
 
@@ -277,6 +285,15 @@ async function startFlow() {
     completeTime = null;
 
     flowLog('Study flow beginning');
+
+    // Blur the button so space bar doesn't re-trigger it (cancelling the flow)
+    document.activeElement?.blur();
+
+    // Stop any active playback before starting simulation
+    pausePlayback();
+
+    // Clear day markers from previous session
+    import('./day-markers.js').then(({ clearDayMarkers }) => clearDayMarkers());
 
     // Update button to Cancel state
     const btn = document.getElementById('simulateFlowBtn');
@@ -309,6 +326,15 @@ async function startFlow() {
         autoCb.checked = true;
         autoCb.dispatchEvent(new Event('change'));
     }
+
+    // Save and switch dataRendering to triggered (hide visuals until welcome "Begin")
+    const renderSelect = document.getElementById('dataRendering');
+    if (renderSelect) {
+        savedDataRendering = renderSelect.value;
+        renderSelect.value = 'triggered';
+        renderSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
     flowLog('Enabled silentDownload + autoDownload for background data fetch');
 
     // Save real username for restoration later (strip any stacked _TEST suffixes)
@@ -468,6 +494,20 @@ async function resumeFromComplete(username) {
 
     // Ensure overlay patch is installed
     installOverlayPatch();
+
+    // Ensure Complete button exists (may be null after page refresh)
+    if (!completeBtn) {
+        completeBtn = document.getElementById('simulateFlowCompleteBtn');
+        if (!completeBtn) {
+            completeBtn = document.createElement('button');
+            completeBtn.id = 'simulateFlowCompleteBtn';
+            completeBtn.type = 'button';
+            completeBtn.textContent = '✓ Complete';
+            completeBtn.className = 'complete-btn';
+            const playbackBar = document.querySelector('.panel-playback > div');
+            if (playbackBar) playbackBar.appendChild(completeBtn);
+        }
+    }
 
     try {
         // ─── Step 5: Confirmation (loop until confirmed) ─────────────────
@@ -703,10 +743,10 @@ function showConfirmModal() {
         modal.innerHTML = `
             <div class="modal-content" style="max-width: 420px; text-align: center;">
                 <div class="modal-header">
-                    <h3 class="modal-title">Ready to finish?</h3>
+                    <h3 class="modal-title">Complete?</h3>
                 </div>
                 <div class="modal-body">
-                    <p style="color: #666; margin: 0 0 24px; font-size: 16px; line-height: 1.5;">
+                    <p style="color: #666; margin: 0 0 24px; padding: 16px; font-size: 16px; line-height: 1.5; font-weight: bold;">
                         Are you sure you're ready to finish? You won't be able to go back after this.
                     </p>
                     <div style="display: flex; gap: 24px; justify-content: center; align-items: center;">
@@ -749,7 +789,7 @@ function showIntroModal() {
                 <div class="modal-header">
                     <h3 class="modal-title">📋 Post-Study Questions</h3>
                 </div>
-                <div class="modal-body">
+                <div class="modal-body" style="display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1;">
                     <p style="color: #666; margin: 0; padding: 8px 16px 32px; font-size: 16px; line-height: 1.6; font-weight: 600;">
                         You will now be guided through a brief set of questions that should take 2–3 minutes.
                     </p>
@@ -1008,6 +1048,16 @@ function cleanup() {
             autoCb.dispatchEvent(new Event('change'));
         }
         savedAutoDownload = null;
+    }
+
+    // Restore dataRendering mode
+    if (savedDataRendering !== null) {
+        const renderSelect = document.getElementById('dataRendering');
+        if (renderSelect && renderSelect.value !== savedDataRendering) {
+            renderSelect.value = savedDataRendering;
+            renderSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        savedDataRendering = null;
     }
 
     setEmicFlag(EMIC_FLAGS.IS_SIMULATING, false);

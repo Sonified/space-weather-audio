@@ -38,7 +38,7 @@
             r.style.background = a.pageBg;
         })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20260304.082311.082257.081801.081750">
+    <link rel="stylesheet" href="styles.css?v=20260305.002750.082311.082257.081801.081750">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         /* Meta-variables for axis tick label styling */
@@ -304,6 +304,7 @@
             <div class="panel-gear" id="navBarGear"></div>
 
             <canvas id="spectrogram" width="1200" height="450"></canvas>
+            <script>document.getElementById('spectrogram').addEventListener('wheel',e=>e.preventDefault(),{passive:false});document.getElementById('waveform').addEventListener('wheel',e=>e.preventDefault(),{passive:false});</script>
             <canvas id="spectrogram-axis" width="60" height="450"></canvas>
             <canvas id="spectrogram-x-axis" width="1200" height="40"></canvas>
 
@@ -487,6 +488,6 @@
     <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- APPLICATION LAYER: Main app code (might break during beta) -->
     <!-- ═══════════════════════════════════════════════════════════ -->
-    <script type="module" src="js/main.js?v=20260304.082311.082257.081801.081750"></script>
+    <script type="module" src="js/main.js?v=20260305.002750.082311.082257.081801.081750"></script>
 </body>
 </html>

@@ -13,7 +13,7 @@ import { zoomState } from './zoom-state.js';
 import { updateShareButtonState } from './share-modal.js';
 import { drawDayMarkers } from './day-markers.js';
 import { initScrollZoom } from './scroll-zoom.js';
-import { isStudyMode } from './master-modes.js';
+import { isStudyMode, isEmicStudyMode } from './master-modes.js';
 import { initAudioWorklet } from './audio-worklet-init.js';
 
 // ===== FIRST FETCH TRACKING =====
@@ -204,7 +204,8 @@ export async function startStreaming(event, config = null) {
         // Uses separate localStorage variable from tutorial State to persist across sessions
         const userHasClickedWaveformOnce = localStorage.getItem('userHasClickedWaveformOnce') === 'true';
         const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
-        if (statusDiv) {
+        // Don't overwrite study flow status text (it manages its own instructions)
+        if (statusDiv && !isEmicStudyMode()) {
             if (isSharedSession) {
                 statusDiv.textContent = '🎧 Ready! Click PLAY or press the SPACE BAR to start playback.';
                 statusDiv.className = 'status';
@@ -232,7 +233,9 @@ export async function startStreaming(event, config = null) {
         updateShareButtonState();
 
         // Draw day markers if enabled in gear popovers (EMIC mode)
-        drawDayMarkers();
+        // Skip if rendering is deferred (triggered mode) — they'll draw when rendering starts
+        const renderMode = document.getElementById('dataRendering')?.value;
+        if (renderMode !== 'triggered') drawDayMarkers();
 
         // Initialize scroll-to-zoom (EMIC mode, gated by checkbox)
         initScrollZoom();
