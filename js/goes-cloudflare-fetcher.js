@@ -387,7 +387,6 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
 
     // Position axis canvases (layout only — no visible ticks yet if triggered)
     positionAxisCanvas();
-    initializeAxisPlaybackRate();
     positionWaveformXAxisCanvas();
     positionSpectrogramXAxisCanvas();
     positionWaveformDateCanvas();
@@ -395,6 +394,7 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     // Draw axis ticks — skip in triggered mode (they'll draw when rendering starts)
     const initRenderMode = document.getElementById('dataRendering')?.value || 'progressive';
     if (initRenderMode !== 'triggered') {
+        initializeAxisPlaybackRate();
         drawWaveformXAxis();
         drawSpectrogramXAxis();
         drawWaveformDate();

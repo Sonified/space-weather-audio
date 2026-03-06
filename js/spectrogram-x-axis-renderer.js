@@ -442,11 +442,18 @@ export function positionSpectrogramXAxisCanvas() {
     const leftEdge = spectrogramRect.left - panelRect.left;
     const topEdge = spectrogramRect.bottom - panelRect.top;
 
+    // Sync canvas internal resolution to display size so text doesn't scale up/down
+    const displayWidth = Math.round(spectrogramRect.width);
+    if (xAxisCanvas.width !== displayWidth || xAxisCanvas.height !== 40) {
+        xAxisCanvas.width = displayWidth;
+        xAxisCanvas.height = 40;
+    }
+
     xAxisCanvas.style.cssText = `
         position: absolute;
         left: ${leftEdge}px;
         top: ${topEdge}px;
-        width: ${spectrogramRect.width}px;
+        width: ${displayWidth}px;
         height: 40px;
         opacity: 1;
         visibility: visible;

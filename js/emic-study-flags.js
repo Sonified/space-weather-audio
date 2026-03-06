@@ -77,15 +77,8 @@ export function initFlagsPanel() {
     const panel = document.getElementById('emicFlagsPanel');
     if (!btn || !panel) return;
 
-    // Mirror visibility of simulateFlowBtn
-    const simBtn = document.getElementById('simulateFlowBtn');
-    if (simBtn) {
-        const observer = new MutationObserver(() => {
-            btn.style.display = simBtn.style.display;
-        });
-        observer.observe(simBtn, { attributes: true, attributeFilter: ['style'] });
-        btn.style.display = simBtn.style.display;
-    }
+    // Show flags button in all display modes
+    btn.style.display = '';
 
     function showPanel() {
         panel.style.display = 'block';
@@ -128,6 +121,29 @@ export function initFlagsPanel() {
                 }
             });
             syncFlagCheckboxes();
+        });
+    }
+
+    // Deselect All button — clears all boolean flags
+    const deselectAllBtn = document.getElementById('emicFlagsDeselectAll');
+    if (deselectAllBtn) {
+        deselectAllBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            Object.entries(EMIC_FLAGS).forEach(([, key]) => {
+                if (key !== EMIC_FLAGS.ACTIVE_FEATURE_COUNT) {
+                    setEmicFlag(key, false);
+                }
+            });
+            syncFlagCheckboxes();
+        });
+    }
+
+    // Close button
+    const closeBtn = document.getElementById('emicFlagsClose');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            hidePanel();
         });
     }
 
@@ -252,8 +268,9 @@ function buildFlagCheckboxes() {
                 parts.push(`${short}=${val === 'true' ? '1' : '0'}`);
             }
         }
+        const user = localStorage.getItem('emic_real_username') || '?';
         const pid = localStorage.getItem('participantId') || '?';
-        const text = `flags[${pid}]: ${parts.join(' ')}`;
+        const text = `flags[user:${user} pid:${pid}]: ${parts.join(' ')}`;
         navigator.clipboard.writeText(text).then(() => {
             copyBtn.textContent = '✅ Copied!';
             setTimeout(() => { copyBtn.textContent = '📋 Copy Flags'; }, 1500);
@@ -264,6 +281,20 @@ function buildFlagCheckboxes() {
     qCol.appendChild(copyBtn);
     copyBtn.style.marginTop = '6px';
     container.appendChild(qCol);
+
+    // Debug: UserName + PartID readouts (span full width below columns)
+    const debugRow = document.createElement('div');
+    debugRow.id = 'flagsDebugIds';
+    debugRow.style.cssText = 'grid-column: 1 / -1; margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.1); font-family: monospace; font-size: 12px; color: #999; display: flex; flex-direction: column; gap: 2px;';
+    const userLine = document.createElement('span');
+    userLine.id = 'flagsDebugUsername';
+    userLine.textContent = 'UserName: --';
+    const partLine = document.createElement('span');
+    partLine.id = 'flagsDebugPartId';
+    partLine.textContent = 'PartID: --';
+    debugRow.appendChild(userLine);
+    debugRow.appendChild(partLine);
+    container.appendChild(debugRow);
 }
 
 /**
@@ -287,4 +318,14 @@ function syncFlagCheckboxes() {
             el.checked = localStorage.getItem(key) === 'true';
         }
     });
+
+    // Update debug ID readouts
+    const userEl = document.getElementById('flagsDebugUsername');
+    const partEl = document.getElementById('flagsDebugPartId');
+    if (userEl || partEl) {
+        const realUser = localStorage.getItem('emic_real_username') || '--';
+        const partId = localStorage.getItem('participantId') || '--';
+        if (userEl) userEl.textContent = `UserName: ${realUser}`;
+        if (partEl) partEl.textContent = `PartID: ${partId}`;
+    }
 }

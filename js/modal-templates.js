@@ -1,7 +1,7 @@
 // Modal HTML templates as ES6 template literals (shared + EMIC)
 // Volcano study templates moved to volcano-modal-templates.js
 
-import { isStudyMode, isEmicStudyMode } from './master-modes.js';
+import { isEmicStudyMode } from './master-modes.js';
 
 // 🔥 FIX: Track if modals have been initialized to prevent duplicate initialization
 let modalsInitialized = false;
@@ -21,16 +21,10 @@ export function createWelcomeModal() {
             </div>
             <div class="modal-body">
                 <p style="margin-bottom: 20px; color: #333; font-size: 20px; line-height: 1.6;">
-                    You will be listening to real volcanic data and identifying interesting features. Please use headphones or high-quality speakers in a quiet environment free from distractions.
+                    You will be listening to real spacecraft data and identifying interesting features. Please use headphones or high-quality speakers in a quiet environment free from distractions.
                 </p>
                 <p style="margin-bottom: 20px; color: #333; font-size: 20px; line-height: 1.6;">
-                    The data comes from active volcanoes in near-real-time and may contain gaps or sudden volume spikes. Please listen at a comfortable volume.
-                </p>
-                <p style="margin-bottom: 20px; color: #333; font-size: 20px; line-height: 1.6;">
-                    This study includes short surveys that take about 2-3 minutes per session.
-                </p>
-                <p style="margin-bottom: 20px; color: #333; font-size: 20px; line-height: 1.6;">
-                    Questions? Contact <a href="mailto:leif@uoregon.edu" style="color: #007bff; text-decoration: none; font-weight: 600;">leif@uoregon.edu</a>
+                    The data comes from NASA spacecraft and may contain gaps or sudden volume spikes. Please listen at a comfortable volume.
                 </p>
                 <button type="button" class="modal-submit">Begin</button>
             </div>
@@ -429,39 +423,27 @@ export async function initializeModals() {
         overlay.appendChild(createReferralQuestionModal());
     }
 
-    // Pre-populate participant ID from URL (Qualtrics) or localStorage
-    // BUT NOT in STUDY_CLEAN mode (always start fresh)
-    const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
-    const isStudyClean = storedMode === 'study_clean';
-    
-    // Check URL first (Qualtrics ResponseID), then localStorage
+    // Pre-populate participant ID from URL or localStorage
     let savedParticipantId = null;
-    if (!isStudyClean) {
-        // Try to get from URL (Qualtrics redirect)
-        try {
-            const { getParticipantIdFromURL, storeParticipantId } = await import('./participant-id.js');
-            const urlId = getParticipantIdFromURL();
-            if (urlId) {
-                savedParticipantId = urlId;
-                // Store it for future use
-                storeParticipantId(urlId);
-                if (window.pm?.init) console.log('🔗 Pre-populated participant ID from URL:', urlId);
-            } else {
-                // Fall back to localStorage
-                savedParticipantId = localStorage.getItem('participantId');
-                if (savedParticipantId) {
-                    if (window.pm?.init) console.log('💾 Pre-populated participant ID from localStorage:', savedParticipantId);
-                }
-            }
-        } catch (error) {
-            // If import fails, fall back to localStorage
-            savedParticipantId = localStorage.getItem('participantId');
+    try {
+        const { getParticipantIdFromURL, storeRealUsername } = await import('./participant-id.js');
+        const urlId = getParticipantIdFromURL();
+        if (urlId) {
+            savedParticipantId = urlId;
+            storeRealUsername(urlId);
+            if (window.pm?.init) console.log('🔗 Pre-populated participant ID from URL:', urlId);
+        } else {
+            // Fall back to localStorage
+            savedParticipantId = localStorage.getItem('emic_real_username') || localStorage.getItem('participantId');
             if (savedParticipantId) {
                 if (window.pm?.init) console.log('💾 Pre-populated participant ID from localStorage:', savedParticipantId);
             }
         }
-    } else {
-        if (window.pm?.init) console.log('🧹 Study Clean Mode: Not pre-populating participant ID');
+    } catch (error) {
+        savedParticipantId = localStorage.getItem('emic_real_username') || localStorage.getItem('participantId');
+        if (savedParticipantId) {
+            if (window.pm?.init) console.log('💾 Pre-populated participant ID from localStorage:', savedParticipantId);
+        }
     }
     
     const participantIdInput = document.getElementById('participantId');
@@ -479,7 +461,7 @@ export async function initializeModals() {
     
     modalsInitialized = true;
     // Only log in dev/personal modes, not study mode
-    if (!isStudyMode()) {
+    if (!isEmicStudyMode()) {
         console.log('📋 Modals initialized and injected into DOM');
     }
 }

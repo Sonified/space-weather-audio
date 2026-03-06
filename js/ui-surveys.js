@@ -4,7 +4,7 @@
  * Volcano-specific survey submission (Qualtrics) moved to volcano-study-surveys.js.
  */
 
-import { storeParticipantId } from './participant-id.js';
+import { storeParticipantId, storeRealUsername } from './participant-id.js';
 import { CURRENT_MODE, AppMode } from './master-modes.js';
 import * as State from './audio-state.js';
 
@@ -13,7 +13,7 @@ export function submitParticipantSetup() {
 
     // Save to localStorage for persistence across sessions
     if (participantId) {
-        storeParticipantId(participantId);
+        storeRealUsername(participantId);
         console.log('💾 Saved participant ID:', participantId);
         // Set EMIC registration flag + sync to server
         import('./master-modes.js').then(({ isEmicStudyMode }) => {

@@ -2,6 +2,7 @@
 
 import * as State from './audio-state.js';
 import { redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
+import { loadRegionsAfterDataFetch } from './feature-tracker.js';
 import { drawWaveformFromMinMax } from './minimap-window-renderer.js';
 import {
     updateSpectrogramViewport,
@@ -20,6 +21,9 @@ import { drawDayMarkers } from './day-markers.js';
 import { initDataViewer, fetchUsers } from './data-viewer.js';
 import { zoomState } from './zoom-state.js';
 import { isStudyMode, isEmicStudyMode, isLocalEnvironment } from './master-modes.js';
+import { isAdminUnlocked } from './admin-unlock.js';
+import { getEmicFlag, EMIC_FLAGS } from './emic-study-flags.js';
+import { getRealUsernameStored, getActiveId } from './participant-id.js';
 import { pm } from './logger.js';
 import { upgradeAllSelects } from './custom-select.js';
 import { injectSettingsDrawer, injectGearPopovers } from './settings-drawer.js';
@@ -279,20 +283,20 @@ export function initializeAdvancedControls() {
         setTimeout(() => window.dispatchEvent(new Event('resize')), 260);
     }
 
-    // --- Advanced mode toggle: controls visibility of gear icons ---
+    // --- Advanced mode toggle: controls visibility of all dev/admin UI ---
     const advancedCheckbox = document.getElementById('advancedMode');
-    const displayModeSelect = document.getElementById('displayMode');
+    const advancedToggle = document.getElementById('advancedToggle');
 
-    // Display mode: 'participant' | 'standard' | 'advanced' | 'dataviewer'
-    function applyDisplayMode(mode) {
-        const isAdvanced = mode === 'advanced';
-        const isParticipant = mode === 'participant';
-        const isDataViewer = mode === 'dataviewer';
+    // Two display states: production (!isAdvanced) and advanced (isAdvanced)
+    function applyDisplayMode(isAdvanced) {
+        // Sync data attribute (used by early CSS to prevent flash)
+        if (isAdvanced) {
+            document.documentElement.setAttribute('data-advanced', '');
+        } else {
+            document.documentElement.removeAttribute('data-advanced');
+        }
 
-        // Sync data-display-mode attribute (used by early CSS to prevent flash)
-        document.documentElement.setAttribute('data-display-mode', mode);
-
-        // Sync hidden checkbox for any code that reads advancedMode
+        // Sync checkbox
         if (advancedCheckbox) advancedCheckbox.checked = isAdvanced;
 
         // Gears, hamburger, questionnaires: advanced only
@@ -304,98 +308,96 @@ export function initializeAdvancedControls() {
         if (questionnairesPanel) questionnairesPanel.style.display = isAdvanced ? '' : 'none';
         if (!isAdvanced) closeSettingsDrawer();
 
-        // Component selector + de-trend: hidden in participant mode
+        // Component selector + de-trend: advanced only
         const compContainer = document.getElementById('componentSelectorContainer');
-        if (compContainer) compContainer.style.display = isParticipant ? 'none' : '';
+        if (compContainer) compContainer.style.display = isAdvanced ? '' : 'none';
         const detrendContainer = document.getElementById('detrendContainer');
-        if (detrendContainer) detrendContainer.style.display = isParticipant ? 'none' : '';
+        if (detrendContainer) detrendContainer.style.display = isAdvanced ? '' : 'none';
 
-        // Bottom bar viz controls (everything right of Display dropdown): hidden in participant
-        // Use visibility instead of display so the Display dropdown doesn't shift position
+        // Bottom bar viz controls: advanced only (visibility to preserve layout)
         const vizControls = document.querySelector('.viz-controls');
         if (vizControls) {
-            vizControls.style.visibility = isParticipant ? 'hidden' : 'visible';
-            vizControls.style.pointerEvents = isParticipant ? 'none' : '';
+            vizControls.style.visibility = isAdvanced ? 'visible' : 'hidden';
+            vizControls.style.pointerEvents = isAdvanced ? '' : 'none';
         }
 
-        // Stretch + Speed button groups: advanced only (hidden in participant + standard)
+        // Stretch + Speed button groups: advanced only
         const stretchGroup = document.getElementById('stretchGroup');
         if (stretchGroup) stretchGroup.style.display = isAdvanced ? '' : 'none';
         const speedGroup = document.getElementById('speedGroup');
-        if (speedGroup) speedGroup.style.display = isParticipant ? 'none' : '';
+        if (speedGroup) speedGroup.style.display = isAdvanced ? '' : 'none';
 
         // Participant ID display (top right): respect "ID in Corner" setting
         const pidDisplay = document.getElementById('participantIdDisplay');
         if (pidDisplay) {
             const cornerSetting = document.getElementById('pidCornerDisplay')?.value || 'show';
-            pidDisplay.style.display = (isParticipant && cornerSetting === 'hide') ? 'none' : '';
+            pidDisplay.style.display = (!isAdvanced && cornerSetting === 'hide') ? 'none' : '';
         }
 
-        // EMIC controls panel (Fetch Data, Component, De-trend): hidden in participant mode
+        // Show the correct ID and label for the current context
+        const pidValue = document.getElementById('participantIdValue');
+        const pidLabel = document.getElementById('participantIdLabel');
+        if (pidValue) {
+            const activeId = getActiveId();
+            pidValue.textContent = activeId !== 'anonymous' ? activeId : '--';
+        }
+        if (pidLabel) {
+            const simulating = getEmicFlag(EMIC_FLAGS.IS_SIMULATING);
+            pidLabel.textContent = (!isAdvanced && simulating) ? 'Participant ID' : 'User ID';
+        }
+
+        // EMIC controls panel (Fetch Data, Component, De-trend): advanced only
         const emicControlsPanel = document.getElementById('emicControlsPanel');
-        if (emicControlsPanel) emicControlsPanel.style.display = isParticipant ? 'none' : '';
+        if (emicControlsPanel) emicControlsPanel.style.display = isAdvanced ? '' : 'none';
 
         // Move #status between controls panel and playback bar based on mode
         const statusEl = document.getElementById('status');
         if (statusEl) {
-            const anchor = isParticipant
-                ? document.getElementById('statusAnchorPlayback')
-                : document.getElementById('statusAnchorControls');
+            const anchor = isAdvanced
+                ? document.getElementById('statusAnchorControls')
+                : document.getElementById('statusAnchorPlayback');
             if (anchor && statusEl.parentElement !== anchor) {
                 anchor.appendChild(statusEl);
             }
         }
 
-        // Data Viewer panel: only visible in dataviewer mode
-        const dvPanel = document.getElementById('dataViewerPanel');
-        if (dvPanel) {
-            dvPanel.style.display = isDataViewer ? 'block' : 'none';
-            if (isDataViewer) {
+        // Data Viewer panel: independent toggle, don't touch it here
+    }
+
+    // Admin-only buttons visibility handled by CSS (.admin-only + data-admin attribute)
+
+    // Data Viewer: independent toggle button
+    const dvBtn = document.getElementById('dataViewerBtn');
+    const dvPanel = document.getElementById('dataViewerPanel');
+    if (dvBtn && dvPanel) {
+        initDataViewer();
+        let dvLoaded = false;
+        dvBtn.addEventListener('click', () => {
+            const showing = dvPanel.style.display === 'block';
+            dvPanel.style.display = showing ? 'none' : 'block';
+            dvBtn.style.background = showing ? '' : '#2a6';
+            if (!showing && !dvLoaded) {
                 fetchUsers();
+                dvLoaded = true;
             }
-        }
-    }
-
-    // Legacy compat: applyAdvancedMode still works for any external callers
-    function applyAdvancedMode(enabled) {
-        applyDisplayMode(enabled ? 'advanced' : 'standard');
-    }
-
-    if (displayModeSelect) {
-        // Add Data Viewer option on localhost only
-        if (isLocalEnvironment()) {
-            const dvOption = document.createElement('option');
-            dvOption.value = 'dataviewer';
-            dvOption.textContent = 'Data Viewer';
-            displayModeSelect.appendChild(dvOption);
-            if (cselInstances.has('displayMode')) cselInstances.get('displayMode').refresh();
-            initDataViewer();
-        }
-
-        // Restore saved preference, default to 'standard' for new users
-        const savedMode = localStorage.getItem('emic_display_mode');
-        const validModes = ['participant', 'standard', 'advanced'];
-        if (isLocalEnvironment()) validModes.push('dataviewer');
-        if (savedMode && validModes.includes(savedMode)) {
-            displayModeSelect.value = savedMode;
-        }
-        applyDisplayMode(displayModeSelect.value);
-
-        displayModeSelect.addEventListener('change', () => {
-            const mode = displayModeSelect.value;
-            localStorage.setItem('emic_display_mode', mode);
-            applyDisplayMode(mode);
-            updateRegionsPanelVisibility();
-            // Reposition overlay + redraw feature boxes after layout settles
-            requestAnimationFrame(() => redrawAllCanvasFeatureBoxes());
+            // Let spectrogram resize to fit
+            setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
         });
-    } else if (advancedCheckbox) {
-        // Fallback for pages without displayMode dropdown (e.g. index.html)
-        applyAdvancedMode(advancedCheckbox.checked);
+    }
+
+    if (advancedCheckbox) {
+        // Restore saved preference
+        const savedAdvanced = localStorage.getItem('emic_advanced_mode');
+        if (savedAdvanced === 'true') advancedCheckbox.checked = true;
+        applyDisplayMode(advancedCheckbox.checked);
+
         advancedCheckbox.addEventListener('change', () => {
             localStorage.setItem('emic_advanced_mode', advancedCheckbox.checked);
-            applyAdvancedMode(advancedCheckbox.checked);
+            applyDisplayMode(advancedCheckbox.checked);
             updateRegionsPanelVisibility();
+            // Reload features for the new active ID and redraw
+            loadRegionsAfterDataFetch();
+            requestAnimationFrame(() => redrawAllCanvasFeatureBoxes());
         });
     }
     if (hamburgerBtn) hamburgerBtn.addEventListener('click', () => {
@@ -805,9 +807,8 @@ export function initializeAdvancedControls() {
         if (panel) {
             panel.style.display = isWindowed ? 'none' : '';
         }
-        const displayMode = document.getElementById('displayMode')?.value || 'standard';
-        const advanced = displayMode === 'advanced' || document.getElementById('advancedMode')?.checked;
-        const hideControls = isWindowed && !advanced && displayMode === 'participant';
+        const advanced = document.getElementById('advancedMode')?.checked;
+        const hideControls = isWindowed && !advanced;
         const comp = document.getElementById('componentSelectorContainer');
         const detrend = document.getElementById('detrendContainer');
         if (comp) comp.style.visibility = hideControls ? 'hidden' : '';

@@ -56,7 +56,8 @@ let studyStartTime = null;
 let completeTime = null;
 let completeBtn = null;
 let featurePollInterval = null;
-let realUsername = null; // The user's actual username, restored after flow
+let realUsername = localStorage.getItem('emic_real_username') || null; // Persisted — survives refresh
+let simulationId = localStorage.getItem('emic_simulation_id') || null; // Persisted — survives refresh
 
 // Track whether we're in the flow's modal sequence so the overlay patch cooperates
 let inFlowSequence = false;
@@ -79,8 +80,10 @@ export function initSimulateFlow() {
         }
     });
 
-    // If the page was refreshed mid-flow, restore Cancel Flow button state
-    if (getEmicFlag(EMIC_FLAGS.IS_SIMULATING)) {
+    // If the page was refreshed mid-flow, only resume if in production mode (not advanced)
+    const advancedCheckbox = document.getElementById('advancedMode');
+    const isAdvanced = advancedCheckbox?.checked;
+    if (getEmicFlag(EMIC_FLAGS.IS_SIMULATING) && !isAdvanced) {
         flowRunning = true;
         btn.textContent = 'Cancel Flow';
         btn.style.backgroundColor = '#dc3545';
@@ -90,28 +93,22 @@ export function initSimulateFlow() {
         // Save settings so cancel can restore them (startFlow won't run on resume)
         const renderSelect = document.getElementById('dataRendering');
         if (renderSelect) savedDataRendering = renderSelect.value;
-        const displayModeSelect = document.getElementById('displayMode');
-        if (displayModeSelect) savedDisplayMode = displayModeSelect.value;
+        if (advancedCheckbox) savedDisplayMode = advancedCheckbox.checked;
 
         // Resume flow based on flag state after page refresh
         if (getEmicFlag(EMIC_FLAGS.HAS_CONFIRMED_COMPLETE)) {
-            // Already confirmed — resume at questionnaires
             flowLog('Resuming after refresh: confirmed complete, skipping to questionnaires');
             resumeFromConfirmed();
         } else if (getEmicFlag(EMIC_FLAGS.HAS_CLICKED_COMPLETE)) {
-            // Clicked complete but didn't confirm — show confirmation modal
             flowLog('Resuming after refresh: clicked complete, showing confirmation');
             resumeFromComplete();
         } else if (!getEmicFlag(EMIC_FLAGS.HAS_REGISTERED)) {
-            // Not registered yet — show registration, then welcome, then drawing
             flowLog('Resuming after refresh: not registered, showing login');
             resumeFromUnregistered();
         } else if (!getEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME)) {
-            // Registered but hasn't seen welcome — show welcome modal
             flowLog('Resuming after refresh: showing welcome');
             resumeFromPreWelcome();
         } else {
-            // Drawing phase — hide visuals until welcome-back "Start Now" is clicked
             const renderSelect = document.getElementById('dataRendering');
             if (renderSelect) {
                 savedDataRendering = renderSelect.value;
@@ -121,16 +118,18 @@ export function initSimulateFlow() {
             flowLog('Resuming after refresh: drawing phase, showing welcome back');
             resumeFromDrawing();
         }
+    } else if (getEmicFlag(EMIC_FLAGS.IS_SIMULATING)) {
+        // Simulation exists but we're in advanced mode — stay dormant
+        flowLog('Simulation state exists but in advanced mode — staying dormant');
     }
 
-    // Hook into display mode changes to show/hide button
-    const displayModeSelect = document.getElementById('displayMode');
-    if (displayModeSelect) {
+    // Hook into advanced mode changes to show/hide button
+    if (advancedCheckbox) {
         const updateVisibility = () => {
-            btn.style.display = (flowRunning || displayModeSelect.value === 'participant') ? '' : 'none';
+            btn.style.display = (flowRunning || !advancedCheckbox.checked) ? '' : 'none';
         };
         updateVisibility();
-        displayModeSelect.addEventListener('change', updateVisibility);
+        advancedCheckbox.addEventListener('change', updateVisibility);
         // Store ref for later use
         btn._updateVisibility = updateVisibility;
     }
@@ -160,6 +159,16 @@ export function initSimulateFlow() {
  */
 export function isFlowActive() {
     return flowActive;
+}
+
+/** Get the real username stashed during simulation (null if no simulation active) */
+export function getRealUsername() {
+    return realUsername;
+}
+
+/** Get the simulation/test ID in use (null if no simulation active) */
+export function getSimulationId() {
+    return simulationId;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -319,13 +328,13 @@ async function startFlow() {
         btn.style.background = '#dc3545';
     }
 
-    // Save and switch display mode to participant
-    const displayModeSelect = document.getElementById('displayMode');
-    if (displayModeSelect) {
-        savedDisplayMode = displayModeSelect.value;
-        if (displayModeSelect.value !== 'participant') {
-            displayModeSelect.value = 'participant';
-            displayModeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    // Save and switch to production mode (uncheck advanced)
+    const advCheckbox = document.getElementById('advancedMode');
+    if (advCheckbox) {
+        savedDisplayMode = advCheckbox.checked;
+        if (advCheckbox.checked) {
+            advCheckbox.checked = false;
+            advCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
         }
     }
 
@@ -353,14 +362,17 @@ async function startFlow() {
 
     flowLog('Enabled silentDownload + autoDownload for background data fetch');
 
-    // Save real username for restoration later (strip any stacked _TEST suffixes)
-    realUsername = stripTestSuffix(getParticipantId() || 'Participant');
+    // Save real username for restoration later
+    realUsername = localStorage.getItem('emic_real_username') || getParticipantId() || 'Participant';
+    localStorage.setItem('emic_real_username', realUsername);
 
     // Generate test username — auto mode uses P_ID format, manual uses _TEST suffix
     const idMode = document.getElementById('participantIdMode')?.value || 'manual';
     const testUsername = idMode === 'auto'
         ? generateParticipantId()
         : generateTestUsername(realUsername);
+    simulationId = testUsername;
+    localStorage.setItem('emic_simulation_id', simulationId);
     flowLog(`Resetting state, test user: ${testUsername}`);
 
     // Install overlay patch
@@ -460,11 +472,15 @@ async function startFlow() {
  */
 function restoreRealUser() {
     if (realUsername) {
-        storeParticipantId(realUsername);
+        // Show real username in header again
         const pidValue = document.getElementById('participantIdValue');
         if (pidValue) pidValue.textContent = realUsername;
         flowLog(`Real user restored: ${realUsername}`);
-        realUsername = null; // Prevent double-restore
+        // Clear simulation state — realUsername stays in emic_real_username
+        realUsername = null;
+        simulationId = null;
+        localStorage.removeItem('participantId');
+        localStorage.removeItem('emic_simulation_id');
     }
 }
 
@@ -884,10 +900,14 @@ function showWelcomeBackModal() {
         modalManager.openModal('simulateFlowWelcomeBackModal', { keepOverlay: true });
 
         requestAnimationFrame(() => {
-            modal.querySelector('.modal-submit')?.addEventListener('click', () => {
+            const dismiss = () => {
                 modalManager.closeModal('simulateFlowWelcomeBackModal').then(() => modal.remove());
+                document.removeEventListener('keydown', onKey);
                 resolve();
-            });
+            };
+            const onKey = (e) => { if (e.key === 'Enter') { e.preventDefault(); dismiss(); } };
+            modal.querySelector('.modal-submit')?.addEventListener('click', dismiss);
+            document.addEventListener('keydown', onKey);
         });
     });
 }
@@ -1275,12 +1295,12 @@ function cleanup() {
         if (btn._updateVisibility) btn._updateVisibility();
     }
 
-    // Restore previous display mode
+    // Restore previous advanced mode state
     if (savedDisplayMode !== null) {
-        const displayModeSelect = document.getElementById('displayMode');
-        if (displayModeSelect && displayModeSelect.value !== savedDisplayMode) {
-            displayModeSelect.value = savedDisplayMode;
-            displayModeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        const advCheckbox = document.getElementById('advancedMode');
+        if (advCheckbox && advCheckbox.checked !== savedDisplayMode) {
+            advCheckbox.checked = savedDisplayMode;
+            advCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
         }
         savedDisplayMode = null;
     }

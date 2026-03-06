@@ -95,8 +95,7 @@ export async function reportMetadataMismatch(errorType, details) {
             },
             source: 'silent-error-reporter',
             sessionInfo: {
-                mode: localStorage.getItem('selectedMode'),
-                volcano: localStorage.getItem('selectedVolcano')
+                page: window.location.pathname
             }
         };
 

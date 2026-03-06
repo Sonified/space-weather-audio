@@ -219,8 +219,8 @@ export function drawDayMarkers() {
             const pr = container.getBoundingClientRect();
             wfOverlay.style.left = (cr.left - pr.left) + 'px';
             wfOverlay.style.top = (cr.top - pr.top) + 'px';
-            wfOverlay.width = wfCanvas.width;
-            wfOverlay.height = wfCanvas.height;
+            wfOverlay.width = wfCanvas.offsetWidth;
+            wfOverlay.height = wfCanvas.offsetHeight;
             wfOverlay.style.width = wfCanvas.offsetWidth + 'px';
             wfOverlay.style.height = wfCanvas.offsetHeight + 'px';
             container.appendChild(wfOverlay);
@@ -231,12 +231,14 @@ export function drawDayMarkers() {
                     const pr2 = container.getBoundingClientRect();
                     wfOverlay.style.left = (cr2.left - pr2.left) + 'px';
                     wfOverlay.style.top = (cr2.top - pr2.top) + 'px';
-                    if (wfOverlay.width !== wfCanvas.width || wfOverlay.height !== wfCanvas.height) {
-                        wfOverlay.width = wfCanvas.width;
-                        wfOverlay.height = wfCanvas.height;
+                    const newW = wfCanvas.offsetWidth;
+                    const newH = wfCanvas.offsetHeight;
+                    if (wfOverlay.width !== newW || wfOverlay.height !== newH) {
+                        wfOverlay.width = newW;
+                        wfOverlay.height = newH;
                     }
-                    wfOverlay.style.width = wfCanvas.offsetWidth + 'px';
-                    wfOverlay.style.height = wfCanvas.offsetHeight + 'px';
+                    wfOverlay.style.width = newW + 'px';
+                    wfOverlay.style.height = newH + 'px';
                 }
             }).observe(wfCanvas);
         }
@@ -244,9 +246,17 @@ export function drawDayMarkers() {
 
     if (wfOverlay) {
         const wfCtx = wfOverlay.getContext('2d');
-        const bufW = wfOverlay.width;
-        const bufH = wfOverlay.height;
-        wfCtx.clearRect(0, 0, bufW, bufH);
+        const wfCanvas = document.getElementById('waveform');
+        // Use CSS pixels for overlay buffer (same approach as spectrogram overlay)
+        const cssW = wfCanvas ? wfCanvas.offsetWidth : wfOverlay.width;
+        const cssH = wfCanvas ? wfCanvas.offsetHeight : wfOverlay.height;
+        if (wfOverlay.width !== cssW || wfOverlay.height !== cssH) {
+            wfOverlay.width = cssW;
+            wfOverlay.height = cssH;
+        }
+        wfOverlay.style.width = cssW + 'px';
+        wfOverlay.style.height = cssH + 'px';
+        wfCtx.clearRect(0, 0, cssW, cssH);
 
         if (showWaveform) {
             // In EMIC windowed mode, waveform is a minimap — always use full data range
@@ -259,11 +269,6 @@ export function drawDayMarkers() {
             const wfMidnights = isEmicWindowed && State.dataStartTime && State.dataEndTime
                 ? getMidnightBoundaries(State.dataStartTime, State.dataEndTime) : midnights;
 
-            const dpr = window.devicePixelRatio || 1;
-            const cssW = bufW / dpr;
-            const cssH = bufH / dpr;
-            wfCtx.save();
-            wfCtx.scale(dpr, dpr);
             for (const midnight of wfMidnights) {
                 const frac = (midnight.getTime() - wfStartMs) / wfSpanMs;
                 const x = Math.round(frac * cssW);
@@ -271,7 +276,6 @@ export function drawDayMarkers() {
                 const label = `${MONTHS[midnight.getUTCMonth()]} ${midnight.getUTCDate()}`;
                 drawMarkerLine(wfCtx, x, cssH, label, 'top');
             }
-            wfCtx.restore();
         }
     }
 }

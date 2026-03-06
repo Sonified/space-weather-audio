@@ -26,7 +26,7 @@ export function getParticipantIdFromURL() {
 }
 
 /**
- * Store participant ID in localStorage
+ * Store participant ID (study/simulation) in localStorage
  * @param {string} participantId - The participant ID to store
  */
 export function storeParticipantId(participantId) {
@@ -37,7 +37,7 @@ export function storeParticipantId(participantId) {
 }
 
 /**
- * Get participant ID from localStorage or URL
+ * Get participant ID (study/simulation) from localStorage or URL
  * Checks URL first, then falls back to localStorage
  * @returns {string|null} - Participant ID if found, null otherwise
  */
@@ -45,14 +45,48 @@ export function getParticipantId() {
     // First check URL parameters (takes precedence)
     const urlId = getParticipantIdFromURL();
     if (urlId) {
-        // Store it for future use
-        storeParticipantId(urlId);
+        storeRealUsername(urlId);
         return urlId;
     }
 
     // Fall back to localStorage
     const storedId = localStorage.getItem('participantId');
     return storedId || null;
+}
+
+/**
+ * Store the researcher's real username — separate from participantId.
+ * Set at login. Never touched by simulation.
+ * @param {string} username - The researcher's username
+ */
+export function storeRealUsername(username) {
+    if (username && username.trim()) {
+        localStorage.setItem('emic_real_username', username.trim());
+        console.log('💾 Stored real username:', username.trim());
+    }
+}
+
+/**
+ * Get the researcher's real username from localStorage
+ * @returns {string|null}
+ */
+export function getRealUsernameStored() {
+    return localStorage.getItem('emic_real_username') || null;
+}
+
+/**
+ * Get the active ID for the current context.
+ * Participant mode during simulation → participantId.
+ * Otherwise → real username.
+ * @returns {string} - The active ID or 'anonymous'
+ */
+export function getActiveId() {
+    const isAdvanced = document.getElementById('advancedMode')?.checked;
+    const isSimulating = localStorage.getItem('emic_is_simulating') === 'true';
+    if (!isAdvanced && isSimulating) {
+        return localStorage.getItem('participantId') || 'anonymous';
+    }
+    return localStorage.getItem('emic_real_username') || localStorage.getItem('participantId') || 'anonymous';
 }
 
 /**

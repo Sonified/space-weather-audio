@@ -51,15 +51,22 @@
             r.style.background = a.pageBg;
         })();
 
-        // Apply saved display mode BEFORE paint to prevent panel flash
+        // Hide advanced-only panels BEFORE paint to prevent flash
+        // Default = production (no data-advanced attribute = panels hidden via CSS)
+        // Only add data-advanced if user previously toggled it on
         (function() {
-            var mode = localStorage.getItem('emic_display_mode') || 'participant';
-            if (mode === 'participant') {
-                document.documentElement.setAttribute('data-display-mode', 'participant');
+            if (localStorage.getItem('emic_advanced_mode') === 'true') {
+                document.documentElement.setAttribute('data-advanced', '');
+            }
+            // Admin unlock: localhost or persisted unlock — show admin buttons immediately
+            var h = window.location.hostname;
+            var isLocal = h === 'localhost' || h === '127.0.0.1' || h === '' || window.location.protocol === 'file:';
+            if (isLocal || localStorage.getItem('admin_unlocked') === 'true') {
+                document.documentElement.setAttribute('data-admin', '');
             }
         })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20260306.031644.031038.030840.023603.022627.192022.191147.190853.023919.022155.021611.021604.021600.021539.021527.003104.003047.003019.002750.082311.082257.081801.081750">
+    <link rel="stylesheet" href="styles.css?v=20260306.225052.031644.031038.030840.023603.022627.192022.191147.190853.023919.022155.021611.021604.021600.021539.021527.003104.003047.003019.002750.082311.082257.081801.081750">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <!-- All styles moved to styles.css (EMIC Study section) -->
 </head>
@@ -73,7 +80,7 @@
                 <button id="aboutInfoBtn" type="button" class="header-info-btn" title="About this study">i</button>
                 <div id="participantIdDisplay" style="display: block; margin-bottom: 0;">
                     <span id="participantIdText" title="Click to view your participant info">
-                        Participant ID: <span id="participantIdValue" style="font-weight: 600; color: #bbb;">--</span>
+                        <span id="participantIdLabel">User ID</span>: <span id="participantIdValue" style="font-weight: 600; color: #bbb;">--</span>
                     </span>
                 </div>
             </div>
@@ -119,10 +126,8 @@
                     <input type="checkbox" id="removeDCOffsetEmic" style="width: 16px; height: 16px; cursor: pointer;" onchange="document.getElementById('removeDCOffset').checked = this.checked; document.getElementById('removeDCOffset').dispatchEvent(new Event('change'));">
                 </div>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 8px;"></div>
-                <!-- Anchor: #status lives here in standard/advanced mode, moves to playback bar in participant mode -->
-                <div id="statusAnchorControls" style="display: contents;">
-                    <div class="status info" id="status" style="margin: 0; padding: 6px 12px; flex: 1; min-width: 80px; font-size: 13px;"></div>
-                </div>
+                <!-- Anchor: #status moves here in advanced mode -->
+                <div id="statusAnchorControls" style="display: contents;"></div>
             </div>
         </div>
 
@@ -201,8 +206,10 @@
                     <label for="volumeSlider" id="volumeLabel" style="font-weight: 600; white-space: nowrap; font-size: var(--panel-label-size); flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0">Volume: <span id="volumeValue">1.0</span></label>
                     <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" style="flex: 1; min-width: 0;">
                 </div>
-                <!-- Anchor: #status moves here in participant mode -->
-                <div id="statusAnchorPlayback" style="display: contents;"></div>
+                <!-- Anchor: #status starts here (participant default), moves to controls in advanced -->
+                <div id="statusAnchorPlayback" style="display: contents;">
+                    <div class="status info" id="status" style="margin: 0; padding: 6px 12px; flex: 1; min-width: 80px; font-size: 13px;"></div>
+                </div>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 4px;"></div>
                 <div class="emic-btn-group" id="stretchGroup">
                     <label>Stretch:</label>
@@ -251,17 +258,14 @@
                     </div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px; white-space: nowrap;">
-                    <label for="displayMode">Display:</label>
-                    <select id="displayMode">
-                        <option value="participant">Participant View</option>
-                        <option value="standard" selected>Standard</option>
-                        <option value="advanced">Advanced</option>
-                    </select>
-                    <button type="button" id="simulateFlowBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px; min-width: 130px; display: none;">Simulate Flow</button>
-                    <button type="button" id="showFlagsBtn" class="emic-btn" style="padding: 6px 14px; font-size: 14px; display: none;">Show Flags</button>
+                    <label id="advancedToggle" class="admin-only" style="align-items: center; gap: 5px; cursor: pointer; user-select: none; font-size: 14px; font-weight: 700; color: #e8e8ff; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap; margin-right: 8px;">
+                        <input type="checkbox" id="advancedMode" style="width: 16px; height: 16px; cursor: pointer; accent-color: #80d0ff;">
+                        Advanced
+                    </label>
+                    <button type="button" id="simulateFlowBtn" class="emic-btn admin-only" style="padding: 6px 14px; font-size: 14px; min-width: 130px;">Simulate Flow</button>
+                    <button type="button" id="showFlagsBtn" class="emic-btn admin-only" style="padding: 6px 14px; font-size: 14px;">Show Flags</button>
+                    <button type="button" id="dataViewerBtn" class="emic-btn admin-only" style="padding: 6px 14px; font-size: 14px;">Data Viewer</button>
                 </div>
-                <!-- Hidden checkbox kept for JS compatibility -->
-                <input type="checkbox" id="advancedMode" style="display:none;">
                 <div class="viz-controls">
                     <div style="display: none;">
                         <input type="checkbox" id="playOnClick" checked>
@@ -350,8 +354,10 @@
             <div id="emicFlagsDragHandle" style="padding: 6px 12px; background: rgba(255,255,255,0.08); border-bottom: 1px solid rgba(255,255,255,0.1); cursor: grab; display: flex; align-items: center; justify-content: space-between; user-select: none;">
                 <span style="font-size: 12px; font-weight: 700; color: #aaa; letter-spacing: 0.5px;">⚑ STUDY FLAGS</span>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <button id="emicFlagsSelectAll" style="font-size: 10px; padding: 2px 6px; border: 1px solid #555; border-radius: 3px; background: rgba(60,60,60,0.8); color: #aaa; cursor: pointer; white-space: nowrap;">Select All</button>
                     <span style="font-size: 10px; color: #555;">drag to move</span>
+                    <button id="emicFlagsDeselectAll" style="font-size: 10px; padding: 2px 6px; border: 1px solid #555; border-radius: 3px; background: rgba(60,60,60,0.8); color: #aaa; cursor: pointer; white-space: nowrap;">Deselect All</button>
+                    <button id="emicFlagsSelectAll" style="font-size: 10px; padding: 2px 6px; border: 1px solid #555; border-radius: 3px; background: rgba(60,60,60,0.8); color: #aaa; cursor: pointer; white-space: nowrap;">Select All</button>
+                    <button id="emicFlagsClose" style="font-size: 16px; line-height: 1; padding: 0 4px; border: none; background: transparent; color: #888; cursor: pointer;" title="Close">✕</button>
                 </div>
             </div>
             <div id="emicFlagsContent" style="padding: 10px 15px; display: grid; grid-template-columns: auto auto; justify-content: start; gap: 4px 40px; font-family: monospace; font-size: 13px;"></div>
@@ -386,10 +392,10 @@
 
     <!-- Permanent Modal Overlay -->
     <script>
-        // Show overlay immediately if login needed or mid-simulation — prevents flash of app content
-        var skipLogin = localStorage.getItem('emic_skip_login_welcome') === 'true';
+        // Show overlay only if mid-simulation in participant mode — prevents flash of app content
         var isSimulating = localStorage.getItem('emic_is_simulating') === 'true';
-        var showOverlay = !skipLogin || isSimulating;
+        var isAdvanced = localStorage.getItem('emic_advanced_mode') === 'true';
+        var showOverlay = isSimulating && !isAdvanced;
         document.write('<div id="permanentOverlay" style="display: ' + (showOverlay ? 'flex' : 'none') + '; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.65); z-index: 1000; align-items: center; justify-content: center; opacity: ' + (showOverlay ? '1' : '0') + ';"></div>');
     </script>
     
@@ -459,7 +465,7 @@
     </script>
 
     <!-- APPLICATION LAYER -->
-    <script type="module" src="js/main.js?v=20260306.031644.031038.030840.023603.022627.192022.191147.190853.023919.022155.021611.021604.021600.021539.021527.003104.003047.003019.002750.082311.082257.081801.081750"></script>
+    <script type="module" src="js/main.js?v=20260306.225052.031644.031038.030840.023603.022627.192022.191147.190853.023919.022155.021611.021604.021600.021539.021527.003104.003047.003019.002750.082311.082257.081801.081750"></script>
     
     <!-- EMIC Study: Hook fetch button for IndexedDB caching + status updates -->
     <script type="module">

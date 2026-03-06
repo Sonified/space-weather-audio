@@ -8,6 +8,7 @@
  */
 
 import * as State from './audio-state.js';
+import { getActiveId } from './participant-id.js';
 import { zoomState } from './zoom-state.js';
 import { cancelSpectrogramSelection, redrawAllCanvasFeatureBoxes, closeFeaturePopup, changeColormap, changeFftSize, changeFrequencyScale } from './spectrogram-renderer.js';
 import { switchComponent } from './component-selector.js';
@@ -39,7 +40,7 @@ let currentFrequencySelection = null;
  * This ensures features are associated with the exact data AND user they were created by
  */
 function generateStorageKey(spacecraft, dataType, startTime, endTime) {
-    const username = localStorage.getItem('participantId') || 'anonymous';
+    const username = getActiveId();
 
     if (!spacecraft || !dataType || !startTime || !endTime) {
         return spacecraft ? `${STORAGE_KEY_PREFIX}${username}_${spacecraft}` : null;

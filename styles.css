@@ -4603,7 +4603,7 @@ select.csel-native {
     font-style: italic;
 }
 #dvDataDisplay {
-    max-height: 400px;
+    max-height: 200px;
     overflow-y: auto;
 }
 
@@ -4682,11 +4682,25 @@ select.csel-native {
     --panel-label-size: 15px;
 }
 
-/* Hide participant-hidden elements before JS loads (prevents flash) */
-html[data-display-mode="participant"] #emicControlsPanel,
-html[data-display-mode="participant"] #stretchGroup,
-html[data-display-mode="participant"] #speedGroup {
+/* Admin-only buttons: hidden unless admin unlocked (data-admin set by early script) */
+.admin-only { display: none; }
+html[data-admin] .admin-only { display: flex; }
+html[data-admin] button.admin-only { display: inline-block; }
+
+/* Hide advanced-only elements before JS loads (prevents flash in production mode) */
+html:not([data-advanced]) #emicControlsPanel,
+html:not([data-advanced]) #stretchGroup,
+html:not([data-advanced]) #speedGroup,
+html:not([data-advanced]) .panel-gear,
+html:not([data-advanced]) #hamburgerBtn,
+html:not([data-advanced]) #questionnairesPanel,
+html:not([data-advanced]) #componentSelectorContainer,
+html:not([data-advanced]) #detrendContainer {
     display: none;
+}
+html:not([data-advanced]) .viz-controls {
+    visibility: hidden;
+    pointer-events: none;
 }
 
 /* EMIC: taller spectrogram, shorter minimap */

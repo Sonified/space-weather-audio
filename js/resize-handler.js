@@ -12,6 +12,12 @@ import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { drawWaveformFromMinMax, drawWaveformWithSelection } from './minimap-window-renderer.js';
 import { drawDayMarkers } from './day-markers.js';
 
+/** Check if rendering is suppressed (triggered mode, not yet triggered) */
+function isRenderingSuppressed() {
+    const mode = document.getElementById('dataRendering')?.value;
+    return mode === 'triggered' && typeof window.triggerDataRender === 'function';
+}
+
 /**
  * Sets up the window resize event listener and initial axis positioning.
  * Handles repositioning and redrawing of all canvas overlays (axes, buttons, etc.)
@@ -64,6 +70,9 @@ export function setupResizeHandler() {
             // 🔥 FIX: Store resizeRAF reference for cleanup
             setResizeRAFRef(resizeRAF);
 
+            // Skip axis/date drawing if in triggered mode and not yet triggered
+            const suppressed = isRenderingSuppressed();
+
             const spectrogramCanvas = document.getElementById('spectrogram');
             const spectrogramAxisCanvas = document.getElementById('spectrogram-axis');
             const waveformCanvas = document.getElementById('waveform');
@@ -86,7 +95,7 @@ export function setupResizeHandler() {
                 if (currentWidth !== lastSpectrogramWidth || currentHeight !== lastSpectrogramHeight) {
                     spectrogramAxisCanvas.width = 60; // Always 60px width
                     spectrogramAxisCanvas.height = currentHeight;
-                    drawFrequencyAxis();
+                    if (!suppressed) drawFrequencyAxis();
                     lastSpectrogramWidth = currentWidth;
                     lastSpectrogramHeight = currentHeight;
                 }
@@ -105,7 +114,7 @@ export function setupResizeHandler() {
                 if (currentWidth !== lastWaveformWidth || currentHeight !== lastWaveformHeight) {
                     waveformAxisCanvas.width = 60; // Always 60px width
                     waveformAxisCanvas.height = currentHeight; // Use display height
-                    drawWaveformAxis();
+                    if (!suppressed) drawWaveformAxis();
                     lastWaveformWidth = currentWidth;
                     lastWaveformHeight = currentHeight;
                 }
@@ -136,8 +145,10 @@ export function setupResizeHandler() {
                         }
 
                         // Resize and redraw x-axis ticks after resize is complete
-                        resizeWaveformXAxisCanvas();
-                        resizeSpectrogramXAxisCanvas();
+                        if (!isRenderingSuppressed()) {
+                            resizeWaveformXAxisCanvas();
+                            resizeSpectrogramXAxisCanvas();
+                        }
                         waveformXAxisResizeTimer = null;
                     }, 100);
 
@@ -154,7 +165,7 @@ export function setupResizeHandler() {
                 // Redraw if canvas dimensions changed
                 const currentWidth = waveformCanvas.offsetWidth;
                 if (currentWidth !== lastWaveformWidth) {
-                    resizeWaveformDateCanvas();
+                    if (!suppressed) resizeWaveformDateCanvas();
                 }
             }
 
@@ -217,7 +228,7 @@ export function setupResizeHandler() {
     // Without this, canvas internal resolution can go stale while hidden, causing
     // the browser to scale up text when visible again (dates look huge)
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
+        if (document.visibilityState === 'visible' && !isRenderingSuppressed()) {
             resizeWaveformXAxisCanvas();
             resizeWaveformDateCanvas();
             resizeSpectrogramXAxisCanvas();
@@ -227,19 +238,20 @@ export function setupResizeHandler() {
     // Initial axis positioning and drawing on page load
     // Use setTimeout to ensure DOM is fully ready
     setTimeout(() => {
+        const suppressed = isRenderingSuppressed();
         positionAxisCanvas();
-        initializeAxisPlaybackRate();
+        if (!suppressed) initializeAxisPlaybackRate();
         positionWaveformAxisCanvas();
-        drawWaveformAxis();
+        if (!suppressed) drawWaveformAxis();
         // Initialize maxCanvasWidth baseline (1200px) for tick spacing logic
         initializeMaxCanvasWidth();
         positionWaveformXAxisCanvas();
-        drawWaveformXAxis();
+        if (!suppressed) drawWaveformXAxis();
         positionSpectrogramXAxisCanvas();
-        drawSpectrogramXAxis();
-        drawDayMarkers();
+        if (!suppressed) drawSpectrogramXAxis();
+        if (!suppressed) drawDayMarkers();
         positionWaveformDateCanvas();
-        drawWaveformDate();
+        if (!suppressed) drawWaveformDate();
         positionWaveformButtonsCanvas();
         drawRegionButtons();
         // Update dimensions after initial draw

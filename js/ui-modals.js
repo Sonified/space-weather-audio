@@ -6,7 +6,7 @@
  */
 
 import * as State from './audio-state.js';
-import { getParticipantId, storeParticipantId, getParticipantIdFromURL } from './participant-id.js';
+import { getParticipantId, storeParticipantId, getParticipantIdFromURL, storeRealUsername } from './participant-id.js';
 import { isStudyMode, isLocalEnvironment, isEmicStudyMode } from './master-modes.js';
 import { checkUsernameAvailable, registerUsername } from './share-api.js';
 
@@ -14,11 +14,6 @@ import { checkUsernameAvailable, registerUsername } from './share-api.js';
 // ── Shared helpers ───────────────────────────────────────────────────────
 
 export function hideUIElementsForModal() {
-    const tutorialHelpBtn = document.getElementById('tutorialHelpBtn');
-    if (tutorialHelpBtn) {
-        tutorialHelpBtn.style.display = 'none';
-    }
-
     const participantIdText = document.getElementById('participantIdText');
     if (participantIdText) {
         participantIdText.style.pointerEvents = 'none';
@@ -28,22 +23,13 @@ export function hideUIElementsForModal() {
 }
 
 /**
- * Show tutorial help button and enable participant ID clicking when modals are closed
+ * Re-enable participant ID clicking when modals are closed
  */
 export function showUIElementsAfterModal() {
-    // Only show if in study mode and no modals are visible
+    // Only re-enable UI elements if no modals are still visible
     const anyModalVisible = checkIfAnyModalVisible();
     if (anyModalVisible) {
         return; // Still have modals open, don't show yet
-    }
-
-    // Check if in study mode (synchronous check)
-    const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
-    const inStudyMode = storedMode === 'study' || storedMode === 'study_clean';
-
-    const tutorialHelpBtn = document.getElementById('tutorialHelpBtn');
-    if (tutorialHelpBtn && inStudyMode) {
-        tutorialHelpBtn.style.display = 'flex';
     }
 
     const participantIdText = document.getElementById('participantIdText');
@@ -662,10 +648,7 @@ export async function closeParticipantModal(keepOverlay = null) {
 
     // Only allow programmatic closing (after submission), not by clicking outside
     // Reset field to saved value (or empty) when closing without saving
-    // In STUDY_CLEAN mode, don't load saved participant ID
-    const storedMode = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedMode') : null;
-    const isStudyClean = storedMode === 'study_clean';
-    const savedParticipantId = isStudyClean ? null : localStorage.getItem('participantId');
+    const savedParticipantId = localStorage.getItem('emic_real_username') || localStorage.getItem('participantId');
     const participantIdInput = document.getElementById('participantId');
     const participantSubmitBtn = document.querySelector('#participantModal .modal-submit');
 
@@ -746,7 +729,7 @@ export async function openParticipantInfoModal() {
         saveBtn.onclick = () => {
             const newId = idInput.value.trim();
             if (newId) {
-                storeParticipantId(newId);
+                storeRealUsername(newId);
                 idDisplay.textContent = newId;
                 // Update the top-bar participant display
                 const topBarValue = document.getElementById('participantIdValue');
@@ -850,8 +833,10 @@ export async function closeWelcomeModal(keepOverlay = null) {
             setEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME);
         });
         import('./data-uploader.js').then(({ syncEmicProgress }) => {
-            const pid = localStorage.getItem('participantId');
-            if (pid) syncEmicProgress(pid, 'welcome_closed');
+            import('./participant-id.js').then(({ getActiveId }) => {
+                const pid = getActiveId();
+                if (pid !== 'anonymous') syncEmicProgress(pid, 'welcome_closed');
+            });
         });
     }
 }
@@ -965,7 +950,8 @@ export function wireQuestionnaireModals(modalMgr) {
                 const { EMIC_FLAGS, setEmicFlag } = await import('./emic-study-flags.js');
                 setEmicFlag(EMIC_FLAGS[q.flag]);
                 const { syncEmicProgress } = await import('./data-uploader.js');
-                syncEmicProgress(localStorage.getItem('participantId'), q.milestone);
+                const { getActiveId } = await import('./participant-id.js');
+                syncEmicProgress(getActiveId(), q.milestone);
             }
             modalMgr.closeModal(q.modalId);
         });

@@ -8,7 +8,7 @@ import { zoomState } from './zoom-state.js';
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { changeFrequencyScale, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
-import { isStudyMode, isLocalEnvironment, isPersonalMode, isEmicStudyMode, CURRENT_MODE, AppMode } from './master-modes.js';
+import { isStudyMode, isLocalEnvironment, isEmicStudyMode, CURRENT_MODE, AppMode } from './master-modes.js';
 import { getEmicFlag, EMIC_FLAGS } from './emic-study-flags.js';
 import { getHasPerformedFirstFetch } from './streaming.js';
 import { drawWaveformFromMinMax, notifyPageTurnUserDragged } from './minimap-window-renderer.js';
@@ -185,8 +185,8 @@ function handleKeyboardShortcut(event) {
     
     // Backtick: Toggle settings drawer (advanced mode only)
     if (event.key === '`') {
-        const displayMode = document.getElementById('displayMode')?.value;
-        if (displayMode === 'advanced') {
+        const isAdvanced = document.getElementById('advancedMode')?.checked;
+        if (isAdvanced) {
             event.preventDefault();
             const drawer = document.getElementById('settingsDrawer');
             if (drawer) {
@@ -288,8 +288,8 @@ function handleKeyboardShortcut(event) {
             return;
         }
 
-        // Priority 2: In Personal Mode, trigger fetch data if fetch button is enabled (only on first load)
-        if ((isPersonalMode() || isEmicStudyMode() || CURRENT_MODE === AppMode.SOLAR_PORTAL) && !getHasPerformedFirstFetch()) {
+        // Priority 2: Trigger fetch data if fetch button is enabled (only on first load)
+        if (!getHasPerformedFirstFetch()) {
             const fetchBtn = document.getElementById('startBtn');
             if (fetchBtn &&
                 !fetchBtn.disabled &&

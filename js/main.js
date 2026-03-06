@@ -11,7 +11,7 @@ import { initWaveformWorker, setupWaveformInteraction } from './minimap-window-r
 import { startStreaming, updateSpacecraftDropdownLabels } from './streaming.js';
 import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, setupSpectrogramSelection } from './spectrogram-renderer.js';
 import { loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, openWelcomeModal, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, openParticipantInfoModal, wireQuestionnaireModals } from './ui-controls.js';
-import { getParticipantIdFromURL, storeParticipantId } from './participant-id.js';
+import { getParticipantIdFromURL, storeParticipantId, storeRealUsername } from './participant-id.js';
 import { initAdminMode, toggleAdminMode } from './admin-mode.js';
 import { initializeModals } from './modal-templates.js';
 import { modalManager } from './modal-manager.js';
@@ -67,7 +67,7 @@ async function initializeMainApp() {
     // ═══════════════════════════════════════════════════════════
     // 🎯 MASTER MODE - Initialize and check configuration
     // ═══════════════════════════════════════════════════════════
-    const { initializeMasterMode, isStudyMode, isPersonalMode, isDevMode, CURRENT_MODE, AppMode } = await import('./master-modes.js');
+    const { initializeMasterMode, isStudyMode, CURRENT_MODE, AppMode } = await import('./master-modes.js');
     initializeMasterMode();
     
     // Initialize error reporter early (catches errors during initialization)
@@ -99,65 +99,6 @@ async function initializeMainApp() {
 
     // Don't hide Begin Analysis button initially - let updateCompleteButtonState() handle visibility
 
-    // Initialize mode selector dropdown
-    const modeSelectorContainer = document.getElementById('modeSelectorContainer');
-    const modeSelector = document.getElementById('modeSelector');
-    
-    // Detect if running locally
-    const isLocal = window.location.hostname === 'localhost' || 
-                    window.location.hostname === '127.0.0.1' || 
-                    window.location.hostname === '' ||
-                    window.location.protocol === 'file:';
-    
-    // Mode selector visibility logic:
-    // - Production (not local): Always hidden
-    // - Solar Portal mode: Always hidden (clean UI for end users)
-    // - Other local modes: Visible for dev/testing
-
-    if (!isLocal || CURRENT_MODE === AppMode.SOLAR_PORTAL) {
-        // Hide mode selector in production or Solar Portal mode
-        if (modeSelectorContainer) {
-            modeSelectorContainer.style.visibility = 'hidden';
-            modeSelectorContainer.style.opacity = '0';
-        }
-    }
-
-    // (Mode selector key listener stays active - no need to disable it)
-    
-    if (modeSelector) {
-        // Set current mode as selected
-        modeSelector.value = CURRENT_MODE;
-        
-        // Only allow mode changes in local environment
-        // Production: Disable dropdown and prevent mode switching
-        if (!isLocal) {
-            modeSelector.disabled = true;
-            modeSelector.style.opacity = '0.5';
-            modeSelector.style.cursor = 'not-allowed';
-            modeSelector.title = 'Mode switching disabled in production (Study Mode enforced)';
-        } else {
-            // Add change listener to switch modes (local only)
-            modeSelector.addEventListener('change', (e) => {
-                const newMode = e.target.value;
-                console.log(`🔄 Switching mode to: ${newMode}`);
-                
-                // Save to localStorage
-                localStorage.setItem('selectedMode', newMode);
-                
-                // Show confirmation
-                const confirmed = confirm(`Switch to ${newMode.toUpperCase()} mode? The page will reload.`);
-                if (confirmed) {
-                    // Reload page to apply new mode
-                    window.location.reload();
-                } else {
-                    // Reset dropdown to current mode
-                    e.target.value = CURRENT_MODE;
-                    localStorage.removeItem('selectedMode');
-                }
-            });
-        }
-    }
-    
     // Hide simulate panel in Study Mode and Solar Portal mode
     if (isStudyMode() || CURRENT_MODE === AppMode.SOLAR_PORTAL) {
         const simulatePanel = document.querySelector('.panel-simulate');
@@ -190,7 +131,7 @@ async function initializeMainApp() {
     // This automatically captures the ResponseID and stores it for survey submissions
     const urlParticipantId = getParticipantIdFromURL();
     if (urlParticipantId) {
-        storeParticipantId(urlParticipantId);
+        storeRealUsername(urlParticipantId);
         console.log('🔗 ResponseID detected from Qualtrics redirect:', urlParticipantId);
         console.log('💾 Stored ResponseID for use in survey submissions');
     }
@@ -237,14 +178,14 @@ async function initializeMainApp() {
     // Memory monitoring is started after recent-searches cache loads (see below)
     
     // ═══════════════════════════════════════════════════════════
-    // 🚨 STUDY MODE: Show overlay IMMEDIATELY to prevent UI interaction
+    // 🚨 STUDY MODE: Show overlay only during active simulation in participant mode
     // ═══════════════════════════════════════════════════════════
-    if (isStudyMode() && localStorage.getItem('emic_skip_login_welcome') !== 'true') {
+    if (isStudyMode() && localStorage.getItem('emic_is_simulating') === 'true'
+        && localStorage.getItem('emic_advanced_mode') !== 'true') {
         const overlay = document.getElementById('permanentOverlay');
         if (overlay) {
             overlay.style.display = 'flex';
             overlay.style.opacity = '1';
-            console.log('🌋 Solar Audio - LIVE Production');
         }
     }
     

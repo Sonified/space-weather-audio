@@ -2,6 +2,7 @@
  * waveform-axis-renderer.js
  * Y-axis rendering for waveform showing amplitude values
  */
+import * as State from './audio-state.js';
 
 /**
  * Draw amplitude axis for waveform
@@ -10,7 +11,10 @@
 export function drawWaveformAxis() {
     const canvas = document.getElementById('waveform-axis');
     if (!canvas) return;
-    
+
+    // Don't draw until data has loaded
+    if (!State.originalDataFrequencyRange) return;
+
     const waveformCanvas = document.getElementById('waveform');
     if (!waveformCanvas) return;
     

@@ -105,7 +105,12 @@ export function cancelScaleTransitionRAF() {
 export function drawFrequencyAxis() {
     const canvas = document.getElementById('spectrogram-axis');
     if (!canvas) return;
-    
+
+    // Don't draw until data has loaded and we know the actual frequency range
+    if (!State.originalDataFrequencyRange) {
+        return;
+    }
+
     // Only resize if dimensions changed (resizing clears the canvas, may cause flicker)
     const spectrogramCanvas = document.getElementById('spectrogram');
     const targetHeight = spectrogramCanvas ? spectrogramCanvas.height : canvas.height;

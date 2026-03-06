@@ -1,15 +1,14 @@
-// mode-initializers.js -- Mode-specific initialization (EMIC, Solar Portal, Personal, Dev)
+// mode-initializers.js -- Mode-specific initialization (EMIC Study, Solar Portal)
 
 import * as State from './audio-state.js';
-import { getParticipantId, generateParticipantId, storeParticipantId } from './participant-id.js';
+import { getParticipantId, generateParticipantId, storeParticipantId, getActiveId } from './participant-id.js';
 import { getEmicFlag, EMIC_FLAGS } from './emic-study-flags.js';
 import { openParticipantModal } from './ui-controls.js';
 import {
-    CURRENT_MODE,
-    AppMode,
     isStudyMode,
     isLocalEnvironment
 } from './master-modes.js';
+import { isAdminUnlocked } from './admin-unlock.js';
 
 
 export async function updateParticipantIdDisplay() {
@@ -25,8 +24,8 @@ export async function updateParticipantIdDisplay() {
         storeParticipantId(newId);
     }
 
-    const participantId = getParticipantId();
-    if (valueElement) valueElement.textContent = participantId || '--';
+    const activeId = getActiveId();
+    if (valueElement) valueElement.textContent = activeId !== 'anonymous' ? activeId : '--';
 
     // Respect P_ID in Corner setting
     const cornerSetting = document.getElementById('pidCornerDisplay')?.value
@@ -58,32 +57,6 @@ export async function updateParticipantIdDisplay() {
 }
 
 /**
- * PERSONAL MODE: Direct access, no tutorial, no surveys
- */
-export async function initializePersonalMode() {
-    console.log('👤 PERSONAL MODE: Direct access');
-
-    // Enable all features immediately
-    const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
-    enableAllTutorialRestrictedFeatures();
-
-    console.log('✅ Personal mode ready - all features enabled');
-}
-
-/**
- * DEV MODE: Direct access for development/testing
- */
-export async function initializeDevMode() {
-    console.log('🔧 DEV MODE: Direct access');
-
-    // Enable all features immediately
-    const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
-    enableAllTutorialRestrictedFeatures();
-
-    console.log('✅ Dev mode ready');
-}
-
-/**
  * EMIC STUDY MODE: Clean research interface, no modals, no tutorial
  */
 export async function initializeEmicStudyMode() {
@@ -104,23 +77,26 @@ export async function initializeEmicStudyMode() {
     // Advanced controls already initialized early in initializeMainApp()
 
     // Login/welcome modals are handled entirely by simulate flow (emic-study-flow.js)
-    // Hide overlay unless mid-simulation (flow manages its own overlay)
+    // Hide overlay unless actively resuming a simulation in participant mode
     const isSimulating = getEmicFlag(EMIC_FLAGS.IS_SIMULATING);
-    if (!isSimulating) {
+    const isAdvanced = document.getElementById('advancedMode')?.checked;
+    if (!isSimulating || isAdvanced) {
         const overlay = document.getElementById('permanentOverlay');
         if (overlay) { overlay.style.display = 'none'; overlay.style.opacity = '0'; }
     }
 
-    // Show "click Fetch Data to begin" prompt
+    // Show startup prompt
     // Skip if mid-simulation — the simulate flow handles its own status text on resume
     const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
-    if (!isSharedSession && !isSimulating) {
+    if (!isSharedSession && (!isSimulating || isAdvanced)) {
         setTimeout(async () => {
             const { typeText } = await import('./tutorial-effects.js');
             const statusEl = document.getElementById('status');
             if (statusEl) {
                 statusEl.className = 'status info';
-                const msg = State.isMobileScreen() ? 'Click Fetch Data to begin' : '👈 click Fetch Data to begin';
+                const msg = isAdvanced
+                    ? (State.isMobileScreen() ? 'Click Fetch Data to begin' : '👈 click Fetch Data to begin')
+                    : 'Click the SIMULATE FLOW button to begin';
                 typeText(statusEl, msg, 30, 10);
             }
         }, 500);
@@ -136,11 +112,7 @@ export async function initializeSolarPortalMode() {
 
     // Advanced controls already initialized early in initializeMainApp()
 
-    // Show Advanced checkbox only on localhost
-    const advToggle = document.getElementById('advancedToggle');
-    if (advToggle) {
-        advToggle.style.display = isLocalEnvironment() ? 'flex' : 'none';
-    }
+    // Admin-only button visibility handled by CSS (.admin-only + data-admin attribute)
 
     // Hide Begin Analysis button permanently
     const completeBtn = document.getElementById('completeBtn');
@@ -192,20 +164,6 @@ export async function initializeSolarPortalMode() {
 }
 
 /**
- * STUDY MODE: Placeholder (volcano study workflow removed)
- */
-export async function initializeStudyMode() {
-    console.log('🎓 STUDY MODE: No volcano workflow in EMIC codebase');
-
-    // Enable all features immediately
-    const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
-    enableAllTutorialRestrictedFeatures();
-
-    console.log('✅ Study mode ready');
-}
-
-
-/**
  * Route to appropriate workflow based on mode
  */
 export async function initializeApp() {
@@ -217,14 +175,6 @@ export async function initializeApp() {
     if (window.pm?.study_flow) console.log(`🚀 Initializing app in ${CURRENT_MODE} mode`);
 
     switch (CURRENT_MODE) {
-        case AppMode.PERSONAL:
-            await initializePersonalMode();
-            break;
-
-        case AppMode.DEV:
-            await initializeDevMode();
-            break;
-
         case AppMode.SOLAR_PORTAL:
             await initializeSolarPortalMode();
             break;
@@ -233,17 +183,9 @@ export async function initializeApp() {
             await initializeEmicStudyMode();
             break;
 
-        case AppMode.PRODUCTION:
-        case AppMode.STUDY_CLEAN:
-        case AppMode.STUDY_W2_S1:
-        case AppMode.STUDY_W2_S1_RETURNING:
-        case AppMode.STUDY_W2_S2:
-            await initializeStudyMode();
-            break;
-
         default:
-            console.error(`❌ Unknown mode: ${CURRENT_MODE}`);
-            await initializeDevMode(); // Fallback to dev
+            console.error(`❌ Unknown mode: ${CURRENT_MODE}, falling back to Solar Portal`);
+            await initializeSolarPortalMode();
     }
 
     if (!isStudyMode()) {

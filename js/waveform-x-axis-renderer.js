@@ -1259,11 +1259,18 @@ export function positionWaveformXAxisCanvas() {
     const leftEdge = waveformRect.left - panelRect.left;
     const topEdge = waveformRect.bottom - panelRect.top;
     
+    // Sync canvas internal resolution to display size so text doesn't scale during resize
+    const displayWidth = Math.round(waveformRect.width);
+    if (xAxisCanvas.width !== displayWidth || xAxisCanvas.height !== 40) {
+        xAxisCanvas.width = displayWidth;
+        xAxisCanvas.height = 40;
+    }
+
     xAxisCanvas.style.cssText = `
         position: absolute;
         left: ${leftEdge}px;
         top: ${topEdge}px;
-        width: ${waveformRect.width}px;
+        width: ${displayWidth}px;
         height: 40px;
         opacity: 1;
         visibility: visible;
