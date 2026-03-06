@@ -213,6 +213,17 @@ export function setupResizeHandler() {
         });
     });
 
+    // Resync minimap axis canvases on visibility change (tab switch, sleep/wake, side menu)
+    // Without this, canvas internal resolution can go stale while hidden, causing
+    // the browser to scale up text when visible again (dates look huge)
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            resizeWaveformXAxisCanvas();
+            resizeWaveformDateCanvas();
+            resizeSpectrogramXAxisCanvas();
+        }
+    });
+
     // Initial axis positioning and drawing on page load
     // Use setTimeout to ensure DOM is fully ready
     setTimeout(() => {
