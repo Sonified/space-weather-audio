@@ -35,7 +35,7 @@ export function injectSettingsDrawer() {
                 </select>
             </div>
             <div class="drawer-row">
-                <label for="pidCornerDisplay" class="drawer-label">P_ID in Corner</label>
+                <label for="pidCornerDisplay" class="drawer-label">ID in Corner</label>
                 <select id="pidCornerDisplay" class="drawer-input" style="width: 100px; text-align: left;">
                     <option value="show" selected>Show</option>
                     <option value="hide">Hide</option>

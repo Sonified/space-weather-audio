@@ -324,9 +324,12 @@ export function initializeAdvancedControls() {
         const speedGroup = document.getElementById('speedGroup');
         if (speedGroup) speedGroup.style.display = isParticipant ? 'none' : '';
 
-        // Participant ID display (top right): hidden in participant mode
+        // Participant ID display (top right): respect "ID in Corner" setting
         const pidDisplay = document.getElementById('participantIdDisplay');
-        if (pidDisplay) pidDisplay.style.display = isParticipant ? 'none' : '';
+        if (pidDisplay) {
+            const cornerSetting = document.getElementById('pidCornerDisplay')?.value || 'show';
+            pidDisplay.style.display = (isParticipant && cornerSetting === 'hide') ? 'none' : '';
+        }
 
         // EMIC controls panel (Fetch Data, Component, De-trend): hidden in participant mode
         const emicControlsPanel = document.getElementById('emicControlsPanel');
