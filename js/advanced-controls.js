@@ -57,6 +57,8 @@ export function initializeAdvancedControls() {
         { id: 'mainWindowNumbersSize', key: 'emic_main_numbers_size', type: 'select' },
         { id: 'mainWindowNumbersShadow', key: 'emic_main_numbers_shadow', type: 'select' },
         { id: 'featureBoxesVisible', key: 'emic_feature_boxes_visible', type: 'checkbox' },
+        { id: 'participantIdMode', key: 'emic_participant_id_mode', type: 'select' },
+        { id: 'pidCornerDisplay', key: 'emic_pid_corner_display', type: 'select' },
         { id: 'skipLoginWelcome', key: 'emic_skip_login_welcome', type: 'checkbox' },
         { id: 'displayOnLoad', key: 'emic_display_on_load', type: 'select' },
         { id: 'initialHours', key: 'emic_initial_hours', type: 'select' },

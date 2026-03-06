@@ -1,7 +1,7 @@
 // mode-initializers.js -- Mode-specific initialization (EMIC, Solar Portal, Personal, Dev)
 
 import * as State from './audio-state.js';
-import { getParticipantId } from './participant-id.js';
+import { getParticipantId, generateParticipantId, storeParticipantId } from './participant-id.js';
 import { getEmicFlag, EMIC_FLAGS } from './emic-study-flags.js';
 import { openParticipantModal } from './ui-controls.js';
 import {
@@ -13,14 +13,48 @@ import {
 
 
 export async function updateParticipantIdDisplay() {
-    const participantId = getParticipantId();
     const displayElement = document.getElementById('participantIdDisplay');
     const valueElement = document.getElementById('participantIdValue');
 
-    // Always show the participant ID display (even if no ID set)
-    // This allows users to see and click to enter their ID
-    if (displayElement) displayElement.style.display = 'block';
+    // Auto-generate ID if in auto mode and none exists yet
+    const idMode = document.getElementById('participantIdMode')?.value
+        || localStorage.getItem(isStudyMode() ? 'emic_participant_id_mode' : 'main_participant_id_mode')
+        || 'manual';
+    if (idMode === 'auto' && !getParticipantId()) {
+        const newId = generateParticipantId();
+        storeParticipantId(newId);
+    }
+
+    const participantId = getParticipantId();
     if (valueElement) valueElement.textContent = participantId || '--';
+
+    // Respect P_ID in Corner setting
+    const cornerSetting = document.getElementById('pidCornerDisplay')?.value
+        || localStorage.getItem(isStudyMode() ? 'emic_pid_corner_display' : 'main_pid_corner_display')
+        || 'show';
+    if (displayElement) displayElement.style.display = cornerSetting === 'hide' ? 'none' : 'block';
+
+    // Wire live toggle for P_ID in Corner dropdown
+    const cornerSelect = document.getElementById('pidCornerDisplay');
+    if (cornerSelect && !cornerSelect._pidWired) {
+        cornerSelect._pidWired = true;
+        cornerSelect.addEventListener('change', () => {
+            if (displayElement) displayElement.style.display = cornerSelect.value === 'hide' ? 'none' : 'block';
+        });
+    }
+
+    // Wire live toggle for ID Mode dropdown — auto-generate on switch to auto
+    const modeSelect = document.getElementById('participantIdMode');
+    if (modeSelect && !modeSelect._pidWired) {
+        modeSelect._pidWired = true;
+        modeSelect.addEventListener('change', () => {
+            if (modeSelect.value === 'auto' && !getParticipantId()) {
+                const newId = generateParticipantId();
+                storeParticipantId(newId);
+                if (valueElement) valueElement.textContent = newId;
+            }
+        });
+    }
 }
 
 /**

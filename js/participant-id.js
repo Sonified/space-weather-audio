@@ -54,3 +54,21 @@ export function getParticipantId() {
     const storedId = localStorage.getItem('participantId');
     return storedId || null;
 }
+
+/**
+ * Generate a unique participant ID based on current timestamp + random suffix
+ * Format: P_YYYYMMDD_HHMM_XXXXX (5 random uppercase letters)
+ * @returns {string} - Generated participant ID
+ */
+export function generateParticipantId() {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mi = String(now.getMinutes()).padStart(2, '0');
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    let suffix = '';
+    for (let i = 0; i < 5; i++) suffix += chars[Math.floor(Math.random() * 26)];
+    return `P_${yyyy}${mm}${dd}_${hh}${mi}_${suffix}`;
+}

@@ -30,7 +30,7 @@
 
 import { modalManager } from './modal-manager.js';
 import { getStandaloneFeatures } from './feature-tracker.js';
-import { getParticipantId, storeParticipantId } from './participant-id.js';
+import { getParticipantId, storeParticipantId, generateParticipantId } from './participant-id.js';
 import { uploadEmicSubmission, syncEmicProgress } from './data-uploader.js';
 import { EMIC_FLAGS, getEmicFlag, setEmicFlag, clearAllEmicFlags, updateActiveFeatureCount } from './emic-study-flags.js';
 import { QUESTIONNAIRE_CONFIG } from './ui-modals.js';
@@ -356,8 +356,11 @@ async function startFlow() {
     // Save real username for restoration later (strip any stacked _TEST suffixes)
     realUsername = stripTestSuffix(getParticipantId() || 'Participant');
 
-    // Generate test username
-    const testUsername = generateTestUsername(realUsername);
+    // Generate test username — auto mode uses P_ID format, manual uses _TEST suffix
+    const idMode = document.getElementById('participantIdMode')?.value || 'manual';
+    const testUsername = idMode === 'auto'
+        ? generateParticipantId()
+        : generateTestUsername(realUsername);
     flowLog(`Resetting state, test user: ${testUsername}`);
 
     // Install overlay patch
@@ -380,7 +383,6 @@ async function startFlow() {
         }
 
         // ─── Step 2: Login Modal ─────────────────────────────────────────
-        flowLog('Login modal shown');
 
         // Fire off the data download immediately while user reads the login modal
         const startBtn = document.getElementById('startBtn');
@@ -391,15 +393,31 @@ async function startFlow() {
             flowLog('startBtn not available for background fetch');
         }
 
-        await openLoginWithTestUser(testUsername);
+        const idMode = document.getElementById('participantIdMode')?.value || 'manual';
+        if (idMode === 'auto') {
+            // Auto mode: skip login modal, just set the test user silently
+            storeParticipantId(testUsername);
+            const valueEl = document.getElementById('participantIdValue');
+            if (valueEl) valueEl.textContent = testUsername;
+            flowLog('Auto ID mode — skipped login modal');
+        } else {
+            flowLog('Login modal shown');
+            await openLoginWithTestUser(testUsername);
+            flowLog('Login submitted');
+        }
         studyStartTime = new Date().toISOString();
         setEmicFlag(EMIC_FLAGS.HAS_REGISTERED);
         syncEmicProgress(testUsername, 'registered');
-        flowLog('Login submitted');
 
         if (!flowActive) return;
 
         // ─── Step 3: Welcome Modal ───────────────────────────────────────
+        if (idMode === 'auto') {
+            // In auto mode, login modal submit handler didn't run, so we must
+            // explicitly open the welcome modal
+            const { openWelcomeModal } = await import('./ui-modals.js');
+            openWelcomeModal();
+        }
         flowLog('Welcome modal shown');
 
         await waitForModalToAppearAndClose('welcomeModal');
@@ -497,10 +515,17 @@ async function resumeFromPreWelcome() {
  */
 async function resumeFromUnregistered() {
     const testUsername = getParticipantId() || 'Participant';
-    await openLoginWithTestUser(testUsername);
+    const idMode = document.getElementById('participantIdMode')?.value || 'manual';
+    if (idMode === 'auto') {
+        storeParticipantId(testUsername);
+        flowLog('Auto ID mode — skipped login modal on resume');
+    } else {
+        await openLoginWithTestUser(testUsername);
+        flowLog('Registration completed after refresh');
+    }
     setEmicFlag(EMIC_FLAGS.HAS_REGISTERED);
     syncEmicProgress(testUsername, 'registered');
-    flowLog('Registration completed after refresh, showing welcome');
+    flowLog('Showing welcome');
     resumeFromPreWelcome();
 }
 

@@ -28,6 +28,20 @@ export function injectSettingsDrawer() {
         <div class="drawer-section">
             <div class="drawer-section-title">Session</div>
             <div class="drawer-row">
+                <label for="participantIdMode" class="drawer-label">ID Mode</label>
+                <select id="participantIdMode" class="drawer-input" style="width: 100px; text-align: left;">
+                    <option value="manual" selected>Manual</option>
+                    <option value="auto">Auto</option>
+                </select>
+            </div>
+            <div class="drawer-row">
+                <label for="pidCornerDisplay" class="drawer-label">P_ID in Corner</label>
+                <select id="pidCornerDisplay" class="drawer-input" style="width: 100px; text-align: left;">
+                    <option value="show" selected>Show</option>
+                    <option value="hide">Hide</option>
+                </select>
+            </div>
+            <div class="drawer-row">
                 <label for="skipLoginWelcome" class="drawer-label">Skip Login & Welcome</label>
                 <input type="checkbox" id="skipLoginWelcome" class="drawer-checkbox">
             </div>
