@@ -135,6 +135,19 @@ export function initSimulateFlow() {
         btn._updateVisibility = updateVisibility;
     }
 
+    // Create the Complete button once, hidden by default
+    completeBtn = document.getElementById('simulateFlowCompleteBtn');
+    if (!completeBtn) {
+        completeBtn = document.createElement('button');
+        completeBtn.id = 'simulateFlowCompleteBtn';
+        completeBtn.type = 'button';
+        completeBtn.textContent = '✓ Complete';
+        completeBtn.className = 'complete-btn';
+        completeBtn.style.display = 'none';
+        const playbackBar = document.querySelector('.panel-playback > div');
+        if (playbackBar) playbackBar.appendChild(completeBtn);
+    }
+
     // Wire up the Submission Complete preview button (questionnaires panel)
     const previewBtn = document.getElementById('submissionCompleteBtn');
     if (previewBtn) {
@@ -560,20 +573,6 @@ async function resumeFromComplete(username) {
     // Ensure overlay patch is installed
     installOverlayPatch();
 
-    // Ensure Complete button exists (may be null after page refresh)
-    if (!completeBtn) {
-        completeBtn = document.getElementById('simulateFlowCompleteBtn');
-        if (!completeBtn) {
-            completeBtn = document.createElement('button');
-            completeBtn.id = 'simulateFlowCompleteBtn';
-            completeBtn.type = 'button';
-            completeBtn.textContent = '✓ Complete';
-            completeBtn.className = 'complete-btn';
-            const playbackBar = document.querySelector('.panel-playback > div');
-            if (playbackBar) playbackBar.appendChild(completeBtn);
-        }
-    }
-
     try {
         // ─── Step 5: Confirmation (loop until confirmed) ─────────────────
         let confirmed = false;
@@ -760,18 +759,6 @@ function resetQuestionnaireInputs() {
  */
 function showCompleteButton() {
     return new Promise((resolve) => {
-        if (!completeBtn) {
-            completeBtn = document.createElement('button');
-            completeBtn.id = 'simulateFlowCompleteBtn';
-            completeBtn.type = 'button';
-            completeBtn.textContent = '✓ Complete';
-            completeBtn.className = 'complete-btn';
-            completeBtn.style.display = 'none';
-
-            const playbackBar = document.querySelector('.panel-playback > div');
-            if (playbackBar) playbackBar.appendChild(completeBtn);
-        }
-
         completeBtn.style.display = 'none';
         completeBtn.disabled = false;
 
