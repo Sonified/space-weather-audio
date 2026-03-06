@@ -6,7 +6,7 @@
 
 import * as State from './audio-state.js';
 import { zoomState } from './zoom-state.js';
-import { getInterpolatedTimeRange, isZoomTransitionInProgress } from './waveform-x-axis-renderer.js';
+import { getInterpolatedTimeRange, isZoomTransitionInProgress } from './minimap-x-axis-renderer.js';
 
 // Overlay canvas for day markers on spectrogram
 let spectrogramOverlayCanvas = null;
@@ -204,13 +204,13 @@ export function drawDayMarkers() {
     }
 
     // --- Waveform canvas overlay ---
-    let wfOverlay = document.getElementById('waveform-day-markers-overlay');
-    const wfCanvas = document.getElementById('waveform');
+    let wfOverlay = document.getElementById('minimap-day-markers-overlay');
+    const wfCanvas = document.getElementById('minimap');
     if (wfCanvas && !wfOverlay) {
         const container = wfCanvas.closest('.panel');
         if (container) {
             wfOverlay = document.createElement('canvas');
-            wfOverlay.id = 'waveform-day-markers-overlay';
+            wfOverlay.id = 'minimap-day-markers-overlay';
             wfOverlay.style.position = 'absolute';
             wfOverlay.style.pointerEvents = 'none';
             wfOverlay.style.zIndex = '9';
@@ -246,7 +246,7 @@ export function drawDayMarkers() {
 
     if (wfOverlay) {
         const wfCtx = wfOverlay.getContext('2d');
-        const wfCanvas = document.getElementById('waveform');
+        const wfCanvas = document.getElementById('minimap');
         // Use CSS pixels for overlay buffer (same approach as spectrogram overlay)
         const cssW = wfCanvas ? wfCanvas.offsetWidth : wfOverlay.width;
         const cssH = wfCanvas ? wfCanvas.offsetHeight : wfOverlay.height;
@@ -287,7 +287,7 @@ export function clearDayMarkers() {
     if (spectrogramOverlayCtx && spectrogramOverlayCanvas) {
         spectrogramOverlayCtx.clearRect(0, 0, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
     }
-    const wfOverlay = document.getElementById('waveform-day-markers-overlay');
+    const wfOverlay = document.getElementById('minimap-day-markers-overlay');
     if (wfOverlay) {
         const ctx = wfOverlay.getContext('2d');
         ctx.clearRect(0, 0, wfOverlay.width, wfOverlay.height);
@@ -307,6 +307,6 @@ export function cleanupDayMarkers() {
         spectrogramOverlayCanvas = null;
         spectrogramOverlayCtx = null;
     }
-    const wfOverlay = document.getElementById('waveform-day-markers-overlay');
+    const wfOverlay = document.getElementById('minimap-day-markers-overlay');
     if (wfOverlay) wfOverlay.remove();
 }

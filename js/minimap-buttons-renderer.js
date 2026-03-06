@@ -1,14 +1,14 @@
 /**
- * waveform-buttons-renderer.js
+ * minimap-buttons-renderer.js
  * Button overlay canvas rendering for region zoom/play buttons
- * 
+ *
  * Follows the x-axis pattern: separate overlay canvas that reads dimensions fresh every time
- * This ensures buttons never depend on cached waveform canvas state
+ * This ensures buttons never depend on cached minimap canvas state
  */
 
 import * as State from './audio-state.js';
 import { zoomState } from './zoom-state.js';
-import { getInterpolatedTimeRange, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange } from './waveform-x-axis-renderer.js';
+import { getInterpolatedTimeRange, isZoomTransitionInProgress, getZoomTransitionProgress, getOldTimeRange } from './minimap-x-axis-renderer.js';
 
 // Import region data access functions
 let getCurrentRegions, activeRegionIndex, activePlayingRegionIndex, getRegionsDelayedForCrossfade;
@@ -29,26 +29,26 @@ export function initButtonsRenderer(regionTracker) {
 }
 
 /**
- * Position the waveform buttons canvas as an overlay on top of the waveform
+ * Position the minimap buttons canvas as an overlay on top of the minimap
  * Follows the same pattern as x-axis positioning
  */
-export function positionWaveformButtonsCanvas() {
-    const waveformCanvas = document.getElementById('waveform');
-    const buttonsCanvas = document.getElementById('waveform-buttons');
-    const panel = waveformCanvas?.closest('.panel');
-    
-    if (!waveformCanvas || !buttonsCanvas || !panel) return;
-    
+export function positionMinimapButtonsCanvas() {
+    const minimapCanvas = document.getElementById('minimap');
+    const buttonsCanvas = document.getElementById('minimap-buttons');
+    const panel = minimapCanvas?.closest('.panel');
+
+    if (!minimapCanvas || !buttonsCanvas || !panel) return;
+
     // Use offsetTop/Left + clientTop/Left for position, clientWidth/Height for size
-    const leftEdge = waveformCanvas.offsetLeft + waveformCanvas.clientLeft;
-    const topEdge = waveformCanvas.offsetTop + waveformCanvas.clientTop;
-    
+    const leftEdge = minimapCanvas.offsetLeft + minimapCanvas.clientLeft;
+    const topEdge = minimapCanvas.offsetTop + minimapCanvas.clientTop;
+
     buttonsCanvas.style.cssText = `
         position: absolute;
         left: ${leftEdge}px;
         top: ${topEdge}px;
-        width: ${waveformCanvas.clientWidth}px;
-        height: ${waveformCanvas.clientHeight}px;
+        width: ${minimapCanvas.clientWidth}px;
+        height: ${minimapCanvas.clientHeight}px;
         pointer-events: none;
         opacity: 1;
         visibility: visible;
@@ -67,15 +67,15 @@ export function drawRegionButtons() {
     // In windowed modes (scroll/pageTurn), waveform is a minimap — no region buttons
     const modeSelect = document.getElementById('viewingMode');
     if (modeSelect && (modeSelect.value === 'static' || modeSelect.value === 'scroll' || modeSelect.value === 'pageTurn')) {
-        const bc = document.getElementById('waveform-buttons');
+        const bc = document.getElementById('minimap-buttons');
         if (bc) bc.getContext('2d', { alpha: true })?.clearRect(0, 0, bc.width, bc.height);
         return;
     }
 
-    const buttonsCanvas = document.getElementById('waveform-buttons');
+    const buttonsCanvas = document.getElementById('minimap-buttons');
     if (!buttonsCanvas) return;
 
-    const waveformCanvas = document.getElementById('waveform');
+    const waveformCanvas = document.getElementById('minimap');
     if (!waveformCanvas) return;
     
     // Only resize if dimensions changed (resizing clears the canvas, may cause flicker)
@@ -387,11 +387,11 @@ export function drawRegionButtons() {
 }
 
 /**
- * Resize buttons canvas to match waveform dimensions
+ * Resize buttons canvas to match minimap dimensions
  * Called on resize - positions and redraws buttons
  */
-export function resizeWaveformButtonsCanvas() {
-    positionWaveformButtonsCanvas();
+export function resizeMinimapButtonsCanvas() {
+    positionMinimapButtonsCanvas();
     drawRegionButtons();
 }
 

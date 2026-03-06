@@ -17,7 +17,7 @@
 import { zoomState } from './zoom-state.js';
 import * as State from './audio-state.js';
 import { drawWaveformFromMinMax, notifyPageTurnUserDragged } from './minimap-window-renderer.js';
-import { drawWaveformXAxis } from './waveform-x-axis-renderer.js';
+import { drawMinimapXAxis } from './minimap-x-axis-renderer.js';
 import { drawSpectrogramXAxis } from './spectrogram-x-axis-renderer.js';
 import { updateSpectrogramViewportFromZoom, renderCompleteSpectrogramForRegion, setScrollZoomHiRes, notifyInteractionStart, notifyInteractionEnd } from './main-window-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
@@ -60,7 +60,7 @@ function getViewport() {
 function renderFrame() {
     rafPending = false;
     drawWaveformFromMinMax();
-    drawWaveformXAxis();
+    drawMinimapXAxis();
     drawSpectrogramXAxis();
     updateSpectrogramViewportFromZoom();
     updateAllFeatureBoxPositions();
@@ -278,7 +278,7 @@ export function initScrollZoom() {
     if (initialized) return;
 
     const specCanvas = document.getElementById('spectrogram');
-    const wfCanvas = document.getElementById('waveform');
+    const wfCanvas = document.getElementById('minimap');
 
     // passive: false is required for preventDefault() to work in Chrome
     if (specCanvas) specCanvas.addEventListener('wheel', onWheel, { passive: false });

@@ -6,7 +6,7 @@
 
 import * as State from './audio-state.js';
 import { zoomState } from './zoom-state.js';
-import { isZoomTransitionInProgress, getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
+import { isZoomTransitionInProgress, getInterpolatedTimeRange } from './minimap-x-axis-renderer.js';
 
 // Overlay canvas for playhead (separate layer - no conflicts!)
 let playheadOverlayCanvas = null;

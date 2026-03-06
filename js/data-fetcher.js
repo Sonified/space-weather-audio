@@ -7,8 +7,8 @@ import { updatePlaybackIndicator, drawWaveform, startPlaybackIndicator } from '.
 import { updatePlaybackSpeed } from './audio-player.js';
 import { updatePlaybackDuration } from './ui-controls.js';
 import { drawFrequencyAxis, positionAxisCanvas, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
-import { drawWaveformAxis, positionWaveformAxisCanvas } from './waveform-axis-renderer.js';
-import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
+import { drawMinimapAxis, positionMinimapAxisCanvas } from './minimap-axis-renderer.js';
+import { positionMinimapXAxisCanvas, drawMinimapXAxis, positionMinimapDateCanvas, drawMinimapDate } from './minimap-x-axis-renderer.js';
 import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas } from './spectrogram-x-axis-renderer.js';
 import { startCompleteVisualization, clearCompleteSpectrogram } from './main-window-renderer.js';
 import { zoomState } from './zoom-state.js';
@@ -24,7 +24,7 @@ import { log, logGroup, logGroupEnd } from './logger.js';
 // Available flags:
 //   DEBUG_CHUNKS (data-fetcher.js) - Chunk loading, downloading, and processing logs
 //   DEBUG_WAVEFORM (waveform-renderer.js, waveform-worker.js) - Waveform building and rendering logs
-//   DEBUG_AXIS (waveform-x-axis-renderer.js) - Axis drawing and tick rendering logs
+//   DEBUG_AXIS (minimap-x-axis-renderer.js) - Axis drawing and tick rendering logs
 
 // Debug flag for chunk loading logs (set to true to enable detailed logging)
 const DEBUG_CHUNKS = false;
@@ -642,13 +642,13 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
 
         // Draw waveform
         if (window.pm?.gpu) console.log(`🎨 ${logTime()} Drawing waveform...`);
-        positionWaveformAxisCanvas();
-        drawWaveformAxis();
+        positionMinimapAxisCanvas();
+        drawMinimapAxis();
         drawWaveform();
 
         // Draw x-axis
-        positionWaveformXAxisCanvas();
-        drawWaveformXAxis();
+        positionMinimapXAxisCanvas();
+        drawMinimapXAxis();
         positionSpectrogramXAxisCanvas();
         drawSpectrogramXAxis();
 

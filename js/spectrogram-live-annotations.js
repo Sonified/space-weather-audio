@@ -9,7 +9,7 @@
 import * as State from './audio-state.js';
 import { zoomState } from './zoom-state.js';
 import { getStandaloneFeatures } from './feature-tracker.js';
-import { getInterpolatedTimeRange } from './waveform-x-axis-renderer.js';
+import { getInterpolatedTimeRange } from './minimap-x-axis-renderer.js';
 import { getYPositionForFrequencyScaled } from './spectrogram-axis-renderer.js';
 import { getHoveredBoxKey } from './spectrogram-renderer.js';
 

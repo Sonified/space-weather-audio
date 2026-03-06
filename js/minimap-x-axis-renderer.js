@@ -1,6 +1,6 @@
 /**
- * waveform-x-axis-renderer.js
- * X-axis rendering for waveform showing time ticks
+ * minimap-x-axis-renderer.js
+ * X-axis rendering for minimap showing time ticks
  */
 
 import * as State from './audio-state.js';
@@ -31,14 +31,14 @@ let zoomTransitionCleanupTimeout = null; // Safety timeout — must be cancelled
 export function initializeMaxCanvasWidth() {}
 
 /**
- * Draw time axis for waveform
+ * Draw time axis for minimap
  * Shows 2-hour ticks with date at left, handles day crossings
  */
-export function drawWaveformXAxis() {
-    const canvas = document.getElementById('waveform-x-axis');
+export function drawMinimapXAxis() {
+    const canvas = document.getElementById('minimap-x-axis');
     if (!canvas) return;
     
-    const waveformCanvas = document.getElementById('waveform');
+    const waveformCanvas = document.getElementById('minimap');
     if (!waveformCanvas) return;
     
     // Use display width (offsetWidth) not internal canvas width
@@ -210,7 +210,7 @@ export function drawWaveformXAxis() {
         
         if (elapsed < zoomTransitionDuration) {
             // 🔥 FIX: Only schedule RAF if one isn't already scheduled
-            // This prevents multiple RAF loops when drawWaveformXAxis() is called from multiple places
+            // This prevents multiple RAF loops when drawMinimapXAxis() is called from multiple places
             if (!zoomTransitionRAF) {
                 zoomTransitionRAF = requestAnimationFrame(() => {
                     // 🔥 FIX: Check document connection before executing RAF callback
@@ -219,10 +219,10 @@ export function drawWaveformXAxis() {
                         zoomTransitionInProgress = false;
                         return;
                     }
-                    // Clear RAF ID before calling drawWaveformXAxis so it can schedule the next frame
+                    // Clear RAF ID before calling drawMinimapXAxis so it can schedule the next frame
                     const rafId = zoomTransitionRAF;
                     zoomTransitionRAF = null;
-                    drawWaveformXAxis();
+                    drawMinimapXAxis();
 
                     // Update spectrogram x-axis (lazy import to avoid circular dependency)
                     import('./spectrogram-x-axis-renderer.js').then(m => m.drawSpectrogramXAxis());
@@ -262,7 +262,7 @@ export function drawWaveformXAxis() {
 
             // 🎯 CRITICAL: Redraw x-axis at final position so tick density updates!
             // Without this, region-to-region zoom would keep the interpolated tick density
-            drawWaveformXAxis();
+            drawMinimapXAxis();
             import('./spectrogram-x-axis-renderer.js').then(m => m.drawSpectrogramXAxis());
 
             // 📅 Update day markers at final position
@@ -275,8 +275,8 @@ export function drawWaveformXAxis() {
  * Draw date panel above waveform
  * Shows date extending off the left edge (in UTC)
  */
-export function drawWaveformDate() {
-    const canvas = document.getElementById('waveform-date');
+export function drawMinimapDate() {
+    const canvas = document.getElementById('minimap-date');
     if (!canvas) return;
 
     // Need start time to get the date
@@ -324,9 +324,9 @@ export function drawWaveformDate() {
 /**
  * Position the waveform date canvas above the waveform
  */
-export function positionWaveformDateCanvas() {
-    const waveformCanvas = document.getElementById('waveform');
-    const dateCanvas = document.getElementById('waveform-date');
+export function positionMinimapDateCanvas() {
+    const waveformCanvas = document.getElementById('minimap');
+    const dateCanvas = document.getElementById('minimap-date');
     const waveformPanel = waveformCanvas?.closest('.panel');
     const datePanel = dateCanvas?.closest('.panel');
     
@@ -1245,9 +1245,9 @@ export function calculateThirtyMinuteTicks(startUTC, endUTC) {
 /**
  * Position the waveform x-axis canvas below the waveform
  */
-export function positionWaveformXAxisCanvas() {
-    const waveformCanvas = document.getElementById('waveform');
-    const xAxisCanvas = document.getElementById('waveform-x-axis');
+export function positionMinimapXAxisCanvas() {
+    const waveformCanvas = document.getElementById('minimap');
+    const xAxisCanvas = document.getElementById('minimap-x-axis');
     const panel = waveformCanvas?.closest('.panel');
     
     if (!waveformCanvas || !xAxisCanvas || !panel) return;
@@ -1280,9 +1280,9 @@ export function positionWaveformXAxisCanvas() {
 /**
  * Resize waveform x-axis canvas to match waveform width
  */
-export function resizeWaveformXAxisCanvas() {
-    const waveformCanvas = document.getElementById('waveform');
-    const xAxisCanvas = document.getElementById('waveform-x-axis');
+export function resizeMinimapXAxisCanvas() {
+    const waveformCanvas = document.getElementById('minimap');
+    const xAxisCanvas = document.getElementById('minimap-x-axis');
     
     if (!waveformCanvas || !xAxisCanvas) return;
     
@@ -1295,21 +1295,21 @@ export function resizeWaveformXAxisCanvas() {
     }
     
     // Reposition and redraw after resize
-    positionWaveformXAxisCanvas();
-    drawWaveformXAxis();
+    positionMinimapXAxisCanvas();
+    drawMinimapXAxis();
 }
 
 /**
  * Resize waveform date canvas
  */
-export function resizeWaveformDateCanvas() {
-    const dateCanvas = document.getElementById('waveform-date');
+export function resizeMinimapDateCanvas() {
+    const dateCanvas = document.getElementById('minimap-date');
     
     if (!dateCanvas) return;
     
     // Reposition and redraw after resize
-    positionWaveformDateCanvas();
-    drawWaveformDate();
+    positionMinimapDateCanvas();
+    drawMinimapDate();
 }
 
 /**
@@ -1413,7 +1413,7 @@ export function getInterpolatedTimeRange() {
         };
     }
 
-    // Calculate interpolation (EXACT same logic as drawWaveformXAxis)
+    // Calculate interpolation (EXACT same logic as drawMinimapXAxis)
     const elapsed = performance.now() - zoomTransitionStartTime;
     const progress = Math.min(elapsed / zoomTransitionDuration, 1.0);
 
@@ -1532,7 +1532,7 @@ export function animateZoomTransition(oldStartTime, oldEndTime, zoomingToRegion 
         zoomTransitionStartTime = performance.now();
 
         // Start animation loop
-        drawWaveformXAxis();
+        drawMinimapXAxis();
 
         // 🔥 SAFETY: Set a timeout to force cleanup if RAF loop doesn't complete
         // This prevents infinite loops if something goes wrong

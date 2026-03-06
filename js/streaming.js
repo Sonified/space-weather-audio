@@ -84,7 +84,7 @@ export async function startStreaming(event, config = null) {
 
         // Reset waveform click tracking when loading new data
         State.setWaveformHasBeenClicked(false);
-        const waveformCanvas = document.getElementById('waveform');
+        const waveformCanvas = document.getElementById('minimap');
         if (waveformCanvas) {
             waveformCanvas.classList.remove('pulse');
         }

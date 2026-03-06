@@ -15,8 +15,8 @@ import {
 } from './main-window-renderer.js';
 import { setPyramidReduceMode, rebuildUpperLevels } from './spectrogram-pyramid.js';
 import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas } from './spectrogram-x-axis-renderer.js';
-import { drawWaveformXAxis } from './waveform-x-axis-renderer.js';
-import { drawRegionButtons } from './waveform-buttons-renderer.js';
+import { drawMinimapXAxis } from './minimap-x-axis-renderer.js';
+import { drawRegionButtons } from './minimap-buttons-renderer.js';
 import { drawDayMarkers } from './day-markers.js';
 import { initDataViewer, fetchUsers } from './data-viewer.js';
 import { zoomState } from './zoom-state.js';
@@ -432,7 +432,7 @@ export function initializeAdvancedControls() {
     // --- Panel height inputs in settings drawer ---
     const heightMinimapInput = document.getElementById('heightMinimap');
     const heightSpectrogramInput = document.getElementById('heightSpectrogram');
-    const wfEl_ = document.getElementById('waveform');
+    const wfEl_ = document.getElementById('minimap');
     const specEl_ = document.getElementById('spectrogram');
     if (heightMinimapInput && wfEl_) heightMinimapInput.value = wfEl_.offsetHeight;
     if (heightSpectrogramInput && specEl_) heightSpectrogramInput.value = specEl_.offsetHeight;
@@ -536,7 +536,7 @@ export function initializeAdvancedControls() {
 
     // Position gear icons over their respective canvases (top-right corner)
     function positionGearIcons() {
-        const wfCanvas = document.getElementById('waveform');
+        const wfCanvas = document.getElementById('minimap');
         const navGear = document.getElementById('navBarGear');
         if (wfCanvas && navGear) {
             navGear.style.top = (wfCanvas.offsetTop + 2) + 'px';
@@ -552,7 +552,7 @@ export function initializeAdvancedControls() {
         }
     }
     positionGearIcons();
-    const wfEl = document.getElementById('waveform');
+    const wfEl = document.getElementById('minimap');
     const specEl = document.getElementById('spectrogram');
     if (wfEl) new ResizeObserver(positionGearIcons).observe(wfEl);
     if (specEl) new ResizeObserver(positionGearIcons).observe(specEl);
@@ -836,7 +836,7 @@ export function initializeAdvancedControls() {
         if (mainWindowModeSelect && mainWindowModeSelect !== sourceSelect) mainWindowModeSelect.value = mode;
         updateRegionsPanelVisibility();
         drawWaveformFromMinMax();
-        drawWaveformXAxis();
+        drawMinimapXAxis();
         drawSpectrogramXAxis();
         drawRegionButtons();
         drawDayMarkers();

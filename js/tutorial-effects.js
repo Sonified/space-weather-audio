@@ -46,7 +46,7 @@ function createTutorialOverlay(text = 'Click me!') {
         return;
     }
     
-    const waveformCanvas = document.getElementById('waveform');
+    const waveformCanvas = document.getElementById('minimap');
     if (!waveformCanvas) return;
     
     // Create overlay div
@@ -794,7 +794,7 @@ export function removeVolumeSliderGlow() {
  * Disable waveform canvas clicks
  */
 export function disableWaveformClicks() {
-    const waveformCanvas = document.getElementById('waveform');
+    const waveformCanvas = document.getElementById('minimap');
     if (waveformCanvas) {
         waveformCanvas.style.pointerEvents = 'none';
         waveformCanvas.style.opacity = '0.6';
@@ -805,7 +805,7 @@ export function disableWaveformClicks() {
  * Enable waveform canvas clicks
  */
 export function enableWaveformClicks() {
-    const waveformCanvas = document.getElementById('waveform');
+    const waveformCanvas = document.getElementById('minimap');
     if (waveformCanvas) {
         waveformCanvas.style.pointerEvents = 'auto';
         waveformCanvas.style.opacity = '1';

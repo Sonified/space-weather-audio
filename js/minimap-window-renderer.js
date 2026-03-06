@@ -6,11 +6,11 @@
 import * as State from './audio-state.js';
 import { PlaybackState, isTouchDevice } from './audio-state.js';
 import { seekToPosition, updateWorkletSelection, getCurrentPosition, pausePlayback } from './audio-player.js';
-import { positionWaveformAxisCanvas, drawWaveformAxis } from './waveform-axis-renderer.js';
-import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate, getInterpolatedTimeRange, isZoomTransitionInProgress } from './waveform-x-axis-renderer.js';
+import { positionMinimapAxisCanvas, drawMinimapAxis } from './minimap-axis-renderer.js';
+import { positionMinimapXAxisCanvas, drawMinimapXAxis, positionMinimapDateCanvas, drawMinimapDate, getInterpolatedTimeRange, isZoomTransitionInProgress } from './minimap-x-axis-renderer.js';
 import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas } from './spectrogram-x-axis-renderer.js';
 import { getStandaloneFeatures } from './feature-tracker.js';
-import { drawRegionButtons } from './waveform-buttons-renderer.js';
+import { drawRegionButtons } from './minimap-buttons-renderer.js';
 import { printSelectionDiagnostics } from './selection-diagnostics.js';
 import { drawSpectrogramPlayhead, drawSpectrogramScrubPreview, clearSpectrogramScrubPreview, cleanupPlayheadOverlay } from './spectrogram-playhead.js';
 import { zoomState } from './zoom-state.js';
@@ -90,7 +90,7 @@ let wfInitPromise = null; // WebGPU renderer init is async
 async function initWaveformThreeScene() {
     if (wfRenderer) return;
 
-    const canvas = document.getElementById('waveform');
+    const canvas = document.getElementById('minimap');
     if (!canvas) return;
 
     wfCachedWidth = Math.round(canvas.offsetWidth * window.devicePixelRatio);
@@ -763,7 +763,7 @@ function isMinimapZoomed() {
 function renderMinimapDragFrame() {
     minimapRafPending = false;
     drawWaveformFromMinMax();
-    drawWaveformXAxis();
+    drawMinimapXAxis();
     drawSpectrogramXAxis();
     updateSpectrogramViewportFromZoom();
     updateAllFeatureBoxPositions();
@@ -1064,7 +1064,7 @@ export function showMobileTapHint() {
     if (!isTouchDevice) return;
     if (localStorage.getItem('userHasTappedWaveformMobile') === 'true') return;
 
-    const waveformCanvas = document.getElementById('waveform');
+    const waveformCanvas = document.getElementById('minimap');
     if (!waveformCanvas) return;
 
     // Create overlay if it doesn't exist
@@ -1259,7 +1259,7 @@ export async function drawWaveform() {
         return;
     }
 
-    const canvas = document.getElementById('waveform');
+    const canvas = document.getElementById('minimap');
     if (!canvas) {
         console.log(`⚠️ drawWaveform() aborted: canvas not found`);
         return;
@@ -1283,14 +1283,14 @@ export async function drawWaveform() {
     await renderMinimapWithMode(mode, viewport.start, viewport.end);
 
     // Draw axes
-    positionWaveformAxisCanvas();
-    drawWaveformAxis();
-    positionWaveformXAxisCanvas();
-    drawWaveformXAxis();
+    positionMinimapAxisCanvas();
+    drawMinimapAxis();
+    positionMinimapXAxisCanvas();
+    drawMinimapXAxis();
     positionSpectrogramXAxisCanvas();
     drawSpectrogramXAxis();
-    positionWaveformDateCanvas();
-    drawWaveformDate();
+    positionMinimapDateCanvas();
+    drawMinimapDate();
 
     // Draw overlays (playhead, selection)
     drawWaveformOverlays();
@@ -1314,14 +1314,14 @@ export async function drawWaveformFromMinMax() {
     await renderMinimapWithMode(mode, viewport.start, viewport.end);
 
     // Draw axes
-    positionWaveformAxisCanvas();
-    drawWaveformAxis();
-    positionWaveformXAxisCanvas();
-    drawWaveformXAxis();
+    positionMinimapAxisCanvas();
+    drawMinimapAxis();
+    positionMinimapXAxisCanvas();
+    drawMinimapXAxis();
     positionSpectrogramXAxisCanvas();
     drawSpectrogramXAxis();
-    positionWaveformDateCanvas();
-    drawWaveformDate();
+    positionMinimapDateCanvas();
+    drawMinimapDate();
 
     // Overlays
     drawWaveformOverlays();
@@ -1364,7 +1364,7 @@ export function drawWaveformWithSelection() {
 }
 
 export function setupWaveformInteraction() {
-    const canvas = document.getElementById('waveform');
+    const canvas = document.getElementById('minimap');
     if (!canvas) return;
     
     function getPositionFromMouse(event) {
@@ -1487,7 +1487,7 @@ export function setupWaveformInteraction() {
         // This prevents stuck highlighting if user skipped with Enter key first
         canvas.classList.remove('pulse');
         // Also remove pulse from waveform container (used for post-fetch guidance)
-        const waveformContainer = document.getElementById('waveform');
+        const waveformContainer = document.getElementById('minimap');
         if (waveformContainer) {
             waveformContainer.classList.remove('pulse');
         }
@@ -1523,8 +1523,8 @@ export function setupWaveformInteraction() {
         const startY = e.clientY - rect.top;
         
         // 🔍 DIAGNOSTIC: Log click context
-        const waveformCanvas = document.getElementById('waveform');
-        const buttonsCanvas = document.getElementById('waveform-buttons');
+        const waveformCanvas = document.getElementById('minimap');
+        const buttonsCanvas = document.getElementById('minimap-buttons');
         
         // console.log('🖱️ CLICK DIAGNOSTICS:');
         // console.log(`  Click position: (${startX.toFixed(1)}, ${startY.toFixed(1)}) CSS pixels`);
@@ -1930,7 +1930,7 @@ export function setupWaveformInteraction() {
 
         // Clear pulse classes
         canvas.classList.remove('pulse');
-        const waveformContainer = document.getElementById('waveform');
+        const waveformContainer = document.getElementById('minimap');
         if (waveformContainer) {
             waveformContainer.classList.remove('pulse');
         }
@@ -2154,7 +2154,7 @@ function checkPageTurnAdvance() {
 
         // Trigger full re-render for the new page
         drawWaveformFromMinMax();
-        drawWaveformXAxis();
+        drawMinimapXAxis();
         drawSpectrogramXAxis();
         updateSpectrogramViewportFromZoom();
         updateAllFeatureBoxPositions();
@@ -2400,7 +2400,7 @@ export function changeWaveformFilter() {
     } else if (State.waveformWorker) {
         // Data still loading progressively — tell the worker to rebuild with current settings
         const removeDC = document.getElementById('removeDCOffset').checked;
-        const canvas = document.getElementById('waveform');
+        const canvas = document.getElementById('minimap');
         console.log(`🎛️ changeWaveformFilter (progressive): removeDC=${removeDC}, alpha=${alpha.toFixed(4)}`);
         State.waveformWorker.postMessage({
             type: 'build-waveform',

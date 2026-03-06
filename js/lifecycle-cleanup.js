@@ -5,7 +5,7 @@ import { PlaybackState } from './audio-state.js';
 import { cleanupSpectrogramSelection, setupSpectrogramSelection, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
 import { clearCompleteSpectrogram, aggressiveCleanup } from './main-window-renderer.js';
 import { clearWaveformRenderer, startPlaybackIndicator } from './minimap-window-renderer.js';
-import { cancelZoomTransitionRAF, stopZoomTransition } from './waveform-x-axis-renderer.js';
+import { cancelZoomTransitionRAF, stopZoomTransition } from './minimap-x-axis-renderer.js';
 import { cleanupKeyboardShortcuts } from './keyboard-shortcuts.js';
 
 /**
@@ -17,7 +17,7 @@ export function setupLifecycleHandlers() {
     // This ensures RAF callbacks scheduled before page unload are cancelled
     // 🔥 FIX: Use static imports instead of dynamic imports to prevent Context leaks
     // Dynamic imports create new Context instances each time, causing massive memory leaks
-    // Since waveform-x-axis-renderer.js is already imported statically at the top, use it directly
+    // Since minimap-x-axis-renderer.js is already imported statically at the top, use it directly
     if (!window._solarAudioCleanupHandlers) {
         window._solarAudioCleanupHandlers = {};
 

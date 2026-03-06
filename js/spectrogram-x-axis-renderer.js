@@ -8,7 +8,7 @@ import {
     chooseTicksMultiLevel,
     formatTickLabel,
     getInterpolatedTimeRange
-} from './waveform-x-axis-renderer.js';
+} from './minimap-x-axis-renderer.js';
 
 // Tick fade state: Map of tick timestamp (ms) → { startOpacity, targetOpacity, transitionStart }
 const tickFadeState = new Map();

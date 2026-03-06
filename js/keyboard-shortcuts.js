@@ -12,7 +12,7 @@ import { isStudyMode, isLocalEnvironment, isEmicStudyMode, CURRENT_MODE, AppMode
 import { getEmicFlag, EMIC_FLAGS } from './emic-study-flags.js';
 import { getHasPerformedFirstFetch } from './streaming.js';
 import { drawWaveformFromMinMax, notifyPageTurnUserDragged } from './minimap-window-renderer.js';
-import { drawWaveformXAxis } from './waveform-x-axis-renderer.js';
+import { drawMinimapXAxis } from './minimap-x-axis-renderer.js';
 import { drawSpectrogramXAxis } from './spectrogram-x-axis-renderer.js';
 import { updateSpectrogramViewportFromZoom, renderCompleteSpectrogramForRegion, setScrollZoomHiRes, notifyInteractionStart, notifyInteractionEnd } from './main-window-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
@@ -491,7 +491,7 @@ function easeOutCubic(t) {
 
 function renderNavFrame() {
     drawWaveformFromMinMax();
-    drawWaveformXAxis();
+    drawMinimapXAxis();
     drawSpectrogramXAxis();
     updateSpectrogramViewportFromZoom();
     updateAllFeatureBoxPositions();

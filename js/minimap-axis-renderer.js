@@ -1,25 +1,25 @@
 /**
- * waveform-axis-renderer.js
- * Y-axis rendering for waveform showing amplitude values
+ * minimap-axis-renderer.js
+ * Y-axis rendering for minimap showing amplitude values
  */
 import * as State from './audio-state.js';
 
 /**
- * Draw amplitude axis for waveform
+ * Draw amplitude axis for minimap
  * Shows: -0.5, -0, 0.5 at appropriate Y positions
  */
-export function drawWaveformAxis() {
-    const canvas = document.getElementById('waveform-axis');
+export function drawMinimapAxis() {
+    const canvas = document.getElementById('minimap-axis');
     if (!canvas) return;
 
     // Don't draw until data has loaded
     if (!State.originalDataFrequencyRange) return;
 
-    const waveformCanvas = document.getElementById('waveform');
-    if (!waveformCanvas) return;
-    
+    const minimapCanvas = document.getElementById('minimap');
+    if (!minimapCanvas) return;
+
     // Use display height (offsetHeight) not internal canvas height (which may be scaled by devicePixelRatio)
-    const displayHeight = waveformCanvas.offsetHeight;
+    const displayHeight = minimapCanvas.offsetHeight;
     const devicePixelRatio = window.devicePixelRatio || 1;
     
     // Only resize if dimensions changed (resizing clears the canvas, may cause flicker)
@@ -85,23 +85,23 @@ export function drawWaveformAxis() {
 }
 
 /**
- * Position the waveform axis canvas to the right of the waveform
+ * Position the minimap axis canvas to the right of the minimap
  * Optimized: Only updates position, doesn't redraw
  */
-export function positionWaveformAxisCanvas() {
-    const waveformCanvas = document.getElementById('waveform');
-    const axisCanvas = document.getElementById('waveform-axis');
-    const panel = waveformCanvas?.closest('.panel');
-    
-    if (!waveformCanvas || !axisCanvas || !panel) return;
-    
+export function positionMinimapAxisCanvas() {
+    const minimapCanvas = document.getElementById('minimap');
+    const axisCanvas = document.getElementById('minimap-axis');
+    const panel = minimapCanvas?.closest('.panel');
+
+    if (!minimapCanvas || !axisCanvas || !panel) return;
+
     // Use getBoundingClientRect only once and cache values
-    const waveformRect = waveformCanvas.getBoundingClientRect();
+    const minimapRect = minimapCanvas.getBoundingClientRect();
     const panelRect = panel.getBoundingClientRect();
-    
-    // Calculate position: right edge of waveform, aligned with top
-    const rightEdge = waveformRect.right - panelRect.left;
-    const topEdge = waveformRect.top - panelRect.top;
+
+    // Calculate position: right edge of minimap, aligned with top
+    const rightEdge = minimapRect.right - panelRect.left;
+    const topEdge = minimapRect.top - panelRect.top;
     
     // Batch style updates to minimize reflows
     // Show the canvas after positioning to prevent flash
@@ -110,31 +110,31 @@ export function positionWaveformAxisCanvas() {
         left: ${rightEdge}px;
         top: ${topEdge}px;
         width: 60px;
-        height: ${waveformRect.height}px;
+        height: ${minimapRect.height}px;
         opacity: 1;
         visibility: visible;
     `;
 }
 
 /**
- * Resize waveform axis canvas to match waveform height
- * CRITICAL: Set width to 60px to match display width - ticks must stay OUTSIDE waveform
+ * Resize minimap axis canvas to match minimap height
+ * CRITICAL: Set width to 60px to match display width - ticks must stay OUTSIDE minimap
  */
-export function resizeWaveformAxisCanvas() {
-    const waveformCanvas = document.getElementById('waveform');
-    const axisCanvas = document.getElementById('waveform-axis');
-    
-    if (!waveformCanvas || !axisCanvas) return;
-    
+export function resizeMinimapAxisCanvas() {
+    const minimapCanvas = document.getElementById('minimap');
+    const axisCanvas = document.getElementById('minimap-axis');
+
+    if (!minimapCanvas || !axisCanvas) return;
+
     // Only resize if dimensions changed (resizing clears the canvas, may cause flicker)
-    const newHeight = waveformCanvas.offsetHeight;
+    const newHeight = minimapCanvas.offsetHeight;
     if (axisCanvas.width !== 60 || axisCanvas.height !== newHeight) {
         axisCanvas.width = 60;
         axisCanvas.height = newHeight;
     }
     
     // Reposition and redraw after resize
-    positionWaveformAxisCanvas();
-    drawWaveformAxis();
+    positionMinimapAxisCanvas();
+    drawMinimapAxis();
 }
 

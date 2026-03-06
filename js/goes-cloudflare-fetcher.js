@@ -16,8 +16,8 @@ import { updatePlaybackIndicator, drawWaveform, startPlaybackIndicator } from '.
 import { updatePlaybackSpeed } from './audio-player.js';
 import { updatePlaybackDuration } from './ui-controls.js';
 import { drawFrequencyAxis, positionAxisCanvas, initializeAxisPlaybackRate } from './spectrogram-axis-renderer.js';
-import { drawWaveformAxis, positionWaveformAxisCanvas } from './waveform-axis-renderer.js';
-import { positionWaveformXAxisCanvas, drawWaveformXAxis, positionWaveformDateCanvas, drawWaveformDate } from './waveform-x-axis-renderer.js';
+import { drawMinimapAxis, positionMinimapAxisCanvas } from './minimap-axis-renderer.js';
+import { positionMinimapXAxisCanvas, drawMinimapXAxis, positionMinimapDateCanvas, drawMinimapDate } from './minimap-x-axis-renderer.js';
 import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas } from './spectrogram-x-axis-renderer.js';
 import { renderProgressiveSpectrogram, resetProgressiveSpectrogram } from './main-window-renderer.js';
 import { zoomState } from './zoom-state.js';
@@ -387,17 +387,17 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
 
     // Position axis canvases (layout only — no visible ticks yet if triggered)
     positionAxisCanvas();
-    positionWaveformXAxisCanvas();
+    positionMinimapXAxisCanvas();
     positionSpectrogramXAxisCanvas();
-    positionWaveformDateCanvas();
+    positionMinimapDateCanvas();
 
     // Draw axis ticks — skip in triggered mode (they'll draw when rendering starts)
     const initRenderMode = document.getElementById('dataRendering')?.value || 'progressive';
     if (initRenderMode !== 'triggered') {
         initializeAxisPlaybackRate();
-        drawWaveformXAxis();
+        drawMinimapXAxis();
         drawSpectrogramXAxis();
-        drawWaveformDate();
+        drawMinimapDate();
     }
 
     // Component selector — 3 components (bx, by, bz)
@@ -636,7 +636,7 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
 
             // Progressive waveform draw every 3 chunks (or first/last)
             if (nextWaveformChunk === 1 || nextWaveformChunk === chunkSchedule.length || nextWaveformChunk % 3 === 0) {
-                const canvas = document.getElementById('waveform');
+                const canvas = document.getElementById('minimap');
                 const width = canvas.offsetWidth * window.devicePixelRatio;
                 const height = canvas.offsetHeight * window.devicePixelRatio;
                 const removeDC = document.getElementById('removeDCOffset')?.checked || false;
@@ -875,10 +875,10 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     }
 
     // Position waveform axis canvas; draw labels only if not waiting for trigger
-    positionWaveformAxisCanvas();
+    positionMinimapAxisCanvas();
     const completeRenderMode = dataRenderingEl?.value || 'progressive';
     if (completeRenderMode !== 'triggered' || renderTriggered) {
-        drawWaveformAxis();
+        drawMinimapAxis();
     }
 
     // Use running buffer for completeSamplesArray (already stitched during download)
@@ -932,7 +932,7 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
 
     // Final waveform build with DC removal
     if (window.pm?.render) console.log(`🎨 ${logTime()} Requesting final waveform (${totalWorkletSamples.toLocaleString()} samples)`);
-    const canvas = document.getElementById('waveform');
+    const canvas = document.getElementById('minimap');
     const removeDC = document.getElementById('removeDCOffset')?.checked || false;
     const slider = document.getElementById('waveformFilterSlider');
     const alpha = slider ? 0.9 + (parseInt(slider.value) / 1000) : 0.99;

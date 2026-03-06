@@ -183,7 +183,7 @@ export function printCurrentSelection() {
         return;
     }
     
-    const canvas = document.getElementById('waveform');
+    const canvas = document.getElementById('minimap');
     if (!canvas) {
         console.error('❌ Cannot find waveform canvas');
         return;
@@ -210,7 +210,7 @@ export function testAtPercentage(percent) {
         return;
     }
     
-    const canvas = document.getElementById('waveform');
+    const canvas = document.getElementById('minimap');
     if (!canvas) {
         console.error('❌ Cannot find waveform canvas');
         return;
