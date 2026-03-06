@@ -1,3 +1,4 @@
+// ⚠️ When in any doubt, use Edit to surgically fix mistakes — never git checkout this file.
 /**
  * spectrogram-three-renderer.js - THREE.JS GPU RENDERER
  * Replaces Canvas 2D spectrogram rendering with WebGPU via Three.js.

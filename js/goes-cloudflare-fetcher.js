@@ -1,3 +1,4 @@
+// ⚠️ When in any doubt, use Edit to surgically fix mistakes — never git checkout this file.
 // ========== GOES CLOUDFLARE PROGRESSIVE FETCHER ==========
 // Fetches pre-chunked GOES magnetometer data from Cloudflare R2
 // with tiered progressive streaming: 15m → 1h → 6h → 24h

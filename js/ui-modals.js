@@ -1,3 +1,4 @@
+// ⚠️ When in any doubt, use Edit to surgically fix mistakes — never git checkout this file.
 /**
  * ui-modals.js
  * Modal helpers, overlay management, and modal handlers (participant + welcome).

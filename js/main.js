@@ -1,3 +1,4 @@
+// ⚠️ When in any doubt, use Edit to surgically fix mistakes — never git checkout this file.
 /**
  * main.js
  * Main orchestration: initialization, startStreaming, event handlers
