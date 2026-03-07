@@ -414,6 +414,53 @@
     border: 1px solid var(--border);
     border-radius: 4px;
   }
+  .radio-options-editor {
+    margin: 4px 0 8px 30px;
+    padding: 8px;
+    background: #fafafa;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 12px;
+  }
+  .radio-options-editor .opt-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .radio-options-editor .opt-label-input {
+    width: 100px;
+    padding: 4px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  .radio-options-editor .opt-desc-input {
+    flex: 1;
+    min-height: 24px;
+    padding: 4px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+    outline: none;
+  }
+  .radio-options-editor .opt-desc-input:focus {
+    border-color: var(--accent);
+  }
+  .radio-options-editor .opt-desc-input b,
+  .radio-options-editor .opt-desc-input strong {
+    font-weight: 700;
+  }
+  .radio-options-editor .opt-header {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 4px;
+    font-size: 10px;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+  .radio-options-editor .opt-header span:first-child { width: 100px; }
+  .radio-options-editor .opt-header span:last-child { flex: 1; }
   .add-question-btn {
     margin-top: 8px;
     padding: 6px 12px;
@@ -1466,6 +1513,17 @@ If you have any questions, please contact the research team.</textarea>
             <span class="q-text">${escapeHtml(q.text)}</span>
             <span class="q-type">${qType}</span>
           </div>`;
+        if (q.type === 'radio' && q.options && q.options.length) {
+          contentHtml += `<div class="radio-options-editor">
+            <div class="opt-header"><span>Label</span><span>Description (Cmd+B for bold)</span></div>`;
+          q.options.forEach(opt => {
+            contentHtml += `<div class="opt-row">
+              <input class="opt-label-input" value="${escapeAttr(opt.label || '')}" />
+              <div class="opt-desc-input" contenteditable="true">${opt.description || ''}</div>
+            </div>`;
+          });
+          contentHtml += `</div>`;
+        }
       });
       contentHtml += `</div><button class="add-question-btn">+ Add question</button>`;
       // Add dismiss label for questions modals too
@@ -1762,10 +1820,21 @@ If you have any questions, please contact the research team.</textarea>
               text: q.querySelector('.q-text')?.textContent || '',
               type: (q.querySelector('.q-type')?.textContent.trim().toLowerCase() || 'freetext').replace('free text', 'freetext'),
             };
-            // Preserve radio options if stored in data attribute
-            const optionsData = q.dataset.options;
-            if (optionsData) {
-              try { qData.options = JSON.parse(optionsData); } catch(e) {}
+            // Read radio options from inline editor if present, else fall back to data attribute
+            const optEditor = q.nextElementSibling?.classList.contains('radio-options-editor') ? q.nextElementSibling : null;
+            if (optEditor) {
+              const rows = optEditor.querySelectorAll('.opt-row');
+              if (rows.length) {
+                qData.options = Array.from(rows).map(row => ({
+                  label: row.querySelector('.opt-label-input')?.value || '',
+                  description: row.querySelector('.opt-desc-input')?.innerHTML || ''
+                }));
+              }
+            } else {
+              const optionsData = q.dataset.options;
+              if (optionsData) {
+                try { qData.options = JSON.parse(optionsData); } catch(e) {}
+              }
             }
             // Preserve inputName, subtitle, placeholder, required
             if (q.dataset.inputName) qData.inputName = q.dataset.inputName;
@@ -2371,7 +2440,7 @@ If you have any questions, please contact the research team.</textarea>
           options.forEach(opt => {
             qHtml += `<label class="preview-radio-choice">
               <input type="radio" name="preview_q${i}" disabled>
-              <div><strong>${escapeHtml(opt.label)}:</strong> <span>${escapeHtml(opt.description || '')}</span></div>
+              <div><strong>${escapeHtml(opt.label)}:</strong> <span>${opt.description || ''}</span></div>
             </label>`;
           });
           qHtml += `</div>`;
