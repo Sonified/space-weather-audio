@@ -165,10 +165,7 @@ function addStandaloneFeature(featureData) {
     standaloneFeatures.push(featureData);
     saveStandaloneFeatures();
     updateStandaloneFeatureCount();
-    const idx = standaloneFeatures.length - 1;
-    // Dispatch event for prompt sequencer and other listeners
-    window.dispatchEvent(new CustomEvent('featureCreated', { detail: { index: idx, feature: featureData } }));
-    return idx;
+    return standaloneFeatures.length - 1;
 }
 
 /**

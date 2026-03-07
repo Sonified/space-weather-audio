@@ -14,13 +14,6 @@ bucket_name = "emic-data"
 # Environment variables (set via `wrangler secret put`)
 # R2 credentials are NOT needed here - Workers have native R2 bindings!
 
-# D1 database binding — EMIC study data
-# After running `wrangler d1 create study-db`, replace the database_id below
-[[d1_databases]]
-binding = "DB"
-database_name = "study-db"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
-
 [vars]
 FRONTEND_URL = "https://spaceweather.now.audio"
 SHARE_EXPIRY_DAYS = "90"
