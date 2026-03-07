@@ -601,6 +601,14 @@
     .prompts-section.open .prompts-body { display: block !important; }
     .prompts-section.open .prompts-chevron { transform: rotate(90deg); }
 
+    .rich-editor-wrap { display: flex; flex-direction: column; }
+    .rich-toolbar { display: flex; gap: 4px; padding: 4px; background: var(--surface2); border: 1px solid var(--border); border-bottom: none; border-radius: var(--radius) var(--radius) 0 0; }
+    .rich-toolbar button { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; cursor: pointer; font-size: 13px; line-height: 1.4; }
+    .rich-toolbar button:hover { background: var(--border); }
+    .rich-editable { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius); padding: 10px 12px; min-height: 100px; outline: none; font-size: 14px; line-height: 1.5; overflow-y: auto; }
+    .rich-editable:focus { border-color: var(--accent); }
+    .rich-editable a { color: var(--accent); }
+
     </style>
 </head>
 <body>
@@ -1328,6 +1336,7 @@ If you have any questions, please contact the research team.</textarea>
       } else if (step.type === 'modal') {
         card.setAttribute('draggable', 'true');
         card.innerHTML = buildModalCard(num, step);
+        { const ed = card.querySelector('.rich-editable'); if (ed) ed.innerHTML = step.bodyHtml || step.bodyText || ''; }
       } else if (step.type === 'analysis') {
         card.setAttribute('draggable', 'true');
         card.innerHTML = buildAnalysisCard(num, step);
@@ -1418,9 +1427,17 @@ If you have any questions, please contact the research team.</textarea>
           <input class="field-input" value="${escapeAttr(step.title || '')}" />
         </div>
         <div class="field-group">
-          <div class="field-label">Body HTML</div>
-          <textarea class="field-input body-html-input" style="min-height:100px;font-family:'SF Mono','Fira Code',monospace;font-size:12px;">${escapeHtml(bodyHtml)}</textarea>
-          <div class="info-text">Supports HTML tags: &lt;p&gt;, &lt;b&gt;, &lt;a href&gt;, &lt;hr&gt;, etc.</div>
+          <div class="field-label">Body Content</div>
+          <div class="rich-editor-wrap">
+            <div class="rich-toolbar">
+              <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('bold')"><b>B</b></button>
+              <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('italic')"><i>I</i></button>
+              <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('underline')"><u>U</u></button>
+              <button type="button" onmousedown="event.preventDefault()" onclick="(function(){var u=prompt('URL:');if(u)document.execCommand('createLink',false,u)})()">🔗</button>
+              <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('insertHorizontalRule')">—</button>
+            </div>
+            <div class="rich-editable body-html-input" contenteditable="true"></div>
+          </div>
         </div>`;
       contentHtml += `
         <div class="field-group">
@@ -1729,9 +1746,8 @@ If you have any questions, please contact the research team.</textarea>
         step.title = allInputs[0]?.value || '';
 
         if (step.contentType === 'informational') {
-          // Read raw HTML from textarea
           const bodyInput = card.querySelector('.body-html-input');
-          step.bodyHtml = bodyInput ? bodyInput.value : '';
+          step.bodyHtml = bodyInput ? bodyInput.innerHTML : '';
           // Dismiss label
           const dismissInput = card.querySelector('.dismiss-label-input');
           step.dismissLabel = dismissInput?.value || 'OK';
@@ -2133,6 +2149,7 @@ If you have any questions, please contact the research team.</textarea>
     card.innerHTML = type === 'modal'
       ? buildModalCard(num, defaultStep)
       : buildAnalysisCard(num, defaultStep);
+    if (type === 'modal') { const ed = card.querySelector('.rich-editable'); if (ed) ed.innerHTML = defaultStep.bodyHtml || ''; }
 
     // Close others
     document.querySelectorAll('.step-card').forEach(c => c.classList.remove('active'));
@@ -2326,7 +2343,7 @@ If you have any questions, please contact the research team.</textarea>
 
     if (isInfo) {
       const bodyInput = card.querySelector('.body-html-input');
-      const bodyHtml = bodyInput ? bodyInput.value : '';
+      const bodyHtml = bodyInput ? bodyInput.innerHTML : '';
       const dismissInput = card.querySelector('.dismiss-label-input');
       const dismissLabel = dismissInput?.value || 'OK';
       preview.innerHTML = `
