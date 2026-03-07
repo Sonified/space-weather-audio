@@ -1,0 +1,235 @@
+/**
+ * d1-sync.js — Progressive D1 save system for EMIC study
+ *
+ * Fire-and-forget saves to D1 via Cloudflare Worker /api/study/* routes.
+ * Runs alongside the existing R2 upload system (data-uploader.js).
+ * Never blocks UI — all saves are async with offline queue fallback.
+ */
+
+// ── Config ───────────────────────────────────────────────────────────────────
+
+let _studyId = 'emic-pilot'; // default, overridden by setStudyId() or page config
+const PENDING_KEY = 'd1_pending_sync';
+
+function getApiBase() {
+    if (typeof window !== 'undefined' && window.location?.hostname === 'spaceweather.now.audio') {
+        return window.location.origin;
+    }
+    return 'https://spaceweather.now.audio';
+}
+
+// ── UUID fallback for non-secure contexts ────────────────────────────────────
+
+function generateUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+    });
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+export function getParticipantId() {
+    if (typeof localStorage === 'undefined') return null;
+    return localStorage.getItem('participantId') || null;
+}
+
+export function getStudyId() {
+    return _studyId;
+}
+
+/**
+ * Set the active study ID. Called by the study HTML page on load.
+ * Also reads from <meta name="study-id"> or URL param ?study= as fallback.
+ */
+export function setStudyId(id) {
+    _studyId = id;
+}
+
+// Auto-detect study ID from page meta tag or URL param
+if (typeof document !== 'undefined') {
+    const meta = document.querySelector('meta[name="study-id"]');
+    if (meta) _studyId = meta.content;
+    else {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('study')) _studyId = params.get('study');
+    }
+}
+
+/**
+ * Fetch study config from D1 and return it.
+ * Call on page load to drive the study flow.
+ */
+export async function fetchStudyConfig(studyId) {
+    const sid = studyId || getStudyId();
+    try {
+        const resp = await fetch(`${getApiBase()}/api/study/${sid}/config`);
+        if (resp.ok) {
+            const data = await resp.json();
+            log('✅', `loaded config for "${sid}"`);
+            // Server returns { success, study: { id, name, config: {...} } }
+            if (data.study && data.study.config) return data.study.config;
+            // Fallback: maybe config is at top level
+            if (data.config) return typeof data.config === 'string' ? JSON.parse(data.config) : data.config;
+            return data;
+        }
+        log('❌', `config fetch failed: HTTP ${resp.status}`);
+    } catch (e) {
+        log('❌', `config fetch error: ${e.message}`);
+    }
+    return null;
+}
+
+function log(emoji, msg) {
+    console.log(`📡 D1: ${emoji} ${msg}`);
+}
+
+// ── Offline Queue ────────────────────────────────────────────────────────────
+
+function enqueue(payload) {
+    if (typeof localStorage === 'undefined') return;
+    try {
+        const pending = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
+        pending.push(payload);
+        localStorage.setItem(PENDING_KEY, JSON.stringify(pending));
+        log('📦', `queued offline (${pending.length} pending)`);
+    } catch (e) {
+        console.warn('D1 sync: failed to queue', e);
+    }
+}
+
+async function flushQueue() {
+    if (typeof localStorage === 'undefined') return;
+    const raw = localStorage.getItem(PENDING_KEY);
+    if (!raw) return;
+    let pending;
+    try { pending = JSON.parse(raw); } catch { return; }
+    if (!pending.length) return;
+
+    const remaining = [];
+    for (const item of pending) {
+        try {
+            const resp = await fetch(item.url, {
+                method: item.method || 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(item.body),
+            });
+            if (resp.ok) {
+                log('✅', `flushed queued ${item.body?.type || 'item'}`);
+            } else {
+                remaining.push(item);
+            }
+        } catch {
+            remaining.push(item);
+            break; // still offline, stop trying
+        }
+    }
+    localStorage.setItem(PENDING_KEY, JSON.stringify(remaining));
+    if (!remaining.length) localStorage.removeItem(PENDING_KEY);
+}
+
+// ── Core fetch wrapper ───────────────────────────────────────────────────────
+
+async function d1Post(path, body, queueOnFail = true) {
+    const url = `${getApiBase()}${path}`;
+    try {
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (resp.ok) {
+            // Try flushing any pending items
+            flushQueue().catch(() => {});
+            return await resp.json();
+        }
+        log('❌', `HTTP ${resp.status} on ${path}`);
+        if (queueOnFail) enqueue({ url, body });
+        return null;
+    } catch (e) {
+        log('❌', `network error: ${e.message}`);
+        if (queueOnFail) enqueue({ url, body });
+        return null;
+    }
+}
+
+// ── Public API ───────────────────────────────────────────────────────────────
+
+/**
+ * Register participant in D1. Call once at registration.
+ */
+export function initParticipant(participantId, studyId) {
+    const sid = studyId || getStudyId();
+    const pid = participantId || getParticipantId();
+    if (!pid) { log('⚠️', 'no participantId — skipping init'); return; }
+
+    d1Post(`/api/study/${sid}/participants`, { id: pid })
+        .then(r => r && log('✅', `registered participant ${pid}`));
+}
+
+/**
+ * Generic response saver. Fire-and-forget.
+ * @param {string} type - response type (survey, feature, playback_event, etc.)
+ * @param {object} data - JSON-serializable payload
+ * @param {object} [options] - { day, participantId }
+ */
+export function saveResponse(type, data, options = {}) {
+    const pid = options.participantId || getParticipantId();
+    const sid = getStudyId();
+    if (!pid) { log('⚠️', 'no participantId — skipping save'); return; }
+
+    const body = {
+        id: (crypto.randomUUID ? crypto.randomUUID() : generateUUID()),
+        participant_id: pid,
+        type,
+        data,
+    };
+    if (options.day != null) body.day = options.day;
+
+    d1Post(`/api/study/${sid}/responses`, body)
+        .then(r => r && log('✅', `saved ${type}`));
+}
+
+/**
+ * Save a feature annotation. Extracts key fields from feature object.
+ */
+export function saveFeature(featureData) {
+    const coords = [];
+    if (featureData.startTime) coords.push(featureData.startTime);
+    if (featureData.endTime) coords.push(featureData.endTime);
+    if (featureData.lowFreq != null) coords.push(featureData.lowFreq);
+    if (featureData.highFreq != null) coords.push(featureData.highFreq);
+
+    const payload = {
+        type: featureData.type || 'unknown',
+        repetition: featureData.repetition || null,
+        lowFreq: featureData.lowFreq,
+        highFreq: featureData.highFreq,
+        startTime: featureData.startTime,
+        endTime: featureData.endTime,
+        notes: featureData.notes || '',
+        speedFactor: featureData.speedFactor || null,
+        coordCount: coords.length,
+    };
+
+    saveResponse('feature', payload);
+    log('📍', `saved feature (${coords.length} coords)`);
+}
+
+/**
+ * Save an individual survey answer as it's completed.
+ * @param {string} questionId
+ * @param {*} answer
+ * @param {string} surveyType - 'pre' or 'post'
+ */
+export function saveSurveyAnswer(questionId, answer, surveyType) {
+    const type = surveyType === 'post' ? 'post_survey' : 'pre_survey';
+    saveResponse(type, { questionId, answer });
+}
+
+/**
+ * Mark participant as complete (submit a milestone response).
+ */
+export function markComplete() {
+    saveResponse('milestone', { event: 'completed', completedAt: new Date().toISOString() });
+}

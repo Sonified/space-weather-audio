@@ -325,6 +325,50 @@ export default {
       }
 
       // =======================================================================
+      // D1-backed Study API Routes: /api/study/*
+      // These replace the R2 master JSON approach with proper SQL storage.
+      // Each submission is an INSERT — no read-modify-write race conditions.
+      // =======================================================================
+
+      // GET /api/study/:id/config — Fetch study configuration
+      const studyConfigGetMatch = path.match(/^\/api\/study\/([^/]+)\/config$/);
+      if (studyConfigGetMatch && request.method === 'GET') {
+        return await d1GetStudyConfig(env, studyConfigGetMatch[1]);
+      }
+
+      // PUT /api/study/:id/config — Update study configuration
+      if (studyConfigGetMatch && request.method === 'PUT') {
+        return await d1UpdateStudyConfig(request, env, studyConfigGetMatch[1]);
+      }
+
+      // POST /api/study/:id/participants — Register a new participant
+      const studyParticipantsMatch = path.match(/^\/api\/study\/([^/]+)\/participants$/);
+      if (studyParticipantsMatch && request.method === 'POST') {
+        return await d1RegisterParticipant(request, env, studyParticipantsMatch[1]);
+      }
+
+      // GET /api/study/:id/participants — List participants for a study
+      if (studyParticipantsMatch && request.method === 'GET') {
+        return await d1ListParticipants(env, studyParticipantsMatch[1]);
+      }
+
+      // POST /api/study/:id/responses — Submit a response/event
+      const studyResponsesMatch = path.match(/^\/api\/study\/([^/]+)\/responses$/);
+      if (studyResponsesMatch && request.method === 'POST') {
+        return await d1SubmitResponse(request, env, studyResponsesMatch[1]);
+      }
+
+      // GET /api/study/:id/responses — Query responses (for analysis)
+      if (studyResponsesMatch && request.method === 'GET') {
+        return await d1QueryResponses(env, studyResponsesMatch[1], url.searchParams);
+      }
+
+      // POST /api/emic/migrate-to-d1 — One-time migration of R2 master JSON → D1
+      if (path === '/api/emic/migrate-to-d1' && request.method === 'POST') {
+        return await d1MigrateFromR2(env);
+      }
+
+      // =======================================================================
       // EMIC Data Routes: /emic/data/*
       // Serves GOES magnetometer chunks from emic-data R2 bucket
       // =======================================================================
@@ -348,6 +392,27 @@ export default {
             ...CORS_HEADERS,
           },
         });
+      }
+
+      // =======================================================================
+      // Serve study.html for any /study/* path (config-driven study pages)
+      // =======================================================================
+      if (path.startsWith('/study/')) {
+        const githubPagesUrl = 'https://sonified.github.io/space-weather-audio';
+        const proxyUrl = `${githubPagesUrl}/study.html${url.search}`;
+        try {
+          const proxyResponse = await fetch(proxyUrl, {
+            method: request.method,
+            headers: request.headers,
+          });
+          return new Response(proxyResponse.body, {
+            status: proxyResponse.status,
+            headers: proxyResponse.headers,
+          });
+        } catch (proxyError) {
+          console.error('Study proxy error:', proxyError);
+          return new Response('Study page not available', { status: 502 });
+        }
       }
 
       // =======================================================================
@@ -1055,6 +1120,7 @@ async function emicListParticipants(env) {
 
 /**
  * Get all submissions for a specific EMIC participant
+ * @deprecated Use D1 routes (/api/study/:id/responses) for new submissions
  */
 async function emicGetParticipant(env, participantId) {
   if (!participantId) {
@@ -1084,5 +1150,353 @@ async function emicGetParticipant(env, participantId) {
     participantId: sanitizeUsername(participantId),
     submissions,
     count: submissions.length,
+  });
+}
+
+// =============================================================================
+// D1 Study API Handlers
+// =============================================================================
+
+/** Generate a simple UUID v4 */
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+/**
+ * GET /api/study/:id/config
+ * Returns the study configuration JSON. Replaces static survey_structure.json.
+ */
+async function d1GetStudyConfig(env, studyId) {
+  const row = await env.DB.prepare('SELECT * FROM studies WHERE id = ?').bind(studyId).first();
+  if (!row) {
+    return json({ success: false, error: 'Study not found' }, 404);
+  }
+  return json({
+    success: true,
+    study: {
+      id: row.id,
+      name: row.name,
+      created_by: row.created_by,
+      config: JSON.parse(row.config || '{}'),
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    },
+  });
+}
+
+/**
+ * PUT /api/study/:id/config
+ * Updates the study configuration. For the study builder UI.
+ */
+async function d1UpdateStudyConfig(request, env, studyId) {
+  const data = await request.json();
+  const now = new Date().toISOString();
+  const configStr = data.config !== undefined
+    ? (typeof data.config === 'string' ? data.config : JSON.stringify(data.config))
+    : '{}';
+  const name = data.name || studyId;
+  const createdBy = data.created_by || null;
+
+  // Upsert: create if doesn't exist, update if it does
+  const existing = await env.DB.prepare('SELECT id FROM studies WHERE id = ?').bind(studyId).first();
+
+  if (!existing) {
+    // INSERT new study
+    await env.DB.prepare(
+      'INSERT INTO studies (id, name, created_by, config, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind(studyId, name, createdBy, configStr, now, now).run();
+    return json({ success: true, created: true, updated_at: now }, 201);
+  }
+
+  // UPDATE existing study
+  const updates = [];
+  const binds = [];
+
+  if (data.name !== undefined) {
+    updates.push('name = ?');
+    binds.push(data.name);
+  }
+  if (data.config !== undefined) {
+    updates.push('config = ?');
+    binds.push(configStr);
+  }
+  if (data.created_by !== undefined) {
+    updates.push('created_by = ?');
+    binds.push(data.created_by);
+  }
+
+  updates.push('updated_at = ?');
+  binds.push(now);
+  binds.push(studyId);
+
+  await env.DB.prepare(`UPDATE studies SET ${updates.join(', ')} WHERE id = ?`)
+    .bind(...binds)
+    .run();
+
+  return json({ success: true, created: false, updated_at: now });
+}
+
+/**
+ * POST /api/study/:id/participants
+ * Register a new participant for the study.
+ * Body: { id?, consent?, demographics? }
+ */
+async function d1RegisterParticipant(request, env, studyId) {
+  // Verify study exists
+  const study = await env.DB.prepare('SELECT id FROM studies WHERE id = ?').bind(studyId).first();
+  if (!study) {
+    return json({ success: false, error: 'Study not found' }, 404);
+  }
+
+  const data = await request.json();
+  const participantId = data.id || generateUUID();
+
+  // Silently accept but don't store preview users
+  if (participantId.startsWith('Preview_')) {
+    return json({ success: true, preview: true, participant_id: participantId }, 200);
+  }
+
+  const now = new Date().toISOString();
+
+  // Check if participant already exists (allow re-registration to update)
+  const existing = await env.DB.prepare('SELECT id FROM participants WHERE id = ?')
+    .bind(participantId).first();
+
+  if (existing) {
+    // Update existing participant
+    const updates = ['current_day = COALESCE(?, current_day)'];
+    const binds = [data.current_day || null];
+
+    if (data.consent !== undefined) {
+      updates.push('consent = ?');
+      binds.push(JSON.stringify(data.consent));
+    }
+    if (data.demographics !== undefined) {
+      updates.push('demographics = ?');
+      binds.push(JSON.stringify(data.demographics));
+    }
+    binds.push(participantId);
+
+    await env.DB.prepare(`UPDATE participants SET ${updates.join(', ')} WHERE id = ?`)
+      .bind(...binds)
+      .run();
+
+    return json({ success: true, participant_id: participantId, updated: true });
+  }
+
+  // Insert new participant
+  await env.DB.prepare(
+    'INSERT INTO participants (id, study_id, started_at, current_day, consent, demographics) VALUES (?, ?, ?, ?, ?, ?)'
+  ).bind(
+    participantId,
+    studyId,
+    now,
+    data.current_day || 1,
+    JSON.stringify(data.consent || {}),
+    JSON.stringify(data.demographics || {})
+  ).run();
+
+  return json({ success: true, participant_id: participantId, started_at: now }, 201);
+}
+
+/**
+ * GET /api/study/:id/participants
+ * List all participants for a study.
+ */
+async function d1ListParticipants(env, studyId) {
+  const { results } = await env.DB.prepare(
+    'SELECT * FROM participants WHERE study_id = ? ORDER BY started_at DESC'
+  ).bind(studyId).all();
+
+  const participants = results.map((row) => ({
+    id: row.id,
+    study_id: row.study_id,
+    started_at: row.started_at,
+    current_day: row.current_day,
+    consent: JSON.parse(row.consent || '{}'),
+    demographics: JSON.parse(row.demographics || '{}'),
+  }));
+
+  return json({ success: true, participants, count: participants.length });
+}
+
+/**
+ * POST /api/study/:id/responses
+ * Submit a response or event. This is an INSERT — no race conditions.
+ * Body: { participant_id, day?, type, data }
+ */
+async function d1SubmitResponse(request, env, studyId) {
+  const body = await request.json();
+
+  if (!body.participant_id || !body.type) {
+    return json({ success: false, error: 'participant_id and type are required' }, 400);
+  }
+
+  // Silently accept but don't store data from preview users
+  if (body.participant_id.startsWith('Preview_')) {
+    return json({ success: true, preview: true, message: 'Preview data discarded' }, 200);
+  }
+
+  const responseId = body.id || generateUUID();
+  const now = new Date().toISOString();
+
+  await env.DB.prepare(
+    'INSERT INTO responses (id, participant_id, study_id, day, type, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).bind(
+    responseId,
+    body.participant_id,
+    studyId,
+    body.day || null,
+    body.type,
+    typeof body.data === 'string' ? body.data : JSON.stringify(body.data || {}),
+    now
+  ).run();
+
+  // Also write to R2 as backup (dual-write during migration period)
+  try {
+    const r2Key = `emic/participants/${sanitizeUsername(body.participant_id)}/d1_${responseId}.json`;
+    await env.EMIC_DATA.put(r2Key, JSON.stringify({ ...body, id: responseId, created_at: now }, null, 2), {
+      httpMetadata: { contentType: 'application/json' },
+    });
+  } catch (e) {
+    console.error('R2 backup write failed (non-fatal):', e);
+  }
+
+  return json({ success: true, response_id: responseId, created_at: now }, 201);
+}
+
+/**
+ * GET /api/study/:id/responses
+ * Query responses with optional filters: participant_id, type, day, limit, offset
+ */
+async function d1QueryResponses(env, studyId, params) {
+  let query = 'SELECT * FROM responses WHERE study_id = ?';
+  const binds = [studyId];
+
+  if (params.get('participant_id')) {
+    query += ' AND participant_id = ?';
+    binds.push(params.get('participant_id'));
+  }
+  if (params.get('type')) {
+    query += ' AND type = ?';
+    binds.push(params.get('type'));
+  }
+  if (params.get('day')) {
+    query += ' AND day = ?';
+    binds.push(parseInt(params.get('day'), 10));
+  }
+
+  query += ' ORDER BY created_at DESC';
+
+  const limit = Math.min(parseInt(params.get('limit') || '100', 10), 1000);
+  const offset = parseInt(params.get('offset') || '0', 10);
+  query += ' LIMIT ? OFFSET ?';
+  binds.push(limit, offset);
+
+  const { results } = await env.DB.prepare(query).bind(...binds).all();
+
+  const responses = results.map((row) => ({
+    id: row.id,
+    participant_id: row.participant_id,
+    study_id: row.study_id,
+    day: row.day,
+    type: row.type,
+    data: JSON.parse(row.data || '{}'),
+    created_at: row.created_at,
+  }));
+
+  return json({ success: true, responses, count: responses.length });
+}
+
+/**
+ * POST /api/emic/migrate-to-d1
+ * One-time migration: reads existing R2 master JSON and inserts all records into D1.
+ * Idempotent — uses ON CONFLICT to skip duplicates.
+ */
+async function d1MigrateFromR2(env) {
+  // Read the existing master JSON from R2
+  const masterObj = await env.EMIC_DATA.get(EMIC_MASTER_KEY);
+  if (!masterObj) {
+    return json({ success: false, error: 'No master JSON found in R2' }, 404);
+  }
+
+  const masterData = await masterObj.json();
+  const submissions = masterData.submissions || [];
+
+  if (submissions.length === 0) {
+    return json({ success: true, message: 'No submissions to migrate', migrated: 0 });
+  }
+
+  // Ensure the 'emic-pilot' study exists
+  const existingStudy = await env.DB.prepare('SELECT id FROM studies WHERE id = ?')
+    .bind('emic-pilot').first();
+  if (!existingStudy) {
+    await env.DB.prepare(
+      'INSERT INTO studies (id, name, created_by, config) VALUES (?, ?, ?, ?)'
+    ).bind('emic-pilot', 'EMIC Pilot Study', 'migration', '{}').run();
+  }
+
+  let migratedParticipants = 0;
+  let migratedResponses = 0;
+  const errors = [];
+  const seenParticipants = new Set();
+
+  for (const sub of submissions) {
+    try {
+      const pid = sub.participantId || sub.participant_id || 'unknown';
+
+      // Register participant if not yet seen
+      if (!seenParticipants.has(pid)) {
+        seenParticipants.add(pid);
+        try {
+          await env.DB.prepare(
+            'INSERT OR IGNORE INTO participants (id, study_id, started_at, current_day, consent, demographics) VALUES (?, ?, ?, ?, ?, ?)'
+          ).bind(
+            pid,
+            'emic-pilot',
+            sub.serverReceivedAt || sub.submittedAt || new Date().toISOString(),
+            1,
+            JSON.stringify({}),
+            JSON.stringify({})
+          ).run();
+          migratedParticipants++;
+        } catch (e) {
+          // Already exists — that's fine
+        }
+      }
+
+      // Determine response type from the submission data
+      let type = 'submission';
+      if (sub.isProgressSync) type = 'progress_sync';
+      if (sub.milestone) type = `milestone_${sub.milestone}`;
+
+      const responseId = generateUUID();
+      await env.DB.prepare(
+        'INSERT INTO responses (id, participant_id, study_id, day, type, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).bind(
+        responseId,
+        pid,
+        'emic-pilot',
+        sub.day || null,
+        type,
+        JSON.stringify(sub),
+        sub.serverReceivedAt || sub.submittedAt || new Date().toISOString()
+      ).run();
+      migratedResponses++;
+    } catch (e) {
+      errors.push({ participantId: sub.participantId, error: e.message });
+    }
+  }
+
+  return json({
+    success: true,
+    message: `Migration complete`,
+    total_submissions: submissions.length,
+    migrated_participants: migratedParticipants,
+    migrated_responses: migratedResponses,
+    errors: errors.length > 0 ? errors : undefined,
   });
 }

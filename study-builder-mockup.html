@@ -1,0 +1,2447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Study Builder — spaceweather.now.audio</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2128;
+    --border: #30363d;
+    --border-hover: #484f58;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --accent: #58a6ff;
+    --accent-hover: #79c0ff;
+    --green: #3fb950;
+    --orange: #d29922;
+    --red: #f85149;
+    --purple: #bc8cff;
+    --radius: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 32px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .header h1 {
+    font-size: 20px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .header h1 span { color: var(--accent); }
+  .study-name-input {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text);
+    font-size: 20px;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: var(--radius);
+    outline: none;
+    width: 300px;
+  }
+  .study-name-input:hover { border-color: var(--border); }
+  .study-name-input:focus { border-color: var(--accent); }
+
+  .header-actions { display: flex; gap: 8px; }
+  .btn {
+    padding: 8px 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s;
+  }
+  .btn:hover { border-color: var(--border-hover); background: var(--surface2); }
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+    font-weight: 600;
+  }
+  .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+  /* File menu dropdown */
+  .dropdown-wrap { position: relative; }
+  .file-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    z-index: 20;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    min-width: 220px;
+  }
+  .file-menu.show { display: block; }
+
+  /* Slug preview */
+  .slug-preview {
+    margin-top: 4px;
+    margin-left: 34px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+  }
+  .slug-label { color: var(--text-muted); }
+  .slug-url {
+    color: var(--text-muted);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    background: var(--bg);
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+  .slug-editable {
+    color: var(--accent);
+    outline: none;
+    min-width: 40px;
+    display: inline-block;
+  }
+  .slug-editable:focus { border-bottom: 1px solid var(--accent); }
+  .slug-status {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .slug-status.valid { color: var(--green); }
+  .slug-status.invalid { color: var(--red); }
+  .slug-status.checking { color: var(--orange); }
+
+  /* Save indicator */
+  .save-indicator {
+    font-size: 11px;
+    color: var(--text-muted);
+    min-width: 80px;
+    text-align: right;
+  }
+
+  /* Step list */
+  .steps-container {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  .step-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 4px;
+    overflow: hidden;
+    transition: border-color 0.15s;
+  }
+  .step-card:hover { border-color: var(--border-hover); }
+  .step-card.active { border-color: var(--accent); }
+
+  .step-card.dragging {
+    opacity: 0.4;
+    transform: scale(0.98);
+  }
+  .step-card.drag-over {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  .drag-handle {
+    cursor: grab;
+    color: var(--text-muted);
+    font-size: 14px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    user-select: none;
+  }
+  .drag-handle:hover { color: var(--text); background: var(--surface2); }
+  .drag-handle:active { cursor: grabbing; }
+
+  .step-header {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    cursor: pointer;
+    gap: 12px;
+    user-select: none;
+  }
+
+  .step-number {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .step-number.registration { background: var(--accent); color: #000; }
+  .step-number.modal { background: var(--purple); color: #000; }
+  .step-number.analysis { background: var(--green); color: #000; }
+
+  .step-title {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .step-type-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+  }
+  .badge-registration { background: rgba(88,166,255,0.15); color: var(--accent); }
+  .badge-modal { background: rgba(188,140,255,0.15); color: var(--purple); }
+  .badge-analysis { background: rgba(63,185,80,0.15); color: var(--green); }
+
+  .step-actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .step-card:hover .step-actions { opacity: 1; }
+  .step-action-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+  .step-action-btn:hover { background: var(--surface2); color: var(--text); }
+  .step-action-btn.delete:hover { color: var(--red); }
+  .step-action-btn.preview-btn { font-size: 12px; width: auto; padding: 0 6px; }
+  .step-action-btn.preview-btn:hover { color: var(--accent); }
+
+  /* Inline preview container */
+  .step-preview {
+    margin: 12px 16px 16px;
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    position: relative;
+    max-width: 720px;
+  }
+  .step-preview.info-preview { max-width: 460px; margin-left: auto; margin-right: auto; }
+  .step-preview .preview-badge {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #999;
+    font-weight: 600;
+  }
+  .step-preview h3 { color: #333; margin: 0 0 16px; font-size: 18px; }
+  .step-preview p { color: #333; font-size: 16px; line-height: 1.6; margin: 0 0 12px; }
+  .step-preview .preview-radio-group { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+  .step-preview .preview-radio-choice {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    border: 1px solid #e0e0e0; border-radius: 8px; cursor: pointer; transition: background 0.15s;
+  }
+  .step-preview .preview-radio-choice:hover { background: #f5f5f5; }
+  .step-preview .preview-radio-choice input[type="radio"] { accent-color: #2196F3; }
+  .step-preview .preview-radio-choice strong { color: #333; }
+  .step-preview .preview-radio-choice span { color: #666; font-size: 0.92em; }
+  .step-preview textarea {
+    width: 100%; min-height: 120px; padding: 14px; font-size: 15px; font-family: inherit;
+    border: 1px solid #ddd; border-radius: 8px; resize: vertical; box-sizing: border-box;
+    line-height: 1.5; color: #333;
+  }
+  .step-preview .preview-submit {
+    display: block; margin: 16px auto 0; padding: 10px 32px; border: none; border-radius: 8px;
+    background: #2196F3; color: #fff; font-size: 15px; font-weight: 600; cursor: default;
+  }
+  .step-preview .preview-progress {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 16px; justify-content: flex-end;
+  }
+  .step-preview .preview-progress-text { font-size: 13px; color: #999; font-weight: 500; }
+  .step-preview .preview-progress-bar {
+    width: 120px; height: 4px; background: #e0e0e0; border-radius: 2px; overflow: hidden;
+  }
+  .step-preview .preview-progress-fill {
+    height: 100%; background: #2196F3; border-radius: 2px;
+  }
+  .step-preview .preview-nav {
+    display: flex; gap: 12px; justify-content: center; margin-top: 16px;
+  }
+  .step-preview .preview-nav button {
+    padding: 8px 24px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: default;
+  }
+  .step-preview .preview-nav .back-btn { background: #e0e0e0; color: #555; }
+  .step-preview .preview-nav .next-btn { background: #2196F3; color: #fff; }
+
+  .chevron {
+    color: var(--text-muted);
+    transition: transform 0.2s;
+    font-size: 12px;
+  }
+  .step-card.active .chevron { transform: rotate(90deg); }
+
+  /* Step detail panel */
+  .step-detail {
+    display: none;
+    padding: 0 16px 16px;
+    border-top: 1px solid var(--border);
+  }
+  .step-card.active .step-detail { display: block; }
+
+  .field-group {
+    margin-top: 12px;
+  }
+  .field-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .field-input {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    outline: none;
+  }
+  .field-input:focus { border-color: var(--accent); }
+  textarea.field-input { resize: vertical; min-height: 60px; font-family: inherit; }
+
+  .field-row {
+    display: flex;
+    gap: 12px;
+  }
+  .field-row .field-group { flex: 1; }
+
+  /* Toggle / radio pills */
+  .pill-group {
+    display: flex;
+    gap: 4px;
+    background: var(--bg);
+    border-radius: var(--radius);
+    padding: 3px;
+    border: 1px solid var(--border);
+  }
+  .pill {
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    transition: all 0.15s;
+    font-weight: 500;
+  }
+  .pill:hover { color: var(--text); }
+  .pill.active {
+    background: var(--surface2);
+    color: var(--text);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+
+  /* Questions list inside modal step */
+  .questions-list {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .question-item {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .question-item .q-number {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    min-width: 20px;
+  }
+  .question-item .q-text {
+    flex: 1;
+    font-size: 13px;
+  }
+  .question-item .q-type {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 2px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  .add-question-btn {
+    margin-top: 8px;
+    padding: 6px 12px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 12px;
+    width: 100%;
+    text-align: center;
+  }
+  .add-question-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Toggle switch */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 12px;
+    padding: 8px 0;
+  }
+  .toggle-label { font-size: 13px; }
+  .toggle {
+    width: 36px;
+    height: 20px;
+    border-radius: 10px;
+    background: var(--border);
+    cursor: pointer;
+    position: relative;
+    transition: background 0.2s;
+  }
+  .toggle.on { background: var(--accent); }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: white;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.2s;
+  }
+  .toggle.on::after { transform: translateX(16px); }
+
+  /* Connector line between steps */
+  .step-connector {
+    width: 2px;
+    height: 12px;
+    background: var(--border);
+    margin-left: 29px;
+  }
+
+  /* Add step button */
+  .add-step-area {
+    margin-top: 16px;
+    position: relative;
+  }
+  .add-step-btn {
+    width: 100%;
+    padding: 14px;
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.15s;
+  }
+  .add-step-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* Add step dropdown */
+  .add-step-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    z-index: 10;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    min-width: 220px;
+  }
+  .add-step-dropdown.show { display: block; }
+  .dropdown-item {
+    padding: 10px 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    transition: background 0.1s;
+  }
+  .dropdown-item:hover { background: var(--surface2); }
+  .dropdown-item .di-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .dropdown-item .di-icon.modal-icon { background: rgba(188,140,255,0.2); color: var(--purple); }
+  .dropdown-item .di-icon.analysis-icon { background: rgba(63,185,80,0.2); color: var(--green); }
+  .dropdown-item .di-desc { color: var(--text-muted); font-size: 11px; }
+
+  /* Analysis config */
+  .analysis-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .analysis-grid .field-group { margin-top: 0; }
+  select.field-input {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b949e' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 30px;
+  }
+
+  /* Preview bar */
+  .preview-bar {
+    max-width: 720px;
+    margin: 32px auto 0;
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .preview-bar .preview-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+  }
+  .preview-dots {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .preview-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid;
+  }
+  .preview-dot.registration { border-color: var(--accent); background: var(--accent); }
+  .preview-dot.modal { border-color: var(--purple); }
+  .preview-dot.modal.filled { background: var(--purple); }
+  .preview-dot.analysis { border-color: var(--green); }
+  .preview-dot.analysis.filled { background: var(--green); }
+  .preview-line {
+    width: 16px;
+    height: 2px;
+    background: var(--border);
+  }
+
+  /* Subtle info text */
+  .info-text {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 6px;
+    font-style: italic;
+  }
+    .prompts-section.open .prompts-body { display: block !important; }
+    .prompts-section.open .prompts-chevron { transform: rotate(90deg); }
+
+    </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header" style="max-width: 720px; margin: 0 auto 32px;">
+  <div>
+    <h1>
+      <span>⚡</span>
+      <input class="study-name-input" id="studyNameInput" value="EMIC Pilot Study" placeholder="Study name..." oninput="updateSlug()" />
+    </h1>
+    <div class="slug-preview" id="slugPreview">
+      <span class="slug-label">URL:</span>
+      <span class="slug-url">spaceweather.now.audio/study/<span id="slugValue" class="slug-editable" contenteditable="true" spellcheck="false">emic-pilot</span></span>
+      <span class="slug-status" id="slugStatus">✓ available</span>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+    <span style="font-size:12px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Admin Key</span>
+    <input class="field-input" id="adminKeyInput" value="emic2026" placeholder="Access key..." style="width:140px;padding:4px 8px;font-size:13px;font-family:'SF Mono','Fira Code',monospace;" />
+    <button class="btn" onclick="generateAdminKey()" style="padding:4px 10px;font-size:12px;">🎲 Generate</button>
+    <span style="font-size:11px;color:var(--text-muted);font-style:italic;">Share with researchers for live editing</span>
+  </div>
+  </div>
+  <div class="header-actions">
+    <div class="dropdown-wrap">
+      <button class="btn" onclick="toggleFileMenu(this)">📁 File ▾</button>
+      <div class="file-menu" id="fileMenu">
+        <div class="dropdown-item" onclick="loadFromJson()">📄 Load from JSON file</div>
+        <div class="dropdown-item" onclick="loadFromServer()">☁️ Load from server</div>
+        <div class="dropdown-item" onclick="exportToJson()">💾 Save as JSON file</div>
+        <div class="dropdown-item" onclick="saveAsJson()">💾 Save as NEW JSON file...</div>
+        <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
+        <div class="dropdown-item" onclick="saveDraft()">☁️ Save to server</div>
+        <div class="dropdown-item" onclick="saveAsToServer()">☁️ Save as NEW to server...</div>
+      </div>
+    </div>
+    <button class="btn" onclick="previewStudy()">👁 Preview</button>
+    <button class="btn btn-primary" onclick="publishStudy()">🚀 Publish</button>
+    <div class="save-indicator" id="saveIndicator"></div>
+    <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="handleJsonFile(event)">
+  </div>
+</div>
+
+<!-- Steps -->
+<div class="steps-container" id="stepsContainer">
+
+  <!-- Step 1: Registration (always first) -->
+  <div class="step-card active" data-type="registration">
+    <div class="step-header" onclick="toggleStep(this)">
+      <span class="chevron">▶</span>
+      <div class="step-number registration">1</div>
+      <div class="step-title">Participant Registration</div>
+      <span class="step-type-badge badge-registration">Registration</span>
+      <div class="step-actions">
+        <!-- No delete — always required -->
+      </div>
+    </div>
+    <div class="step-detail">
+      <div class="field-group">
+        <div class="field-label">Participant ID Method</div>
+        <div class="pill-group">
+          <button class="pill active" onclick="selectPill(this)">Auto-generate</button>
+          <button class="pill" onclick="selectPill(this)">Manual Entry</button>
+        </div>
+        <div class="info-text">Auto-generate creates IDs like P001, P002... Manual lets participants enter their own.</div>
+      </div>
+      <div class="field-group">
+        <div class="field-label">ID Prefix</div>
+        <input class="field-input" value="P" placeholder="e.g. P, EMIC_, STUDY1_" />
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Collect email (optional)</span>
+        <div class="toggle" onclick="this.classList.toggle('on')"></div>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Show consent form</span>
+        <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-connector"></div>
+
+  <!-- Step 2: Welcome Modal -->
+  <div draggable="true" class="step-card" data-type="modal">
+    <div class="step-header" onclick="toggleStep(this)">
+      <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
+      <div class="step-number modal">2</div>
+      <div class="step-title">Welcome & Instructions</div>
+      <span class="step-type-badge badge-modal">Modal</span>
+      <div class="step-actions">
+        <button class="step-action-btn" title="Move up" onclick="moveStep(this, 'up')">↑</button>
+        <button class="step-action-btn preview-btn" title="Toggle inline preview" onclick="event.stopPropagation(); toggleInlinePreview(this)">👁</button>
+        <button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>
+        <button class="step-action-btn" title="Move down" onclick="moveStep(this, 'down')">↓</button>
+        <button class="step-action-btn delete" title="Delete" onclick="event.stopPropagation(); deleteStep(this)">✕</button>
+      </div>
+    </div>
+    <div class="step-detail">
+      <div class="field-group">
+        <div class="field-label">Content Type</div>
+        <div class="pill-group">
+          <button class="pill active" onclick="selectPill(this)">Informational</button>
+          <button class="pill" onclick="selectPill(this)">Questions</button>
+        </div>
+      </div>
+      <div class="field-group">
+        <div class="field-label">Window Title</div>
+        <input class="field-input" value="Welcome to the EMIC Wave Study" />
+      </div>
+      <div class="field-group">
+        <div class="field-label">Body Text</div>
+        <textarea class="field-input">In this study you will listen to sonified magnetometer data from the GOES satellite and identify Electromagnetic Ion Cyclotron (EMIC) waves.
+
+Press play to begin listening. Draw boxes around any features you identify.</textarea>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Skippable</span>
+        <div class="toggle" onclick="this.classList.toggle('on')"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-connector"></div>
+
+  <!-- Step 3: Pre-survey (modal with questions) -->
+  <div draggable="true" class="step-card" data-type="modal">
+    <div class="step-header" onclick="toggleStep(this)">
+      <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
+      <div class="step-number modal">3</div>
+      <div class="step-title">Background Survey</div>
+      <span class="step-type-badge badge-modal">Modal</span>
+      <div class="step-actions">
+        <button class="step-action-btn" title="Move up" onclick="moveStep(this, 'up')">↑</button>
+        <button class="step-action-btn preview-btn" title="Toggle inline preview" onclick="event.stopPropagation(); toggleInlinePreview(this)">👁</button>
+        <button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>
+        <button class="step-action-btn" title="Move down" onclick="moveStep(this, 'down')">↓</button>
+        <button class="step-action-btn delete" title="Delete" onclick="event.stopPropagation(); deleteStep(this)">✕</button>
+      </div>
+    </div>
+    <div class="step-detail">
+      <div class="field-group">
+        <div class="field-label">Content Type</div>
+        <div class="pill-group">
+          <button class="pill" onclick="selectPill(this)">Informational</button>
+          <button class="pill active" onclick="selectPill(this)">Questions</button>
+        </div>
+      </div>
+      <div class="field-group">
+        <div class="field-label">Window Title</div>
+        <input class="field-input" value="Background Survey" />
+      </div>
+      <div class="questions-list">
+        <div class="question-item">
+          <span class="q-number">Q1</span>
+          <span class="q-text">How would you rate your experience with audio data analysis?</span>
+          <span class="q-type">Radio</span>
+        </div>
+        <div class="question-item">
+          <span class="q-number">Q2</span>
+          <span class="q-text">Do you have formal music training?</span>
+          <span class="q-type">Radio</span>
+        </div>
+        <div class="question-item">
+          <span class="q-number">Q3</span>
+          <span class="q-text">Describe any experience with space weather data.</span>
+          <span class="q-type">Free text</span>
+        </div>
+      </div>
+      <button class="add-question-btn">+ Add question</button>
+      <div class="toggle-row">
+        <span class="toggle-label">Skippable</span>
+        <div class="toggle" onclick="this.classList.toggle('on')"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-connector"></div>
+
+  <!-- Step 4: Analysis -->
+  <div draggable="true" class="step-card" data-type="analysis">
+    <div class="step-header" onclick="toggleStep(this)">
+      <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
+      <div class="step-number analysis">4</div>
+      <div class="step-title">EMIC Wave Analysis</div>
+      <span class="step-type-badge badge-analysis">Analysis</span>
+      <div class="step-actions">
+        <button class="step-action-btn" title="Move up" onclick="moveStep(this, 'up')">↑</button>
+        <button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>
+        <button class="step-action-btn" title="Move down" onclick="moveStep(this, 'down')">↓</button>
+        <button class="step-action-btn delete" title="Delete" onclick="event.stopPropagation(); deleteStep(this)">✕</button>
+      </div>
+    </div>
+    <div class="step-detail">
+      <div class="analysis-grid">
+        <div class="field-group">
+          <div class="field-label">Spacecraft</div>
+          <select class="field-input">
+            <option>GOES-16</option>
+            <option>GOES-17</option>
+            <option selected>GOES-18</option>
+            <option>MMS</option>
+            <option>THEMIS</option>
+            <option>Van Allen Probes</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <div class="field-label">Dataset</div>
+          <select class="field-input">
+            <option selected>Magnetometer (MAG)</option>
+            <option>Particle (SEISS)</option>
+            <option>Magnetic Field (FGM)</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <div class="field-label">Start Date</div>
+          <input class="field-input" type="date" value="2024-05-10" />
+        </div>
+        <div class="field-group">
+          <div class="field-label">End Date</div>
+          <input class="field-input" type="date" value="2024-05-11" />
+        </div>
+        <div class="field-group">
+          <div class="field-label">Data Source</div>
+          <div class="pill-group">
+            <button class="pill" onclick="selectPill(this)">CDAWeb</button>
+            <button class="pill active" onclick="selectPill(this)">Cloudflare R2</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <div class="field-label">Playback Speed</div>
+          <select class="field-input">
+            <option>0.5x</option>
+            <option selected>1x</option>
+            <option>1.25x</option>
+            <option>2x</option>
+          </select>
+        </div>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Allow feature drawing</span>
+        <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Show spectrogram</span>
+        <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Allow stretch/speed changes</span>
+        <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Confirm analysis completion</span>
+        <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-connector"></div>
+
+  <!-- Step 5: Post-survey -->
+  <div draggable="true" class="step-card" data-type="modal">
+    <div class="step-header" onclick="toggleStep(this)">
+      <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
+      <div class="step-number modal">5</div>
+      <div class="step-title">Post-Analysis Survey</div>
+      <span class="step-type-badge badge-modal">Modal</span>
+      <div class="step-actions">
+        <button class="step-action-btn" title="Move up" onclick="moveStep(this, 'up')">↑</button>
+        <button class="step-action-btn preview-btn" title="Toggle inline preview" onclick="event.stopPropagation(); toggleInlinePreview(this)">👁</button>
+        <button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>
+        <button class="step-action-btn" title="Move down" onclick="moveStep(this, 'down')">↓</button>
+        <button class="step-action-btn delete" title="Delete" onclick="event.stopPropagation(); deleteStep(this)">✕</button>
+      </div>
+    </div>
+    <div class="step-detail">
+      <div class="field-group">
+        <div class="field-label">Content Type</div>
+        <div class="pill-group">
+          <button class="pill" onclick="selectPill(this)">Informational</button>
+          <button class="pill active" onclick="selectPill(this)">Questions</button>
+        </div>
+      </div>
+      <div class="field-group">
+        <div class="field-label">Window Title</div>
+        <input class="field-input" value="Post-Analysis Survey" />
+      </div>
+      <div class="questions-list">
+        <div class="question-item">
+          <span class="q-number">Q1</span>
+          <span class="q-text">How confident are you in the features you identified?</span>
+          <span class="q-type">Radio</span>
+        </div>
+        <div class="question-item">
+          <span class="q-number">Q2</span>
+          <span class="q-text">Did you use the spectrogram, audio, or both to identify features?</span>
+          <span class="q-type">Radio</span>
+        </div>
+        <div class="question-item">
+          <span class="q-number">Q3</span>
+          <span class="q-text">Describe your analysis strategy.</span>
+          <span class="q-type">Free text</span>
+        </div>
+        <div class="question-item">
+          <span class="q-number">Q4</span>
+          <span class="q-text">What was most challenging about this task?</span>
+          <span class="q-type">Free text</span>
+        </div>
+        <div class="question-item">
+          <span class="q-number">Q5</span>
+          <span class="q-text">Any additional comments or feedback?</span>
+          <span class="q-type">Free text</span>
+        </div>
+      </div>
+      <button class="add-question-btn">+ Add question</button>
+      <div class="toggle-row">
+        <span class="toggle-label">Skippable</span>
+        <div class="toggle" onclick="this.classList.toggle('on')"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-connector"></div>
+
+  <!-- Step 6: Thank you -->
+  <div draggable="true" class="step-card" data-type="modal">
+    <div class="step-header" onclick="toggleStep(this)">
+      <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
+      <div class="step-number modal">6</div>
+      <div class="step-title">Thank You</div>
+      <span class="step-type-badge badge-modal">Modal</span>
+      <div class="step-actions">
+        <button class="step-action-btn" title="Move up" onclick="moveStep(this, 'up')">↑</button>
+        <button class="step-action-btn preview-btn" title="Toggle inline preview" onclick="event.stopPropagation(); toggleInlinePreview(this)">👁</button>
+        <button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>
+        <button class="step-action-btn" title="Move down" onclick="moveStep(this, 'down')">↓</button>
+        <button class="step-action-btn delete" title="Delete" onclick="event.stopPropagation(); deleteStep(this)">✕</button>
+      </div>
+    </div>
+    <div class="step-detail">
+      <div class="field-group">
+        <div class="field-label">Content Type</div>
+        <div class="pill-group">
+          <button class="pill active" onclick="selectPill(this)">Informational</button>
+          <button class="pill" onclick="selectPill(this)">Questions</button>
+        </div>
+      </div>
+      <div class="field-group">
+        <div class="field-label">Window Title</div>
+        <input class="field-input" value="Thank You!" />
+      </div>
+      <div class="field-group">
+        <div class="field-label">Body Text</div>
+        <textarea class="field-input">Thank you for participating in this study! Your data has been saved.
+
+If you have any questions, please contact the research team.</textarea>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Step Button -->
+<div class="add-step-area" style="max-width: 720px; margin: 16px auto 0;">
+  <button class="add-step-btn" onclick="toggleDropdown(this)">
+    + Add Step
+  </button>
+  <div class="add-step-dropdown" id="addStepDropdown">
+    <div class="dropdown-item" onclick="addStep('modal')">
+      <div class="di-icon modal-icon">📋</div>
+      <div>
+        <div>Modal</div>
+        <div class="di-desc">Info screen or questionnaire</div>
+      </div>
+    </div>
+    <div class="dropdown-item" onclick="addStep('analysis')">
+      <div class="di-icon analysis-icon">📊</div>
+      <div>
+        <div>Analysis</div>
+        <div class="di-desc">Data listening &amp; feature identification</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- App Settings -->
+<div class="steps-container" style="margin-top:24px;">
+  <div class="step-card" id="appSettingsCard" data-type="settings">
+    <div class="step-header" onclick="toggleStep(this)">
+      <span class="chevron">▶</span>
+      <div class="step-number" style="background:var(--orange);color:#000;">⚙️</div>
+      <div class="step-title">App Settings</div>
+      <span class="step-type-badge" style="background:rgba(210,153,34,0.15);color:var(--orange);">CONFIG</span>
+    </div>
+    <div class="step-detail" id="appSettingsDetail">
+
+      <!-- Session -->
+      <div class="field-group"><div class="field-label">Session</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">ID Mode</div><select class="field-input" id="as_idMode"><option value="manual" selected>Manual</option><option value="auto">Auto</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">ID in Corner</div><select class="field-input" id="as_showIdCorner"><option value="true" selected>Show</option><option value="false">Hide</option></select></div>
+      </div>
+      <div class="toggle-row"><span class="toggle-label">Skip Login & Welcome</span><div class="toggle" id="as_skipLoginWelcome" onclick="this.classList.toggle('on')"></div></div>
+
+      <!-- Data Loading -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Data Loading</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Source</div><select class="field-input" id="as_source"><option value="cloudflare" selected>Cloudflare</option><option value="cdaweb">CDAWeb</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Rendering</div><select class="field-input" id="as_rendering"><option value="progressive" selected>Progressive</option><option value="onComplete">On Complete</option><option value="triggered">Triggered</option></select></div>
+      </div>
+      <div class="toggle-row"><span class="toggle-label">Bypass Cache</span><div class="toggle" id="as_bypassCache" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Silent Download</span><div class="toggle" id="as_silentDownload" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Auto Download</span><div class="toggle" id="as_autoDownload" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Auto Play</span><div class="toggle" id="as_autoPlay" onclick="this.classList.toggle('on')"></div></div>
+
+      <!-- Feature Boxes -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Feature Boxes</div></div>
+      <div class="toggle-row"><span class="toggle-label">Show Feature Boxes</span><div class="toggle on" id="as_visible" onclick="this.classList.toggle('on')"></div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Annotation Align</div><select class="field-input" id="as_annotationAlignment"><option value="center" selected>Center</option><option value="left">Left</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Annotation Width</div><input type="number" class="field-input" id="as_annotationWidth" value="300" min="100" max="800" step="25"></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Font Size</div><input type="number" class="field-input" id="as_annotationFontSize" value="14" min="8" max="28"></div>
+      </div>
+
+      <!-- Display -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Display</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Display on Load</div><select class="field-input" id="as_displayOnLoad"><option value="all" selected>All Data</option><option value="beginning">Start at Beginning</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Initial Hours</div><input type="number" class="field-input" id="as_initialHours" value="12" min="1" max="24"></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Min UI Width</div><input type="number" class="field-input" id="as_minUIWidth" value="0" min="0" max="3000" step="50"></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Minimap Height</div><input type="number" class="field-input" id="as_heightMinimap" value="100" min="50" max="400"></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Spectrogram Height</div><input type="number" class="field-input" id="as_heightSpectrogram" value="400" min="200" max="1200"></div>
+      </div>
+
+      <!-- Audio -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Audio</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Quality</div><select class="field-input" id="as_quality"><option value="16" selected>16 Bit</option><option value="32">32 Bit</option></select></div>
+      </div>
+
+      <!-- Rendering -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Rendering</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Tile Compression</div><select class="field-input" id="as_tileCompression"><option value="uint8" selected>Uint8</option><option value="bc4">BC4</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Tile Edge Mode</div><select class="field-input" id="as_tileEdgeMode"><option value="standard" selected>Standard</option><option value="crossfade">Crossfade</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Chunk Size</div><select class="field-input" id="as_tileChunkSize"><option value="adaptive" selected>Adaptive</option><option value="60">1 min</option><option value="300">5 min</option><option value="600">10 min</option><option value="1800">30 min</option><option value="3600">1 hr</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Zoom Out</div><select class="field-input" id="as_zoomOutMode"><option value="average" selected>Average</option><option value="balanced">Balanced</option><option value="peak">Peak</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Transition</div><select class="field-input" id="as_levelTransition"><option value="stepped">Stepped</option><option value="crossfade" selected>Crossfade</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Render Order</div><select class="field-input" id="as_renderOrder"><option value="pyramid-only" selected>Pyramid Only</option><option value="all-then-pyramid">All → Pyramid</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Pan Mode</div><select class="field-input" id="as_waveformPanMode"><option value="smartFreeze" selected>Smart Freeze</option><option value="alwaysCompute">Always Compute</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Crossfade Power</div><input type="number" class="field-input" id="as_crossfadePower" value="1.0" min="0.5" max="6" step="0.5"></div>
+      </div>
+
+      <!-- Waveform Zoom -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Waveform Zoom</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Style</div><select class="field-input" id="as_catmullMode"><option value="default" selected>Rounded Bins</option><option value="smooth">Smooth Curve</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Threshold (spp)</div><select class="field-input" id="as_catmullThreshold"><option value="1">1</option><option value="8">8</option><option value="32">32</option><option value="64">64</option><option value="128" selected>128</option><option value="256">256</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Thickness</div><input type="number" class="field-input" id="as_catmullCore" value="1.0" min="0.01" max="1.0" step="0.01"></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Feather</div><input type="number" class="field-input" id="as_catmullFeather" value="1.0" min="0.1" max="5.0" step="0.1"></div>
+      </div>
+
+      <!-- Navigation -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Navigation</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Arrow Zoom Step</div><select class="field-input" id="as_arrowZoomStep"><option value="5">5%</option><option value="10">10%</option><option value="15" selected>15%</option><option value="20">20%</option><option value="25">25%</option><option value="30">30%</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Arrow Pan Step</div><select class="field-input" id="as_arrowPanStep"><option value="5">5%</option><option value="10" selected>10%</option><option value="15">15%</option><option value="20">20%</option><option value="25">25%</option><option value="30">30%</option></select></div>
+      </div>
+
+      <!-- X-Axis Ticks -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">X-Axis Ticks</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Zoom Fade</div><select class="field-input" id="as_zoomFadeMode"><option value="time" selected>Time</option><option value="spatial">Spatial</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Edge Fade</div><select class="field-input" id="as_edgeFadeMode"><option value="spatial" selected>Spatial</option><option value="time">Time</option><option value="none">None</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Fade In Curve</div><select class="field-input" id="as_fadeInCurve"><option value="linear">Linear</option><option value="easeIn">Ease In</option><option value="easeOut" selected>Ease Out</option><option value="easeInOut">Ease In-Out</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Fade In Time</div><input type="number" class="field-input" id="as_fadeInTime" value="0.9" min="0" max="2" step="0.05"></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Fade Out Curve</div><select class="field-input" id="as_fadeOutCurve"><option value="linear">Linear</option><option value="easeIn">Ease In</option><option value="easeOut" selected>Ease Out</option><option value="easeInOut">Ease In-Out</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Fade Out Time</div><input type="number" class="field-input" id="as_fadeOutTime" value="0.3" min="0" max="2" step="0.05"></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Edge Fade Curve</div><select class="field-input" id="as_edgeFadeCurve"><option value="linear">Linear</option><option value="easeIn">Ease In</option><option value="easeOut" selected>Ease Out</option><option value="easeInOut">Ease In-Out</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Edge Spatial Width</div><input type="number" class="field-input" id="as_edgeSpatialWidth" value="0.6" min="0" max="1" step="0.05"></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Zoom Spatial Curve</div><select class="field-input" id="as_zoomSpatialCurve"><option value="linear">Linear</option><option value="easeIn">Ease In</option><option value="easeOut" selected>Ease Out</option><option value="easeInOut">Ease In-Out</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Zoom Spatial Width</div><input type="number" class="field-input" id="as_zoomSpatialWidth" value="0.5" min="0" max="1" step="0.05"></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Edge Time In</div><input type="number" class="field-input" id="as_edgeTimeIn" value="0.0" min="0" max="2" step="0.05"></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Edge Time Out</div><input type="number" class="field-input" id="as_edgeTimeOut" value="0.2" min="0" max="2" step="0.05"></div>
+      </div>
+
+      <!-- Feature Playback -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Feature Playback</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">At Page Edge</div><select class="field-input" id="as_featurePlaybackMode"><option value="continue" selected>No Change</option><option value="stop">Stop Audio</option><option value="clamp">Clamp View</option></select></div>
+      </div>
+
+      <!-- Page Scroll -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Page Scroll</div></div>
+      <div class="toggle-row"><span class="toggle-label">Lock Page Scroll</span><div class="toggle" id="as_lockPageScroll" onclick="this.classList.toggle('on')"></div></div>
+
+      <!-- Nav Bar -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Navigation Bar (Minimap)</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">View</div><select class="field-input" id="as_navView"><option value="spectrogram" selected>Spectrogram</option><option value="both">Combination</option><option value="linePlot">Line Plot</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Mode</div><select class="field-input" id="as_navViewingMode"><option value="full">Region Creation</option><option value="pageTurn" selected>Page Turn</option><option value="scroll">Scroll</option><option value="static">Static</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Click</div><select class="field-input" id="as_navClick"><option value="moveWindow" selected>Move Window</option><option value="moveAndPlay">Move & Play</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Markers</div><select class="field-input" id="as_navMarkers"><option value="daily" selected>Daily</option><option value="none">None</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Feat Boxes</div><select class="field-input" id="as_navFeatureBoxes"><option value="show" selected>Show</option><option value="hide">Hide</option></select></div>
+      </div>
+
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">V-Scroll</div><select class="field-input" id="as_navVScroll"><option value="zoom" selected>Zoom</option><option value="pan">Pan</option><option value="none">None</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">V-Sensitivity</div><input type="number" class="field-input" id="as_navVSens" value="100" min="1" max="500"></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">H-Scroll</div><select class="field-input" id="as_navHScroll"><option value="pan" selected>Pan</option><option value="zoom">Zoom</option><option value="none">None</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">H-Sensitivity</div><input type="number" class="field-input" id="as_navHSens" value="100" min="1" max="500"></div>
+      </div>
+
+      <!-- Main Window -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Main Window</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">View</div><select class="field-input" id="as_mainView"><option value="spectrogram" selected>Spectrogram</option><option value="both">Combination</option><option value="timeSeries">Time Series</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Mode</div><select class="field-input" id="as_mainMode"><option value="full">Region Creation</option><option value="pageTurn" selected>Page Turn</option><option value="scroll">Scroll</option><option value="static">Static</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Click</div><select class="field-input" id="as_mainClick"><option value="noAction" selected>No Action</option><option value="playAudio">Play Audio</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Release</div><select class="field-input" id="as_mainRelease"><option value="playAudio" selected>Play Audio</option><option value="noAction">No Action</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Drag</div><select class="field-input" id="as_mainDrag"><option value="drawFeature" selected>Draw Feature</option><option value="noAction">No Action</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Markers</div><select class="field-input" id="as_mainMarkers"><option value="daily" selected>Daily</option><option value="none">None</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">X-Axis</div><select class="field-input" id="as_mainXAxis"><option value="show" selected>Show</option><option value="hide">Hide</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Shader</div><select class="field-input" id="as_mainBoxFilter"><option value="linear" selected>Linear</option><option value="box">Box</option><option value="nearest">Nearest</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Numbers</div><select class="field-input" id="as_mainNumbers"><option value="hide">Hide</option><option value="white" selected>White</option><option value="black">Black</option><option value="red">Red</option><option value="outline">Outline</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Num Location</div><select class="field-input" id="as_mainNumbersLoc"><option value="above">Above</option><option value="inside" selected>Inside</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Num Weight</div><select class="field-input" id="as_mainNumbersWeight"><option value="normal" selected>Normal</option><option value="500">Medium</option><option value="bold">Bold</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Num Size</div><input type="number" class="field-input" id="as_mainNumbersSize" value="13" min="8" max="20"></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Num Shadow</div><select class="field-input" id="as_mainNumbersShadow"><option value="on" selected>On</option><option value="off">Off</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">V-Scroll</div><select class="field-input" id="as_mainVScroll"><option value="zoom" selected>Zoom</option><option value="pan">Pan</option><option value="none">None</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">V-Sensitivity</div><input type="number" class="field-input" id="as_mainVSens" value="100" min="1" max="500"></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">H-Scroll</div><select class="field-input" id="as_mainHScroll"><option value="pan" selected>Pan</option><option value="zoom">Zoom</option><option value="none">None</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">H-Sensitivity</div><input type="number" class="field-input" id="as_mainHSens" value="100" min="1" max="500"></div>
+      </div>
+
+      <!-- Debug -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Debug Prints</div></div>
+      <div class="toggle-row"><span class="toggle-label">Initialization</span><div class="toggle" id="as_printInit" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Rendering</span><div class="toggle" id="as_printGPU" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Memory</span><div class="toggle" id="as_printMemory" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Audio</span><div class="toggle" id="as_printAudio" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Study Flow</span><div class="toggle" id="as_printStudy" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Features</span><div class="toggle" id="as_printFeatures" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Data</span><div class="toggle" id="as_printData" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Interaction</span><div class="toggle" id="as_printInteraction" onclick="this.classList.toggle('on')"></div></div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Preview bar -->
+<div class="preview-bar">
+  <span class="preview-label">Participant Flow</span>
+  <div class="preview-dots" id="previewDots">
+    <!-- Generated by JS -->
+  </div>
+  <span class="preview-label" id="stepCount">6 steps</span>
+</div>
+
+<script>
+  // ── File Menu ──────────────────────────────────────────────
+  function toggleFileMenu(btn) {
+    const menu = document.getElementById('fileMenu');
+    menu.classList.toggle('show');
+    setTimeout(() => {
+      document.addEventListener('click', function close(e) {
+        if (!menu.contains(e.target) && e.target !== btn) {
+          menu.classList.remove('show');
+          document.removeEventListener('click', close);
+        }
+      });
+    }, 0);
+  }
+
+  function loadFromJson() {
+    document.getElementById('fileMenu').classList.remove('show');
+    document.getElementById('jsonFileInput').click();
+  }
+
+  function handleJsonFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const config = JSON.parse(e.target.result);
+        loadConfigIntoBuilder(config);
+        console.log('📄 Loaded study from JSON:', config.name || file.name);
+      } catch (err) {
+        alert('Invalid JSON file: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = ''; // reset for re-upload
+  }
+
+  async function loadFromServer() {
+    document.getElementById('fileMenu').classList.remove('show');
+    const slug = prompt('Enter study slug to load:', 'emic-pilot');
+    if (!slug) return;
+    const resp = await loadStudy(slug);
+    if (resp) {
+      // D1 response format: { success, study: { config: {...} } }
+      const studyData = resp.study || resp;
+      const parsed = typeof studyData.config === 'string' ? JSON.parse(studyData.config) : studyData.config || studyData;
+      loadConfigIntoBuilder(parsed);
+    } else {
+      alert('Study not found on server: ' + slug);
+    }
+  }
+
+  function exportToJson() {
+    document.getElementById('fileMenu').classList.remove('show');
+    const config = collectStudyConfig();
+    downloadJson(config, config.slug || 'study');
+  }
+
+  function saveAsJson() {
+    document.getElementById('fileMenu').classList.remove('show');
+    const config = collectStudyConfig();
+    const newName = prompt('New study name:', config.name + ' (copy)');
+    if (!newName) return;
+    config.name = newName;
+    config.slug = nameToSlug(newName);
+    // Update the builder UI to reflect the new name
+    document.getElementById('studyNameInput').value = newName;
+    document.getElementById('slugValue').textContent = config.slug;
+    updateSlug();
+    downloadJson(config, config.slug);
+  }
+
+  async function saveAsToServer() {
+    document.getElementById('fileMenu').classList.remove('show');
+    const config = collectStudyConfig();
+    const newName = prompt('New study name:', config.name + ' (copy)');
+    if (!newName) return;
+    config.name = newName;
+    config.slug = nameToSlug(newName);
+    // Update the builder UI
+    document.getElementById('studyNameInput').value = newName;
+    document.getElementById('slugValue').textContent = config.slug;
+    updateSlug();
+    // Save to server with new slug
+    await saveDraft();
+  }
+
+  function downloadJson(config, filename) {
+    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${filename}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ── Load Config Into Builder ─────────────────────────────────
+  function loadConfigIntoBuilder(config) {
+    // Preserve metadata that builder doesn't edit
+    const { steps, name, slug, ...meta } = config;
+    _loadedMeta = meta;
+
+    // Set name and slug
+    if (name) {
+      document.getElementById('studyNameInput').value = name;
+    }
+    if (slug) {
+      document.getElementById('slugValue').textContent = config.slug;
+      const statusEl = document.getElementById('slugStatus');
+      statusEl.textContent = '✓ valid';
+      statusEl.className = 'slug-status valid';
+    }
+
+    // Clear existing steps
+    const container = document.getElementById('stepsContainer');
+    container.innerHTML = '';
+
+    if (!config.steps || !config.steps.length) return;
+
+    // Build each step
+    config.steps.forEach((step, i) => {
+      if (i > 0) {
+        const conn = document.createElement('div');
+        conn.className = 'step-connector';
+        container.appendChild(conn);
+      }
+
+      const card = document.createElement('div');
+      card.className = 'step-card';
+      card.dataset.type = step.type;
+      const num = i + 1;
+
+      if (step.type === 'registration') {
+        card.innerHTML = buildRegistrationCard(num, step);
+      } else if (step.type === 'modal') {
+        card.setAttribute('draggable', 'true');
+        card.innerHTML = buildModalCard(num, step);
+      } else if (step.type === 'analysis') {
+        card.setAttribute('draggable', 'true');
+        card.innerHTML = buildAnalysisCard(num, step);
+      }
+
+      container.appendChild(card);
+    });
+
+    // Open first step
+    container.querySelector('.step-card')?.classList.add('active');
+    updatePreview();
+    renumberSteps();
+
+    // Load admin key
+    if (config.adminKey) {
+      const adminInput = document.getElementById('adminKeyInput');
+      if (adminInput) adminInput.value = config.adminKey;
+    }
+
+    // Load app settings
+    if (config.appSettings) {
+      loadAppSettingsIntoBuilder(config.appSettings);
+    }
+  }
+
+  function buildStepActions(type) {
+    // Modal steps get inline preview + page preview; analysis gets page preview only
+    const previewBtns = type === 'modal'
+      ? `<button class="step-action-btn preview-btn" title="Toggle inline preview" onclick="event.stopPropagation(); toggleInlinePreview(this)">👁</button>
+         <button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>`
+      : type === 'analysis'
+      ? `<button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>`
+      : '';
+    return `<div class="step-actions">
+      ${previewBtns}
+      <button class="step-action-btn" title="Move up" onclick="moveStep(this, 'up')">↑</button>
+      <button class="step-action-btn" title="Move down" onclick="moveStep(this, 'down')">↓</button>
+      <button class="step-action-btn delete" title="Delete" onclick="event.stopPropagation(); deleteStep(this)">✕</button>
+    </div>`;
+  }
+
+  function buildRegistrationCard(num, step) {
+    const isAuto = (step.idMethod || 'auto_generate').includes('auto');
+    return `
+      <div class="step-header" onclick="toggleStep(this)">
+        <span class="chevron">▶</span>
+        <div class="step-number registration">${num}</div>
+        <div class="step-title">Participant Registration</div>
+        <span class="step-type-badge badge-registration">Registration</span>
+      </div>
+      <div class="step-detail">
+        <div class="field-group">
+          <div class="field-label">Participant ID Method</div>
+          <div class="pill-group">
+            <button class="pill ${isAuto ? 'active' : ''}" onclick="selectPill(this)">Auto-generate</button>
+            <button class="pill ${!isAuto ? 'active' : ''}" onclick="selectPill(this)">Manual Entry</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <div class="field-label">ID Prefix</div>
+          <input class="field-input reg-id-prefix" value="${step.idPrefix || ''}" placeholder="e.g. P, EMIC_" />
+        </div>
+        <div class="field-group">
+          <div class="field-label">ID Placeholder Text</div>
+          <input class="field-input reg-id-placeholder" value="${escapeAttr(step.idPlaceholder || '')}" placeholder="e.g. Enter a user name" />
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Collect email (optional)</span>
+          <div class="toggle ${step.collectEmail ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Show consent form</span>
+          <div class="toggle ${step.showConsent ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+        </div>
+      </div>`;
+  }
+
+  function buildModalCard(num, step) {
+    const isInfo = (step.contentType || 'informational') === 'informational';
+    const isQuestions = !isInfo;
+    let contentHtml = '';
+
+    if (isInfo) {
+      const bodyHtml = step.bodyHtml || step.bodyText || '';
+      contentHtml = `
+        <div class="field-group">
+          <div class="field-label">Window Title</div>
+          <input class="field-input" value="${escapeAttr(step.title || '')}" />
+        </div>
+        <div class="field-group">
+          <div class="field-label">Body HTML</div>
+          <textarea class="field-input body-html-input" style="min-height:100px;font-family:'SF Mono','Fira Code',monospace;font-size:12px;">${escapeHtml(bodyHtml)}</textarea>
+          <div class="info-text">Supports HTML tags: &lt;p&gt;, &lt;b&gt;, &lt;a href&gt;, &lt;hr&gt;, etc.</div>
+        </div>`;
+      contentHtml += `
+        <div class="field-group">
+          <div class="field-label">Button Label</div>
+          <input class="field-input dismiss-label-input" value="${escapeAttr(step.dismissLabel || 'OK')}" />
+        </div>`;
+    } else {
+      // Questions
+      contentHtml = `
+        <div class="field-group">
+          <div class="field-label">Window Title</div>
+          <input class="field-input" value="${escapeAttr(step.title || '')}" />
+        </div>
+        <div class="questions-list">`;
+      (step.questions || []).forEach((q, qi) => {
+        const qType = q.type === 'radio' ? 'Radio' : q.type === 'freetext' ? 'Free text' : q.type;
+        const optionsAttr = q.options ? ` data-options="${escapeAttr(JSON.stringify(q.options))}"` : '';
+        const nameAttr = q.inputName ? ` data-input-name="${escapeAttr(q.inputName)}"` : '';
+        const idAttr = q.id ? ` data-question-id="${escapeAttr(q.id)}"` : '';
+        const subtitleAttr = q.subtitle ? ` data-subtitle="${escapeAttr(q.subtitle)}"` : '';
+        const placeholderAttr = q.placeholder ? ` data-placeholder="${escapeAttr(q.placeholder)}"` : '';
+        const requiredAttr = q.required !== undefined ? ` data-required="${q.required}"` : '';
+        contentHtml += `
+          <div class="question-item"${idAttr}${nameAttr}${optionsAttr}${subtitleAttr}${placeholderAttr}${requiredAttr}>
+            <span class="q-number">Q${qi + 1}</span>
+            <span class="q-text">${escapeHtml(q.text)}</span>
+            <span class="q-type">${qType}</span>
+          </div>`;
+      });
+      contentHtml += `</div><button class="add-question-btn">+ Add question</button>`;
+      // Add dismiss label for questions modals too
+      contentHtml += `
+        <div class="field-group">
+          <div class="field-label">Submit Button Label</div>
+          <input class="field-input dismiss-label-input" value="${escapeAttr(step.dismissLabel || 'Submit')}" />
+        </div>`;
+    }
+
+    return `
+      <div class="step-header" onclick="toggleStep(this)">
+        <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
+        <div class="step-number modal">${num}</div>
+        <div class="step-title">${escapeHtml(step.title || 'Modal Step')}</div>
+        <span class="step-type-badge badge-modal">Modal</span>
+        ${buildStepActions('modal')}
+      </div>
+      <div class="step-detail">
+        <div class="field-group">
+          <div class="field-label">Content Type</div>
+          <div class="pill-group">
+            <button class="pill ${isInfo ? 'active' : ''}" onclick="selectPill(this)">Informational</button>
+            <button class="pill ${isQuestions ? 'active' : ''}" onclick="selectPill(this)">Questions</button>
+          </div>
+        </div>
+        ${contentHtml}
+        <div class="toggle-row">
+          <span class="toggle-label">Skippable</span>
+          <div class="toggle ${step.skippable ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+        </div>
+      </div>`;
+  }
+
+  function buildDataPreloadOptions(currentValue) {
+    const val = currentValue || 'onEnter';
+    let opts = `<option value="pageLoad" ${val==='pageLoad'?'selected':''}>On page load</option>`;
+    opts += `<option value="onEnter" ${val==='onEnter'?'selected':''}>On step enter (default)</option>`;
+    // Add previous steps dynamically from DOM
+    const allCards = document.querySelectorAll('#stepsContainer .step-card');
+    allCards.forEach((card, i) => {
+      const title = card.querySelector('.step-title')?.textContent || `Step ${i+1}`;
+      const stepVal = `step:${i}`;
+      opts += `<option value="${stepVal}" ${val===stepVal?'selected':''}>${title}</option>`;
+    });
+    return opts;
+  }
+
+  function buildAnalysisCard(num, step) {
+    const confirm = step.confirmCompletion || {};
+    const spacecraft = step.spacecraft || 'GOES-18';
+    const ds = step.dataset || 'Magnetometer (MAG)';
+    const speed = step.playbackSpeed || '1x';
+    const src = (step.dataSource || '').includes('cdaweb') ? 'cdaweb' : 'r2';
+
+    return `
+      <div class="step-header" onclick="toggleStep(this)">
+        <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
+        <div class="step-number analysis">${num}</div>
+        <div class="step-title">${escapeHtml(step.title || 'Analysis')}</div>
+        <span class="step-type-badge badge-analysis">Analysis</span>
+        ${buildStepActions('analysis')}
+      </div>
+      <div class="step-detail">
+        <div class="field-group">
+          <div class="field-label">Step Title</div>
+          <input class="field-input analysis-title-input" value="${escapeAttr(step.title || 'Analysis')}" />
+        </div>
+        <div class="analysis-grid">
+          <div class="field-group">
+            <div class="field-label">Spacecraft</div>
+            <select class="field-input">
+              ${['GOES-16','GOES-17','GOES-18','MMS','THEMIS','Van Allen Probes'].map(s => `<option ${s===spacecraft?'selected':''}>${s}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field-group">
+            <div class="field-label">Dataset</div>
+            <select class="field-input">
+              ${['Magnetometer (MAG)','Particle (SEISS)','Magnetic Field (FGM)'].map(d => `<option ${d===ds?'selected':''}>${d}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field-group">
+            <div class="field-label">Start Date</div>
+            <input class="field-input" type="date" value="${step.startDate || ''}" />
+          </div>
+          <div class="field-group">
+            <div class="field-label">End Date</div>
+            <input class="field-input" type="date" value="${step.endDate || ''}" />
+          </div>
+          <div class="field-group">
+            <div class="field-label">Data Source</div>
+            <div class="pill-group">
+              <button class="pill ${src==='cdaweb'?'active':''}" onclick="selectPill(this)">CDAWeb</button>
+              <button class="pill ${src==='r2'?'active':''}" onclick="selectPill(this)">Cloudflare R2</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <div class="field-label">Playback Speed</div>
+            <select class="field-input">
+              ${['0.5x','1x','1.25x','2x'].map(s => `<option ${s===speed?'selected':''}>${s}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field-group">
+            <div class="field-label">Load data</div>
+            <select class="field-input data-preload-select">
+              ${buildDataPreloadOptions(step.dataPreload)}
+            </select>
+          </div>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Allow feature drawing</span>
+          <div class="toggle ${step.allowFeatureDrawing ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Show spectrogram</span>
+          <div class="toggle ${step.showSpectrogram ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Allow stretch/speed changes</span>
+          <div class="toggle ${step.allowStretch ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Require minimum features</span>
+          <div class="toggle ${step.requireMinFeatures ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Confirm analysis completion</span>
+          <div class="toggle ${confirm.enabled ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+        </div>
+        ${confirm.enabled ? `<div style="margin-left:20px;">
+          <div class="field-group">
+            <div class="field-label">Confirmation Dialog Title</div>
+            <input class="field-input confirm-title-input" value="${escapeAttr(confirm.title || 'Complete?')}" />
+          </div>
+          <div class="field-group">
+            <div class="field-label">Confirmation Message</div>
+            <input class="field-input confirm-message-input" value="${escapeAttr(confirm.message || '')}" />
+          </div>
+          <div class="field-row">
+            <div class="field-group">
+              <div class="field-label">Confirm Button</div>
+              <input class="field-input confirm-label-input" value="${escapeAttr(confirm.confirmLabel || "Yes, I'm done")}" />
+            </div>
+            <div class="field-group">
+              <div class="field-label">Cancel Button</div>
+              <input class="field-input cancel-label-input" value="${escapeAttr(confirm.cancelLabel || 'Go back')}" />
+            </div>
+          </div>
+        </div>` : ''}
+        ${buildPromptsSection(step.prompts)}
+      </div>`;
+  }
+
+  function buildPromptsSection(prompts) {
+    const items = (prompts || []).map((p, i) => buildPromptEntry(p, i)).join('');
+    return `
+      <div class="prompts-section" style="margin-top: 16px;">
+        <div class="prompts-header" onclick="this.parentElement.classList.toggle('open')" style="cursor:pointer; display:flex; align-items:center; gap:8px; padding:8px 0; border-top:1px solid #333; user-select:none;">
+          <span style="transition:transform 0.2s; display:inline-block;" class="prompts-chevron">▶</span>
+          <span style="font-weight:600; color:#ccc;">💬 Text Prompts</span>
+          <span style="color:#666; font-size:12px;" class="prompts-count">(${(prompts||[]).length})</span>
+        </div>
+        <div class="prompts-body" style="display:none; padding-left:4px;">
+          <div class="prompts-list">${items}</div>
+          <button type="button" class="add-prompt-btn" onclick="addPromptEntry(this)" style="margin-top:8px; background:#2a2a2a; color:#7eb8ff; border:1px dashed #444; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:13px; width:100%;">+ Add prompt</button>
+        </div>
+      </div>`;
+  }
+
+  function buildPromptEntry(p, i) {
+    p = p || { trigger: 'onLoad', delay: 0, text: '', effect: 'typed', speed: 'medium' };
+    const triggers = ['onLoad', 'onPlay', 'onFeatureDraw', 'afterPrevious'];
+    const triggerLabels = { onLoad: 'On load', onPlay: 'On play', onFeatureDraw: 'On feature draw', afterPrevious: 'After previous prompt' };
+    const showDelay = p.trigger === 'afterPrevious' ? '' : 'display:none;';
+    const showSpeed = p.effect === 'typed' ? '' : 'display:none;';
+    return `
+      <div class="prompt-entry" style="background:#1e1e1e; border:1px solid #333; border-radius:8px; padding:10px; margin-bottom:8px; position:relative;">
+        <button type="button" onclick="this.parentElement.remove(); updatePromptCount(this);" style="position:absolute; top:6px; right:8px; background:none; border:none; color:#666; cursor:pointer; font-size:16px; line-height:1;" title="Delete prompt">✕</button>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+          <div class="field-group" style="margin:0;">
+            <div class="field-label" style="font-size:11px;">Trigger</div>
+            <select class="field-input prompt-trigger" onchange="onPromptTriggerChange(this)">
+              ${triggers.map(t => `<option value="${t}" ${t===p.trigger?'selected':''}>${triggerLabels[t]}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field-group prompt-delay-group" style="margin:0; ${showDelay}">
+            <div class="field-label" style="font-size:11px;">Delay (seconds)</div>
+            <input class="field-input prompt-delay" type="number" min="0" value="${p.delay || 0}" style="width:80px;" />
+          </div>
+        </div>
+        <div class="field-group" style="margin:0 0 8px 0;">
+          <div class="field-label" style="font-size:11px;">Text</div>
+          <input class="field-input prompt-text" type="text" value="${escapeAttr(p.text || '')}" placeholder="Enter prompt text..." />
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div class="field-group" style="margin:0;">
+            <div class="field-label" style="font-size:11px;">Effect</div>
+            <select class="field-input prompt-effect" onchange="onPromptEffectChange(this)">
+              <option value="instant" ${p.effect==='instant'?'selected':''}>Instant</option>
+              <option value="typed" ${p.effect==='typed'?'selected':''}>Typed</option>
+            </select>
+          </div>
+          <div class="field-group prompt-speed-group" style="margin:0; ${showSpeed}">
+            <div class="field-label" style="font-size:11px;">Speed</div>
+            <select class="field-input prompt-speed">
+              <option value="slow" ${p.speed==='slow'?'selected':''}>Slow</option>
+              <option value="medium" ${p.speed==='medium'?'selected':''}>Medium</option>
+              <option value="fast" ${p.speed==='fast'?'selected':''}>Fast</option>
+            </select>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function addPromptEntry(btn) {
+    const list = btn.parentElement.querySelector('.prompts-list');
+    const div = document.createElement('div');
+    div.innerHTML = buildPromptEntry({}, list.children.length);
+    list.appendChild(div.firstElementChild);
+    updatePromptCount(btn);
+  }
+
+  function onPromptTriggerChange(sel) {
+    const entry = sel.closest('.prompt-entry');
+    const delayGroup = entry.querySelector('.prompt-delay-group');
+    delayGroup.style.display = sel.value === 'afterPrevious' ? '' : 'none';
+  }
+
+  function onPromptEffectChange(sel) {
+    const entry = sel.closest('.prompt-entry');
+    const speedGroup = entry.querySelector('.prompt-speed-group');
+    speedGroup.style.display = sel.value === 'typed' ? '' : 'none';
+  }
+
+  function updatePromptCount(el) {
+    const section = el.closest('.prompts-section');
+    if (!section) return;
+    const count = section.querySelectorAll('.prompt-entry').length;
+    const countEl = section.querySelector('.prompts-count');
+    if (countEl) countEl.textContent = `(${count})`;
+  }
+
+  function escapeAttr(s) { return (s||'').replace(/"/g, '&quot;'); }
+  function escapeHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // ── D1 API Framework ──────────────────────────────────────────
+  const API_BASE = window.location.hostname === 'spaceweather.now.audio'
+    ? window.location.origin
+    : 'https://spaceweather.now.audio';
+
+  // Collect the full study config from the builder UI
+  // Preserve metadata fields that the builder doesn't edit (author, contactEmail, etc.)
+  let _loadedMeta = {};
+
+  function collectStudyConfig() {
+    const steps = [];
+    document.querySelectorAll('.step-card').forEach((card, i) => {
+      const type = card.dataset.type;
+      const step = { type };
+
+      if (type === 'registration') {
+        const pills = card.querySelectorAll('.pill-group .pill.active');
+        step.idMethod = pills[0]?.textContent.trim().toLowerCase().includes('auto') ? 'auto_generate' : 'manual';
+        step.idPrefix = card.querySelector('.reg-id-prefix')?.value || '';
+        step.idPlaceholder = card.querySelector('.reg-id-placeholder')?.value || '';
+        const toggles = card.querySelectorAll('.toggle');
+        step.collectEmail = toggles[0]?.classList.contains('on') || false;
+        step.showConsent = toggles[1]?.classList.contains('on') || false;
+      }
+      else if (type === 'modal') {
+        const pills = card.querySelectorAll('.pill-group .pill.active');
+        step.contentType = pills[0]?.textContent.trim().toLowerCase() || 'informational';
+
+        // Get all text/textarea inputs (skip date inputs)
+        const allInputs = Array.from(card.querySelectorAll('.step-detail .field-input'))
+          .filter(el => el.type !== 'date');
+
+        step.title = allInputs[0]?.value || '';
+
+        if (step.contentType === 'informational') {
+          // Read raw HTML from textarea
+          const bodyInput = card.querySelector('.body-html-input');
+          step.bodyHtml = bodyInput ? bodyInput.value : '';
+          // Dismiss label
+          const dismissInput = card.querySelector('.dismiss-label-input');
+          step.dismissLabel = dismissInput?.value || 'OK';
+        } else {
+          // Questions — preserve full question data including options
+          const dismissInput = card.querySelector('.dismiss-label-input');
+          if (dismissInput) step.dismissLabel = dismissInput.value || 'Submit';
+          step.questions = [];
+          card.querySelectorAll('.question-item').forEach((q, qi) => {
+            const qData = {
+              id: q.dataset.questionId || `q${qi + 1}`,
+              text: q.querySelector('.q-text')?.textContent || '',
+              type: (q.querySelector('.q-type')?.textContent.trim().toLowerCase() || 'freetext').replace('free text', 'freetext'),
+            };
+            // Preserve radio options if stored in data attribute
+            const optionsData = q.dataset.options;
+            if (optionsData) {
+              try { qData.options = JSON.parse(optionsData); } catch(e) {}
+            }
+            // Preserve inputName, subtitle, placeholder, required
+            if (q.dataset.inputName) qData.inputName = q.dataset.inputName;
+            if (q.dataset.subtitle) qData.subtitle = q.dataset.subtitle;
+            if (q.dataset.placeholder) qData.placeholder = q.dataset.placeholder;
+            if (q.dataset.required !== undefined) qData.required = q.dataset.required === 'true';
+            step.questions.push(qData);
+          });
+        }
+
+        // Skippable — last toggle in the card
+        const toggles = card.querySelectorAll('.toggle');
+        const lastToggle = toggles[toggles.length - 1];
+        step.skippable = lastToggle?.classList.contains('on') || false;
+      }
+      else if (type === 'analysis') {
+        step.title = card.querySelector('.analysis-title-input')?.value || card.querySelector('.step-title')?.textContent || 'Analysis';
+        const selects = card.querySelectorAll('select.field-input');
+        step.spacecraft = selects[0]?.value || 'GOES-18';
+        step.dataset = selects[1]?.value || 'Magnetometer (MAG)';
+        step.playbackSpeed = selects[2]?.value || '1x';
+        const dates = card.querySelectorAll('input[type="date"]');
+        step.startDate = dates[0]?.value || '';
+        step.endDate = dates[1]?.value || '';
+        const dataSrcPills = card.querySelectorAll('.pill-group .pill.active');
+        const srcText = dataSrcPills[0]?.textContent.trim().toLowerCase() || '';
+        step.dataSource = srcText.includes('cdaweb') ? 'cdaweb' : 'cloudflare_r2';
+        const preloadSelect = card.querySelector('.data-preload-select');
+        if (preloadSelect && preloadSelect.value && preloadSelect.value !== 'onEnter') {
+          step.dataPreload = preloadSelect.value;
+        }
+        const toggles = card.querySelectorAll('.toggle-row .toggle');
+        step.allowFeatureDrawing = toggles[0]?.classList.contains('on') || false;
+        step.showSpectrogram = toggles[1]?.classList.contains('on') || false;
+        step.allowStretch = toggles[2]?.classList.contains('on') || false;
+        step.requireMinFeatures = toggles[3]?.classList.contains('on') || false;
+        // Collect prompts
+        const promptEntries = card.querySelectorAll('.prompt-entry');
+        if (promptEntries.length > 0) {
+          step.prompts = [];
+          promptEntries.forEach(entry => {
+            const trigger = entry.querySelector('.prompt-trigger')?.value || 'onLoad';
+            const delay = parseInt(entry.querySelector('.prompt-delay')?.value || '0', 10);
+            const text = entry.querySelector('.prompt-text')?.value || '';
+            const effect = entry.querySelector('.prompt-effect')?.value || 'typed';
+            const speed = entry.querySelector('.prompt-speed')?.value || 'medium';
+            if (text.trim()) {
+              step.prompts.push({ trigger, delay, text, effect, speed });
+            }
+          });
+        }
+        // confirmCompletion is the 5th toggle (index 4)
+        const confirmEnabled = toggles[4]?.classList.contains('on') || false;
+        if (confirmEnabled) {
+          step.confirmCompletion = {
+            enabled: true,
+            title: card.querySelector('.confirm-title-input')?.value || 'Complete?',
+            message: card.querySelector('.confirm-message-input')?.value || "Are you sure you're ready to finish?",
+            confirmLabel: card.querySelector('.confirm-label-input')?.value || "Yes, I'm done",
+            cancelLabel: card.querySelector('.cancel-label-input')?.value || "Go back"
+          };
+        } else {
+          step.confirmCompletion = { enabled: false };
+        }
+      }
+      steps.push(step);
+    });
+
+    // Collect admin key
+    const adminKey = document.getElementById('adminKeyInput')?.value?.trim() || '';
+
+    // Collect app settings from builder
+    const appSettings = collectAppSettingsFromBuilder();
+
+    return {
+      ..._loadedMeta, // Preserve author, contactEmail, version, etc.
+      name: document.getElementById('studyNameInput').value,
+      slug: document.getElementById('slugValue').textContent.trim(),
+      adminKey,
+      appSettings,
+      steps,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  // Save draft to D1
+  async function saveDraft() {
+    const config = collectStudyConfig();
+    const indicator = document.getElementById('saveIndicator');
+    indicator.textContent = 'Saving...';
+    indicator.style.color = 'var(--orange)';
+
+    try {
+      const resp = await fetch(`${API_BASE}/api/study/${config.slug}/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: config.name, config: JSON.stringify(config) }),
+      });
+      if (resp.ok) {
+        indicator.textContent = '✓ Saved';
+        indicator.style.color = 'var(--green)';
+        console.log('📡 Study config saved to D1:', config.slug);
+      } else {
+        const err = await resp.json();
+        indicator.textContent = '✕ Failed';
+        indicator.style.color = 'var(--red)';
+        console.error('❌ Save failed:', err);
+      }
+    } catch (e) {
+      indicator.textContent = '✕ Offline';
+      indicator.style.color = 'var(--red)';
+      console.error('❌ Save error:', e);
+    }
+    setTimeout(() => { indicator.textContent = ''; }, 3000);
+  }
+
+  // Load study from D1
+  async function loadStudy(slug) {
+    try {
+      const resp = await fetch(`${API_BASE}/api/study/${slug}/config`);
+      if (resp.ok) {
+        const data = await resp.json();
+        console.log('📡 Study loaded from D1:', data);
+        // TODO: populate the builder UI from data.config
+        return data;
+      }
+    } catch (e) {
+      console.error('❌ Load error:', e);
+    }
+    return null;
+  }
+
+  // Publish = save + mark as published
+  async function publishStudy() {
+    const config = collectStudyConfig();
+    const slug = config.slug;
+
+    // Validate slug
+    if (!slug || slug.length < 3 || !/^[a-z0-9-]+$/.test(slug)) {
+      alert('Invalid study URL slug. Use lowercase letters, numbers, and hyphens (min 3 chars).');
+      return;
+    }
+
+    await saveDraft();
+    const studyUrl = `${window.location.origin}/study/${slug}`;
+    // Show confirmation
+    const msg = `Study published!\\n\\nParticipant URL:\\n${studyUrl}\\n\\nStudy builder will be at:\\n${window.location.origin}/study-builder.html?study=${slug}`;
+    alert(msg);
+    console.log('🚀 Published:', studyUrl);
+  }
+
+  // Preview — open the participant view in a new tab
+  function previewStudy() {
+    const slug = document.getElementById('slugValue').textContent.trim();
+    const url = `${window.location.origin}/study/${slug}?preview=true`;
+    window.open(url, '_blank');
+  }
+
+  // ── Slug Generation ──────────────────────────────────────────
+  function nameToSlug(name) {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 60);
+  }
+
+  function updateSlug() {
+    const name = document.getElementById('studyNameInput').value;
+    const slug = nameToSlug(name);
+    const slugEl = document.getElementById('slugValue');
+    const statusEl = document.getElementById('slugStatus');
+    slugEl.textContent = slug;
+
+    // Validate
+    if (slug.length < 3) {
+      statusEl.textContent = '✕ too short';
+      statusEl.className = 'slug-status invalid';
+    } else if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(slug)) {
+      statusEl.textContent = '✕ invalid';
+      statusEl.className = 'slug-status invalid';
+    } else {
+      statusEl.textContent = '✓ valid';
+      statusEl.className = 'slug-status valid';
+      // Could check availability against D1 here
+    }
+  }
+
+  // Allow manual slug editing
+  document.getElementById('slugValue')?.addEventListener('input', () => {
+    const el = document.getElementById('slugValue');
+    const statusEl = document.getElementById('slugStatus');
+    const slug = el.textContent.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+    if (slug.length >= 3 && /^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(slug)) {
+      statusEl.textContent = '✓ valid';
+      statusEl.className = 'slug-status valid';
+    } else {
+      statusEl.textContent = '✕ invalid';
+      statusEl.className = 'slug-status invalid';
+    }
+  });
+
+  // Load from URL param if present
+  const urlParams = new URLSearchParams(window.location.search);
+  const loadSlug = urlParams.get('study');
+  if (loadSlug) {
+    loadStudy(loadSlug).then(data => {
+      if (data) console.log('Loaded study:', loadSlug);
+    });
+  }
+
+  // Keyboard shortcut: Cmd+S / Ctrl+S to save
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+      e.preventDefault();
+      saveDraft();
+    }
+  });
+
+  // ── Drag and Drop ──────────────────────────────────────────────
+  let draggedCard = null;
+
+  function initDragAndDrop() {
+    const container = document.getElementById('stepsContainer');
+
+    container.addEventListener('dragstart', (e) => {
+      const card = e.target.closest('.step-card');
+      if (!card || card.dataset.type === 'registration') { e.preventDefault(); return; }
+      draggedCard = card;
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      // Collapse during drag for cleaner UX
+      card.classList.remove('active');
+    });
+
+    container.addEventListener('dragend', (e) => {
+      if (draggedCard) {
+        draggedCard.classList.remove('dragging');
+        draggedCard = null;
+      }
+      document.querySelectorAll('.step-card.drag-over').forEach(c => c.classList.remove('drag-over'));
+    });
+
+    container.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const card = e.target.closest('.step-card');
+      if (!card || card === draggedCard || card.dataset.type === 'registration') return;
+      document.querySelectorAll('.step-card.drag-over').forEach(c => c.classList.remove('drag-over'));
+      card.classList.add('drag-over');
+    });
+
+    container.addEventListener('dragleave', (e) => {
+      const card = e.target.closest('.step-card');
+      if (card) card.classList.remove('drag-over');
+    });
+
+    container.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const targetCard = e.target.closest('.step-card');
+      if (!targetCard || !draggedCard || targetCard === draggedCard || targetCard.dataset.type === 'registration') return;
+      targetCard.classList.remove('drag-over');
+
+      // Remove dragged card and its preceding connector
+      const dragPrev = draggedCard.previousElementSibling;
+      if (dragPrev && dragPrev.classList.contains('step-connector')) dragPrev.remove();
+      draggedCard.remove();
+
+      // Insert before or after target
+      const rect = targetCard.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      const connector = document.createElement('div');
+      connector.className = 'step-connector';
+
+      if (e.clientY < midY) {
+        // Insert before target
+        targetCard.parentNode.insertBefore(draggedCard, targetCard);
+        targetCard.parentNode.insertBefore(connector, targetCard);
+      } else {
+        // Insert after target
+        const next = targetCard.nextElementSibling;
+        targetCard.parentNode.insertBefore(connector, next);
+        targetCard.parentNode.insertBefore(draggedCard, connector.nextElementSibling);
+      }
+
+      renumberSteps();
+      updatePreview();
+    });
+  }
+
+  // ── Arrow reorder ──────────────────────────────────────────────
+  function moveStep(btn, direction) {
+    event.stopPropagation();
+    const card = btn.closest('.step-card');
+    const cards = Array.from(document.querySelectorAll('.step-card'));
+    const idx = cards.indexOf(card);
+
+    if (direction === 'up' && idx <= 1) return; // Can't move above registration
+    if (direction === 'down' && idx >= cards.length - 1) return;
+
+    const prevConn = card.previousElementSibling;
+    if (prevConn && prevConn.classList.contains('step-connector')) prevConn.remove();
+    card.remove();
+
+    const connector = document.createElement('div');
+    connector.className = 'step-connector';
+    const container = document.getElementById('stepsContainer');
+    const updatedCards = Array.from(container.querySelectorAll('.step-card'));
+    const targetIdx = direction === 'up' ? idx - 2 : idx;
+    const target = updatedCards[targetIdx];
+
+    if (target) {
+      const next = target.nextElementSibling;
+      container.insertBefore(connector, next);
+      container.insertBefore(card, connector.nextElementSibling);
+    } else {
+      container.appendChild(connector);
+      container.appendChild(card);
+    }
+
+    renumberSteps();
+    updatePreview();
+  }
+
+  initDragAndDrop();
+
+  // Toggle step expansion
+  function toggleStep(header) {
+    const card = header.closest('.step-card');
+    const wasActive = card.classList.contains('active');
+    // Close all
+    document.querySelectorAll('.step-card').forEach(c => c.classList.remove('active'));
+    // Toggle clicked
+    if (!wasActive) card.classList.add('active');
+  }
+
+  // Pill selection
+  function selectPill(pill) {
+    const group = pill.closest('.pill-group');
+    group.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+  }
+
+  // Toggle add-step dropdown
+  function toggleDropdown(btn) {
+    const dropdown = document.getElementById('addStepDropdown');
+    dropdown.classList.toggle('show');
+    // Close on outside click
+    setTimeout(() => {
+      document.addEventListener('click', function close(e) {
+        if (!dropdown.contains(e.target) && e.target !== btn) {
+          dropdown.classList.remove('show');
+          document.removeEventListener('click', close);
+        }
+      });
+    }, 0);
+  }
+
+  // Add a new step
+  let stepCounter = 7;
+  function addStep(type) {
+    const container = document.getElementById('stepsContainer');
+    const num = container.querySelectorAll('.step-card').length + 1;
+
+    const connector = document.createElement('div');
+    connector.className = 'step-connector';
+
+    const card = document.createElement('div');
+    card.className = 'step-card active';
+    card.dataset.type = type;
+    card.setAttribute('draggable', 'true');
+
+    // Use the same builder functions as JSON loading for consistency
+    const defaultStep = type === 'modal'
+      ? { type: 'modal', contentType: 'informational', title: 'New Modal Step', bodyHtml: '', dismissLabel: 'OK', skippable: false }
+      : { type: 'analysis', title: 'New Analysis Step', spacecraft: 'GOES-18', dataset: 'Magnetometer (MAG)', startDate: '', endDate: '', dataSource: 'cloudflare_r2', playbackSpeed: '1x', allowFeatureDrawing: true, showSpectrogram: true, allowStretch: true, confirmCompletion: { enabled: false } };
+
+    card.innerHTML = type === 'modal'
+      ? buildModalCard(num, defaultStep)
+      : buildAnalysisCard(num, defaultStep);
+
+    // Close others
+    document.querySelectorAll('.step-card').forEach(c => c.classList.remove('active'));
+
+    container.appendChild(connector);
+    container.appendChild(card);
+
+    document.getElementById('addStepDropdown').classList.remove('show');
+    updatePreview();
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  // Delete step
+  function deleteStep(btn) {
+    const card = btn.closest('.step-card');
+    const prev = card.previousElementSibling;
+    if (prev && prev.classList.contains('step-connector')) prev.remove();
+    card.remove();
+    renumberSteps();
+    updatePreview();
+  }
+
+  // Renumber steps
+  function renumberSteps() {
+    document.querySelectorAll('.step-card').forEach((card, i) => {
+      card.querySelector('.step-number').textContent = i + 1;
+    });
+  }
+
+  // Update preview dots
+  function updatePreview() {
+    const dots = document.getElementById('previewDots');
+    const cards = document.querySelectorAll('.step-card');
+    dots.innerHTML = '';
+    cards.forEach((card, i) => {
+      if (i > 0) {
+        const line = document.createElement('div');
+        line.className = 'preview-line';
+        dots.appendChild(line);
+      }
+      const dot = document.createElement('div');
+      dot.className = `preview-dot ${card.dataset.type} filled`;
+      dots.appendChild(dot);
+    });
+    document.getElementById('stepCount').textContent = `${cards.length} steps`;
+  }
+
+  // Initial preview
+  updatePreview();
+
+  // ── Admin Key ──────────────────────────────────────────────
+  function generateAdminKey() {
+    const chars = 'abcdefghijklmnopqrstuvwxyz';
+    let key = '';
+    for (let i = 0; i < 5; i++) key += chars[Math.floor(Math.random() * chars.length)];
+    document.getElementById('adminKeyInput').value = key;
+  }
+
+  // ── App Settings Collect / Load ────────────────────────────
+  // Builder element ID → appSettings path mapping
+  const APP_SETTINGS_BUILDER_MAP = {
+    'as_idMode': 'session.idMode',
+    'as_showIdCorner': 'session.showIdCorner',
+    'as_skipLoginWelcome': 'session.skipLoginWelcome',
+    'as_source': 'dataLoading.source',
+    'as_bypassCache': 'dataLoading.bypassCache',
+    'as_silentDownload': 'dataLoading.silentDownload',
+    'as_autoDownload': 'dataLoading.autoDownload',
+    'as_autoPlay': 'dataLoading.autoPlay',
+    'as_rendering': 'dataLoading.rendering',
+    'as_visible': 'featureBoxes.visible',
+    'as_annotationAlignment': 'featureBoxes.annotationAlignment',
+    'as_annotationWidth': 'featureBoxes.annotationWidth',
+    'as_annotationFontSize': 'featureBoxes.annotationFontSize',
+    'as_displayOnLoad': 'display.displayOnLoad',
+    'as_initialHours': 'display.initialHours',
+    'as_minUIWidth': 'display.minUIWidth',
+    'as_heightMinimap': 'display.heightMinimap',
+    'as_heightSpectrogram': 'display.heightSpectrogram',
+    'as_quality': 'audio.quality',
+    'as_tileCompression': 'rendering.tileCompression',
+    'as_tileEdgeMode': 'rendering.tileEdgeMode',
+    'as_tileChunkSize': 'rendering.tileChunkSize',
+    'as_zoomOutMode': 'rendering.zoomOutMode',
+    'as_levelTransition': 'rendering.levelTransition',
+    'as_crossfadePower': 'rendering.crossfadePower',
+    'as_renderOrder': 'rendering.renderOrder',
+    'as_waveformPanMode': 'rendering.waveformPanMode',
+    'as_catmullMode': 'waveformZoom.catmullMode',
+    'as_catmullThreshold': 'waveformZoom.catmullThreshold',
+    'as_catmullCore': 'waveformZoom.catmullCore',
+    'as_catmullFeather': 'waveformZoom.catmullFeather',
+    'as_arrowZoomStep': 'navigation.arrowZoomStep',
+    'as_arrowPanStep': 'navigation.arrowPanStep',
+    'as_zoomFadeMode': 'xAxisTicks.zoomFadeMode',
+    'as_fadeInCurve': 'xAxisTicks.fadeInCurve',
+    'as_fadeInTime': 'xAxisTicks.fadeInTime',
+    'as_fadeOutCurve': 'xAxisTicks.fadeOutCurve',
+    'as_fadeOutTime': 'xAxisTicks.fadeOutTime',
+    'as_edgeFadeMode': 'xAxisTicks.edgeFadeMode',
+    'as_edgeFadeCurve': 'xAxisTicks.edgeFadeCurve',
+    'as_edgeSpatialWidth': 'xAxisTicks.edgeSpatialWidth',
+    'as_zoomSpatialCurve': 'xAxisTicks.zoomSpatialCurve',
+    'as_zoomSpatialWidth': 'xAxisTicks.zoomSpatialWidth',
+    'as_edgeTimeIn': 'xAxisTicks.edgeTimeIn',
+    'as_edgeTimeOut': 'xAxisTicks.edgeTimeOut',
+    'as_featurePlaybackMode': 'featurePlayback.mode',
+    'as_lockPageScroll': 'pageScroll.lock',
+    'as_navView': 'navBar.view',
+    'as_navViewingMode': 'navBar.viewingMode',
+    'as_navClick': 'navBar.click',
+    'as_navMarkers': 'navBar.markers',
+    'as_navFeatureBoxes': 'navBar.featureBoxes',
+    'as_navVScroll': 'navBar.vScroll',
+    'as_navVSens': 'navBar.vSens',
+    'as_navHScroll': 'navBar.hScroll',
+    'as_navHSens': 'navBar.hSens',
+    'as_mainView': 'mainWindow.view',
+    'as_mainMode': 'mainWindow.mode',
+    'as_mainClick': 'mainWindow.click',
+    'as_mainRelease': 'mainWindow.release',
+    'as_mainDrag': 'mainWindow.drag',
+    'as_mainMarkers': 'mainWindow.markers',
+    'as_mainXAxis': 'mainWindow.xAxis',
+    'as_mainBoxFilter': 'mainWindow.boxFilter',
+    'as_mainNumbers': 'mainWindow.numbers',
+    'as_mainNumbersLoc': 'mainWindow.numbersLoc',
+    'as_mainNumbersWeight': 'mainWindow.numbersWeight',
+    'as_mainNumbersSize': 'mainWindow.numbersSize',
+    'as_mainNumbersShadow': 'mainWindow.numbersShadow',
+    'as_mainVScroll': 'mainWindow.vScroll',
+    'as_mainVSens': 'mainWindow.vSens',
+    'as_mainHScroll': 'mainWindow.hScroll',
+    'as_mainHSens': 'mainWindow.hSens',
+    'as_printInit': 'debug.printInit',
+    'as_printGPU': 'debug.printGPU',
+    'as_printMemory': 'debug.printMemory',
+    'as_printAudio': 'debug.printAudio',
+    'as_printStudy': 'debug.printStudy',
+    'as_printFeatures': 'debug.printFeatures',
+    'as_printData': 'debug.printData',
+    'as_printInteraction': 'debug.printInteraction',
+  };
+
+  // Toggle IDs (use classList.contains('on') instead of .value)
+  const TOGGLE_IDS = new Set([
+    'as_skipLoginWelcome','as_bypassCache','as_silentDownload','as_autoDownload','as_autoPlay',
+    'as_visible','as_lockPageScroll',
+    'as_printInit','as_printGPU','as_printMemory','as_printAudio','as_printStudy','as_printFeatures','as_printData','as_printInteraction'
+  ]);
+
+  function collectAppSettingsFromBuilder() {
+    const settings = {};
+    for (const [elId, path] of Object.entries(APP_SETTINGS_BUILDER_MAP)) {
+      const el = document.getElementById(elId);
+      if (!el) continue;
+      const [group, key] = path.split('.');
+      if (!settings[group]) settings[group] = {};
+
+      if (TOGGLE_IDS.has(elId)) {
+        settings[group][key] = el.classList.contains('on');
+      } else if (elId === 'as_showIdCorner') {
+        settings[group][key] = el.value === 'true';
+      } else {
+        const num = Number(el.value);
+        settings[group][key] = isNaN(num) ? el.value : num;
+      }
+    }
+    return settings;
+  }
+
+  // ── Inline Preview for Modal Steps ─────────────────────────
+  /**
+   * Toggle inline preview below a modal step card.
+   * Reads current field values from the DOM for live updates.
+   */
+  function toggleInlinePreview(btn) {
+    const card = btn.closest('.step-card');
+    const existing = card.querySelector('.step-preview');
+    if (existing) { existing.remove(); return; }
+
+    // Read current values from DOM
+    const detail = card.querySelector('.step-detail');
+    const pills = card.querySelectorAll('.pill-group .pill.active');
+    const isInfo = (pills[0]?.textContent.trim().toLowerCase() || 'informational') === 'informational';
+    const inputs = Array.from(card.querySelectorAll('.step-detail .field-input')).filter(el => el.type !== 'date');
+    const title = inputs[0]?.value || '';
+
+    const preview = document.createElement('div');
+    preview.className = 'step-preview' + (isInfo ? ' info-preview' : '');
+
+    if (isInfo) {
+      const bodyInput = card.querySelector('.body-html-input');
+      const bodyHtml = bodyInput ? bodyInput.value : '';
+      const dismissInput = card.querySelector('.dismiss-label-input');
+      const dismissLabel = dismissInput?.value || 'OK';
+      preview.innerHTML = `
+        <span class="preview-badge">PREVIEW</span>
+        <h3>${escapeHtml(title)}</h3>
+        <div>${bodyHtml.replace(/<p>/g, '<p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 12px;">')}</div>
+        <button class="preview-submit">${escapeHtml(dismissLabel)}</button>
+      `;
+    } else {
+      // Questions preview
+      const questions = card.querySelectorAll('.question-item');
+      let qHtml = '';
+      const total = questions.length;
+      questions.forEach((q, i) => {
+        const qText = q.querySelector('.q-text')?.textContent || '';
+        const qType = (q.querySelector('.q-type')?.textContent.trim().toLowerCase() || '').replace('free text', 'freetext');
+        const optionsData = q.dataset.options;
+        let options = [];
+        if (optionsData) { try { options = JSON.parse(optionsData); } catch(e) {} }
+
+        qHtml += `<div style="margin-bottom:20px;border-bottom:1px solid #eee;padding-bottom:16px;">`;
+        qHtml += `<div style="font-size:16px;color:#550000;font-weight:700;margin-bottom:10px;">${i+1}. ${escapeHtml(qText)}</div>`;
+        if (qType === 'radio' && options.length) {
+          qHtml += `<div class="preview-radio-group">`;
+          options.forEach(opt => {
+            qHtml += `<label class="preview-radio-choice">
+              <input type="radio" name="preview_q${i}" disabled>
+              <div><strong>${escapeHtml(opt.label)}:</strong> <span>${escapeHtml(opt.description || '')}</span></div>
+            </label>`;
+          });
+          qHtml += `</div>`;
+        } else {
+          qHtml += `<textarea disabled placeholder="Type your response here..." style="opacity:0.7;"></textarea>`;
+        }
+        qHtml += `</div>`;
+      });
+
+      preview.innerHTML = `
+        <span class="preview-badge">PREVIEW</span>
+        <div class="preview-progress">
+          <span class="preview-progress-text">1 / ${total}</span>
+          <div class="preview-progress-bar"><div class="preview-progress-fill" style="width:${total?Math.round(100/total):0}%"></div></div>
+        </div>
+        <h3>${escapeHtml(title)}</h3>
+        ${qHtml}
+        <div class="preview-nav">
+          <button class="back-btn">← Back</button>
+          <button class="next-btn">Next →</button>
+        </div>
+      `;
+    }
+
+    // Insert after .step-detail
+    detail.after(preview);
+  }
+
+  /**
+   * Open study.html in a new tab at the given step index with preview mode.
+   */
+  function previewStepOnPage(btn) {
+    const card = btn.closest('.step-card');
+    const cards = Array.from(document.querySelectorAll('.step-card'));
+    const stepIndex = cards.indexOf(card);
+    const slug = document.getElementById('slugValue').textContent.trim();
+    const url = `${window.location.origin}/study/${slug}?step=${stepIndex}&preview=true`;
+    window.open(url, '_blank');
+  }
+
+
+  // ── Auto-load study JSON on page load ───────────────────
+  (async function autoLoad() {
+    // Load from URL param, or default to emic-pilot.json
+    const urlSlug = new URLSearchParams(window.location.search).get('study');
+    if (urlSlug) return; // handled by existing loadStudy code above
+    try {
+      const resp = await fetch('studies/emic-pilot.json');
+      if (resp.ok) {
+        const config = await resp.json();
+        loadConfigIntoBuilder(config);
+        console.log('📄 Auto-loaded emic-pilot.json');
+      }
+    } catch(e) { console.log('No local JSON to auto-load'); }
+  })();
+
+  function loadAppSettingsIntoBuilder(appSettings) {
+    if (!appSettings) return;
+    // Flatten
+    const flat = {};
+    for (const [group, values] of Object.entries(appSettings)) {
+      if (typeof values === 'object' && values !== null) {
+        for (const [key, val] of Object.entries(values)) {
+          flat[`${group}.${key}`] = val;
+        }
+      }
+    }
+    // Reverse lookup: path → elId
+    const reverseMap = {};
+    for (const [elId, path] of Object.entries(APP_SETTINGS_BUILDER_MAP)) {
+      reverseMap[path] = elId;
+    }
+    for (const [path, value] of Object.entries(flat)) {
+      const elId = reverseMap[path];
+      if (!elId) continue;
+      const el = document.getElementById(elId);
+      if (!el) continue;
+
+      if (TOGGLE_IDS.has(elId)) {
+        el.classList.toggle('on', !!value);
+      } else if (elId === 'as_showIdCorner') {
+        el.value = value ? 'true' : 'false';
+      } else {
+        el.value = String(value);
+      }
+    }
+  }
+</script>
+</body>
+</html>
