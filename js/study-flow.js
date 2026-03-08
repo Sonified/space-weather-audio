@@ -1489,9 +1489,9 @@ function showQuestionModal(question, index, total, progressPct, previousAnswer, 
                     </div>
                 </div>
                 <div class="modal-body">
-                    <div style="font-size: 18px; color: #550000; margin-top: 12px; margin-bottom: 16px; text-align: left; font-weight: 700;">
+                    <div style="font-size: 18px; color: #222; margin-top: 12px; margin-bottom: 16px; text-align: left; font-weight: 700;">
                         ${index + 1}. ${question.text}
-                        ${question.subtitle ? `<br><span style="font-size: 14px; color: #888; font-weight: normal;">${question.subtitle}</span>` : ''}
+                        ${question.subtitle ? `<br><span style="font-size: 14px; color: #555; font-weight: normal;">${question.subtitle}</span>` : ''}
                     </div>
                     ${questionHtml}
                     <div style="text-align: center;">
@@ -1541,7 +1541,7 @@ function buildRadioQuestion(question, previousAnswer) {
             ${options.map(opt => `
                 <label class="radio-choice">
                     <input type="radio" name="${name}" value="${opt.value}" ${previousAnswer === opt.value ? 'checked' : ''}>
-                    <div><strong>${opt.label}:</strong> <span style="color: #666; font-size: 0.92em;">${opt.description || ''}</span></div>
+                    <div><strong>${opt.label}:</strong> <span style="color: #444; font-size: 0.92em;">${opt.description || ''}</span></div>
                 </label>
             `).join('')}
         </div>
