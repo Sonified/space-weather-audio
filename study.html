@@ -416,28 +416,44 @@
     <!-- Config-driven study flow controller -->
     <script type="module" src="./js/study-flow.js"></script>
 
-    <!-- Responsive spectrogram height -->
+    <!-- Responsive spectrogram height: fill viewport so bottom panel sits at window edge -->
     <script>
     (function() {
-        const MIN_HEIGHT = 250, MAX_HEIGHT = 1200;
-        let rafPending = false, fitting = false;
+        const MIN_HEIGHT = 250;
+        const MAX_HEIGHT = 1200;
+        let rafPending = false;
+        let fitting = false;
+
         function fitSpectrogram() {
             if (fitting) return;
             fitting = true;
+
             const spec = document.getElementById('spectrogram');
             if (!spec) { fitting = false; return; }
+
+            // Bottom anchor: questionnaires panel if visible, else the viz panel
+            const qPanel = document.getElementById('questionnairesPanel');
             const vizPanel = spec.closest('.panel-visualization');
-            if (!vizPanel) { fitting = false; return; }
-            const anchorRect = vizPanel.getBoundingClientRect();
-            const gap = window.innerHeight - anchorRect.bottom;
+            const anchor = (qPanel && qPanel.offsetHeight > 0) ? qPanel : vizPanel;
+            if (!anchor) { fitting = false; return; }
+
+            // How far the anchor's bottom is from the viewport bottom
+            const bodyPadBottom = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
+            const anchorRect = anchor.getBoundingClientRect();
+            const gap = window.innerHeight - anchorRect.bottom - bodyPadBottom;
+
+            // Adjust spectrogram by the gap (positive = room to grow, negative = overflowing)
             const currentH = spec.offsetHeight;
             const newH = Math.round(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, currentH + gap)));
+
             if (newH !== currentH) {
                 spec.style.setProperty('--spec-height', newH + 'px');
                 requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
             }
+
             fitting = false;
         }
+
         fitSpectrogram();
         window.addEventListener('load', fitSpectrogram);
         window.addEventListener('resize', () => {
@@ -445,6 +461,15 @@
             rafPending = true;
             requestAnimationFrame(() => { rafPending = false; fitSpectrogram(); });
         });
+
+        // Re-fit when questionnaires panel toggles visibility
+        const observer = new MutationObserver(() => {
+            if (rafPending || fitting) return;
+            rafPending = true;
+            requestAnimationFrame(() => { rafPending = false; fitSpectrogram(); });
+        });
+        const qp = document.getElementById('questionnairesPanel');
+        if (qp) observer.observe(qp, { attributes: true, attributeFilter: ['style'] });
     })();
     </script>
 </body>
