@@ -13,12 +13,14 @@
     --border-hover: #6a7a92;
     --text: #e6edf3;
     --text-muted: #aab4c0;
-    --accent: #58a6ff;
-    --accent-hover: #79c0ff;
-    --green: #3fb950;
-    --orange: #d29922;
-    --red: #f85149;
-    --purple: #bc8cff;
+    --accent: #4DA8FF;
+    --accent-hover: #6BBFFF;
+    --green: #22C55E;
+    --orange: #F59E0B;
+    --red: #EF4444;
+    --purple: #A78BFA;
+    --emerald: #10B981;
+    --rose: #F43F5E;
     --radius: 8px;
     --input-font-size: 14px;
   }
@@ -231,11 +233,11 @@
     font-weight: 700;
     flex-shrink: 0;
   }
-  .step-number.registration { background: var(--accent); color: #000; }
-  .step-number.modal { background: var(--purple); color: #000; }
-  .step-number.info { background: var(--purple); color: #000; }
-  .step-number.question { background: var(--orange); color: #000; }
-  .step-number.analysis { background: var(--green); color: #000; }
+  .step-number.registration { background: #2563EB; color: #fff; }
+  .step-number.modal { background: #7C3AED; color: #fff; }
+  .step-number.info { background: #0891B2; color: #fff; }
+  .step-number.question { background: #D97706; color: #fff; }
+  .step-number.analysis { background: #059669; color: #fff; }
 
   .step-title {
     flex: 1;
@@ -257,11 +259,11 @@
     text-align: center;
     flex-shrink: 0;
   }
-  .badge-registration { background: rgba(88,166,255,0.15); color: var(--accent); }
-  .badge-modal { background: rgba(188,140,255,0.15); color: var(--purple); }
-  .badge-info { background: rgba(188,140,255,0.15); color: var(--purple); }
-  .badge-question { background: rgba(210,153,34,0.15); color: var(--orange); }
-  .badge-analysis { background: rgba(63,185,80,0.15); color: var(--green); }
+  .badge-registration { background: rgba(37,99,235,0.15); color: #60A5FA; }
+  .badge-modal { background: rgba(124,58,237,0.15); color: #A78BFA; }
+  .badge-info { background: rgba(8,145,178,0.15); color: #22D3EE; }
+  .badge-question { background: rgba(217,119,6,0.15); color: #FBBF24; }
+  .badge-analysis { background: rgba(5,150,105,0.15); color: #34D399; }
   .step-actions {
     display: flex;
     gap: 4px;
@@ -301,15 +303,26 @@
     max-width: 720px;
   }
   .step-preview.info-preview { max-width: 460px; margin-left: auto; margin-right: auto; }
-  .step-preview .preview-badge {
+  .step-preview .preview-close {
     position: absolute;
     top: 8px;
-    right: 12px;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: #999;
-    font-weight: 600;
+    right: 10px;
+    background: linear-gradient(135deg, #cc3333 0%, #991111 100%);
+    color: white;
+    border: none;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    min-height: 28px;
+    border-radius: 50%;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: default;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    padding: 0;
   }
   .step-preview h3 { color: #333; margin: 0 0 16px; font-size: 18px; }
   .step-preview p { color: #333; font-size: 16px; line-height: 1.6; margin: 0 0 12px; }
@@ -329,8 +342,10 @@
   }
   .step-preview .preview-submit {
     display: block; margin: 16px auto 0; padding: 10px 32px; border: none; border-radius: 8px;
-    background: #2196F3; color: #fff; font-size: 15px; font-weight: 600; cursor: default;
+    background: #2196F3; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;
+    transition: opacity 0.15s;
   }
+  .step-preview .preview-submit:hover { opacity: 0.85; }
   .step-preview .preview-progress {
     display: flex; align-items: center; gap: 10px; margin-bottom: 16px; justify-content: flex-end;
   }
@@ -345,8 +360,10 @@
     display: flex; gap: 12px; justify-content: center; margin-top: 16px;
   }
   .step-preview .preview-nav button {
-    padding: 8px 24px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: default;
+    padding: 8px 24px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: opacity 0.15s;
   }
+  .step-preview .preview-nav button:hover { opacity: 0.85; }
   .step-preview .preview-nav .back-btn { background: #e0e0e0; color: #555; }
   .step-preview .preview-nav .next-btn { background: #2196F3; color: #fff; }
 
@@ -427,7 +444,49 @@
     width: 28px; height: 28px; padding: 1px; border: 1px solid var(--border);
     border-radius: var(--radius); background: var(--surface); cursor: pointer;
   }
-  .font-style-bar .fs-hex { font-size: 12px; color: var(--text-muted); font-family: monospace; min-width: 58px; }
+  .font-style-bar .fs-hex-input {
+    width: 68px; height: 28px; padding: 2px 6px; font-size: 12px; font-family: monospace;
+    background: var(--bg); color: var(--text-muted); border: 1px solid var(--border);
+    border-radius: var(--radius); outline: none; box-sizing: border-box;
+  }
+  .font-style-bar .fs-hex-input:focus { border-color: var(--accent); color: var(--text); }
+
+  /* ── Custom Color Picker ── */
+  .color-pick { position: relative; display: inline-block; }
+  .color-pick .cp-swatch {
+    width: 28px; height: 28px; border-radius: var(--radius); border: 1px solid var(--border);
+    cursor: pointer; box-sizing: border-box; transition: border-color 0.15s;
+  }
+  .color-pick .cp-swatch:hover { border-color: var(--accent); }
+  .color-pick .cp-dropdown {
+    display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+    margin-bottom: 6px; padding: 10px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 1000; min-width: 176px;
+  }
+  .color-pick .cp-dropdown.open { display: block; }
+  .color-pick .cp-label {
+    font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .color-pick .cp-grid {
+    display: grid; grid-template-columns: repeat(6, 24px); gap: 4px; margin-bottom: 8px;
+  }
+  .color-pick .cp-cell {
+    width: 24px; height: 24px; border-radius: 4px; cursor: pointer; border: 2px solid transparent;
+    box-sizing: border-box; transition: border-color 0.1s, transform 0.1s;
+  }
+  .color-pick .cp-cell:hover { transform: scale(1.15); border-color: rgba(255,255,255,0.5); }
+  .color-pick .cp-cell.selected { border-color: #fff; box-shadow: 0 0 0 1px var(--accent); }
+  .color-pick .cp-hex-row { display: flex; align-items: center; gap: 6px; }
+  .color-pick .cp-hex-row .cp-preview {
+    width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--border); flex-shrink: 0;
+  }
+  .color-pick .cp-hex-input {
+    flex: 1; height: 26px; padding: 2px 6px; font-size: 12px; font-family: monospace;
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    border-radius: var(--radius); outline: none; box-sizing: border-box;
+  }
+  .color-pick .cp-hex-input:focus { border-color: var(--accent); }
 
   .underline-controls { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
   .underline-controls .field-input { width: 60px; }
@@ -752,9 +811,14 @@
     .prompts-section.open .prompts-chevron { transform: rotate(90deg); }
 
     .rich-editor-wrap { display: flex; flex-direction: column; }
-    .rich-toolbar { display: flex; gap: 4px; padding: 4px; background: var(--surface2); border: 1px solid var(--border); border-bottom: none; border-radius: var(--radius) var(--radius) 0 0; }
+    .rich-toolbar { display: flex; gap: 4px; padding: 4px; background: var(--surface2); border: 1px solid var(--border); border-bottom: none; border-radius: var(--radius) var(--radius) 0 0; align-items: center; }
     .rich-toolbar button { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; cursor: pointer; font-size: 13px; line-height: 1.4; }
     .rich-toolbar button:hover { background: var(--border); }
+    .rich-toolbar .rt-spacer { flex: 1; }
+    .rich-toolbar select.rt-size { padding: 2px 4px; font-size: 12px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
+    .rich-toolbar input[type="color"].rt-color { width: 24px; height: 24px; padding: 1px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); cursor: pointer; }
+    .rich-toolbar .rt-hex { width: 62px; height: 24px; padding: 2px 5px; font-size: 11px; font-family: monospace; background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); border-radius: 4px; outline: none; box-sizing: border-box; }
+    .rich-toolbar .rt-hex:focus { border-color: var(--accent); color: var(--text); }
     .rich-editable { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius); padding: 10px 12px; min-height: 180px; outline: none; font-size: 14px; line-height: 1.5; overflow-y: auto; }
     .rich-editable:focus { border-color: var(--accent); }
     .rich-editable a { color: var(--accent); }
@@ -1371,8 +1435,25 @@
           <select class="fs-size ${prefix}-font-size" onclick="event.stopPropagation()">${sizeOpts}</select>
         </div>
         <div class="fs-bold ${bold ? 'active' : ''} ${prefix}-font-bold" onclick="event.stopPropagation(); this.classList.toggle('active')" title="Bold">B</div>
-        <input type="color" class="${prefix}-font-color" value="${escapeAttr(color)}" title="Font color" onclick="event.stopPropagation()" oninput="this.nextElementSibling.textContent=this.value" />
-        <span class="fs-hex">${color}</span>
+        <input type="color" class="${prefix}-font-color" value="${escapeAttr(color)}" title="Font color" onclick="event.stopPropagation()" oninput="syncHexFromPicker(this)" />
+        <input type="text" class="fs-hex-input" value="${escapeAttr(color)}" maxlength="7" spellcheck="false" onclick="event.stopPropagation(); this.select()" oninput="syncPickerFromHex(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" />
+      </div>`;
+  }
+
+  function buildBodyRichToolbar(step) {
+    const size = step.bodyFontSize || '16px';
+    const color = step.bodyFontColor || '#333333';
+    const sizeOpts = FONT_SIZES.map(s => `<option ${s===size?'selected':''}>${s}</option>`).join('');
+    return `
+      <div class="rich-toolbar">
+        <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('bold')"><b>B</b></button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('italic')"><i>I</i></button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('underline')"><u>U</u></button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="(function(){var u=prompt('URL:');if(u)document.execCommand('createLink',false,u)})()">🔗</button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('insertHorizontalRule')">—</button>
+        <select class="rt-size body-font-size" onclick="event.stopPropagation()">${sizeOpts}</select>
+        <input type="color" class="rt-color body-font-color" value="${escapeAttr(color)}" title="Font color" onclick="event.stopPropagation()" oninput="syncHexFromPicker(this)" />
+        <input type="text" class="rt-hex fs-hex-input" value="${escapeAttr(color)}" maxlength="7" spellcheck="false" onclick="event.stopPropagation(); this.select()" oninput="syncPickerFromHex(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" />
       </div>`;
   }
 
@@ -1395,6 +1476,122 @@
     const opts = toggle.parentElement.querySelector('.title-underline-options');
     if (opts) opts.style.display = toggle.classList.contains('on') ? '' : 'none';
   }
+
+  /** Color picker → hex input sync */
+  function syncHexFromPicker(picker) {
+    const hexInput = picker.nextElementSibling;
+    if (hexInput) hexInput.value = picker.value;
+  }
+
+  /** Hex input → color picker sync (live as you type/paste) */
+  function syncPickerFromHex(hexInput) {
+    let val = hexInput.value.trim();
+    if (val && !val.startsWith('#')) val = '#' + val;
+    if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+      const picker = hexInput.previousElementSibling;
+      if (picker) picker.value = val;
+    }
+  }
+
+  /* ── Custom Color Picker Component ── */
+  const CP_PALETTES = {
+    text: [
+      '#ffffff','#f0f0f0','#cccccc','#999999','#666666','#333333',
+      '#000000','#ff4444','#ff8800','#ffcc00','#44bb44','#2196F3',
+      '#9c27b0','#e91e63','#00bcd4','#8bc34a','#ff5722','#607d8b',
+    ],
+    bg: [
+      '#2196F3','#1976D2','#0D47A1','#42A5F5','#64B5F6','#90CAF9',
+      '#4CAF50','#388E3C','#8BC34A','#FF9800','#F57C00','#FF5722',
+      '#9C27B0','#7B1FA2','#E91E63','#F44336','#D32F2F','#B71C1C',
+      '#00BCD4','#009688','#607D8B','#455A64','#333333','#000000',
+    ],
+  };
+
+  function buildColorPicker(cls, value, label, palette) {
+    const colors = CP_PALETTES[palette] || CP_PALETTES.bg;
+    const cells = colors.map(c => {
+      const sel = c.toLowerCase() === (value||'').toLowerCase() ? ' selected' : '';
+      return `<div class="cp-cell${sel}" style="background:${c}" data-color="${c}"></div>`;
+    }).join('');
+    return `
+      <div class="color-pick" onclick="event.stopPropagation()">
+        <div class="cp-swatch ${cls}" style="background:${escapeAttr(value)}" title="${escapeAttr(label)}" data-value="${escapeAttr(value)}"></div>
+        <div class="cp-dropdown">
+          <div class="cp-label">${escapeHtml(label)}</div>
+          <div class="cp-grid">${cells}</div>
+          <div class="cp-hex-row">
+            <div class="cp-preview" style="background:${escapeAttr(value)}"></div>
+            <input class="cp-hex-input" type="text" value="${escapeAttr(value)}" maxlength="7" spellcheck="false"
+              onclick="event.stopPropagation(); this.select()"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" />
+          </div>
+        </div>
+      </div>`;
+  }
+
+  /** Open/close color picker dropdowns + handle swatch/hex interactions */
+  document.addEventListener('click', (e) => {
+    // Click on trigger swatch → toggle dropdown
+    const swatch = e.target.closest('.cp-swatch');
+    if (swatch) {
+      const dd = swatch.nextElementSibling;
+      if (!dd) return;
+      // Close all other dropdowns first
+      document.querySelectorAll('.cp-dropdown.open').forEach(d => { if (d !== dd) d.classList.remove('open'); });
+      dd.classList.toggle('open');
+      return;
+    }
+    // Click on palette cell → select color
+    const cell = e.target.closest('.cp-cell');
+    if (cell) {
+      const dd = cell.closest('.cp-dropdown');
+      const pick = cell.closest('.color-pick');
+      const color = cell.dataset.color;
+      if (!pick || !dd) return;
+      // Update selection ring
+      dd.querySelectorAll('.cp-cell').forEach(c => c.classList.remove('selected'));
+      cell.classList.add('selected');
+      // Update hex input + preview + trigger swatch
+      const hexInput = dd.querySelector('.cp-hex-input');
+      const preview = dd.querySelector('.cp-preview');
+      const sw = pick.querySelector('.cp-swatch');
+      if (hexInput) hexInput.value = color;
+      if (preview) preview.style.background = color;
+      if (sw) { sw.style.background = color; sw.dataset.value = color; }
+      // Trigger live preview refresh
+      const card = pick.closest('.step-card');
+      if (card) refreshInlinePreview(card);
+      return;
+    }
+    // Click inside dropdown (hex input etc) → don't close
+    if (e.target.closest('.cp-dropdown')) return;
+    // Click anywhere else → close all dropdowns
+    document.querySelectorAll('.cp-dropdown.open').forEach(d => d.classList.remove('open'));
+  });
+
+  /** Live hex input → update swatch + preview + grid selection */
+  document.addEventListener('input', (e) => {
+    if (!e.target.classList.contains('cp-hex-input')) return;
+    let val = e.target.value.trim();
+    if (val && !val.startsWith('#')) val = '#' + val;
+    if (!/^#[0-9a-fA-F]{6}$/.test(val)) return;
+    const pick = e.target.closest('.color-pick');
+    if (!pick) return;
+    const sw = pick.querySelector('.cp-swatch');
+    const preview = pick.querySelector('.cp-preview');
+    const dd = pick.querySelector('.cp-dropdown');
+    if (sw) { sw.style.background = val; sw.dataset.value = val; }
+    if (preview) preview.style.background = val;
+    // Update grid selection
+    if (dd) {
+      dd.querySelectorAll('.cp-cell').forEach(c => {
+        c.classList.toggle('selected', c.dataset.color.toLowerCase() === val.toLowerCase());
+      });
+    }
+    const card = pick.closest('.step-card');
+    if (card) refreshInlinePreview(card);
+  });
 
   function buildStepActions(type) {
     // Modal steps get inline preview + page preview; analysis gets page preview only
@@ -1446,15 +1643,9 @@
           <div class="field-group">
             <div class="field-label">Body Content</div>
             <div class="rich-editor-wrap">
-              <div class="rich-toolbar">
-                <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('bold')"><b>B</b></button>
-                <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('italic')"><i>I</i></button>
-                <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('underline')"><u>U</u></button>
-                <button type="button" onmousedown="event.preventDefault()" onclick="(function(){var u=prompt('URL:');if(u)document.execCommand('createLink',false,u)})()">🔗</button>
-              </div>
+              ${buildBodyRichToolbar(step)}
               <div class="rich-editable reg-body-html-input" contenteditable="true"></div>
             </div>
-            ${buildFontStyleControls('body', step, { label: 'Body style', size: '16px', color: '#333333', bold: false })}
           </div>
           <div class="field-group">
             <div class="field-label">ID Placeholder Text</div>
@@ -1511,24 +1702,24 @@
         <div class="field-group">
           <div class="field-label">Body Content</div>
           <div class="rich-editor-wrap">
-            <div class="rich-toolbar">
-              <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('bold')"><b>B</b></button>
-              <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('italic')"><i>I</i></button>
-              <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('underline')"><u>U</u></button>
-              <button type="button" onmousedown="event.preventDefault()" onclick="(function(){var u=prompt('URL:');if(u)document.execCommand('createLink',false,u)})()">🔗</button>
-              <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('insertHorizontalRule')">—</button>
-            </div>
+            ${buildBodyRichToolbar(step)}
             <div class="rich-editable body-html-input" contenteditable="true"></div>
           </div>
-          ${buildFontStyleControls('body', step, { size: '16px', color: '#333333', bold: false })}
         </div>
         <div class="field-group">
           <div class="field-label">Button Label</div>
-          <input class="field-input dismiss-label-input" value="${escapeAttr(step.dismissLabel || 'OK')}" />
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input class="field-input dismiss-label-input" value="${escapeAttr(step.dismissLabel || 'OK')}" style="flex:1;" />
+            <div class="fs-bold ${step.dismissBold ? 'active' : ''} dismiss-font-bold" onclick="event.stopPropagation(); this.classList.toggle('active')" title="Bold">B</div>
+            ${buildColorPicker('dismiss-font-color', step.dismissColor || '#ffffff', 'Text Color', 'text')}
+            ${buildColorPicker('dismiss-bg-color', step.dismissBgColor || '#2196F3', 'Background', 'bg')}
+          </div>
         </div>
         <div class="toggle-row">
-          <span class="toggle-label">Skippable</span>
-          <div class="toggle ${step.skippable ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+          <span class="toggle-label">Can Close</span>
+          <div class="toggle toggle-closable ${step.closable ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+          <span class="toggle-label" style="margin-left: 16px;">Skippable</span>
+          <div class="toggle toggle-skippable ${step.skippable ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
         </div>
         <div class="field-row" style="margin-top: 8px;">
           <div class="field-group">
@@ -1632,12 +1823,127 @@
     return opts;
   }
 
+  // Mirrors SPACECRAFT_DATASETS from js/ui-controls.js — keep in sync
+  const SPACECRAFT_DATASETS = {
+    'PSP': [
+      { group: 'Magnetic Field' },
+      { value: 'PSP_FLD_L2_MAG_RTN', label: 'MAG RTN (Full Cadence)' },
+      { value: 'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC', label: 'MAG RTN (4 Samples/Cycle)' },
+      { group: 'Electric Field' },
+      { value: 'PSP_FLD_L2_DFB_WF_DVDC', label: 'DFB DC Voltage Waveform' }
+    ],
+    'Wind': [
+      { group: 'Magnetic Field' },
+      { value: 'WI_H2_MFI', label: 'MFI (Magnetic Field Investigation)' }
+    ],
+    'MMS': [
+      { group: 'Magnetic Field (FGM)' },
+      { value: 'MMS1_FGM_SRVY_L2', label: 'FGM Survey' },
+      { value: 'MMS1_FGM_BRST_L2', label: 'FGM Burst' },
+      { group: 'Magnetic Field (Search Coil)' },
+      { value: 'MMS1_SCM_SRVY_L2_SCSRVY', label: 'SCM Survey' },
+      { value: 'MMS1_SCM_BRST_L2_SCB', label: 'SCM Burst' },
+      { group: 'Electric Field (EDP)' },
+      { value: 'MMS1_EDP_SLOW_L2_DCE', label: 'EDP Slow Survey' },
+      { value: 'MMS1_EDP_FAST_L2_DCE', label: 'EDP Fast Survey' },
+      { value: 'MMS1_EDP_BRST_L2_DCE', label: 'EDP Burst' }
+    ],
+    'THEMIS': [
+      { group: 'Magnetic Field (FGM)' },
+      { value: 'THA_L2_FGM', label: 'THEMIS-A FGM' },
+      { value: 'THB_L2_FGM', label: 'THEMIS-B FGM' },
+      { value: 'THC_L2_FGM', label: 'THEMIS-C FGM' },
+      { value: 'THD_L2_FGM', label: 'THEMIS-D FGM' },
+      { value: 'THE_L2_FGM', label: 'THEMIS-E FGM' },
+      { group: 'Magnetic Field (Search Coil)' },
+      { value: 'THA_L2_SCM', label: 'THEMIS-A SCM' },
+      { value: 'THB_L2_SCM', label: 'THEMIS-B SCM' },
+      { value: 'THC_L2_SCM', label: 'THEMIS-C SCM' },
+      { value: 'THD_L2_SCM', label: 'THEMIS-D SCM' },
+      { value: 'THE_L2_SCM', label: 'THEMIS-E SCM' },
+      { group: 'Electric Field (EFI)' },
+      { value: 'THA_L2_EFI', label: 'THEMIS-A EFI' },
+      { value: 'THB_L2_EFI', label: 'THEMIS-B EFI' },
+      { value: 'THC_L2_EFI', label: 'THEMIS-C EFI' },
+      { value: 'THD_L2_EFI', label: 'THEMIS-D EFI' },
+      { value: 'THE_L2_EFI', label: 'THEMIS-E EFI' }
+    ],
+    'SolO': [
+      { group: 'Magnetic Field' },
+      { value: 'SOLO_L2_MAG-RTN-NORMAL', label: 'MAG Normal Mode' },
+      { value: 'SOLO_L2_MAG-RTN-BURST', label: 'MAG Burst Mode' },
+      { group: 'Electric Field' },
+      { value: 'SOLO_L2_RPW-LFR-SURV-CWF-E', label: 'RPW LFR Electric Field' }
+    ],
+    'GOES': [
+      { group: 'Magnetic Field' },
+      { value: 'DN_MAGN-L2-HIRES_G16', label: 'GOES-16 MAG 10 Hz (Aug 2018 - Apr 2025)' },
+      { value: 'DN_MAGN-L2-HIRES_G19', label: 'GOES-19 MAG 10 Hz (Jun 2025 - present)' }
+    ],
+    'ACE': [
+      { group: 'Magnetic Field' },
+      { value: 'AC_H3_MFI', label: 'MFI 1-sec GSE' }
+    ],
+    'DSCOVR': [
+      { group: 'Magnetic Field' },
+      { value: 'DSCOVR_H0_MAG', label: 'Fluxgate MAG 1-sec GSE' }
+    ],
+    'Cluster': [
+      { group: 'Magnetic Field (FGM)' },
+      { value: 'C1_CP_FGM_5VPS', label: 'C1 FGM 5 Vec/s' },
+      { value: 'C2_CP_FGM_5VPS', label: 'C2 FGM 5 Vec/s' },
+      { value: 'C3_CP_FGM_5VPS', label: 'C3 FGM 5 Vec/s' },
+      { value: 'C4_CP_FGM_5VPS', label: 'C4 FGM 5 Vec/s' },
+      { group: 'Magnetic Field (Search Coil)' },
+      { value: 'C1_CP_STA_CWF_GSE', label: 'C1 STAFF CWF GSE' },
+      { value: 'C2_CP_STA_CWF_GSE', label: 'C2 STAFF CWF GSE' },
+      { value: 'C3_CP_STA_CWF_GSE', label: 'C3 STAFF CWF GSE' },
+      { value: 'C4_CP_STA_CWF_GSE', label: 'C4 STAFF CWF GSE' },
+      { group: 'Electric Field (EFW)' },
+      { value: 'C1_CP_EFW_L3_E3D_INERT', label: 'C1 EFW E3D Inertial' },
+      { value: 'C2_CP_EFW_L3_E3D_INERT', label: 'C2 EFW E3D Inertial' },
+      { value: 'C3_CP_EFW_L3_E3D_INERT', label: 'C3 EFW E3D Inertial' },
+      { value: 'C4_CP_EFW_L3_E3D_INERT', label: 'C4 EFW E3D Inertial' }
+    ],
+    'Geotail': [
+      { group: 'Magnetic Field' },
+      { value: 'GE_EDB3SEC_MGF', label: 'MGF Editor-B 3-sec GSE' },
+      { group: 'Electric Field' },
+      { value: 'GE_K0_EFD', label: 'EFD Spherical Probe' }
+    ],
+    'Voyager 1': [
+      { group: 'Magnetic Field' },
+      { value: 'VOYAGER1_2S_MAG', label: 'MAG 1.92-sec HG' }
+    ],
+    'Voyager 2': [
+      { group: 'Magnetic Field' },
+      { value: 'VOYAGER2_2S_MAG', label: 'MAG 1.92-sec HG' }
+    ]
+  };
+
+  function buildDatasetOptions(spacecraftKey, selectedDataset) {
+    const datasets = SPACECRAFT_DATASETS[spacecraftKey] || [];
+    let html = '';
+    datasets.forEach(d => {
+      if (d.group) {
+        html += `<optgroup label="${escapeAttr(d.group)}">`;
+      } else {
+        html += `<option value="${escapeAttr(d.value)}" ${d.value === selectedDataset ? 'selected' : ''}>${escapeHtml(d.label)}</option>`;
+      }
+    });
+    return html;
+  }
+
   function buildAnalysisCard(num, step) {
     const confirm = step.confirmCompletion || {};
-    const spacecraft = step.spacecraft || 'GOES-18';
-    const ds = step.dataset || 'Magnetometer (MAG)';
+    const spacecraft = step.spacecraft || 'GOES';
+    const ds = step.dataset || 'DN_MAGN-L2-HIRES_G16';
     const speed = step.playbackSpeed || '1x';
     const src = (step.dataSource || '').includes('cdaweb') ? 'cdaweb' : 'r2';
+
+    const spacecraftOpts = Object.keys(SPACECRAFT_DATASETS).map(s =>
+      `<option value="${escapeAttr(s)}" ${s === spacecraft ? 'selected' : ''}>${escapeHtml(s)}</option>`
+    ).join('');
 
     return `
       <div class="step-header" onclick="toggleStep(this)">
@@ -1655,14 +1961,14 @@
         <div class="analysis-grid">
           <div class="field-group">
             <div class="field-label">Spacecraft</div>
-            <select class="field-input">
-              ${['GOES-16','GOES-17','GOES-18','MMS','THEMIS','Van Allen Probes'].map(s => `<option ${s===spacecraft?'selected':''}>${s}</option>`).join('')}
+            <select class="field-input spacecraft-select" onchange="updateDatasetSelect(this)">
+              ${spacecraftOpts}
             </select>
           </div>
           <div class="field-group">
             <div class="field-label">Dataset</div>
-            <select class="field-input">
-              ${['Magnetometer (MAG)','Particle (SEISS)','Magnetic Field (FGM)'].map(d => `<option ${d===ds?'selected':''}>${d}</option>`).join('')}
+            <select class="field-input dataset-select">
+              ${buildDatasetOptions(spacecraft, ds)}
             </select>
           </div>
           <div class="field-group">
@@ -1829,6 +2135,14 @@
   function escapeAttr(s) { return (s||'').replace(/"/g, '&quot;'); }
   function escapeHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+  // Style body HTML for preview.
+  // All margins set to 0 — the contenteditable blank lines ARE the spacing.
+  const BODY_P_STYLE = 'color:#333;font-size:16px;line-height:1.6;margin:0;';
+  function styleBodyHtml(html, pStyle) {
+    const style = pStyle || BODY_P_STYLE;
+    return (html || '').replace(/<p>/g, `<p style="${style}">`);
+  }
+
   // Convert ISO string or date-only string to datetime-local value (YYYY-MM-DDTHH:MM:SS)
   function toLocalDatetime(val) {
     if (!val) return '';
@@ -1918,9 +2232,11 @@
         step.bodyHtml = bodyInput ? bodyInput.innerHTML : '';
         const dismissInput = card.querySelector('.dismiss-label-input');
         step.dismissLabel = dismissInput?.value || 'OK';
-        const toggles = card.querySelectorAll('.toggle');
-        const lastToggle = toggles[toggles.length - 1];
-        step.skippable = lastToggle?.classList.contains('on') || false;
+        step.dismissBold = card.querySelector('.dismiss-font-bold')?.classList.contains('active') || false;
+        step.dismissColor = card.querySelector('.dismiss-font-color')?.dataset?.value || '#ffffff';
+        step.dismissBgColor = card.querySelector('.dismiss-bg-color')?.dataset?.value || '#2196F3';
+        step.closable = card.querySelector('.toggle-closable')?.classList.contains('on') || false;
+        step.skippable = card.querySelector('.toggle-skippable')?.classList.contains('on') || false;
         const mw = card.querySelector('.modal-width-input')?.value?.trim();
         const mh = card.querySelector('.modal-height-input')?.value?.trim();
         if (mw) step.modalWidth = mw;
@@ -1971,9 +2287,9 @@
       }
       else if (type === 'analysis') {
         step.title = card.querySelector('.analysis-title-input')?.value || card.querySelector('.step-title')?.textContent || 'Analysis';
+        step.spacecraft = card.querySelector('.spacecraft-select')?.value || 'GOES';
+        step.dataset = card.querySelector('.dataset-select')?.value || 'DN_MAGN-L2-HIRES_G16';
         const selects = card.querySelectorAll('select.field-input');
-        step.spacecraft = selects[0]?.value || 'GOES-18';
-        step.dataset = selects[1]?.value || 'Magnetometer (MAG)';
         step.playbackSpeed = selects[2]?.value || '1x';
         const startInput = card.querySelector('.analysis-start');
         const endInput = card.querySelector('.analysis-end');
@@ -2212,7 +2528,7 @@
   document.addEventListener('change', () => autoSave('change'));
   document.addEventListener('click', (e) => {
     // Only auto-save on actual state-changing clicks (pills, toggles, bold buttons)
-    if (e.target.closest('.pill, .toggle, .fs-bold')) {
+    if (e.target.closest('.pill, .toggle, .fs-bold, .cp-cell')) {
       setTimeout(() => autoSave('click'), 50);
     }
   });
@@ -2601,14 +2917,14 @@
     // Use the same builder functions as JSON loading for consistency
     let defaultStep;
     if (type === 'info') {
-      defaultStep = { type: 'info', title: 'New Information Step', bodyHtml: '', dismissLabel: 'OK', skippable: false };
+      defaultStep = { type: 'info', title: 'New Information Step', bodyHtml: '', dismissLabel: 'OK', closable: false, skippable: false };
       card.innerHTML = buildInfoCard(num, defaultStep);
       const ed = card.querySelector('.rich-editable'); if (ed) ed.innerHTML = '';
     } else if (type === 'question') {
       defaultStep = { type: 'question', title: '', questionType: 'radio', required: true, options: [{ value: '1', label: '', description: '' }] };
       card.innerHTML = buildQuestionCard(num, defaultStep);
     } else {
-      defaultStep = { type: 'analysis', title: 'New Analysis Step', spacecraft: 'GOES-18', dataset: 'Magnetometer (MAG)', startDate: '', endDate: '', dataSource: 'cloudflare_r2', playbackSpeed: '1x', allowFeatureDrawing: true, showSpectrogram: true, allowStretch: true, confirmCompletion: { enabled: false } };
+      defaultStep = { type: 'analysis', title: 'New Analysis Step', spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16', startDate: '', endDate: '', dataSource: 'cloudflare_r2', playbackSpeed: '1x', allowFeatureDrawing: true, showSpectrogram: true, allowStretch: true, confirmCompletion: { enabled: false } };
       card.innerHTML = buildAnalysisCard(num, defaultStep);
     }
 
@@ -2865,9 +3181,8 @@
       const preview = document.createElement('div');
       preview.className = 'step-preview info-preview';
       preview.innerHTML = `
-        <span class="preview-badge">PREVIEW</span>
         <h3 style="${ulStyle}">${escapeHtml(title)}</h3>
-        <div>${bodyHtml.replace(/<p>/g, '<p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 12px;">')}</div>
+        <div>${styleBodyHtml(bodyHtml)}</div>
         <input type="text" disabled placeholder="${escapeAttr(placeholder)}" style="width:100%;padding:10px 12px;font-size:18px;border:1px solid #ccc;border-radius:6px;margin-bottom:12px;box-sizing:border-box;" />
         <button class="preview-submit">✓ ${escapeHtml(buttonLabel)}</button>
       `;
@@ -2879,7 +3194,60 @@
       return;
     }
 
-    // Read current values from DOM
+    // Standalone question card
+    if (card.dataset.type === 'question') {
+      const title = card.querySelector('.question-text-input')?.value || '';
+      const subtitle = card.querySelector('.question-subtitle-input')?.value || '';
+      const answerPills = card.querySelectorAll('.pill-group-answer-type .pill.active');
+      const isRadio = (answerPills[0]?.textContent.trim().toLowerCase() || '') === 'multiple choice';
+      const ulStyle = getPreviewUnderlineStyle(card);
+
+      const preview = document.createElement('div');
+      preview.className = 'step-preview info-preview';
+
+      let bodyHtml = '';
+      if (subtitle) bodyHtml += `<div style="color:#666;font-size:14px;margin-bottom:16px;">${escapeHtml(subtitle)}</div>`;
+
+      if (isRadio) {
+        const optRows = card.querySelectorAll('.opt-row');
+        if (optRows.length) {
+          bodyHtml += `<div class="preview-radio-group">`;
+          optRows.forEach(row => {
+            const label = row.querySelector('.opt-label-input')?.value || '';
+            const desc = row.querySelector('.opt-desc-input')?.innerHTML || '';
+            bodyHtml += `<label class="preview-radio-choice">
+              <input type="radio" name="preview_standalone" disabled>
+              <div><strong>${escapeHtml(label)}${desc ? ':' : ''}</strong> <span>${desc}</span></div>
+            </label>`;
+          });
+          bodyHtml += `</div>`;
+        }
+      } else {
+        const placeholder = card.querySelector('.question-placeholder-input')?.value || 'Type your response here...';
+        bodyHtml += `<textarea disabled placeholder="${escapeAttr(placeholder)}" style="opacity:0.7;"></textarea>`;
+      }
+
+      preview.innerHTML = `
+        <h3 style="${ulStyle}">${escapeHtml(title)}</h3>
+        ${bodyHtml}
+        <button class="preview-submit">Next →</button>
+      `;
+
+      const w = card.querySelector('.modal-width-input')?.value?.trim();
+      const h = card.querySelector('.modal-height-input')?.value?.trim();
+      if (w) preview.style.maxWidth = w;
+      if (h && h !== 'auto') preview.style.height = h;
+      detail.after(preview);
+
+      // Wire flow navigation
+      preview.querySelector('.preview-submit')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        advancePreviewToNext(card);
+      });
+      return;
+    }
+
+    // Read current values from DOM (modal cards: info or questions)
     const pills = card.querySelectorAll('.pill-group .pill.active');
     const isInfo = (pills[0]?.textContent.trim().toLowerCase() || 'informational') === 'informational';
     const inputs = Array.from(card.querySelectorAll('.step-detail .field-input')).filter(el => !el.type.startsWith('date'));
@@ -2889,20 +3257,26 @@
     preview.className = 'step-preview' + (isInfo ? ' info-preview' : '');
 
     const ulStyle = getPreviewUnderlineStyle(card);
+    const titleFontSize = card.querySelector('.title-font-size')?.value || '20px';
+    const titleFontColor = card.querySelector('.title-font-color')?.value || '#550000';
+    const titleFontBold = card.querySelector('.title-font-bold')?.classList.contains('active');
+    const titleStyle = `${ulStyle} font-size:${titleFontSize}; color:${titleFontColor}; font-weight:${titleFontBold ? '700' : 'normal'};`;
 
     if (isInfo) {
       const bodyInput = card.querySelector('.body-html-input');
       const bodyHtml = bodyInput ? bodyInput.innerHTML : '';
       const dismissInput = card.querySelector('.dismiss-label-input');
       const dismissLabel = dismissInput?.value || 'OK';
+      const closable = card.querySelector('.toggle-closable')?.classList.contains('on') || false;
+      const btnStyle = getDismissButtonStyle(card);
       preview.innerHTML = `
-        <span class="preview-badge">PREVIEW</span>
-        <h3 style="${ulStyle}">${escapeHtml(title)}</h3>
-        <div>${bodyHtml.replace(/<p>/g, '<p style="color:#333;font-size:16px;line-height:1.6;margin:0 0 12px;">')}</div>
-        <button class="preview-submit">${escapeHtml(dismissLabel)}</button>
+        ${closable ? '<button class="preview-close">&times;</button>' : ''}
+        <h3 style="${titleStyle}">${escapeHtml(title)}</h3>
+        <div>${styleBodyHtml(bodyHtml)}</div>
+        <button class="preview-submit" style="${btnStyle}">${escapeHtml(dismissLabel)}</button>
       `;
     } else {
-      // Questions preview
+      // Questions preview (modal with multiple questions)
       const questions = card.querySelectorAll('.question-item');
       let qHtml = '';
       const total = questions.length;
@@ -2931,7 +3305,6 @@
       });
 
       preview.innerHTML = `
-        <span class="preview-badge">PREVIEW</span>
         <div class="preview-progress">
           <span class="preview-progress-text">1 / ${total}</span>
           <div class="preview-progress-bar"><div class="preview-progress-fill" style="width:${total?Math.round(100/total):0}%"></div></div>
@@ -2953,6 +3326,70 @@
 
     // Insert after .step-detail
     detail.after(preview);
+
+    // Wire interactive flow navigation
+    preview.querySelectorAll('.preview-submit, .preview-close').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (btn.classList.contains('preview-close')) {
+          // Close just removes this preview
+          preview.remove();
+          return;
+        }
+        advancePreviewToNext(card);
+      });
+    });
+    // Question nav buttons
+    const nextBtn = preview.querySelector('.preview-nav .next-btn');
+    if (nextBtn) nextBtn.addEventListener('click', (e) => { e.stopPropagation(); advancePreviewToNext(card); });
+  }
+
+  /**
+   * Close the current preview and open the next step's preview, scrolling into view.
+   * For analysis steps, just expand the card panel.
+   */
+  function advancePreviewToNext(currentCard) {
+    const cards = Array.from(document.querySelectorAll('#stepList .step-card'));
+    const idx = cards.indexOf(currentCard);
+    if (idx < 0 || idx >= cards.length - 1) {
+      // Last step — just close
+      currentCard.querySelector('.step-preview')?.remove();
+      return;
+    }
+
+    const nextCard = cards[idx + 1];
+    const nextType = nextCard.dataset.type;
+
+    // Animate out current preview
+    const currentPreview = currentCard.querySelector('.step-preview');
+    if (currentPreview) {
+      currentPreview.style.transition = 'opacity 0.2s, transform 0.2s';
+      currentPreview.style.opacity = '0';
+      currentPreview.style.transform = 'translateY(-8px)';
+      setTimeout(() => currentPreview.remove(), 200);
+    }
+
+    // Collapse current card, expand next
+    setTimeout(() => {
+      currentCard.classList.remove('active');
+      nextCard.classList.add('active');
+
+      if (nextType === 'analysis') {
+        // Analysis: just expand the card, scroll to it
+        nextCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        // Open the preview on the next card
+        const previewBtn = nextCard.querySelector('.preview-btn, [title="Preview"]');
+        if (previewBtn) {
+          // Use existing toggle button
+          previewBtn.click();
+        } else {
+          // Directly build the preview — pass any element inside the card
+          toggleInlinePreview(nextCard.querySelector('.step-header'));
+        }
+        nextCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 220);
   }
 
   function getPreviewUnderlineStyle(card) {
@@ -2964,6 +3401,21 @@
     const g = parseInt(color.slice(3,5), 16);
     const b = parseInt(color.slice(5,7), 16);
     return `padding-bottom:10px; margin-bottom:12px; border-bottom: ${size} solid rgba(${r},${g},${b},0.3);`;
+  }
+
+  function getDismissButtonStyle(card) {
+    const bold = card.querySelector('.dismiss-font-bold')?.classList.contains('active');
+    const color = card.querySelector('.dismiss-font-color')?.dataset?.value || '#ffffff';
+    const bg = card.querySelector('.dismiss-bg-color')?.dataset?.value || '#2196F3';
+    return `color:${color}; background:${bg};${bold ? ' font-weight:700;' : ''}`;
+  }
+
+  function updateDatasetSelect(spacecraftSelect) {
+    const card = spacecraftSelect.closest('.step-card');
+    const datasetSelect = card?.querySelector('.dataset-select');
+    if (!datasetSelect) return;
+    const sc = spacecraftSelect.value;
+    datasetSelect.innerHTML = buildDatasetOptions(sc, '');
   }
 
   function updatePreviewDimensions(input) {
@@ -2992,7 +3444,7 @@
     const bodyFontSize = card.querySelector('.body-font-size')?.value || '16px';
     const bodyFontColor = card.querySelector('.body-font-color')?.value || '#333333';
     const bodyFontBold = card.querySelector('.body-font-bold')?.classList.contains('active');
-    const bodyPStyle = `color:${bodyFontColor};font-size:${bodyFontSize};line-height:1.6;margin:0 0 12px;${bodyFontBold ? 'font-weight:700;' : ''}`;
+    const bodyPStyle = `color:${bodyFontColor};font-size:${bodyFontSize};line-height:1.6;margin:0;${bodyFontBold ? 'font-weight:700;' : ''}`;
 
     // — Dimensions —
     const w = card.querySelector('.modal-width-input')?.value?.trim();
@@ -3009,11 +3461,59 @@
       const h3 = preview.querySelector('h3');
       if (h3) { h3.textContent = title; h3.style.cssText = titleStyle; }
       const bodyDiv = preview.querySelector('h3 + div');
-      if (bodyDiv) bodyDiv.innerHTML = bodyHtml.replace(/<p>/g, `<p style="${bodyPStyle}">`);
+      if (bodyDiv) bodyDiv.innerHTML = styleBodyHtml(bodyHtml, bodyPStyle);
       const inp = preview.querySelector('input[type="text"]');
       if (inp) inp.placeholder = placeholder;
       const btn = preview.querySelector('.preview-submit');
       if (btn) btn.textContent = '✓ ' + buttonLabel;
+      return;
+    }
+
+    // Standalone question card
+    if (card.dataset.type === 'question') {
+      const title = card.querySelector('.question-text-input')?.value || '';
+      const subtitle = card.querySelector('.question-subtitle-input')?.value || '';
+      const answerPills = card.querySelectorAll('.pill-group-answer-type .pill.active');
+      const isRadio = (answerPills[0]?.textContent.trim().toLowerCase() || '') === 'multiple choice';
+
+      const h3 = preview.querySelector('h3');
+      if (h3) { h3.textContent = title; h3.style.cssText = titleStyle; }
+
+      // Rebuild the body content (radio options or textarea)
+      const subtitleEl = preview.querySelector('h3 + div[style*="color:#666"]');
+      const bodyContainer = subtitleEl ? subtitleEl.nextElementSibling : preview.querySelector('.preview-radio-group, textarea');
+
+      // Simpler: rebuild everything after h3
+      const h3El = preview.querySelector('h3');
+      const submitBtn = preview.querySelector('.preview-submit');
+      if (h3El && submitBtn) {
+        // Remove everything between h3 and submit button
+        while (h3El.nextElementSibling && h3El.nextElementSibling !== submitBtn) {
+          h3El.nextElementSibling.remove();
+        }
+        // Re-insert subtitle + body
+        let frag = '';
+        if (subtitle) frag += `<div style="color:#666;font-size:14px;margin-bottom:16px;">${escapeHtml(subtitle)}</div>`;
+        if (isRadio) {
+          const optRows = card.querySelectorAll('.opt-row');
+          if (optRows.length) {
+            frag += `<div class="preview-radio-group">`;
+            optRows.forEach(row => {
+              const label = row.querySelector('.opt-label-input')?.value || '';
+              const desc = row.querySelector('.opt-desc-input')?.innerHTML || '';
+              frag += `<label class="preview-radio-choice">
+                <input type="radio" name="preview_standalone" disabled>
+                <div><strong>${escapeHtml(label)}${desc ? ':' : ''}</strong> <span>${desc}</span></div>
+              </label>`;
+            });
+            frag += `</div>`;
+          }
+        } else {
+          const placeholder = card.querySelector('.question-placeholder-input')?.value || 'Type your response here...';
+          frag += `<textarea disabled placeholder="${escapeAttr(placeholder)}" style="opacity:0.7;"></textarea>`;
+        }
+        submitBtn.insertAdjacentHTML('beforebegin', frag);
+      }
       return;
     }
 
@@ -3030,9 +3530,24 @@
     const h3 = preview.querySelector('h3');
     if (h3) { h3.textContent = title; h3.style.cssText = titleStyle; }
     const bodyDiv = preview.querySelector('h3 + div');
-    if (bodyDiv) bodyDiv.innerHTML = bodyHtml.replace(/<p>/g, `<p style="${bodyPStyle}">`);
+    if (bodyDiv) bodyDiv.innerHTML = styleBodyHtml(bodyHtml, bodyPStyle);
     const btn = preview.querySelector('.preview-submit');
-    if (btn) btn.textContent = dismissLabel;
+    if (btn) {
+      btn.textContent = dismissLabel;
+      btn.style.cssText = getDismissButtonStyle(card);
+    }
+
+    // Toggle close button in preview based on "Can Close" toggle
+    const closable = card.querySelector('.toggle-closable')?.classList.contains('on') || false;
+    let closeBtn = preview.querySelector('.preview-close');
+    if (closable && !closeBtn) {
+      closeBtn = document.createElement('button');
+      closeBtn.className = 'preview-close';
+      closeBtn.innerHTML = '&times;';
+      preview.insertBefore(closeBtn, preview.firstChild);
+    } else if (!closable && closeBtn) {
+      closeBtn.remove();
+    }
   }
 
   // Wire live preview refresh — input covers contenteditable + text fields + selects
