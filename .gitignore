@@ -32,3 +32,4 @@ wavelets/
 # Claude instructions
 claude_instructions/
 CLAUDE.md
+.claude/worktrees/
