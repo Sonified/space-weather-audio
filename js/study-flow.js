@@ -798,7 +798,7 @@ function applyAnalysisConfig(step) {
 function isNextStepModal() {
     const next = studyConfig.steps[currentStepIndex + 1];
     if (!next) return false;
-    return next.type === 'modal' || next.type === 'registration';
+    return next.type === 'modal' || next.type === 'registration' || next.type === 'question';
 }
 
 /**
@@ -899,7 +899,7 @@ function advanceStep() {
     const nextStep = studyConfig.steps[currentStepIndex];
     if (nextStep.type === 'analysis') {
         if (studyModalEl) modalManager.currentModal = null;
-    } else if (nextStep.type !== 'modal' && nextStep.type !== 'registration') {
+    } else if (nextStep.type !== 'modal' && nextStep.type !== 'registration' && nextStep.type !== 'question') {
         teardownStudyModal();
     }
     runCurrentStep();
