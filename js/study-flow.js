@@ -683,6 +683,13 @@ async function init() {
             }
             console.log(`📋 Jumped to step ${stepIndex} from URL`);
 
+            // In preview mode, store and display the preview participant ID
+            // (registration step is skipped when jumping directly to a step)
+            if (isPreview && window.__PREVIEW_PARTICIPANT_ID) {
+                storeParticipantId(window.__PREVIEW_PARTICIPANT_ID);
+                updateParticipantDisplay(window.__PREVIEW_PARTICIPANT_ID);
+            }
+
             // For analysis steps jumped to directly, apply config and auto-trigger
             const jumpStep = studyConfig.steps[stepIndex];
             if (jumpStep && jumpStep.type === 'analysis') {
