@@ -213,6 +213,15 @@
   .drag-handle:hover { color: var(--text); background: var(--surface2); }
   .drag-handle:active { cursor: grabbing; }
 
+  .lock-icon {
+    font-size: 12px;
+    flex-shrink: 0;
+    user-select: none;
+    opacity: 0.45;
+    width: 20px;
+    text-align: center;
+  }
+
   .step-header {
     display: flex;
     align-items: center;
@@ -670,7 +679,7 @@
     width: 2px;
     height: var(--connector-height, 12px);
     background: var(--border);
-    margin-left: 29px;
+    margin-left: 61px;
   }
 
   /* Add step button */
@@ -920,7 +929,7 @@
 <div class="steps-container" style="margin-top:24px;">
   <div class="step-card" id="appSettingsCard" data-type="settings">
     <div class="step-header" onclick="toggleStep(this)">
-      <span class="chevron">▶</span>
+      <span class="lock-icon">🔒</span><span class="chevron">▶</span>
       <div class="step-number" style="background:var(--orange);color:#000;">⚙️</div>
       <div class="step-title">App Settings</div>
       <span class="step-type-badge" style="background:rgba(210,153,34,0.15);color:var(--orange);">CONFIG</span>
@@ -1613,7 +1622,7 @@
     const regBodyHtml = step.regBodyHtml || '';
     return `
       <div class="step-header" onclick="toggleStep(this)">
-        <span class="chevron">▶</span>
+        <span class="lock-icon">🔒</span><span class="chevron">▶</span>
         <div class="step-number registration">${num}</div>
         <div class="step-title">Participant Registration</div>
         <span class="step-type-badge badge-registration">Registration</span>
@@ -1684,7 +1693,7 @@
   function buildInfoCard(num, step) {
     return `
       <div class="step-header" onclick="toggleStep(this)">
-        <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
+        <span class="lock-icon">🔒</span><span class="chevron">▶</span>
         <div class="step-number info">${num}</div>
         <div class="step-title">${escapeHtml(step.title || 'Information')}</div>
         <span class="step-type-badge badge-info">Info</span>
@@ -1798,7 +1807,7 @@
 
     return `
       <div class="step-header" onclick="toggleStep(this)">
-        <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
+        <span class="lock-icon">🔒</span><span class="chevron">▶</span>
         <div class="step-number question">${num}</div>
         <div class="step-title">${escapeHtml(step.title || step.text || 'New Question')}</div>
         <span class="step-type-badge badge-question">Question</span>
@@ -1947,7 +1956,7 @@
 
     return `
       <div class="step-header" onclick="toggleStep(this)">
-        <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
+        <span class="lock-icon">🔒</span><span class="chevron">▶</span>
         <div class="step-number analysis">${num}</div>
         <div class="step-title">${escapeHtml(step.title || 'Analysis')}</div>
         <span class="step-type-badge badge-analysis">Analysis</span>
