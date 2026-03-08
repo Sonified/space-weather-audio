@@ -1422,14 +1422,30 @@ async function runQuestionnaire(step) {
         }
     }
 
+    // Detect chained question steps: consecutive 'question' type steps form a chain.
+    // When in a chain, show "Question X of Y" relative to the chain, not the global step list.
+    let chainOffset = 0;
+    let chainTotal = questions.length;
+    if (step.type === 'question' && questions.length === 1) {
+        // Find the start and end of the consecutive question-step chain
+        const steps = studyConfig.steps;
+        let chainStart = currentStepIndex;
+        while (chainStart > 0 && steps[chainStart - 1].type === 'question') chainStart--;
+        let chainEnd = currentStepIndex;
+        while (chainEnd < steps.length - 1 && steps[chainEnd + 1].type === 'question') chainEnd++;
+        chainTotal = chainEnd - chainStart + 1;
+        chainOffset = currentStepIndex - chainStart;
+    }
+
     let qi = 0;
 
     while (qi < questions.length && flowActive) {
         const q = questions[qi];
-        const total = questions.length;
-        const progress = ((qi + 1) / total * 100).toFixed(0);
+        const displayIndex = chainOffset + qi;
+        const displayTotal = chainTotal;
+        const progress = ((displayIndex + 1) / displayTotal * 100).toFixed(0);
 
-        const result = await showQuestionModal(q, qi, total, progress, answers[q.id], qi > 0, step);
+        const result = await showQuestionModal(q, displayIndex, displayTotal, progress, answers[q.id], qi > 0, step);
 
         if (result === '__BACK__') {
             qi = Math.max(0, qi - 1);
