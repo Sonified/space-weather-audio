@@ -386,9 +386,13 @@ export function initializeAdvancedControls() {
     }
 
     if (advancedCheckbox) {
-        // Restore saved preference
+        // Restore saved preference (default to advanced on localhost)
         const savedAdvanced = localStorage.getItem('emic_advanced_mode');
-        if (savedAdvanced === 'true') advancedCheckbox.checked = true;
+        if (savedAdvanced !== null) {
+            advancedCheckbox.checked = savedAdvanced === 'true';
+        } else if (isLocalEnvironment()) {
+            advancedCheckbox.checked = true;
+        }
         applyDisplayMode(advancedCheckbox.checked);
 
         advancedCheckbox.addEventListener('change', () => {

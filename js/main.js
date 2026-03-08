@@ -20,7 +20,7 @@ import { initSilentErrorReporter } from './silent-error-reporter.js';
 import { drawFrequencyAxis, setMinFreqMultiplier } from './spectrogram-axis-renderer.js';
 import { updateCompleteButtonState, updateCmpltButtonState } from './feature-tracker.js';
 import { initKeyboardShortcuts } from './keyboard-shortcuts.js';
-import { isEmicStudyMode } from './master-modes.js';
+import { isEmicStudyMode, isLocalEnvironment } from './master-modes.js';
 import { initShareModal, openShareModal, checkAndLoadSharedSession, applySharedSession } from './share-modal.js';
 import { logGroup, logGroupEnd } from './logger.js';
 import { initializeAdvancedControls } from './advanced-controls.js';
@@ -91,7 +91,11 @@ async function initializeMainApp() {
     const advancedCheckboxEarly = document.getElementById('advancedMode');
     if (advancedCheckboxEarly) {
         const savedAdvanced = localStorage.getItem('emic_advanced_mode');
-        if (savedAdvanced !== null) advancedCheckboxEarly.checked = savedAdvanced === 'true';
+        if (savedAdvanced !== null) {
+            advancedCheckboxEarly.checked = savedAdvanced === 'true';
+        } else if (isLocalEnvironment()) {
+            advancedCheckboxEarly.checked = true;
+        }
     }
     if (CURRENT_MODE === AppMode.EMIC_STUDY || CURRENT_MODE === AppMode.SOLAR_PORTAL) {
         initializeAdvancedControls();

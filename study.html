@@ -61,7 +61,10 @@
 
         // Hide advanced-only panels BEFORE paint
         (function() {
-            if (localStorage.getItem('emic_advanced_mode') === 'true') {
+            var h2 = window.location.hostname;
+            var isLocalEnv = h2 === 'localhost' || h2 === '127.0.0.1' || h2 === '' || window.location.protocol === 'file:';
+            var savedAdv = localStorage.getItem('emic_advanced_mode');
+            if (savedAdv === 'true' || (savedAdv === null && isLocalEnv)) {
                 document.documentElement.setAttribute('data-advanced', '');
             }
             var h = window.location.hostname;
