@@ -625,6 +625,31 @@ async function init() {
     const urlParams = new URLSearchParams(window.location.search);
     const jumpToStep = urlParams.get('step');
     const isPreview = urlParams.get('preview') === 'true';
+    const isTestMode = urlParams.get('test') === 'true';
+
+    // ── Test Mode ────────────────────────────────────────────
+    // Like live mode (data IS saved), but participant ID is prefixed TEST_ so it can be filtered out later.
+    if (isTestMode && !isPreview) {
+        window.__TEST_MODE = true;
+        const testChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        const testSuffix = Array.from({ length: 5 }, () => testChars[Math.floor(Math.random() * 26)]).join('');
+        const testId = `TEST_${testSuffix}`;
+        window.__TEST_PARTICIPANT_ID = testId;
+
+        // Show test mode banner (subtle, like preview)
+        const testBanner = document.createElement('div');
+        testBanner.id = 'testBanner';
+        testBanner.style.cssText = 'position:fixed;top:8px;left:8px;z-index:999999;background:rgba(255,152,0,0.55);color:#fff;padding:3px 10px;font-family:system-ui;font-size:11px;font-weight:500;border-radius:4px;pointer-events:none;backdrop-filter:blur(4px);';
+        testBanner.textContent = '🧪 Test Mode';
+        document.body.prepend(testBanner);
+
+        // Update page tab
+        const studyName2 = studyConfig.name || studySlug;
+        document.title = `[Test] ${studyName2} — spaceweather.now.audio`;
+        if (titleEl) titleEl.textContent = `[Test] ${studyName2}`;
+
+        console.log(`🧪 Test mode active — participant: ${testId}`);
+    }
 
     if (isPreview) {
         window.__PREVIEW_MODE = true;
@@ -1016,6 +1041,16 @@ function showLoginModal(step) {
             input.parentElement.after(hint);
         }
 
+        // In test mode, pre-fill with test ID and add hint
+        if (window.__TEST_MODE && window.__TEST_PARTICIPANT_ID && input) {
+            input.value = window.__TEST_PARTICIPANT_ID;
+            submitBtn.disabled = false;
+            const hint = document.createElement('div');
+            hint.style.cssText = 'font-size:11px; color:#e65100; margin-top:6px; font-style:italic;';
+            hint.textContent = 'Test mode — data will be saved but flagged as test (TEST_ prefix)';
+            input.parentElement.after(hint);
+        }
+
         input?.addEventListener('input', () => {
             submitBtn.disabled = !input.value.trim();
         });
@@ -1294,10 +1329,11 @@ async function runAnalysis(step) {
         completeBtn.disabled = false;
         completeBtn.textContent = '✓ Complete';
 
-        // Poll for features, show Complete when user draws at least one
+        // Poll for features, show Complete when user draws at least minFeatures
+        const minFeatures = step.minFeatures || 1;
         const pollInterval = setInterval(() => {
             const count = getStandaloneFeatures().length;
-            if (count > 0) {
+            if (count >= minFeatures) {
                 completeBtn.style.display = '';
                 clearInterval(pollInterval);
             }
@@ -1318,6 +1354,12 @@ async function runAnalysis(step) {
 
                 // Save features to D1
                 const features = getStandaloneFeatures();
+
+                // Enforce minimum features at click time
+                if (step.requireMinFeatures !== false && features.length < minFeatures) {
+                    showPromptOverlay(`Please identify at least ${minFeatures} feature${minFeatures > 1 ? 's' : ''} before proceeding. You have ${features.length} so far.`);
+                    return;
+                }
                 for (const feat of features) {
                     saveFeature(feat);
                 }
@@ -1445,7 +1487,8 @@ async function runQuestionnaire(step) {
         const displayTotal = chainTotal;
         const progress = ((displayIndex + 1) / displayTotal * 100).toFixed(0);
 
-        const result = await showQuestionModal(q, displayIndex, displayTotal, progress, answers[q.id], qi > 0, step);
+        const canGoBack = step.canGoBack !== false;
+        const result = await showQuestionModal(q, displayIndex, displayTotal, progress, answers[q.id], canGoBack && qi > 0, step);
 
         if (result === '__BACK__') {
             qi = Math.max(0, qi - 1);
