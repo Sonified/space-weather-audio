@@ -783,6 +783,12 @@
       <button class="url-action-btn" onclick="copyUrl('study')" title="Copy URL">📋</button>
       <button class="url-action-btn" onclick="openUrl('study')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
     </div>
+    <div class="slug-preview" id="testUrlPreview" style="margin-top:2px;">
+      <span class="slug-label">Test URL:</span>
+      <span class="slug-url" id="testUrl"></span>
+      <button class="url-action-btn" onclick="copyUrl('test')" title="Copy Test URL">📋</button>
+      <button class="url-action-btn" onclick="openUrl('test')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
+    </div>
     <div class="slug-preview" id="localUrlPreview" style="margin-top:2px;display:none;">
       <span class="slug-label">Local URL:</span>
       <span class="slug-url" id="localUrl" style="color:var(--text-muted);"></span>
@@ -1602,7 +1608,9 @@
     contentHtml += `
       <div class="toggle-row">
         <span class="toggle-label">Required</span>
-        <div class="toggle ${step.required !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+        <div class="toggle toggle-required ${step.required !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+        <span class="toggle-label" style="margin-left: 16px;">Can Go Back</span>
+        <div class="toggle toggle-can-go-back ${step.canGoBack !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
       </div>`;
 
     return `
@@ -1708,6 +1716,10 @@
         <div class="toggle-row">
           <span class="toggle-label">Require minimum features</span>
           <div class="toggle ${step.requireMinFeatures ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="field-group" style="margin-left:20px; margin-top:4px;">
+          <div class="field-label">Minimum Features to proceed:</div>
+          <input class="field-input min-features-input" type="number" min="1" value="${step.minFeatures || 1}" style="width:80px;" />
         </div>
         <div class="toggle-row">
           <span class="toggle-label">Confirm analysis completion</span>
@@ -1960,8 +1972,10 @@
         } else {
           step.placeholder = card.querySelector('.question-placeholder-input')?.value || '';
         }
-        const reqToggle = card.querySelector('.toggle-row .toggle');
+        const reqToggle = card.querySelector('.toggle-required');
         step.required = reqToggle?.classList.contains('on') || false;
+        const goBackToggle = card.querySelector('.toggle-can-go-back');
+        step.canGoBack = goBackToggle?.classList.contains('on') ?? true;
         console.log(`%c[COLLECT]   Question step ${i}:`, 'color: #58a6ff;', {
           title: step.title,
           questionType: step.questionType,
@@ -2280,6 +2294,7 @@
     const flash = document.getElementById('slugFlash');
     slugEl.textContent = slug;
     updateLocalUrl(slug);
+    updateTestUrl(slug);
 
     // Validate & flash
     const valid = slug.length >= 3 && /^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(slug);
@@ -2308,6 +2323,11 @@
     el.textContent = `${location.origin}/study.html?study=${slug}`;
   }
 
+  function updateTestUrl(slug) {
+    const el = document.getElementById('testUrl');
+    if (el) el.textContent = `spaceweather.now.audio/study/${slug}?test=true`;
+  }
+
   function getStudyUrl() {
     const slug = document.getElementById('slugValue').textContent;
     return `https://spaceweather.now.audio/study/${slug}`;
@@ -2318,8 +2338,12 @@
     return `${location.origin}/study.html?study=${slug}`;
   }
 
+  function getTestUrl() {
+    return getStudyUrl() + '?test=true';
+  }
+
   function copyUrl(type) {
-    const url = type === 'local' ? getLocalUrl() : getStudyUrl();
+    const url = type === 'test' ? getTestUrl() : type === 'local' ? getLocalUrl() : getStudyUrl();
     navigator.clipboard.writeText(url).then(() => {
       const btn = event.currentTarget;
       const orig = btn.textContent;
@@ -2329,7 +2353,7 @@
   }
 
   function openUrl(type) {
-    const url = type === 'local' ? getLocalUrl() : getStudyUrl();
+    const url = type === 'test' ? getTestUrl() : type === 'local' ? getLocalUrl() : getStudyUrl();
     window.open(url, '_blank');
   }
 
@@ -2339,6 +2363,7 @@
     const slug = el.textContent.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
     // Instantly update local URL preview
     updateLocalUrl(slug);
+    updateTestUrl(slug);
     // Validate slug
     const valid = slug.length >= 3 && /^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(slug);
     const statusEl = document.getElementById('slugStatus');
@@ -2605,7 +2630,7 @@
       card.innerHTML = buildInfoCard(num, defaultStep);
       const ed = card.querySelector('.rich-editable'); if (ed) ed.innerHTML = '';
     } else if (type === 'question') {
-      defaultStep = { type: 'question', title: '', questionType: 'radio', required: true, options: [{ value: '1', label: '', description: '' }] };
+      defaultStep = { type: 'question', title: '', questionType: 'radio', required: true, canGoBack: true, options: [{ value: '1', label: '', description: '' }] };
       card.innerHTML = buildQuestionCard(num, defaultStep);
     } else {
       defaultStep = { type: 'analysis', title: 'New Analysis Step', spacecraft: 'GOES-18', dataset: 'Magnetometer (MAG)', startDate: '', endDate: '', dataSource: 'cloudflare_r2', playbackSpeed: '1x', allowFeatureDrawing: true, showSpectrogram: true, allowStretch: true, confirmCompletion: { enabled: false } };

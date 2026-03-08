@@ -624,6 +624,31 @@ async function init() {
     const urlParams = new URLSearchParams(window.location.search);
     const jumpToStep = urlParams.get('step');
     const isPreview = urlParams.get('preview') === 'true';
+    const isTestMode = urlParams.get('test') === 'true';
+
+    // ── Test Mode ────────────────────────────────────────────
+    // Like live mode (data IS saved), but participant ID is prefixed TEST_ so it can be filtered out later.
+    if (isTestMode && !isPreview) {
+        window.__TEST_MODE = true;
+        const testChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        const testSuffix = Array.from({ length: 5 }, () => testChars[Math.floor(Math.random() * 26)]).join('');
+        const testId = `TEST_${testSuffix}`;
+        window.__TEST_PARTICIPANT_ID = testId;
+
+        // Show test mode banner (subtle, like preview)
+        const testBanner = document.createElement('div');
+        testBanner.id = 'testBanner';
+        testBanner.style.cssText = 'position:fixed;top:8px;left:8px;z-index:999999;background:rgba(255,152,0,0.55);color:#fff;padding:3px 10px;font-family:system-ui;font-size:11px;font-weight:500;border-radius:4px;pointer-events:none;backdrop-filter:blur(4px);';
+        testBanner.textContent = '🧪 Test Mode';
+        document.body.prepend(testBanner);
+
+        // Update page tab
+        const studyName2 = studyConfig.name || studySlug;
+        document.title = `[Test] ${studyName2} — spaceweather.now.audio`;
+        if (titleEl) titleEl.textContent = `[Test] ${studyName2}`;
+
+        console.log(`🧪 Test mode active — participant: ${testId}`);
+    }
 
     if (isPreview) {
         window.__PREVIEW_MODE = true;
@@ -1008,6 +1033,16 @@ function showLoginModal(step) {
             const hint = document.createElement('div');
             hint.style.cssText = 'font-size:11px; color:#888; margin-top:6px; font-style:italic;';
             hint.textContent = 'Preview mode — names starting with "Preview_" won\'t save data';
+            input.parentElement.after(hint);
+        }
+
+        // In test mode, pre-fill with test ID and add hint
+        if (window.__TEST_MODE && window.__TEST_PARTICIPANT_ID && input) {
+            input.value = window.__TEST_PARTICIPANT_ID;
+            submitBtn.disabled = false;
+            const hint = document.createElement('div');
+            hint.style.cssText = 'font-size:11px; color:#e65100; margin-top:6px; font-style:italic;';
+            hint.textContent = 'Test mode — data will be saved but flagged as test (TEST_ prefix)';
             input.parentElement.after(hint);
         }
 
@@ -1413,7 +1448,8 @@ async function runQuestionnaire(step) {
         const total = questions.length;
         const progress = ((qi + 1) / total * 100).toFixed(0);
 
-        const result = await showQuestionModal(q, qi, total, progress, answers[q.id], qi > 0, step);
+        const canGoBack = step.canGoBack !== false;
+        const result = await showQuestionModal(q, qi, total, progress, answers[q.id], canGoBack && qi > 0, step);
 
         if (result === '__BACK__') {
             qi = Math.max(0, qi - 1);
