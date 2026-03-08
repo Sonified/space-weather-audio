@@ -13,6 +13,7 @@ import { fetchStudyConfig, setStudyId, initParticipant, saveSurveyAnswer, saveFe
 import { modalManager } from './modal-manager.js';
 import { getStandaloneFeatures } from './feature-tracker.js';
 import { getParticipantId, storeParticipantId, generateParticipantId } from './participant-id.js';
+import { styleBodyHtml } from './study-builder/utils.js';
 import { pausePlayback } from './audio-player.js';
 import { typeText, cancelTyping } from './tutorial-effects.js';
 
@@ -644,12 +645,9 @@ async function init() {
         const banner = document.createElement('div');
         const stepLabel = jumpToStep !== null ? `Step ${parseInt(jumpToStep,10)+1} of ${studyConfig.steps.length}` : '';
         banner.id = 'previewBanner';
-        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:rgba(33,150,243,0.9);color:#fff;text-align:center;padding:6px 16px;font-family:system-ui;font-size:13px;font-weight:500;backdrop-filter:blur(4px);';
-        banner.textContent = `🔍 Preview Mode (${previewId})${stepLabel ? ' — Step ' + (parseInt(jumpToStep,10)+1) + ' of ' + studyConfig.steps.length : ''}`;
+        banner.style.cssText = 'position:fixed;top:8px;left:8px;z-index:999999;background:rgba(33,150,243,0.55);color:#fff;padding:3px 10px;font-family:system-ui;font-size:11px;font-weight:500;border-radius:4px;pointer-events:none;backdrop-filter:blur(4px);';
+        banner.textContent = `🔍 Preview Mode${stepLabel ? ' Step ' + (parseInt(jumpToStep,10)+1) : ''}`;
         document.body.prepend(banner);
-        document.body.style.paddingTop = '32px';
-        // Trigger resize so spectrogram/renderers account for the banner height
-        setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
 
         // Update page tab: 🚧 [Preview] Study Name + swap favicon
         const studyName = studyConfig.name || studySlug;
@@ -986,7 +984,7 @@ function showLoginModal(step) {
                     <h3 class="modal-title" style="${titleFont}">🔬 ${title}</h3>
                 </div>
                 <div class="modal-body" style="${bodyFont}">
-                    ${bodyHtml}
+                    ${styleBodyHtml(bodyHtml, `${bodyFont} line-height:1.6;margin:0;`)}
                     <div class="modal-form-group">
                         <input type="text" id="studyLoginInput" placeholder="${step.idPlaceholder || 'Enter your ID'}" style="font-size: 18px;" autocomplete="off">
                     </div>
@@ -1103,7 +1101,7 @@ function rerenderInfoModal(step) {
         const bodyDiv = content.querySelector('.modal-body > div');
         if (bodyDiv) {
             bodyDiv.style.cssText = `color: ${bodyColor}; font-size: ${bodySize}; line-height: 1.6; text-align: left; margin-bottom: 20px; ${bodyWeight}`;
-            bodyDiv.innerHTML = step.bodyHtml || '';
+            bodyDiv.innerHTML = styleBodyHtml(step.bodyHtml, `color:${bodyColor};font-size:${bodySize};line-height:1.6;margin:0;${bodyWeight}`);
         }
         const btn = content.querySelector('.modal-submit');
         if (btn) btn.textContent = step.dismissLabel || 'OK';
@@ -1122,11 +1120,11 @@ function runInfoModal(step) {
             <div class="modal-content" style="${dimStyle} text-align: center;">
                 <div class="modal-header" style="${ulStyle}">
                     <h3 class="modal-title" style="${titleFont}">${step.title || ''}</h3>
-                    ${step.skippable ? '<button class="modal-close">&times;</button>' : ''}
+                    ${step.closable ? '<button class="modal-close">&times;</button>' : ''}
                 </div>
                 <div class="modal-body">
                     <div style="color: ${bodyColor}; font-size: ${bodySize}; line-height: 1.6; text-align: left; margin-bottom: 20px; ${bodyWeight}">
-                        ${step.bodyHtml || ''}
+                        ${styleBodyHtml(step.bodyHtml, `color:${bodyColor};font-size:${bodySize};line-height:1.6;margin:0;${bodyWeight}`)}
                     </div>
                     <button type="button" class="modal-submit" style="min-width: 140px;">${step.dismissLabel || 'OK'}</button>
                 </div>
@@ -1137,11 +1135,21 @@ function runInfoModal(step) {
         openStudyModalIfNeeded();
 
         const dismiss = () => {
+            if (outsideHandler) studyModalEl.removeEventListener('click', outsideHandler);
             resolve();
             advanceStep();
         };
         studyModalInner.querySelector('.modal-submit')?.addEventListener('click', dismiss);
         studyModalInner.querySelector('.modal-close')?.addEventListener('click', dismiss);
+
+        // Click outside modal content to close (only when closable)
+        let outsideHandler = null;
+        if (step.closable) {
+            outsideHandler = (e) => {
+                if (!studyModalInner.querySelector('.modal-content')?.contains(e.target)) dismiss();
+            };
+            studyModalEl.addEventListener('click', outsideHandler);
+        }
     });
 }
 
@@ -1257,15 +1265,16 @@ async function runAnalysis(step) {
         }, 300);
     }
 
-    // Trigger data fetch if not already preloaded
-    if (!preloadTriggered[currentStepIndex]) {
-        const startBtn = document.getElementById('startBtn');
-        if (startBtn && !startBtn.disabled) {
-            startBtn.click();
-            console.log(`📋 Triggered data fetch`);
-        }
-    } else {
-        console.log(`📋 Data already preloaded for this analysis step`);
+    // Trigger data render (same pattern as emic_study welcome modal dismiss)
+    if (typeof window.triggerDataRender === 'function') {
+        window.triggerDataRender();
+        console.log(`📋 Triggered data render via triggerDataRender()`);
+    }
+    // Switch to progressive rendering mode
+    const renderSelect = document.getElementById('dataRendering');
+    if (renderSelect) {
+        renderSelect.value = 'progressive';
+        renderSelect.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
     // Execute config-driven prompts
