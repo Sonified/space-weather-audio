@@ -1313,10 +1313,11 @@ async function runAnalysis(step) {
         completeBtn.disabled = false;
         completeBtn.textContent = '✓ Complete';
 
-        // Poll for features, show Complete when user draws at least one
+        // Poll for features, show Complete when user draws at least minFeatures
+        const minFeatures = step.minFeatures || 1;
         const pollInterval = setInterval(() => {
             const count = getStandaloneFeatures().length;
-            if (count > 0) {
+            if (count >= minFeatures) {
                 completeBtn.style.display = '';
                 clearInterval(pollInterval);
             }
@@ -1337,6 +1338,12 @@ async function runAnalysis(step) {
 
                 // Save features to D1
                 const features = getStandaloneFeatures();
+
+                // Enforce minimum features at click time
+                if (step.requireMinFeatures !== false && features.length < minFeatures) {
+                    showPromptOverlay(`Please identify at least ${minFeatures} feature${minFeatures > 1 ? 's' : ''} before proceeding. You have ${features.length} so far.`);
+                    return;
+                }
                 for (const feat of features) {
                     saveFeature(feat);
                 }
