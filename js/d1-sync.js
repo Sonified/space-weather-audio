@@ -208,6 +208,7 @@ export function saveFeature(featureData) {
         startTime: featureData.startTime,
         endTime: featureData.endTime,
         notes: featureData.notes || '',
+        confidence: featureData.confidence || 'confirmed',
         speedFactor: featureData.speedFactor || null,
         coordCount: coords.length,
     };

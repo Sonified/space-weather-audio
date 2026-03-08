@@ -481,6 +481,7 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
         startTime: startTime || '',
         endTime: endTime || '',
         notes: '',
+        confidence: 'confirmed',
         speedFactor: getCurrentSpeedFactor()
     };
     featureIndex = addStandaloneFeature(newFeature);
@@ -634,6 +635,11 @@ export function renderStandaloneFeaturesList() {
                 <option value="Continuous" ${feature.type === 'Continuous' ? 'selected' : ''}>Continuous</option>
             </select>
             <span class="freq-display ${hasCoords ? 'completed' : ''}">${hasCoords ? formatFeatureButtonText(feature) : 'No selection'}</span>
+            <label class="confidence-label" for="confidence-sa-${idx}">Confidence:</label>
+            <select id="confidence-sa-${idx}">
+                <option value="confirmed" ${feature.confidence === 'confirmed' || !feature.confidence ? 'selected' : ''}>This is an EMIC event</option>
+                <option value="uncertain" ${feature.confidence === 'uncertain' ? 'selected' : ''}>This might be an EMIC event</option>
+            </select>
             <textarea class="freq-input notes-field"
                       placeholder="Add description..."
                       id="notes-sa-${idx}">${feature.notes || ''}</textarea>
@@ -644,6 +650,7 @@ export function renderStandaloneFeaturesList() {
         // Wire up change listeners
         const repetitionSelect = featureRow.querySelector(`#repetition-sa-${idx}`);
         const typeSelect = featureRow.querySelector(`#type-sa-${idx}`);
+        const confidenceSelect = featureRow.querySelector(`#confidence-sa-${idx}`);
         const notesField = featureRow.querySelector(`#notes-sa-${idx}`);
 
         repetitionSelect.addEventListener('change', function() {
@@ -654,6 +661,12 @@ export function renderStandaloneFeaturesList() {
 
         typeSelect.addEventListener('change', function() {
             standaloneFeatures[idx].type = this.value;
+            saveStandaloneFeatures();
+            this.blur();
+        });
+
+        confidenceSelect.addEventListener('change', function() {
+            standaloneFeatures[idx].confidence = this.value;
             saveStandaloneFeatures();
             this.blur();
         });
