@@ -2382,6 +2382,7 @@
 
   // Init local URL display
   updateLocalUrl(document.getElementById('slugValue').textContent);
+  updateTestUrl(document.getElementById('slugValue').textContent);
 
   // Keyboard shortcut: Cmd+S / Ctrl+S to save
   document.addEventListener('keydown', (e) => {
@@ -3138,6 +3139,7 @@
     if (config) {
       loadConfigIntoBuilder(config);
       updateLocalUrl(config.slug);
+      updateTestUrl(config.slug);
       localStorage.setItem('study_builder_config', JSON.stringify(config));
       localStorage.setItem('study_builder_last', slug);
       console.log('💾 Switched to study:', slug);
@@ -3185,6 +3187,7 @@
       console.log('%c[INIT] Loading from localStorage (synchronous):', 'color: #bc8cff; font-weight: bold;', config.slug);
       loadConfigIntoBuilder(config);
       updateLocalUrl(config.slug);
+      updateTestUrl(config.slug);
       refreshStudyPicker();
       return;
     }
@@ -3202,6 +3205,7 @@
       if (idbConfig) {
         loadConfigIntoBuilder(idbConfig);
         updateLocalUrl(idbConfig.slug || lastSlug);
+        updateTestUrl(idbConfig.slug || lastSlug);
         localStorage.setItem('study_builder_config', JSON.stringify(idbConfig));
         console.log('%c[INIT] ✅ Loaded from IndexedDB + migrated to localStorage', 'color: #bc8cff;');
       }
