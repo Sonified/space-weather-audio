@@ -30,9 +30,192 @@ let flowActive = false;
 const PROGRESS_KEY = 'study_flow_step';
 const STUDY_SLUG_KEY = 'study_flow_slug';
 
+// Per-step flag keys — auto-generated from config
+let stepFlagKeys = [];  // ['study_flag_emic-pilot_0_registration', ...]
+
 // Reusable modal container for smooth crossfades between consecutive modals
 let studyModalEl = null;
 let studyModalInner = null;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PER-STEP FLAGS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function generateStepFlagKeys(config, slug) {
+    return config.steps.map((step, i) => {
+        const type = step.contentType === 'questions' ? 'questions' : step.type;
+        return `study_flag_${slug}_${i}_${type}`;
+    });
+}
+
+function setStepFlag(stepIndex) {
+    if (window.__PREVIEW_MODE) return;
+    if (stepIndex < 0 || stepIndex >= stepFlagKeys.length) return;
+    const key = stepFlagKeys[stepIndex];
+    localStorage.setItem(key, 'done');
+    window.dispatchEvent(new CustomEvent('study-flag-change', {
+        detail: { key, stepIndex, value: 'done' }
+    }));
+}
+
+function clearStepFlag(stepIndex) {
+    if (stepIndex < 0 || stepIndex >= stepFlagKeys.length) return;
+    const key = stepFlagKeys[stepIndex];
+    localStorage.removeItem(key);
+    window.dispatchEvent(new CustomEvent('study-flag-change', {
+        detail: { key, stepIndex, value: null }
+    }));
+}
+
+function getStepFlag(stepIndex) {
+    if (stepIndex < 0 || stepIndex >= stepFlagKeys.length) return false;
+    return localStorage.getItem(stepFlagKeys[stepIndex]) === 'done';
+}
+
+/** Returns array of { key, stepIndex, type, title, done } for the debug panel */
+function getStepFlagStates() {
+    if (!studyConfig) return [];
+    return studyConfig.steps.map((step, i) => ({
+        key: stepFlagKeys[i],
+        stepIndex: i,
+        type: step.contentType === 'questions' ? 'questions' : step.type,
+        title: step.title || step.type,
+        done: localStorage.getItem(stepFlagKeys[i]) === 'done'
+    }));
+}
+
+function clearAllStepFlags() {
+    for (let i = 0; i < stepFlagKeys.length; i++) {
+        localStorage.removeItem(stepFlagKeys[i]);
+    }
+    window.dispatchEvent(new CustomEvent('study-flag-change', { detail: { key: '*', value: null } }));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DEBUG FLAGS PANEL
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let flagsPanelBuilt = false;
+
+function initStudyFlagsPanel() {
+    const btn = document.getElementById('showFlagsBtn');
+    const panel = document.getElementById('emicFlagsPanel');
+    if (!btn || !panel) return;
+
+    btn.style.display = '';
+
+    function showPanel() {
+        panel.style.display = 'block';
+        btn.textContent = 'Hide Flags';
+        buildFlagsUI(panel);
+        syncFlagsUI();
+        window.addEventListener('study-flag-change', syncFlagsUI);
+        localStorage.setItem('study_flags_panel_visible', 'true');
+    }
+
+    function hidePanel() {
+        panel.style.display = 'none';
+        btn.textContent = 'Show Flags';
+        window.removeEventListener('study-flag-change', syncFlagsUI);
+        localStorage.setItem('study_flags_panel_visible', 'false');
+    }
+
+    btn.addEventListener('click', () => {
+        if (panel.style.display === 'none' || !panel.style.display) showPanel();
+        else hidePanel();
+    });
+
+    // Restore visibility from previous session
+    if (localStorage.getItem('study_flags_panel_visible') === 'true') {
+        showPanel();
+    }
+}
+
+function buildFlagsUI(panel) {
+    if (flagsPanelBuilt) return;
+    flagsPanelBuilt = true;
+
+    const content = document.getElementById('emicFlagsContent') || panel;
+
+    // Style the panel
+    panel.style.cssText = 'position:fixed;bottom:10px;right:10px;background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:12px 16px;z-index:10000;max-width:360px;font-size:12px;color:#ccc;box-shadow:0 4px 20px rgba(0,0,0,0.4);max-height:60vh;overflow-y:auto;';
+
+    const states = getStepFlagStates();
+    const stepIcons = { registration: '👤', modal: '📋', analysis: '🔬', questions: '❓' };
+
+    let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <strong style="color:#fff;font-size:13px;">Study Flags — ${studySlug}</strong>
+        <div style="display:flex;gap:6px;">
+            <button id="sfDeselectAll" style="font-size:11px;padding:2px 8px;background:#333;border:1px solid #555;color:#aaa;border-radius:4px;cursor:pointer;">Deselect All</button>
+            <button id="sfClosePanel" style="font-size:14px;padding:0 6px;background:none;border:none;color:#666;cursor:pointer;">×</button>
+        </div>
+    </div>`;
+
+    html += `<div style="display:flex;flex-direction:column;gap:4px;">`;
+    for (const s of states) {
+        const icon = stepIcons[s.type] || '📄';
+        html += `<label style="display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:4px;cursor:pointer;background:rgba(255,255,255,0.03);" data-step-flag="${s.stepIndex}">
+            <input type="checkbox" data-flag-index="${s.stepIndex}" style="width:14px;height:14px;cursor:pointer;" ${s.done ? 'checked' : ''}>
+            <span style="opacity:0.5;font-size:11px;">${s.stepIndex}.</span>
+            <span>${icon} ${s.title}</span>
+            <span style="margin-left:auto;font-size:10px;color:#666;">${s.type}</span>
+        </label>`;
+    }
+    html += `</div>`;
+
+    // Progress indicator
+    html += `<div id="sfProgress" style="margin-top:8px;padding-top:8px;border-top:1px solid #333;font-size:11px;color:#666;"></div>`;
+
+    content.innerHTML = html;
+    content.style.display = 'block';
+
+    // Wire checkboxes
+    content.querySelectorAll('input[data-flag-index]').forEach(cb => {
+        cb.addEventListener('change', () => {
+            const idx = parseInt(cb.dataset.flagIndex, 10);
+            if (cb.checked) setStepFlag(idx);
+            else clearStepFlag(idx);
+            syncFlagsUI();
+        });
+    });
+
+    // Wire deselect all
+    const deselectBtn = content.querySelector('#sfDeselectAll');
+    if (deselectBtn) {
+        deselectBtn.addEventListener('click', () => {
+            clearAllStepFlags();
+            syncFlagsUI();
+        });
+    }
+
+    // Wire close
+    const closeBtn = content.querySelector('#sfClosePanel');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            panel.style.display = 'none';
+            const btn = document.getElementById('showFlagsBtn');
+            if (btn) btn.textContent = 'Show Flags';
+            window.removeEventListener('study-flag-change', syncFlagsUI);
+            localStorage.setItem('study_flags_panel_visible', 'false');
+        });
+    }
+}
+
+function syncFlagsUI() {
+    const states = getStepFlagStates();
+    let doneCount = 0;
+    for (const s of states) {
+        const cb = document.querySelector(`input[data-flag-index="${s.stepIndex}"]`);
+        if (cb) cb.checked = s.done;
+        const label = document.querySelector(`label[data-step-flag="${s.stepIndex}"]`);
+        if (label) label.style.opacity = s.done ? '0.5' : '1';
+        if (s.done) doneCount++;
+    }
+    const progress = document.getElementById('sfProgress');
+    if (progress) {
+        progress.textContent = `Progress: ${doneCount}/${states.length} steps · Current: ${currentStepIndex}`;
+    }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // APP SETTINGS → DOM MAPPING
@@ -164,6 +347,9 @@ function applyAppSettings(settings) {
     }
 
     for (const [path, value] of Object.entries(flat)) {
+        // "auto" means "don't override — let the page's own logic handle it"
+        if (value === 'auto') continue;
+
         const elId = SETTINGS_MAP[path];
         if (!elId) continue;
 
@@ -397,6 +583,9 @@ async function init() {
 
     console.log(`📋 Study config loaded: "${studyConfig.name}" (${studyConfig.steps.length} steps)`);
 
+    // Generate per-step flag keys
+    stepFlagKeys = generateStepFlagKeys(studyConfig, studySlug);
+
     // Update page title
     if (titleEl) titleEl.textContent = studyConfig.name || studySlug;
     document.title = (studyConfig.name || studySlug) + ' — spaceweather.now.audio';
@@ -442,8 +631,14 @@ async function init() {
         const previewChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
         const previewSuffix = Array.from({ length: 6 }, () => previewChars[Math.floor(Math.random() * 26)]).join('');
         const previewId = `Preview_${previewSuffix}`;
-        localStorage.setItem('participantId', previewId);
+        // Don't set participantId yet — let registration run so it's visible in preview
+        localStorage.removeItem('participantId');
         window.__PREVIEW_PARTICIPANT_ID = previewId;
+
+        // Always start fresh in preview mode — clear any saved progress
+        localStorage.removeItem(PROGRESS_KEY);
+        localStorage.removeItem(STUDY_SLUG_KEY);
+        currentStepIndex = 0;
 
         // Show preview banner
         const banner = document.createElement('div');
@@ -453,7 +648,31 @@ async function init() {
         banner.textContent = `🔍 Preview Mode (${previewId})${stepLabel ? ' — Step ' + (parseInt(jumpToStep,10)+1) + ' of ' + studyConfig.steps.length : ''}`;
         document.body.prepend(banner);
         document.body.style.paddingTop = '32px';
+        // Trigger resize so spectrogram/renderers account for the banner height
+        setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+
+        // Update page tab: 🚧 [Preview] Study Name + swap favicon
+        const studyName = studyConfig.name || studySlug;
+        document.title = `[Preview] ${studyName} — spaceweather.now.audio`;
+        if (titleEl) titleEl.textContent = `[Preview] ${studyName}`;
+        const favicon = document.querySelector('link[rel="icon"]');
+        if (favicon) favicon.href = "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚧</text></svg>";
+
         console.log(`📋 Preview mode active — participant: ${previewId}`);
+
+        // Live-reload: listen for step updates from the study builder via localStorage
+        window.addEventListener('storage', (e) => {
+            if (e.key !== 'study_preview_update' || !e.newValue) return;
+            try {
+                const { slug, steps } = JSON.parse(e.newValue);
+                if (slug !== studySlug || !steps || !steps[currentStepIndex]) return;
+                const step = steps[currentStepIndex];
+                Object.assign(studyConfig.steps[currentStepIndex], step);
+                if (step.type === 'info' || (step.type === 'modal' && step.contentType !== 'questions')) {
+                    rerenderInfoModal(studyConfig.steps[currentStepIndex]);
+                }
+            } catch (err) { /* ignore parse errors */ }
+        });
     }
 
     if (jumpToStep !== null) {
@@ -462,7 +681,7 @@ async function init() {
             currentStepIndex = stepIndex;
             // Mark all previous steps as complete so the flow doesn't restart
             for (let i = 0; i < stepIndex; i++) {
-                localStorage.setItem(`study_step_${studySlug}_${i}_done`, 'true');
+                setStepFlag(i);
             }
             console.log(`📋 Jumped to step ${stepIndex} from URL`);
 
@@ -480,8 +699,8 @@ async function init() {
         }
     }
 
-    // Skip normal progress restore if we jumped
-    if (jumpToStep === null) {
+    // Skip normal progress restore if we jumped or are in preview mode
+    if (jumpToStep === null && !isPreview) {
     // Restore progress or start fresh
     const savedSlug = localStorage.getItem(STUDY_SLUG_KEY);
     const savedStep = parseInt(localStorage.getItem(PROGRESS_KEY) || '0', 10);
@@ -493,7 +712,10 @@ async function init() {
         currentStepIndex = 0;
         localStorage.setItem(STUDY_SLUG_KEY, studySlug);
     }
-    } // end jumpToStep === null
+    } // end jumpToStep === null / !isPreview
+
+    // Init debug flags panel
+    initStudyFlagsPanel();
 
     // Start the flow
     flowActive = true;
@@ -522,9 +744,9 @@ function applyAnalysisConfig(step) {
 
     const mapped = spacecraftMap[step.spacecraft] || { spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16' };
 
-    // Build ISO date strings from config dates
-    const startTime = step.startDate ? new Date(step.startDate + 'T00:00:00.000Z').toISOString() : window.__EMIC_CONFIG.startTime;
-    const endTime = step.endDate ? new Date(step.endDate + 'T00:00:00.000Z').toISOString() : window.__EMIC_CONFIG.endTime;
+    // Build ISO date strings from config
+    const startTime = step.startTime || (step.startDate ? step.startDate + 'T00:00:00.000Z' : null) || window.__EMIC_CONFIG.startTime;
+    const endTime = step.endTime || (step.endDate ? step.endDate + 'T00:00:00.000Z' : null) || window.__EMIC_CONFIG.endTime;
 
     // Update global config
     window.__EMIC_CONFIG = {
@@ -586,6 +808,10 @@ function ensureStudyModal() {
     studyModalInner = document.createElement('div');
     studyModalInner.style.transition = 'opacity 0.2s ease';
     studyModalInner.style.opacity = '1';
+    studyModalInner.style.width = '100%';
+    studyModalInner.style.display = 'flex';
+    studyModalInner.style.justifyContent = 'center';
+    studyModalInner.style.alignItems = 'center';
     studyModalEl.appendChild(studyModalInner);
     const overlay = document.getElementById('permanentOverlay') || document.body;
     overlay.appendChild(studyModalEl);
@@ -655,6 +881,7 @@ function saveProgress() {
 }
 
 function advanceStep() {
+    setStepFlag(currentStepIndex); // Mark completing step as done
     currentStepIndex++;
     saveProgress();
     if (currentStepIndex >= studyConfig.steps.length) {
@@ -696,6 +923,12 @@ async function runCurrentStep() {
                 await runInfoModal(step);
             }
             break;
+        case 'info':
+            await runInfoModal(step);
+            break;
+        case 'question':
+            await runQuestionnaire(step);
+            break;
         case 'analysis':
             await runAnalysis(step);
             break;
@@ -710,11 +943,7 @@ async function runCurrentStep() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function runRegistration(step) {
-    // Show overlay
-    const overlay = document.getElementById('permanentOverlay');
-    if (overlay) { overlay.style.display = 'flex'; overlay.style.opacity = '1'; }
-
-    // Check if already registered in this session
+    // Check if already registered — skip without showing overlay
     const existingId = getParticipantId();
     if (existingId) {
         console.log(`📋 Already registered as ${existingId}, skipping registration`);
@@ -722,6 +951,10 @@ async function runRegistration(step) {
         advanceStep();
         return;
     }
+
+    // Show overlay only when we actually need the registration modal
+    const overlay = document.getElementById('permanentOverlay');
+    if (overlay) { overlay.style.display = 'flex'; overlay.style.opacity = '1'; }
 
     if (step.idMethod === 'auto') {
         // Auto-generate ID
@@ -739,17 +972,25 @@ async function runRegistration(step) {
 
 function showLoginModal(step) {
     return new Promise(async (resolve) => {
+        const title = step.regTitle || 'Welcome';
+        const bodyHtml = step.regBodyHtml || '<p style="margin-bottom: 10px; color: #550000; font-size: 16px; font-weight: bold;">Enter a user name to begin:</p>';
+        const buttonLabel = step.regButtonLabel || 'Confirm';
+        const dimStyle = buildDimensionStyle(step, '480px');
+        console.log('📋 Registration modal dimensions:', { modalWidth: step.modalWidth, modalHeight: step.modalHeight, dimStyle, stepKeys: Object.keys(step) });
+        const ulStyle = buildHeaderUnderlineStyle(step);
+        const titleFont = buildTitleFontStyle(step);
+        const bodyFont = buildBodyFontStyle(step);
         const html = `
-            <div class="modal-content" style="max-width: 480px;">
-                <div class="modal-header">
-                    <h3 class="modal-title">🔬 Welcome</h3>
+            <div class="modal-content" style="${dimStyle}">
+                <div class="modal-header" style="${ulStyle}">
+                    <h3 class="modal-title" style="${titleFont}">🔬 ${title}</h3>
                 </div>
-                <div class="modal-body">
-                    <p style="margin-bottom: 10px; color: #550000; font-size: 16px; font-weight: bold;">Enter a user name to begin:</p>
+                <div class="modal-body" style="${bodyFont}">
+                    ${bodyHtml}
                     <div class="modal-form-group">
                         <input type="text" id="studyLoginInput" placeholder="${step.idPlaceholder || 'Enter your ID'}" style="font-size: 18px;" autocomplete="off">
                     </div>
-                    <button type="button" id="studyLoginSubmit" class="modal-submit" disabled>✓ Confirm</button>
+                    <button type="button" id="studyLoginSubmit" class="modal-submit" disabled>✓ ${buttonLabel}</button>
                 </div>
             </div>
         `;
@@ -759,6 +1000,16 @@ function showLoginModal(step) {
 
         const input = studyModalInner.querySelector('#studyLoginInput');
         const submitBtn = studyModalInner.querySelector('#studyLoginSubmit');
+
+        // In preview mode, pre-fill with preview ID and add hint
+        if (window.__PREVIEW_MODE && window.__PREVIEW_PARTICIPANT_ID && input) {
+            input.value = window.__PREVIEW_PARTICIPANT_ID;
+            submitBtn.disabled = false;
+            const hint = document.createElement('div');
+            hint.style.cssText = 'font-size:11px; color:#888; margin-top:6px; font-style:italic;';
+            hint.textContent = 'Preview mode — names starting with "Preview_" won\'t save data';
+            input.parentElement.after(hint);
+        }
 
         input?.addEventListener('input', () => {
             submitBtn.disabled = !input.value.trim();
@@ -789,19 +1040,92 @@ function updateParticipantDisplay(pid) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// MODAL DIMENSION HELPER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Build inline style string for modal-content from step config dimensions */
+function buildDimensionStyle(step, defaultMaxWidth) {
+    const maxW = step.modalWidth || defaultMaxWidth;
+    let s = `width: 90% !important; max-width: ${maxW} !important;`;
+    if (step.modalHeight) s += ` height: ${step.modalHeight} !important;`;
+    return s;
+}
+
+function buildTitleFontStyle(step) {
+    let s = '';
+    if (step.titleFontSize) s += `font-size: ${step.titleFontSize};`;
+    if (step.titleFontColor) s += ` color: ${step.titleFontColor};`;
+    if (step.titleFontBold === false) s += ' font-weight: normal;';
+    else if (step.titleFontBold === true) s += ' font-weight: 700;';
+    return s;
+}
+
+function buildBodyFontStyle(step) {
+    let s = '';
+    if (step.bodyFontSize) s += `font-size: ${step.bodyFontSize};`;
+    if (step.bodyFontColor) s += ` color: ${step.bodyFontColor};`;
+    if (step.bodyFontBold) s += ' font-weight: 700;';
+    return s;
+}
+
+function buildHeaderUnderlineStyle(step) {
+    if (step.titleUnderline === false) return 'border-bottom: none;';
+    const size = step.titleUnderlineSize || '2px';
+    const color = step.titleUnderlineColor || '#c86464';
+    // Convert hex to rgba with 0.3 opacity to match default EMIC style
+    const r = parseInt(color.slice(1,3), 16);
+    const g = parseInt(color.slice(3,5), 16);
+    const b = parseInt(color.slice(5,7), 16);
+    return `border-bottom: ${size} solid rgba(${r}, ${g}, ${b}, 0.3);`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // INFO MODAL STEP
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/** Re-render an info modal in place (no crossfade) for live preview updates */
+function rerenderInfoModal(step) {
+    if (!studyModalInner) return;
+    const dimStyle = buildDimensionStyle(step, '560px');
+    const ulStyle = buildHeaderUnderlineStyle(step);
+    const titleFont = buildTitleFontStyle(step);
+    const bodyColor = step.bodyFontColor || '#333';
+    const bodySize = step.bodyFontSize || '18px';
+    const bodyWeight = step.bodyFontBold ? 'font-weight:700;' : '';
+
+    const content = studyModalInner.querySelector('.modal-content');
+    if (content) {
+        content.style.cssText = `${dimStyle} text-align: center;`;
+        const header = content.querySelector('.modal-header');
+        if (header) header.style.cssText = ulStyle;
+        const title = content.querySelector('.modal-title');
+        if (title) { title.style.cssText = titleFont; title.textContent = step.title || ''; }
+        const bodyDiv = content.querySelector('.modal-body > div');
+        if (bodyDiv) {
+            bodyDiv.style.cssText = `color: ${bodyColor}; font-size: ${bodySize}; line-height: 1.6; text-align: left; margin-bottom: 20px; ${bodyWeight}`;
+            bodyDiv.innerHTML = step.bodyHtml || '';
+        }
+        const btn = content.querySelector('.modal-submit');
+        if (btn) btn.textContent = step.dismissLabel || 'OK';
+    }
+}
+
 function runInfoModal(step) {
     return new Promise(async (resolve) => {
+        const dimStyle = buildDimensionStyle(step, '560px');
+        const ulStyle = buildHeaderUnderlineStyle(step);
+        const titleFont = buildTitleFontStyle(step);
+        const bodyColor = step.bodyFontColor || '#333';
+        const bodySize = step.bodyFontSize || '18px';
+        const bodyWeight = step.bodyFontBold ? 'font-weight:700;' : '';
         const html = `
-            <div class="modal-content" style="max-width: 560px; text-align: center;">
-                <div class="modal-header">
-                    <h3 class="modal-title">${step.title || ''}</h3>
+            <div class="modal-content" style="${dimStyle} text-align: center;">
+                <div class="modal-header" style="${ulStyle}">
+                    <h3 class="modal-title" style="${titleFont}">${step.title || ''}</h3>
                     ${step.skippable ? '<button class="modal-close">&times;</button>' : ''}
                 </div>
                 <div class="modal-body">
-                    <div style="color: #333; font-size: 18px; line-height: 1.6; text-align: left; margin-bottom: 20px;">
+                    <div style="color: ${bodyColor}; font-size: ${bodySize}; line-height: 1.6; text-align: left; margin-bottom: 20px; ${bodyWeight}">
                         ${step.bodyHtml || ''}
                     </div>
                     <button type="button" class="modal-submit" style="min-width: 140px;">${step.dismissLabel || 'OK'}</button>
@@ -1050,7 +1374,21 @@ function showConfirmationModal(config) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function runQuestionnaire(step) {
-    const questions = step.questions || [];
+    // Support both old format (step.questions array) and new flat format (single question at top level)
+    let questions = step.questions || [];
+    if (!questions.length && step.type === 'question') {
+        // Flat question step — wrap into array for the questionnaire loop
+        questions = [{
+            id: step.id || 'q' + currentStepIndex,
+            text: step.title || step.text || '',
+            type: step.questionType || 'radio',
+            inputName: step.inputName || step.id || 'q' + currentStepIndex,
+            subtitle: step.subtitle,
+            placeholder: step.placeholder,
+            required: step.required,
+            options: step.options,
+        }];
+    }
     if (!questions.length) { advanceStep(); return; }
 
     // Show overlay
@@ -1075,7 +1413,7 @@ async function runQuestionnaire(step) {
         const total = questions.length;
         const progress = ((qi + 1) / total * 100).toFixed(0);
 
-        const result = await showQuestionModal(q, qi, total, progress, answers[q.id], qi > 0);
+        const result = await showQuestionModal(q, qi, total, progress, answers[q.id], qi > 0, step);
 
         if (result === '__BACK__') {
             qi = Math.max(0, qi - 1);
@@ -1107,7 +1445,7 @@ function isPreAnalysis() {
 /**
  * Show a single question modal. Returns the answer value, or '__BACK__' if back was pressed.
  */
-function showQuestionModal(question, index, total, progressPct, previousAnswer, showBack) {
+function showQuestionModal(question, index, total, progressPct, previousAnswer, showBack, stepDimensions) {
     return new Promise(async (resolve) => {
         let questionHtml = '';
         if (question.type === 'radio') {
@@ -1118,11 +1456,15 @@ function showQuestionModal(question, index, total, progressPct, previousAnswer, 
 
         const isLast = index === total - 1;
         const nextLabel = isLast ? '✓ Submit' : 'Next →';
+        const dims = stepDimensions || {};
+        const dimStyle = buildDimensionStyle(dims, '750px');
+        const ulStyle = buildHeaderUnderlineStyle(dims);
+        const titleFont = buildTitleFontStyle(dims);
 
         const html = `
-            <div class="modal-content emic-questionnaire-modal" style="max-width: 750px;">
-                <div class="modal-header">
-                    <h3 class="modal-title">${question.title || '📋 Questionnaire'}</h3>
+            <div class="modal-content emic-questionnaire-modal" style="${dimStyle}">
+                <div class="modal-header" style="${ulStyle}">
+                    <h3 class="modal-title" style="${titleFont}">${question.title || '📋 Questionnaire'}</h3>
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span style="font-size: 13px; color: #999; font-weight: 500;">${index + 1} / ${total}</span>
                         <div style="width: 120px; height: 4px; background: #e0e0e0; border-radius: 2px;">
@@ -1206,9 +1548,10 @@ function onStudyComplete() {
     console.log(`📋 Study complete!`);
     markComplete();
 
-    // Clear progress
+    // Clear progress and step flags
     localStorage.removeItem(PROGRESS_KEY);
     localStorage.removeItem(STUDY_SLUG_KEY);
+    clearAllStepFlags();
 
     // Clean up saved answers
     if (studyConfig?.steps) {
@@ -1248,6 +1591,15 @@ function showError(message) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // AUTO-INIT
 // ═══════════════════════════════════════════════════════════════════════════════
+
+// Expose flag API for debug panel
+window.__studyFlags = {
+    getStates: getStepFlagStates,
+    set: setStepFlag,
+    clear: clearStepFlag,
+    clearAll: clearAllStepFlags,
+    get: getStepFlag
+};
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => setTimeout(init, 100));
