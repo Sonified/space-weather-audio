@@ -1596,9 +1596,9 @@ input[type="checkbox"] {
 }
 
 .mood-scale-container {
-    border-radius: 8px;
-    border: 1px solid rgba(150, 150, 150, 0.3);
-    overflow: hidden;
+    border-radius: 0;
+    border: none;
+    overflow: visible;
     margin-bottom: 8px;
 }
 
@@ -1612,15 +1612,15 @@ input[type="checkbox"] {
     min-height: 32px;
     border-radius: 0;
     border: none;
-    border-bottom: 1px solid rgba(150, 150, 150, 0.2);
+    border-bottom: none;
 }
 
 .mood-scale-item:nth-child(odd) {
-    background: rgba(235, 235, 235, 0.8);
+    background: transparent;
 }
 
 .mood-scale-item:nth-child(even) {
-    background: rgba(220, 220, 220, 0.9);
+    background: transparent;
 }
 
 .mood-scale-item:last-child {
