@@ -19,7 +19,7 @@ bucket_name = "emic-data"
 [[d1_databases]]
 binding = "DB"
 database_name = "study-db"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "11e25f65-bd80-4a0d-a0e2-6d774ee11e8b"
 
 [vars]
 FRONTEND_URL = "https://spaceweather.now.audio"
