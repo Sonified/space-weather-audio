@@ -159,6 +159,300 @@ fn fft_main(
 `;
 }
 
+// ─── Two-Pass Sub-FFT Shader (for FFT sizes exceeding shared memory) ────────
+// Cooley-Tukey DIT: split input into even/odd indexed samples, run M-point
+// Stockham FFT on each half, write complex results to intermediate global buffer.
+// Dispatch: (numSlices, numTiles * 2) — wg_id.y encodes tileIdx*2 + halfIdx.
+
+function buildSubFFTShader(subFFTSize, numSubFFTs = 2) {
+    const sharedArraySize = subFFTSize * 2;
+    const logStages = Math.log2(subFFTSize);
+    return /* wgsl */ `
+
+struct Params {
+    subFFTSize:   u32,
+    hopSize:      f32,
+    numSlices:    u32,
+    freqBins:     u32,
+    dbFloor:      f32,
+    dbRange:      f32,
+    invN:         f32,
+    logStages:    u32,
+};
+
+@group(0) @binding(0) var<storage, read> audioData: array<f32>;
+@group(0) @binding(1) var<storage, read> hannWindow: array<f32>;
+@group(0) @binding(2) var<storage, read_write> intermediate: array<f32>;
+@group(0) @binding(3) var<uniform> params: Params;
+@group(0) @binding(4) var<storage, read> tileDescs: array<u32>;
+
+// Shared memory for M-point Stockham FFT (fits in 32KB for M=2048)
+var<workgroup> sA: array<f32, ${sharedArraySize}>;
+var<workgroup> sB: array<f32, ${sharedArraySize}>;
+
+const WORKGROUP_SIZE: u32 = 256u;
+
+@compute @workgroup_size(256)
+fn subfft_main(
+    @builtin(workgroup_id) wg_id: vec3<u32>,
+    @builtin(local_invocation_id) lid: vec3<u32>,
+) {
+    let M: u32 = params.subFFTSize;                // base sub-FFT size (e.g. 2048)
+    let halfM: u32 = M / 2u;
+    let col: u32 = wg_id.x;                        // time slice
+    let subIdx: u32 = wg_id.y % ${numSubFFTs}u;    // which sub-FFT (0..${numSubFFTs - 1})
+    let tileIdx: u32 = wg_id.y / ${numSubFFTs}u;   // tile in batch
+    let tid: u32 = lid.x;
+    let elemsPerThread: u32 = M / WORKGROUP_SIZE;   // 2048/256 = 8
+
+    // Per-tile offsets
+    let audioBase: u32 = tileDescs[tileIdx * 2u];
+    let intermediateBase: u32 = tileDescs[tileIdx * 2u + 1u];
+
+    let baseOffset: u32 = audioBase + u32(round(f32(col) * params.hopSize));
+
+    // ── Load with stride-${numSubFFTs} deinterleaving + Hann windowing ──
+    for (var k: u32 = 0u; k < elemsPerThread; k++) {
+        let i: u32 = tid * elemsPerThread + k;
+        let srcIdx: u32 = i * ${numSubFFTs}u + subIdx;
+        let sample: f32 = audioData[baseOffset + srcIdx] * hannWindow[srcIdx];
+        sA[i * 2u] = sample;       // real
+        sA[i * 2u + 1u] = 0.0;     // imag
+    }
+
+    workgroupBarrier();
+
+    // ── Stockham autosort FFT (M-point, identical to single-pass) ──
+    let butterfliesPerThread: u32 = halfM / WORKGROUP_SIZE;
+
+    for (var s: u32 = 0u; s < ${logStages}u; s++) {
+        let halfSpan: u32 = 1u << s;
+        let span: u32 = halfSpan << 1u;
+
+        for (var k: u32 = 0u; k < butterfliesPerThread; k++) {
+            let bflyIdx: u32 = tid * butterfliesPerThread + k;
+            let group: u32 = bflyIdx / halfSpan;
+            let pos: u32 = bflyIdx % halfSpan;
+            let srcEven: u32 = group * halfSpan + pos;
+            let srcOdd: u32 = srcEven + halfM;
+            let dst0: u32 = group * span + pos;
+            let dst1: u32 = dst0 + halfSpan;
+
+            let angle: f32 = -6.283185307 * f32(pos) / f32(span);
+            let twR: f32 = cos(angle);
+            let twI: f32 = sin(angle);
+
+            var eR: f32; var eI: f32; var oR: f32; var oI: f32;
+            if (s % 2u == 0u) {
+                eR = sA[srcEven * 2u]; eI = sA[srcEven * 2u + 1u];
+                oR = sA[srcOdd * 2u];  oI = sA[srcOdd * 2u + 1u];
+            } else {
+                eR = sB[srcEven * 2u]; eI = sB[srcEven * 2u + 1u];
+                oR = sB[srcOdd * 2u];  oI = sB[srcOdd * 2u + 1u];
+            }
+
+            let tR: f32 = oR * twR - oI * twI;
+            let tI: f32 = oR * twI + oI * twR;
+
+            if (s % 2u == 0u) {
+                sB[dst0 * 2u] = eR + tR;  sB[dst0 * 2u + 1u] = eI + tI;
+                sB[dst1 * 2u] = eR - tR;  sB[dst1 * 2u + 1u] = eI - tI;
+            } else {
+                sA[dst0 * 2u] = eR + tR;  sA[dst0 * 2u + 1u] = eI + tI;
+                sA[dst1 * 2u] = eR - tR;  sA[dst1 * 2u + 1u] = eI - tI;
+            }
+        }
+        workgroupBarrier();
+    }
+
+    // ── Write complex results to intermediate global buffer ──
+    let resultInB: bool = (${logStages}u % 2u) == 1u;
+    let binsPerThread: u32 = M / WORKGROUP_SIZE;  // write all M complex values
+    // Layout: intermediateBase + subIdx * numSlices * M * 2 + col * M * 2 + bin * 2
+    let subOffset: u32 = intermediateBase + subIdx * params.numSlices * M * 2u;
+    let colOffset: u32 = subOffset + col * M * 2u;
+
+    for (var k: u32 = 0u; k < binsPerThread; k++) {
+        let bin: u32 = tid * binsPerThread + k;
+        var re: f32; var im: f32;
+        if (resultInB) {
+            re = sB[bin * 2u]; im = sB[bin * 2u + 1u];
+        } else {
+            re = sA[bin * 2u]; im = sA[bin * 2u + 1u];
+        }
+        intermediate[colOffset + bin * 2u] = re;
+        intermediate[colOffset + bin * 2u + 1u] = im;
+    }
+}
+`;
+}
+
+// ─── Two-Pass Combine Shader ────────────────────────────────────────────────
+// Reads even/odd sub-FFT results from intermediate buffer, applies twiddle
+// factors, combines via Cooley-Tukey butterfly, computes magnitude→dB→uint8.
+// No shared memory needed — purely element-wise.
+
+function buildCombineShader() {
+    return /* wgsl */ `
+
+struct CombineParams {
+    fullN:     u32,
+    halfN:     u32,
+    numSlices: u32,
+    freqBins:  u32,
+    dbFloor:   f32,
+    dbRange:   f32,
+    invN:      f32,
+    _pad:      u32,
+};
+
+@group(0) @binding(0) var<storage, read> intermediate: array<f32>;
+@group(0) @binding(1) var<storage, read_write> output: array<atomic<u32>>;
+@group(0) @binding(2) var<uniform> params: CombineParams;
+@group(0) @binding(3) var<storage, read> tileDescs: array<u32>;
+
+const WORKGROUP_SIZE: u32 = 256u;
+
+@compute @workgroup_size(256)
+fn combine_main(
+    @builtin(workgroup_id) wg_id: vec3<u32>,
+    @builtin(local_invocation_id) lid: vec3<u32>,
+) {
+    let col: u32 = wg_id.x;
+    let tileIdx: u32 = wg_id.y;
+    let M: u32 = params.halfN;
+    let N: u32 = params.fullN;
+    let tid: u32 = lid.x;
+
+    // Tile descriptors for combine pass: [evenBase, oddBase, outputBase, 0]
+    let evenBase: u32 = tileDescs[tileIdx * 4u];
+    let oddBase: u32 = tileDescs[tileIdx * 4u + 1u];
+    let outputBase: u32 = tileDescs[tileIdx * 4u + 2u];
+
+    let binsPerThread: u32 = params.freqBins / WORKGROUP_SIZE;
+
+    for (var k: u32 = 0u; k < binsPerThread; k++) {
+        let bin: u32 = tid * binsPerThread + k;
+        let kMod: u32 = bin % M;
+
+        // Read E[kMod] from even sub-FFT
+        let eIdx: u32 = evenBase + col * M * 2u + kMod * 2u;
+        let eR: f32 = intermediate[eIdx];
+        let eI: f32 = intermediate[eIdx + 1u];
+
+        // Read O[kMod] from odd sub-FFT
+        let oIdx: u32 = oddBase + col * M * 2u + kMod * 2u;
+        let oR: f32 = intermediate[oIdx];
+        let oI: f32 = intermediate[oIdx + 1u];
+
+        // Twiddle factor: W_N^bin = e^(-2πi·bin/N)
+        let angle: f32 = -6.283185307 * f32(bin) / f32(N);
+        let twR: f32 = cos(angle);
+        let twI: f32 = sin(angle);
+
+        // W * O[kMod]
+        let tR: f32 = oR * twR - oI * twI;
+        let tI: f32 = oR * twI + oI * twR;
+
+        // Combine: X[bin] = E[kMod] ± W·O[kMod]
+        var re: f32; var im: f32;
+        if (bin < M) {
+            re = eR + tR; im = eI + tI;
+        } else {
+            re = eR - tR; im = eI - tI;
+        }
+
+        // Magnitude → dB → uint8
+        let mag: f32 = sqrt(re * re + im * im) * params.invN;
+        let db: f32 = 20.0 * log(mag + 1e-10) / 2.302585093;
+        let normalized: f32 = (db - params.dbFloor) / params.dbRange;
+        let clamped: f32 = clamp(normalized, 0.0, 1.0);
+        let uint8Val: u32 = u32(clamped * 255.0 + 0.5);
+
+        // Column-major u8 pack (identical to single-pass output)
+        let linearIdx: u32 = outputBase + bin * params.numSlices + col;
+        let wordIdx: u32 = linearIdx / 4u;
+        let byteShift: u32 = (linearIdx % 4u) * 8u;
+        atomicOr(&output[wordIdx], uint8Val << byteShift);
+    }
+}
+`;
+}
+
+// ─── Intermediate Combine Shader (complex → complex) ────────────────────────
+// For multi-pass FFT (8192+): combines pairs of sub-FFT results with twiddle
+// factors, outputting complex f32 pairs for the next combine level.
+// No shared memory needed — purely element-wise global memory operations.
+
+function buildIntermediateCombineShader() {
+    return /* wgsl */ `
+
+struct IntCombineParams {
+    combineN:  u32,   // combined size (e.g. 4096)
+    halfN:     u32,   // each input sub-result size (e.g. 2048)
+    numSlices: u32,
+    _pad:      u32,
+};
+
+@group(0) @binding(0) var<storage, read> input: array<f32>;
+@group(0) @binding(1) var<storage, read_write> output: array<f32>;
+@group(0) @binding(2) var<uniform> params: IntCombineParams;
+@group(0) @binding(3) var<storage, read> tileDescs: array<u32>;
+
+const WORKGROUP_SIZE: u32 = 256u;
+
+@compute @workgroup_size(256)
+fn int_combine_main(
+    @builtin(workgroup_id) wg_id: vec3<u32>,
+    @builtin(local_invocation_id) lid: vec3<u32>,
+) {
+    let col: u32 = wg_id.x;
+    let pairIdx: u32 = wg_id.y;
+    let M: u32 = params.halfN;
+    let N: u32 = params.combineN;
+    let tid: u32 = lid.x;
+
+    // Tile descriptors: [evenBase, oddBase, outputBase, _pad] per pair
+    let evenBase: u32 = tileDescs[pairIdx * 4u];
+    let oddBase: u32 = tileDescs[pairIdx * 4u + 1u];
+    let outputBase: u32 = tileDescs[pairIdx * 4u + 2u];
+
+    let valsPerThread: u32 = N / WORKGROUP_SIZE;
+
+    for (var k: u32 = 0u; k < valsPerThread; k++) {
+        let idx: u32 = tid * valsPerThread + k;
+        let kMod: u32 = idx % M;
+
+        // Read E[kMod] from even sub-result
+        let eIdx: u32 = evenBase + col * M * 2u + kMod * 2u;
+        let eR: f32 = input[eIdx];
+        let eI: f32 = input[eIdx + 1u];
+
+        // Read O[kMod] from odd sub-result
+        let oIdx: u32 = oddBase + col * M * 2u + kMod * 2u;
+        let oR: f32 = input[oIdx];
+        let oI: f32 = input[oIdx + 1u];
+
+        // Twiddle: W_N^idx — always add; twiddle encodes sign for second half
+        let angle: f32 = -6.283185307 * f32(idx) / f32(N);
+        let twR: f32 = cos(angle);
+        let twI: f32 = sin(angle);
+
+        let tR: f32 = oR * twR - oI * twI;
+        let tI: f32 = oR * twI + oI * twR;
+
+        let re: f32 = eR + tR;
+        let im: f32 = eI + tI;
+
+        // Write complex output
+        let outIdx: u32 = outputBase + col * N * 2u + idx * 2u;
+        output[outIdx] = re;
+        output[outIdx + 1u] = im;
+    }
+}
+`;
+}
+
 // Default shader for init — rebuilt when FFT size changes
 let FFT_WGSL_SHADER = buildFFTShader(2048);
 
@@ -231,6 +525,20 @@ export class SpectrogramGPUCompute {
         this.hannUploaded = false;
         this.lastFftSize = 0;
         this.maxStorageBufferSize = 0;
+        // Multi-pass FFT state (for sizes exceeding single-pass shared memory)
+        this.twoPassEnabled = false;       // 1 level: 4096 on 32KB GPU
+        this.multiPassEnabled = false;     // 2+ levels: 8192+ on 32KB GPU
+        this.numDecompLevels = 0;          // 0=single, 1=two-pass, 2=three-pass
+        this.baseFFTSize = 0;              // sub-FFT size that fits in shared memory
+        this.subFFTPipeline = null;
+        this.subFFTBindGroupLayout = null;
+        this.combinePipeline = null;
+        this.combineBindGroupLayout = null;
+        this.combineUniformBuffer = null;
+        // Multi-pass intermediate combine state (for 3+ passes)
+        this.intCombinePipeline = null;
+        this.intCombineBindGroupLayout = null;
+        this.intCombineUniformBuffer = null;
         // Cascade render pipeline (GPU pyramid building)
         this.cascadePipeline = null;
         this.cascadeBindGroupLayout = null;
@@ -410,9 +718,11 @@ export class SpectrogramGPUCompute {
         }
 
         // Write uniforms (shared across all tiles in batch)
+        // For multi-pass/two-pass, uniforms[0] = sub-FFT size (not full FFT size)
+        // because the sub-FFT shader reads params.subFFTSize to size its shared memory loops
         const uniforms = new Uint32Array(8);
         const uniformsF32 = new Float32Array(uniforms.buffer);
-        uniforms[0] = fftSize;
+        uniforms[0] = (this.twoPassEnabled || this.multiPassEnabled) ? this.baseFFTSize : fftSize;
         uniformsF32[1] = exactHop;
         uniforms[2] = numSlices;
         uniforms[3] = freqBins;
@@ -423,8 +733,19 @@ export class SpectrogramGPUCompute {
         this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
 
         // Split tiles into batches that fit within GPU buffer limits
-        const outputPerTile = numSlices * freqBins; // 1 byte per value (packed in shader)
-        const maxTilesPerBatch = Math.max(1, Math.floor(this.maxOutputBytes / outputPerTile));
+        let bytesPerTile = numSlices * freqBins; // 1 byte per value (packed in shader)
+        if (this.multiPassEnabled) {
+            // Multi-pass: bufferA (4 sub-FFTs) + bufferB (2 intermediate combines)
+            const base = this.baseFFTSize;
+            const numSubFFTs = Math.pow(2, this.numDecompLevels);
+            const midN = base * 2;
+            bytesPerTile += numSubFFTs * numSlices * base * 2 * 4;  // buffer A
+            bytesPerTile += 2 * numSlices * midN * 2 * 4;           // buffer B
+        } else if (this.twoPassEnabled) {
+            const M = fftSize / 2;
+            bytesPerTile += 2 * numSlices * M * 2 * 4;
+        }
+        const maxTilesPerBatch = Math.max(1, Math.floor(this.maxOutputBytes / bytesPerTile));
 
         for (let batchStart = 0; batchStart < tiles.length; batchStart += maxTilesPerBatch) {
             if (signal?.aborted) return;
@@ -450,6 +771,12 @@ export class SpectrogramGPUCompute {
      * Process a batch of tiles: concatenate audio → one dispatch → one readback → split.
      */
     async _processBatch(batchTiles, numTiles, numSlices, freqBins, onTileComplete, signal) {
+        if (this.multiPassEnabled) {
+            return this._processBatchMultiPass(batchTiles, numTiles, numSlices, freqBins, onTileComplete, signal);
+        }
+        if (this.twoPassEnabled) {
+            return this._processBatchTwoPass(batchTiles, numTiles, numSlices, freqBins, onTileComplete, signal);
+        }
         const tBatch = performance.now();
 
         // ── Concatenate all audio and build tile descriptors ──
@@ -582,6 +909,752 @@ export class SpectrogramGPUCompute {
     }
 
     /**
+     * Two-pass batch processing (CPU readback path).
+     * Pass 1: sub-FFTs → intermediate buffer. Pass 2: combine → output buffer.
+     */
+    async _processBatchTwoPass(batchTiles, numTiles, numSlices, freqBins, onTileComplete, signal) {
+        const tBatch = performance.now();
+        const M = this.lastFftSize / 2;  // sub-FFT size
+
+        // ── Concatenate audio ──
+        let totalAudioFloats = 0;
+        const audioOffsets = [];
+        for (let i = 0; i < numTiles; i++) {
+            audioOffsets.push(totalAudioFloats);
+            totalAudioFloats += batchTiles[i].audioData.length;
+        }
+        const megaAudio = new Float32Array(totalAudioFloats);
+        let offset = 0;
+        for (let i = 0; i < numTiles; i++) {
+            megaAudio.set(batchTiles[i].audioData, offset);
+            offset += batchTiles[i].audioData.length;
+        }
+
+        // ── Intermediate buffer layout ──
+        // Per tile: 2 halves × numSlices × M × 2 floats
+        const intermediateFloatsPerTile = 2 * numSlices * M * 2;
+        const totalIntermediateFloats = numTiles * intermediateFloatsPerTile;
+
+        // ── Pass 1 tile descriptors: [audioBase, intermediateBase] per tile ──
+        const pass1Descs = new Uint32Array(numTiles * 2);
+        for (let i = 0; i < numTiles; i++) {
+            pass1Descs[i * 2] = audioOffsets[i];
+            pass1Descs[i * 2 + 1] = i * intermediateFloatsPerTile;
+        }
+
+        // ── Pass 2 tile descriptors: [evenBase, oddBase, outputBase, 0] per tile ──
+        const pass2Descs = new Uint32Array(numTiles * 4);
+        for (let i = 0; i < numTiles; i++) {
+            const tileIntBase = i * intermediateFloatsPerTile;
+            pass2Descs[i * 4] = tileIntBase;                                // evenBase
+            pass2Descs[i * 4 + 1] = tileIntBase + numSlices * M * 2;       // oddBase
+            pass2Descs[i * 4 + 2] = i * numSlices * freqBins;              // outputBase
+            pass2Descs[i * 4 + 3] = 0;
+        }
+
+        // ── Create GPU buffers ──
+        const audioBuffer = this.device.createBuffer({
+            size: megaAudio.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: 'tp-audio'
+        });
+        this.device.queue.writeBuffer(audioBuffer, 0, megaAudio);
+
+        const intermediateBuffer = this.device.createBuffer({
+            size: totalIntermediateFloats * 4, usage: GPUBufferUsage.STORAGE, label: 'tp-intermediate'
+        });
+
+        const pass1DescsBuffer = this.device.createBuffer({
+            size: pass1Descs.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: 'tp-descs-p1'
+        });
+        this.device.queue.writeBuffer(pass1DescsBuffer, 0, pass1Descs);
+
+        const pass2DescsBuffer = this.device.createBuffer({
+            size: pass2Descs.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: 'tp-descs-p2'
+        });
+        this.device.queue.writeBuffer(pass2DescsBuffer, 0, pass2Descs);
+
+        const totalOutputValues = numTiles * numSlices * freqBins;
+        const outputByteSize = Math.ceil(totalOutputValues / 4) * 4;
+        const outputBuffer = this.device.createBuffer({
+            size: outputByteSize, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC, label: 'tp-output'
+        });
+        const stagingBuffer = this.device.createBuffer({
+            size: outputByteSize, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST, label: 'tp-staging'
+        });
+
+        // ── Write combine uniforms ──
+        const combineUniforms = new Uint32Array(8);
+        const combineF32 = new Float32Array(combineUniforms.buffer);
+        combineUniforms[0] = this.lastFftSize;      // fullN
+        combineUniforms[1] = M;                      // halfN
+        combineUniforms[2] = numSlices;
+        combineUniforms[3] = freqBins;
+        combineF32[4] = batchTiles[0].dbFloor;
+        combineF32[5] = batchTiles[0].dbRange;
+        combineF32[6] = 1.0 / this.lastFftSize;
+        combineUniforms[7] = 0;
+        this.device.queue.writeBuffer(this.combineUniformBuffer, 0, combineUniforms);
+
+        // ── Bind groups ──
+        const pass1BindGroup = this.device.createBindGroup({
+            layout: this.subFFTBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: audioBuffer } },
+                { binding: 1, resource: { buffer: this.hannBuffer } },
+                { binding: 2, resource: { buffer: intermediateBuffer } },
+                { binding: 3, resource: { buffer: this.uniformBuffer } },
+                { binding: 4, resource: { buffer: pass1DescsBuffer } },
+            ]
+        });
+
+        const pass2BindGroup = this.device.createBindGroup({
+            layout: this.combineBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: intermediateBuffer } },
+                { binding: 1, resource: { buffer: outputBuffer } },
+                { binding: 2, resource: { buffer: this.combineUniformBuffer } },
+                { binding: 3, resource: { buffer: pass2DescsBuffer } },
+            ]
+        });
+
+        // ── Encode both passes in one command encoder ──
+        const encoder = this.device.createCommandEncoder({ label: 'tp-mega-batch' });
+
+        const p1 = encoder.beginComputePass({ label: 'subfft-pass' });
+        p1.setPipeline(this.subFFTPipeline);
+        p1.setBindGroup(0, pass1BindGroup);
+        p1.dispatchWorkgroups(numSlices, numTiles * 2);  // ×2 for even/odd halves
+        p1.end();
+
+        const p2 = encoder.beginComputePass({ label: 'combine-pass' });
+        p2.setPipeline(this.combinePipeline);
+        p2.setBindGroup(0, pass2BindGroup);
+        p2.dispatchWorkgroups(numSlices, numTiles);
+        p2.end();
+
+        encoder.copyBufferToBuffer(outputBuffer, 0, stagingBuffer, 0, outputByteSize);
+        this.device.queue.submit([encoder.finish()]);
+
+        // ── Readback ──
+        await stagingBuffer.mapAsync(GPUMapMode.READ);
+        const mappedRange = stagingBuffer.getMappedRange();
+        const rawBytes = new Uint8Array(mappedRange);
+        const valuesPerTile = numSlices * freqBins;
+
+        for (let i = 0; i < numTiles; i++) {
+            if (signal?.aborted) break;
+            const tileOutput = new Uint8Array(valuesPerTile);
+            const byteBase = i * numSlices * freqBins;
+            tileOutput.set(rawBytes.subarray(byteBase, byteBase + valuesPerTile));
+            onTileComplete(batchTiles[i].tileIndex, tileOutput, numSlices, freqBins);
+        }
+
+        stagingBuffer.unmap();
+        audioBuffer.destroy();
+        intermediateBuffer.destroy();
+        pass1DescsBuffer.destroy();
+        pass2DescsBuffer.destroy();
+        outputBuffer.destroy();
+        stagingBuffer.destroy();
+
+        if (window.pm?.gpu) console.log(
+            `%c  [GPU two-pass batch] ${numTiles} tiles in ${(performance.now() - tBatch).toFixed(1)}ms`,
+            'color: #FF9800'
+        );
+    }
+
+    /**
+     * Two-pass batch processing (zero-copy GPU texture path).
+     * Pass 1: sub-FFTs → intermediate buffer. Pass 2: combine → output → textures.
+     */
+    _processBatchZeroCopyTwoPass(batchTiles, numTiles, numSlices, freqBins, onTileGPUTexture, signal) {
+        const tBatch = performance.now();
+        const M = this.lastFftSize / 2;
+
+        // ── Concatenate audio ──
+        let totalAudioFloats = 0;
+        const audioOffsets = [];
+        for (let i = 0; i < numTiles; i++) {
+            audioOffsets.push(totalAudioFloats);
+            totalAudioFloats += batchTiles[i].audioData.length;
+        }
+        const megaAudio = new Float32Array(totalAudioFloats);
+        let offset = 0;
+        for (let i = 0; i < numTiles; i++) {
+            megaAudio.set(batchTiles[i].audioData, offset);
+            offset += batchTiles[i].audioData.length;
+        }
+
+        // ── Intermediate buffer layout ──
+        const intermediateFloatsPerTile = 2 * numSlices * M * 2;
+        const totalIntermediateFloats = numTiles * intermediateFloatsPerTile;
+
+        // ── Pass 1 tile descriptors ──
+        const pass1Descs = new Uint32Array(numTiles * 2);
+        for (let i = 0; i < numTiles; i++) {
+            pass1Descs[i * 2] = audioOffsets[i];
+            pass1Descs[i * 2 + 1] = i * intermediateFloatsPerTile;
+        }
+
+        // ── Pass 2 tile descriptors ──
+        const pass2Descs = new Uint32Array(numTiles * 4);
+        const outputOffsets = [];
+        for (let i = 0; i < numTiles; i++) {
+            const tileIntBase = i * intermediateFloatsPerTile;
+            outputOffsets.push(i * numSlices * freqBins);
+            pass2Descs[i * 4] = tileIntBase;
+            pass2Descs[i * 4 + 1] = tileIntBase + numSlices * M * 2;
+            pass2Descs[i * 4 + 2] = outputOffsets[i];
+            pass2Descs[i * 4 + 3] = 0;
+        }
+
+        // ── GPU buffers ──
+        const audioBuffer = this.device.createBuffer({
+            size: megaAudio.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: 'zc-tp-audio'
+        });
+        this.device.queue.writeBuffer(audioBuffer, 0, megaAudio);
+
+        const intermediateBuffer = this.device.createBuffer({
+            size: totalIntermediateFloats * 4, usage: GPUBufferUsage.STORAGE, label: 'zc-tp-intermediate'
+        });
+
+        const pass1DescsBuffer = this.device.createBuffer({
+            size: pass1Descs.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: 'zc-tp-descs-p1'
+        });
+        this.device.queue.writeBuffer(pass1DescsBuffer, 0, pass1Descs);
+
+        const pass2DescsBuffer = this.device.createBuffer({
+            size: pass2Descs.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: 'zc-tp-descs-p2'
+        });
+        this.device.queue.writeBuffer(pass2DescsBuffer, 0, pass2Descs);
+
+        const totalOutputBytes = numTiles * numSlices * freqBins;
+        const outputByteSize = Math.ceil(totalOutputBytes / 4) * 4;
+        const outputBuffer = this.device.createBuffer({
+            size: outputByteSize, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC, label: 'zc-tp-output'
+        });
+
+        // ── Write combine uniforms ──
+        const combineUniforms = new Uint32Array(8);
+        const combineF32 = new Float32Array(combineUniforms.buffer);
+        combineUniforms[0] = this.lastFftSize;
+        combineUniforms[1] = M;
+        combineUniforms[2] = numSlices;
+        combineUniforms[3] = freqBins;
+        combineF32[4] = batchTiles[0].dbFloor;
+        combineF32[5] = batchTiles[0].dbRange;
+        combineF32[6] = 1.0 / this.lastFftSize;
+        combineUniforms[7] = 0;
+        this.device.queue.writeBuffer(this.combineUniformBuffer, 0, combineUniforms);
+
+        // ── Bind groups ──
+        const pass1BindGroup = this.device.createBindGroup({
+            layout: this.subFFTBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: audioBuffer } },
+                { binding: 1, resource: { buffer: this.hannBuffer } },
+                { binding: 2, resource: { buffer: intermediateBuffer } },
+                { binding: 3, resource: { buffer: this.uniformBuffer } },
+                { binding: 4, resource: { buffer: pass1DescsBuffer } },
+            ]
+        });
+
+        const pass2BindGroup = this.device.createBindGroup({
+            layout: this.combineBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: intermediateBuffer } },
+                { binding: 1, resource: { buffer: outputBuffer } },
+                { binding: 2, resource: { buffer: this.combineUniformBuffer } },
+                { binding: 3, resource: { buffer: pass2DescsBuffer } },
+            ]
+        });
+
+        // ── Encode both passes + texture copies ──
+        const encoder = this.device.createCommandEncoder({ label: 'zc-tp-mega-batch' });
+
+        const p1 = encoder.beginComputePass({ label: 'subfft-pass' });
+        p1.setPipeline(this.subFFTPipeline);
+        p1.setBindGroup(0, pass1BindGroup);
+        p1.dispatchWorkgroups(numSlices, numTiles * 2);
+        p1.end();
+
+        const p2 = encoder.beginComputePass({ label: 'combine-pass' });
+        p2.setPipeline(this.combinePipeline);
+        p2.setBindGroup(0, pass2BindGroup);
+        p2.dispatchWorkgroups(numSlices, numTiles);
+        p2.end();
+
+        // ── Copy output → GPU textures (zero-readback) ──
+        const gpuTextures = [];
+        for (let i = 0; i < numTiles; i++) {
+            const gpuTexture = this.device.createTexture({
+                size: [numSlices, freqBins],
+                format: 'r8unorm',
+                usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.TEXTURE_BINDING,
+                label: `zc-tp-tile-${batchTiles[i].tileIndex}`
+            });
+            encoder.copyBufferToTexture(
+                { buffer: outputBuffer, offset: outputOffsets[i], bytesPerRow: numSlices },
+                { texture: gpuTexture },
+                [numSlices, freqBins]
+            );
+            gpuTextures.push(gpuTexture);
+        }
+
+        this.device.queue.submit([encoder.finish()]);
+        const tSubmit = performance.now();
+
+        // ── Fire GPU texture callbacks immediately ──
+        for (let i = 0; i < numTiles; i++) {
+            if (signal?.aborted) break;
+            onTileGPUTexture(batchTiles[i].tileIndex, gpuTextures[i], numSlices, freqBins);
+        }
+
+        // ── Cleanup after GPU finishes (single promise — destroy intermediates first) ──
+        const gpuDonePromise = this.device.queue.onSubmittedWorkDone().then(() => {
+            audioBuffer.destroy();
+            intermediateBuffer.destroy();
+            pass1DescsBuffer.destroy();
+            pass2DescsBuffer.destroy();
+            outputBuffer.destroy();
+            return performance.now() - tSubmit;
+        });
+
+        return { gpuDonePromise, encodeMs: tSubmit - tBatch, numTiles };
+    }
+
+    /**
+     * Multi-pass batch processing (CPU readback path).
+     * For 8192+: Pass 1 = sub-FFTs, Pass 2 = intermediate combine, Pass 3 = final combine.
+     * DIT decomposition: stride-4 into 4 sub-FFTs, combine (0,2)→E, (1,3)→O, then E+O→X.
+     */
+    async _processBatchMultiPass(batchTiles, numTiles, numSlices, freqBins, onTileComplete, signal) {
+        const tBatch = performance.now();
+        const fftSize = this.lastFftSize;
+        const base = this.baseFFTSize;
+        const numSubFFTs = Math.pow(2, this.numDecompLevels);  // 4 for 8192
+        const midCombineN = base * 2;  // 4096 for 8192
+
+        // ── Concatenate audio ──
+        let totalAudioFloats = 0;
+        const audioOffsets = [];
+        for (let i = 0; i < numTiles; i++) {
+            audioOffsets.push(totalAudioFloats);
+            totalAudioFloats += batchTiles[i].audioData.length;
+        }
+        const megaAudio = new Float32Array(totalAudioFloats);
+        let offset = 0;
+        for (let i = 0; i < numTiles; i++) {
+            megaAudio.set(batchTiles[i].audioData, offset);
+            offset += batchTiles[i].audioData.length;
+        }
+
+        // ── Buffer A: sub-FFT output (4 blocks of base complex per tile) ──
+        const bufAFloatsPerTile = numSubFFTs * numSlices * base * 2;
+        const totalBufAFloats = numTiles * bufAFloatsPerTile;
+
+        // ── Buffer B: intermediate combine output (2 blocks of midCombineN complex per tile) ──
+        const bufBFloatsPerTile = 2 * numSlices * midCombineN * 2;
+        const totalBufBFloats = numTiles * bufBFloatsPerTile;
+
+        // ── Pass 1 tile descriptors: [audioBase, intermediateBase] per tile ──
+        const pass1Descs = new Uint32Array(numTiles * 2);
+        for (let i = 0; i < numTiles; i++) {
+            pass1Descs[i * 2] = audioOffsets[i];
+            pass1Descs[i * 2 + 1] = i * bufAFloatsPerTile;
+        }
+
+        // ── Pass 2 tile descriptors: combine pairs (0,2)→E and (1,3)→O ──
+        // Each pair: [evenBase, oddBase, outputBase, _pad] — 2 pairs per tile
+        const numPairs = numTiles * 2;
+        const pass2Descs = new Uint32Array(numPairs * 4);
+        for (let i = 0; i < numTiles; i++) {
+            const bufABase = i * bufAFloatsPerTile;
+            const bufBBase = i * bufBFloatsPerTile;
+            const subBlockSize = numSlices * base * 2;
+            // Pair 0: sub[0] + sub[2] → E (even half of original)
+            pass2Descs[(i * 2) * 4]     = bufABase + 0 * subBlockSize;     // sub[0] = even-even
+            pass2Descs[(i * 2) * 4 + 1] = bufABase + 2 * subBlockSize;     // sub[2] = even-odd
+            pass2Descs[(i * 2) * 4 + 2] = bufBBase + 0;                    // E output
+            pass2Descs[(i * 2) * 4 + 3] = 0;
+            // Pair 1: sub[1] + sub[3] → O (odd half of original)
+            pass2Descs[(i * 2 + 1) * 4]     = bufABase + 1 * subBlockSize; // sub[1] = odd-even
+            pass2Descs[(i * 2 + 1) * 4 + 1] = bufABase + 3 * subBlockSize; // sub[3] = odd-odd
+            pass2Descs[(i * 2 + 1) * 4 + 2] = bufBBase + numSlices * midCombineN * 2; // O output
+            pass2Descs[(i * 2 + 1) * 4 + 3] = 0;
+        }
+
+        // ── Pass 3 tile descriptors: E + O → final output ──
+        const pass3Descs = new Uint32Array(numTiles * 4);
+        for (let i = 0; i < numTiles; i++) {
+            const bufBBase = i * bufBFloatsPerTile;
+            pass3Descs[i * 4]     = bufBBase;                              // E base
+            pass3Descs[i * 4 + 1] = bufBBase + numSlices * midCombineN * 2; // O base
+            pass3Descs[i * 4 + 2] = i * numSlices * freqBins;             // output base
+            pass3Descs[i * 4 + 3] = 0;
+        }
+
+        // ── Create GPU buffers ──
+        const audioBuffer = this.device.createBuffer({
+            size: megaAudio.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: 'mp-audio'
+        });
+        this.device.queue.writeBuffer(audioBuffer, 0, megaAudio);
+
+        const bufferA = this.device.createBuffer({
+            size: totalBufAFloats * 4, usage: GPUBufferUsage.STORAGE, label: 'mp-bufA'
+        });
+        const bufferB = this.device.createBuffer({
+            size: totalBufBFloats * 4, usage: GPUBufferUsage.STORAGE, label: 'mp-bufB'
+        });
+
+        const p1DescsBuffer = this.device.createBuffer({
+            size: pass1Descs.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: 'mp-descs-p1'
+        });
+        this.device.queue.writeBuffer(p1DescsBuffer, 0, pass1Descs);
+
+        const p2DescsBuffer = this.device.createBuffer({
+            size: pass2Descs.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: 'mp-descs-p2'
+        });
+        this.device.queue.writeBuffer(p2DescsBuffer, 0, pass2Descs);
+
+        const p3DescsBuffer = this.device.createBuffer({
+            size: pass3Descs.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: 'mp-descs-p3'
+        });
+        this.device.queue.writeBuffer(p3DescsBuffer, 0, pass3Descs);
+
+        const totalOutputValues = numTiles * numSlices * freqBins;
+        const outputByteSize = Math.ceil(totalOutputValues / 4) * 4;
+        const outputBuffer = this.device.createBuffer({
+            size: outputByteSize, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC, label: 'mp-output'
+        });
+        const stagingBuffer = this.device.createBuffer({
+            size: outputByteSize, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST, label: 'mp-staging'
+        });
+
+        // ── Write uniforms ──
+        // Intermediate combine: combineN, halfN, numSlices, _pad
+        const intUniforms = new Uint32Array(4);
+        intUniforms[0] = midCombineN;   // 4096
+        intUniforms[1] = base;          // 2048
+        intUniforms[2] = numSlices;
+        intUniforms[3] = 0;
+        this.device.queue.writeBuffer(this.intCombineUniformBuffer, 0, intUniforms);
+
+        // Final combine: fullN, halfN, numSlices, freqBins, dbFloor, dbRange, invN, _pad
+        const combineUniforms = new Uint32Array(8);
+        const combineF32 = new Float32Array(combineUniforms.buffer);
+        combineUniforms[0] = fftSize;            // fullN = 8192
+        combineUniforms[1] = fftSize / 2;        // halfN = 4096
+        combineUniforms[2] = numSlices;
+        combineUniforms[3] = freqBins;           // 4096
+        combineF32[4] = batchTiles[0].dbFloor;
+        combineF32[5] = batchTiles[0].dbRange;
+        combineF32[6] = 1.0 / fftSize;
+        combineUniforms[7] = 0;
+        this.device.queue.writeBuffer(this.combineUniformBuffer, 0, combineUniforms);
+
+        // ── Bind groups ──
+        const pass1BindGroup = this.device.createBindGroup({
+            layout: this.subFFTBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: audioBuffer } },
+                { binding: 1, resource: { buffer: this.hannBuffer } },
+                { binding: 2, resource: { buffer: bufferA } },
+                { binding: 3, resource: { buffer: this.uniformBuffer } },
+                { binding: 4, resource: { buffer: p1DescsBuffer } },
+            ]
+        });
+
+        const pass2BindGroup = this.device.createBindGroup({
+            layout: this.intCombineBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: bufferA } },
+                { binding: 1, resource: { buffer: bufferB } },
+                { binding: 2, resource: { buffer: this.intCombineUniformBuffer } },
+                { binding: 3, resource: { buffer: p2DescsBuffer } },
+            ]
+        });
+
+        const pass3BindGroup = this.device.createBindGroup({
+            layout: this.combineBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: bufferB } },
+                { binding: 1, resource: { buffer: outputBuffer } },
+                { binding: 2, resource: { buffer: this.combineUniformBuffer } },
+                { binding: 3, resource: { buffer: p3DescsBuffer } },
+            ]
+        });
+
+        // ── Encode all three passes in one command encoder ──
+        const encoder = this.device.createCommandEncoder({ label: 'mp-mega-batch' });
+
+        const p1 = encoder.beginComputePass({ label: 'subfft-pass' });
+        p1.setPipeline(this.subFFTPipeline);
+        p1.setBindGroup(0, pass1BindGroup);
+        p1.dispatchWorkgroups(numSlices, numTiles * numSubFFTs);  // ×4 for four sub-FFTs
+        p1.end();
+
+        const p2 = encoder.beginComputePass({ label: 'int-combine-pass' });
+        p2.setPipeline(this.intCombinePipeline);
+        p2.setBindGroup(0, pass2BindGroup);
+        p2.dispatchWorkgroups(numSlices, numPairs);  // ×2 pairs per tile
+        p2.end();
+
+        const p3 = encoder.beginComputePass({ label: 'final-combine-pass' });
+        p3.setPipeline(this.combinePipeline);
+        p3.setBindGroup(0, pass3BindGroup);
+        p3.dispatchWorkgroups(numSlices, numTiles);
+        p3.end();
+
+        encoder.copyBufferToBuffer(outputBuffer, 0, stagingBuffer, 0, outputByteSize);
+        this.device.queue.submit([encoder.finish()]);
+
+        // ── Readback ──
+        await stagingBuffer.mapAsync(GPUMapMode.READ);
+        const mappedRange = stagingBuffer.getMappedRange();
+        const rawBytes = new Uint8Array(mappedRange);
+        const valuesPerTile = numSlices * freqBins;
+
+        for (let i = 0; i < numTiles; i++) {
+            if (signal?.aborted) break;
+            const tileOutput = new Uint8Array(valuesPerTile);
+            const byteBase = i * numSlices * freqBins;
+            tileOutput.set(rawBytes.subarray(byteBase, byteBase + valuesPerTile));
+            onTileComplete(batchTiles[i].tileIndex, tileOutput, numSlices, freqBins);
+        }
+
+        stagingBuffer.unmap();
+        audioBuffer.destroy();
+        bufferA.destroy();
+        bufferB.destroy();
+        p1DescsBuffer.destroy();
+        p2DescsBuffer.destroy();
+        p3DescsBuffer.destroy();
+        outputBuffer.destroy();
+        stagingBuffer.destroy();
+
+        if (window.pm?.gpu) console.log(
+            `%c  [GPU multi-pass batch] ${numTiles} tiles in ${(performance.now() - tBatch).toFixed(1)}ms`,
+            'color: #FF9800'
+        );
+    }
+
+    /**
+     * Multi-pass batch processing (zero-copy GPU texture path).
+     * Pass 1: sub-FFTs → buffer A. Pass 2: intermediate combine → buffer B.
+     * Pass 3: final combine → output → GPU textures.
+     */
+    _processBatchZeroCopyMultiPass(batchTiles, numTiles, numSlices, freqBins, onTileGPUTexture, signal) {
+        const tBatch = performance.now();
+        const fftSize = this.lastFftSize;
+        const base = this.baseFFTSize;
+        const numSubFFTs = Math.pow(2, this.numDecompLevels);
+        const midCombineN = base * 2;
+
+        // ── Concatenate audio ──
+        let totalAudioFloats = 0;
+        const audioOffsets = [];
+        for (let i = 0; i < numTiles; i++) {
+            audioOffsets.push(totalAudioFloats);
+            totalAudioFloats += batchTiles[i].audioData.length;
+        }
+        const megaAudio = new Float32Array(totalAudioFloats);
+        let offset = 0;
+        for (let i = 0; i < numTiles; i++) {
+            megaAudio.set(batchTiles[i].audioData, offset);
+            offset += batchTiles[i].audioData.length;
+        }
+
+        // ── Buffer sizes ──
+        const bufAFloatsPerTile = numSubFFTs * numSlices * base * 2;
+        const totalBufAFloats = numTiles * bufAFloatsPerTile;
+        const bufBFloatsPerTile = 2 * numSlices * midCombineN * 2;
+        const totalBufBFloats = numTiles * bufBFloatsPerTile;
+
+        // ── Pass 1 tile descriptors ──
+        const pass1Descs = new Uint32Array(numTiles * 2);
+        for (let i = 0; i < numTiles; i++) {
+            pass1Descs[i * 2] = audioOffsets[i];
+            pass1Descs[i * 2 + 1] = i * bufAFloatsPerTile;
+        }
+
+        // ── Pass 2 tile descriptors: (0,2)→E and (1,3)→O ──
+        const numPairs = numTiles * 2;
+        const pass2Descs = new Uint32Array(numPairs * 4);
+        const outputOffsets = [];
+        for (let i = 0; i < numTiles; i++) {
+            const bufABase = i * bufAFloatsPerTile;
+            const bufBBase = i * bufBFloatsPerTile;
+            const subBlockSize = numSlices * base * 2;
+            outputOffsets.push(i * numSlices * freqBins);
+            pass2Descs[(i * 2) * 4]     = bufABase + 0 * subBlockSize;
+            pass2Descs[(i * 2) * 4 + 1] = bufABase + 2 * subBlockSize;
+            pass2Descs[(i * 2) * 4 + 2] = bufBBase + 0;
+            pass2Descs[(i * 2) * 4 + 3] = 0;
+            pass2Descs[(i * 2 + 1) * 4]     = bufABase + 1 * subBlockSize;
+            pass2Descs[(i * 2 + 1) * 4 + 1] = bufABase + 3 * subBlockSize;
+            pass2Descs[(i * 2 + 1) * 4 + 2] = bufBBase + numSlices * midCombineN * 2;
+            pass2Descs[(i * 2 + 1) * 4 + 3] = 0;
+        }
+
+        // ── Pass 3 tile descriptors ──
+        const pass3Descs = new Uint32Array(numTiles * 4);
+        for (let i = 0; i < numTiles; i++) {
+            const bufBBase = i * bufBFloatsPerTile;
+            pass3Descs[i * 4]     = bufBBase;
+            pass3Descs[i * 4 + 1] = bufBBase + numSlices * midCombineN * 2;
+            pass3Descs[i * 4 + 2] = outputOffsets[i];
+            pass3Descs[i * 4 + 3] = 0;
+        }
+
+        // ── GPU buffers ──
+        const audioBuffer = this.device.createBuffer({
+            size: megaAudio.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: 'zc-mp-audio'
+        });
+        this.device.queue.writeBuffer(audioBuffer, 0, megaAudio);
+
+        const bufferA = this.device.createBuffer({
+            size: totalBufAFloats * 4, usage: GPUBufferUsage.STORAGE, label: 'zc-mp-bufA'
+        });
+        const bufferB = this.device.createBuffer({
+            size: totalBufBFloats * 4, usage: GPUBufferUsage.STORAGE, label: 'zc-mp-bufB'
+        });
+
+        const p1DescsBuffer = this.device.createBuffer({
+            size: pass1Descs.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: 'zc-mp-descs-p1'
+        });
+        this.device.queue.writeBuffer(p1DescsBuffer, 0, pass1Descs);
+
+        const p2DescsBuffer = this.device.createBuffer({
+            size: pass2Descs.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: 'zc-mp-descs-p2'
+        });
+        this.device.queue.writeBuffer(p2DescsBuffer, 0, pass2Descs);
+
+        const p3DescsBuffer = this.device.createBuffer({
+            size: pass3Descs.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, label: 'zc-mp-descs-p3'
+        });
+        this.device.queue.writeBuffer(p3DescsBuffer, 0, pass3Descs);
+
+        const totalOutputBytes = numTiles * numSlices * freqBins;
+        const outputByteSize = Math.ceil(totalOutputBytes / 4) * 4;
+        const outputBuffer = this.device.createBuffer({
+            size: outputByteSize, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC, label: 'zc-mp-output'
+        });
+
+        // ── Write uniforms ──
+        const intUniforms = new Uint32Array(4);
+        intUniforms[0] = midCombineN;
+        intUniforms[1] = base;
+        intUniforms[2] = numSlices;
+        intUniforms[3] = 0;
+        this.device.queue.writeBuffer(this.intCombineUniformBuffer, 0, intUniforms);
+
+        const combineUniforms = new Uint32Array(8);
+        const combineF32 = new Float32Array(combineUniforms.buffer);
+        combineUniforms[0] = fftSize;
+        combineUniforms[1] = fftSize / 2;
+        combineUniforms[2] = numSlices;
+        combineUniforms[3] = freqBins;
+        combineF32[4] = batchTiles[0].dbFloor;
+        combineF32[5] = batchTiles[0].dbRange;
+        combineF32[6] = 1.0 / fftSize;
+        combineUniforms[7] = 0;
+        this.device.queue.writeBuffer(this.combineUniformBuffer, 0, combineUniforms);
+
+        // ── Bind groups ──
+        const pass1BindGroup = this.device.createBindGroup({
+            layout: this.subFFTBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: audioBuffer } },
+                { binding: 1, resource: { buffer: this.hannBuffer } },
+                { binding: 2, resource: { buffer: bufferA } },
+                { binding: 3, resource: { buffer: this.uniformBuffer } },
+                { binding: 4, resource: { buffer: p1DescsBuffer } },
+            ]
+        });
+
+        const pass2BindGroup = this.device.createBindGroup({
+            layout: this.intCombineBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: bufferA } },
+                { binding: 1, resource: { buffer: bufferB } },
+                { binding: 2, resource: { buffer: this.intCombineUniformBuffer } },
+                { binding: 3, resource: { buffer: p2DescsBuffer } },
+            ]
+        });
+
+        const pass3BindGroup = this.device.createBindGroup({
+            layout: this.combineBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: bufferB } },
+                { binding: 1, resource: { buffer: outputBuffer } },
+                { binding: 2, resource: { buffer: this.combineUniformBuffer } },
+                { binding: 3, resource: { buffer: p3DescsBuffer } },
+            ]
+        });
+
+        // ── Encode all three passes + texture copies ──
+        const encoder = this.device.createCommandEncoder({ label: 'zc-mp-mega-batch' });
+
+        const p1 = encoder.beginComputePass({ label: 'subfft-pass' });
+        p1.setPipeline(this.subFFTPipeline);
+        p1.setBindGroup(0, pass1BindGroup);
+        p1.dispatchWorkgroups(numSlices, numTiles * numSubFFTs);
+        p1.end();
+
+        const p2 = encoder.beginComputePass({ label: 'int-combine-pass' });
+        p2.setPipeline(this.intCombinePipeline);
+        p2.setBindGroup(0, pass2BindGroup);
+        p2.dispatchWorkgroups(numSlices, numPairs);
+        p2.end();
+
+        const p3 = encoder.beginComputePass({ label: 'final-combine-pass' });
+        p3.setPipeline(this.combinePipeline);
+        p3.setBindGroup(0, pass3BindGroup);
+        p3.dispatchWorkgroups(numSlices, numTiles);
+        p3.end();
+
+        // ── Copy output → GPU textures ──
+        const gpuTextures = [];
+        for (let i = 0; i < numTiles; i++) {
+            const gpuTexture = this.device.createTexture({
+                size: [numSlices, freqBins],
+                format: 'r8unorm',
+                usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.TEXTURE_BINDING,
+                label: `zc-mp-tile-${batchTiles[i].tileIndex}`
+            });
+            encoder.copyBufferToTexture(
+                { buffer: outputBuffer, offset: outputOffsets[i], bytesPerRow: numSlices },
+                { texture: gpuTexture },
+                [numSlices, freqBins]
+            );
+            gpuTextures.push(gpuTexture);
+        }
+
+        this.device.queue.submit([encoder.finish()]);
+        const tSubmit = performance.now();
+
+        // ── Fire GPU texture callbacks ──
+        for (let i = 0; i < numTiles; i++) {
+            if (signal?.aborted) break;
+            onTileGPUTexture(batchTiles[i].tileIndex, gpuTextures[i], numSlices, freqBins);
+        }
+
+        // ── Cleanup after GPU finishes (single promise — destroy intermediates first) ──
+        const gpuDonePromise = this.device.queue.onSubmittedWorkDone().then(() => {
+            audioBuffer.destroy();
+            bufferA.destroy();
+            bufferB.destroy();
+            p1DescsBuffer.destroy();
+            p2DescsBuffer.destroy();
+            p3DescsBuffer.destroy();
+            outputBuffer.destroy();
+            return performance.now() - tSubmit;
+        });
+
+        return { gpuDonePromise, encodeMs: tSubmit - tBatch, numTiles };
+    }
+
+    /**
      * Process tiles with ZERO CPU READBACK for display.
      * Creates GPUTextures via copyBufferToTexture — tiles are renderable immediately.
      * Returns a Promise that resolves with Uint8Array data for cascade building (background).
@@ -626,10 +1699,10 @@ export class SpectrogramGPUCompute {
             this.lastFftSize = fftSize;
         }
 
-        // Write uniforms
+        // Write uniforms (sub-FFT size for multi-pass, full size for single-pass)
         const uniforms = new Uint32Array(8);
         const uniformsF32 = new Float32Array(uniforms.buffer);
-        uniforms[0] = fftSize;
+        uniforms[0] = (this.twoPassEnabled || this.multiPassEnabled) ? this.baseFFTSize : fftSize;
         uniformsF32[1] = exactHop;
         uniforms[2] = numSlices;
         uniforms[3] = freqBins;
@@ -640,8 +1713,18 @@ export class SpectrogramGPUCompute {
         this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
 
         // Split into batches that fit GPU limits
-        const outputPerTile = numSlices * freqBins;
-        const maxTilesPerBatch = Math.max(1, Math.floor(this.maxOutputBytes / outputPerTile));
+        let bytesPerTile = numSlices * freqBins;
+        if (this.multiPassEnabled) {
+            const base = this.baseFFTSize;
+            const numSubFFTs = Math.pow(2, this.numDecompLevels);
+            const midN = base * 2;
+            bytesPerTile += numSubFFTs * numSlices * base * 2 * 4;  // buffer A
+            bytesPerTile += 2 * numSlices * midN * 2 * 4;           // buffer B
+        } else if (this.twoPassEnabled) {
+            const M = fftSize / 2;
+            bytesPerTile += 2 * numSlices * M * 2 * 4;
+        }
+        const maxTilesPerBatch = Math.max(1, Math.floor(this.maxOutputBytes / bytesPerTile));
 
         const allGpuDonePromises = [];
         const batchEncodeTimes = [];
@@ -653,8 +1736,19 @@ export class SpectrogramGPUCompute {
             'color: #FF9800; font-weight: bold'
         );
 
+        // For multi-pass, limit in-flight batches to avoid allocating all intermediate
+        // buffers simultaneously (each batch uses ~130MB of transient buffers for 8192-point FFT).
+        // 2 in-flight is optimal: GPU stays fed while previous batch cleans up, ~260MB peak.
+        const maxInFlight = (this.multiPassEnabled || this.twoPassEnabled) ? 2 : Infinity;
+        let inFlightPromises = [];
+
         for (let batchStart = 0; batchStart < tiles.length; batchStart += maxTilesPerBatch) {
             if (signal?.aborted) return;
+
+            // Throttle: wait for oldest batch to finish before submitting new ones
+            if (inFlightPromises.length >= maxInFlight) {
+                await inFlightPromises.shift();
+            }
 
             const batchEnd = Math.min(batchStart + maxTilesPerBatch, tiles.length);
             const batchTiles = tiles.slice(batchStart, batchEnd);
@@ -662,10 +1756,14 @@ export class SpectrogramGPUCompute {
             const { gpuDonePromise, encodeMs } = this._processBatchZeroCopy(
                 batchTiles, batchTiles.length, numSlices, freqBins, onTileGPUTexture, signal
             );
-            if (onBatchGPUDone) {
-                gpuDonePromise.then(() => onBatchGPUDone(batchCount));
-            }
-            allGpuDonePromises.push(gpuDonePromise);
+
+            const cleanupPromise = gpuDonePromise.then(gpuTime => {
+                if (onBatchGPUDone) onBatchGPUDone(batchCount);
+                return gpuTime;
+            });
+
+            inFlightPromises.push(cleanupPromise);
+            allGpuDonePromises.push(cleanupPromise);
             batchEncodeTimes.push(encodeMs);
             batchCount++;
         }
@@ -694,6 +1792,12 @@ export class SpectrogramGPUCompute {
      * No staging buffer, no readback. Cascade built on GPU via render passes.
      */
     _processBatchZeroCopy(batchTiles, numTiles, numSlices, freqBins, onTileGPUTexture, signal) {
+        if (this.multiPassEnabled) {
+            return this._processBatchZeroCopyMultiPass(batchTiles, numTiles, numSlices, freqBins, onTileGPUTexture, signal);
+        }
+        if (this.twoPassEnabled) {
+            return this._processBatchZeroCopyTwoPass(batchTiles, numTiles, numSlices, freqBins, onTileGPUTexture, signal);
+        }
         const tBatch = performance.now();
 
         // ── Concatenate audio + build tile descriptors ──
@@ -814,47 +1918,156 @@ export class SpectrogramGPUCompute {
 
     /**
      * Rebuild the FFT compute pipeline for a new FFT size.
-     * Regenerates the WGSL shader with correctly-sized shared memory arrays.
+     * Uses single-pass Stockham when shared memory is sufficient,
+     * or two-pass Cooley-Tukey (sub-FFT + combine) for larger sizes.
      */
     async _rebuildPipelineForFFTSize(fftSize) {
-        // Validate workgroup storage: 2 arrays × fftSize × 2 (complex) × 4 bytes
         const neededBytes = 2 * fftSize * 2 * 4;
-        if (this.maxWorkgroupStorage && neededBytes > this.maxWorkgroupStorage) {
-            // Step down to the largest power-of-2 FFT size that fits
-            const maxFftSize = Math.floor(this.maxWorkgroupStorage / (2 * 2 * 4));
-            const fittingSize = Math.pow(2, Math.floor(Math.log2(maxFftSize)));
-            const originalSize = fftSize;
-            fftSize = Math.max(512, fittingSize); // floor at 512
-            console.warn(`[GPU Compute] FFT ${originalSize} needs ${neededBytes}B workgroup storage, GPU supports ${this.maxWorkgroupStorage}B. Using FFT ${fftSize}.`);
+
+        // Reset multi-pass state
+        this.twoPassEnabled = false;
+        this.multiPassEnabled = false;
+        this.numDecompLevels = 0;
+        this.baseFFTSize = fftSize;
+
+        // Find the largest sub-FFT size that fits in shared memory
+        const maxBaseSize = this.maxWorkgroupStorage
+            ? Math.pow(2, Math.floor(Math.log2(this.maxWorkgroupStorage / (2 * 2 * 4))))
+            : fftSize; // no limit known — assume it fits
+
+        if (fftSize <= maxBaseSize) {
+            // ── Single-pass: fits in shared memory ──
+            FFT_WGSL_SHADER = buildFFTShader(fftSize);
+
+            const shaderModule = this.device.createShaderModule({
+                code: FFT_WGSL_SHADER,
+                label: `fft-spectrogram-${fftSize}`
+            });
+            const compilationInfo = await shaderModule.getCompilationInfo();
+            for (const msg of compilationInfo.messages) {
+                if (msg.type === 'error') throw new Error(`WGSL compile error: ${msg.message}`);
+            }
+
+            this.pipeline = await this.device.createComputePipelineAsync({
+                label: `fft-pipeline-${fftSize}`,
+                layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.bindGroupLayout] }),
+                compute: { module: shaderModule, entryPoint: 'fft_main' }
+            });
+
+            if (window.pm?.gpu) console.log(`[GPU Compute] Single-pass pipeline for FFT ${fftSize} (${neededBytes}B workgroup storage)`);
+            return fftSize;
         }
 
-        FFT_WGSL_SHADER = buildFFTShader(fftSize);
+        // ── Multi-pass decomposition ──
+        // Calculate how many levels of splitting needed
+        const numLevels = Math.round(Math.log2(fftSize / maxBaseSize));
+        const numSubFFTs = Math.pow(2, numLevels);
+        this.baseFFTSize = maxBaseSize;
+        this.numDecompLevels = numLevels;
 
-        const shaderModule = this.device.createShaderModule({
-            code: FFT_WGSL_SHADER,
-            label: `fft-spectrogram-${fftSize}`
-        });
-
-        const compilationInfo = await shaderModule.getCompilationInfo();
-        for (const message of compilationInfo.messages) {
-            if (message.type === 'error') {
-                throw new Error(`WGSL compile error (fftSize=${fftSize}): ${message.message} (line ${message.lineNum})`);
-            }
+        // Cap at 2 levels (three-pass) for now — beyond that is impractical
+        if (numLevels > 2) {
+            const fallback = maxBaseSize * 4; // max 3-pass size
+            console.warn(`[GPU Compute] FFT ${fftSize} needs ${numLevels} decomp levels (max 2). Falling back to ${fallback}.`);
+            return this._rebuildPipelineForFFTSize(fallback);
         }
 
-        this.pipeline = await this.device.createComputePipelineAsync({
-            label: `fft-pipeline-${fftSize}`,
-            layout: this.device.createPipelineLayout({
-                bindGroupLayouts: [this.bindGroupLayout]
-            }),
-            compute: {
-                module: shaderModule,
-                entryPoint: 'fft_main'
-            }
+        if (numLevels === 1) {
+            this.twoPassEnabled = true;
+        } else {
+            this.multiPassEnabled = true;
+        }
+
+        // ── Sub-FFT pipeline (Pass 1) — shared by both two-pass and multi-pass ──
+        const subShaderCode = buildSubFFTShader(maxBaseSize, numSubFFTs);
+        const subModule = this.device.createShaderModule({ code: subShaderCode, label: `subfft-${maxBaseSize}-x${numSubFFTs}` });
+        const subInfo = await subModule.getCompilationInfo();
+        for (const msg of subInfo.messages) {
+            if (msg.type === 'error') throw new Error(`Sub-FFT WGSL error: ${msg.message}`);
+        }
+
+        this.subFFTBindGroupLayout = this.device.createBindGroupLayout({
+            label: 'subfft-bind-group-layout',
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },  // audioData
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },  // hannWindow
+                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },            // intermediate
+                { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },            // params
+                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },  // tileDescs
+            ]
         });
 
-        const actualBytes = 2 * fftSize * 2 * 4;
-        if (window.pm?.gpu) console.log(`[GPU Compute] Pipeline rebuilt for FFT size ${fftSize} (${actualBytes} bytes workgroup storage)`);
+        this.subFFTPipeline = await this.device.createComputePipelineAsync({
+            label: `subfft-pipeline-${maxBaseSize}-x${numSubFFTs}`,
+            layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.subFFTBindGroupLayout] }),
+            compute: { module: subModule, entryPoint: 'subfft_main' }
+        });
+
+        // ── Intermediate combine pipeline (for 3+ passes) ──
+        if (numLevels >= 2) {
+            const intCombineCode = buildIntermediateCombineShader();
+            const intCombineModule = this.device.createShaderModule({ code: intCombineCode, label: `int-combine-${fftSize}` });
+            const intCombineInfo = await intCombineModule.getCompilationInfo();
+            for (const msg of intCombineInfo.messages) {
+                if (msg.type === 'error') throw new Error(`Intermediate combine WGSL error: ${msg.message}`);
+            }
+
+            this.intCombineBindGroupLayout = this.device.createBindGroupLayout({
+                label: 'int-combine-bind-group-layout',
+                entries: [
+                    { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },  // input intermediate
+                    { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },            // output intermediate
+                    { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },            // params
+                    { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },  // tileDescs
+                ]
+            });
+
+            this.intCombinePipeline = await this.device.createComputePipelineAsync({
+                label: `int-combine-pipeline-${fftSize}`,
+                layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.intCombineBindGroupLayout] }),
+                compute: { module: intCombineModule, entryPoint: 'int_combine_main' }
+            });
+
+            if (this.intCombineUniformBuffer) this.intCombineUniformBuffer.destroy();
+            this.intCombineUniformBuffer = this.device.createBuffer({
+                size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, label: 'int-combine-params'
+            });
+        }
+
+        // ── Final combine pipeline (shared by two-pass and multi-pass) ──
+        const combineShaderCode = buildCombineShader();
+        const combineModule = this.device.createShaderModule({ code: combineShaderCode, label: `combine-${fftSize}` });
+        const combineInfo = await combineModule.getCompilationInfo();
+        for (const msg of combineInfo.messages) {
+            if (msg.type === 'error') throw new Error(`Combine WGSL error: ${msg.message}`);
+        }
+
+        this.combineBindGroupLayout = this.device.createBindGroupLayout({
+            label: 'combine-bind-group-layout',
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },  // intermediate
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },            // output
+                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },            // combineParams
+                { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },  // tileDescs
+            ]
+        });
+
+        this.combinePipeline = await this.device.createComputePipelineAsync({
+            label: `combine-pipeline-${fftSize}`,
+            layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.combineBindGroupLayout] }),
+            compute: { module: combineModule, entryPoint: 'combine_main' }
+        });
+
+        if (this.combineUniformBuffer) this.combineUniformBuffer.destroy();
+        this.combineUniformBuffer = this.device.createBuffer({
+            size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, label: 'combine-params'
+        });
+
+        const passLabel = numLevels === 1 ? 'Two-pass' : `${numLevels + 1}-pass`;
+        if (window.pm?.gpu) console.log(
+            `[GPU Compute] ${passLabel} pipeline for FFT ${fftSize}: ` +
+            `${numSubFFTs}×${maxBaseSize} sub-FFTs, ${numLevels} combine level(s)`
+        );
         return fftSize;
     }
 
@@ -1001,10 +2214,31 @@ export class SpectrogramGPUCompute {
             this.uniformBuffer.destroy();
             this.uniformBuffer = null;
         }
+        if (this.combineUniformBuffer) {
+            this.combineUniformBuffer.destroy();
+            this.combineUniformBuffer = null;
+        }
         if (this.dummyTexture) {
             this.dummyTexture.destroy();
             this.dummyTexture = null;
         }
+        // Multi-pass / two-pass state
+        this.twoPassEnabled = false;
+        this.multiPassEnabled = false;
+        this.numDecompLevels = 0;
+        this.baseFFTSize = 0;
+        this.subFFTPipeline = null;
+        this.subFFTBindGroupLayout = null;
+        this.combinePipeline = null;
+        this.combineBindGroupLayout = null;
+        // Multi-pass intermediate combine
+        if (this.intCombineUniformBuffer) {
+            this.intCombineUniformBuffer.destroy();
+            this.intCombineUniformBuffer = null;
+        }
+        this.intCombinePipeline = null;
+        this.intCombineBindGroupLayout = null;
+
         this.cascadePipeline = null;
         this.cascadeBindGroupLayout = null;
         if (this.device) {
