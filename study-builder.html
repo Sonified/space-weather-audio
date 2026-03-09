@@ -679,7 +679,7 @@
     width: 2px;
     height: var(--connector-height, 12px);
     background: var(--border);
-    margin-left: 61px;
+    margin-left: 29px;
   }
 
   /* Add step button */
@@ -1699,7 +1699,7 @@
   function buildInfoCard(num, step) {
     return `
       <div class="step-header" onclick="toggleStep(this)">
-        <span class="lock-icon">🔒</span><span class="chevron">▶</span>
+        <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
         <div class="step-number info">${num}</div>
         <div class="step-title">${escapeHtml(step.title || 'Information')}</div>
         <span class="step-type-badge badge-info">Info</span>
@@ -1815,7 +1815,7 @@
 
     return `
       <div class="step-header" onclick="toggleStep(this)">
-        <span class="lock-icon">🔒</span><span class="chevron">▶</span>
+        <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
         <div class="step-number question">${num}</div>
         <div class="step-title">${escapeHtml(step.title || step.text || 'New Question')}</div>
         <span class="step-type-badge badge-question">Question</span>
@@ -1964,7 +1964,7 @@
 
     return `
       <div class="step-header" onclick="toggleStep(this)">
-        <span class="lock-icon">🔒</span><span class="chevron">▶</span>
+        <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
         <div class="step-number analysis">${num}</div>
         <div class="step-title">${escapeHtml(step.title || 'Analysis')}</div>
         <span class="step-type-badge badge-analysis">Analysis</span>

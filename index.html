@@ -40,9 +40,9 @@
         })();
     </script>
 
-    <link rel="stylesheet" href="styles.css?v=20260309.172716.171944.161757.161750.161742.160355.160307.160205.155820.155734.155654.155643.155621.155612.155601.155549.044353.044348.044344.044339.044335.044328.005349.070826.070149.070146.042120.230220.225052.031644.031038.030840.023603.022627.192022.191147.190853.023919.022155.021611.021604.021600.021539.021527.003104.003047.003019.002750.082311.082257.081801.081750">
+    <link rel="stylesheet" href="styles.css?v=20260309.181608.172716.171944.161757.161750.161742.160355.160307.160205.155820.155734.155654.155643.155621.155612.155601.155549.044353.044348.044344.044339.044335.044328.005349.070826.070149.070146.042120.230220.225052.031644.031038.030840.023603.022627.192022.191147.190853.023919.022155.021611.021604.021600.021539.021527.003104.003047.003019.002750.082311.082257.081801.081750">
 
-    <link rel="stylesheet" href="styles.css?v=20260309.172716.171944.161757.161750.161742.160911.160831.160807.044353.044348.044344.044339.044335.044328.005349.070826.070149.070146.042120.230220.225052.031644.031038.030840.023603.022627.192022.191147.190853.023919.022155.021611.021604.021600.021539.021527.003104.003047.003019.002750.082311.082257.081801.081750">
+    <link rel="stylesheet" href="styles.css?v=20260309.181608.172716.171944.161757.161750.161742.160911.160831.160807.044353.044348.044344.044339.044335.044328.005349.070826.070149.070146.042120.230220.225052.031644.031038.030840.023603.022627.192022.191147.190853.023919.022155.021611.021604.021600.021539.021527.003104.003047.003019.002750.082311.082257.081801.081750">
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
@@ -303,7 +303,6 @@
             <canvas id="minimap" width="1200" height="135"></canvas>
             <canvas id="minimap-axis" width="60" height="135"></canvas>
             <canvas id="minimap-x-axis" width="1200" height="40"></canvas>
-            <canvas id="minimap-buttons" width="1200" height="135"></canvas>
 
             <!-- Navigation Bar gear (content injected by main.js) -->
             <div class="panel-gear" id="navBarGear"></div>
@@ -389,25 +388,20 @@
 
         <!-- Settings drawer + hamburger button injected by main.js -->
 
-                <!-- Tracked Regions Panel -->
-        <div class="panel panel-regions" id="trackedRegionsPanel" style="position: relative;">
-            <h2 style="margin-bottom: 12px; font-size: 1.3em;">Selected Regions</h2>
-            <div id="regionsListContainer">
-                <div id="regionsList"></div>
-            </div>
-            
-            <!-- Download Audio Buttons (floating below panel in lower right) -->
-            <div id="downloadAudioContainer" style="position: absolute; bottom: -50px; right: 0; display: none; z-index: 100; gap: 8px;">
-                <button type="button" id="recordAudioBtn" class="audio-btn audio-btn-record">
-                    🔴 Begin Recording
-                </button>
-                <button type="button" id="downloadAllComponentsBtn" class="audio-btn audio-btn-download" style="display: none;">
-                    📦 Download All Components
-                </button>
-                <button type="button" id="downloadAudioBtn" class="audio-btn audio-btn-download">
-                    📥 Download This Component
-                </button>
-            </div>
+        <!-- Features list (used by feature-tracker.js) -->
+        <div id="regionsList" style="display: none;"></div>
+
+        <!-- Download Audio Buttons -->
+        <div id="downloadAudioContainer" style="position: relative; display: none; z-index: 100; gap: 8px; justify-content: flex-end; margin-top: 8px;">
+            <button type="button" id="recordAudioBtn" class="audio-btn audio-btn-record">
+                🔴 Begin Recording
+            </button>
+            <button type="button" id="downloadAllComponentsBtn" class="audio-btn audio-btn-download" style="display: none;">
+                📦 Download All Components
+            </button>
+            <button type="button" id="downloadAudioBtn" class="audio-btn audio-btn-download">
+                📥 Download This Component
+            </button>
         </div>
         
         <!-- Metrics Panel -->
@@ -494,9 +488,9 @@
     <!-- APPLICATION LAYER: Main app code (might break during beta) -->
     <!-- ═══════════════════════════════════════════════════════════ -->
 
-    <script type="module" src="js/main.js?v=20260309.172716.171944.161757.161750.161742.160355.160307.160205.155820.155734.155654.155643.155621.155612.155601.155549.044353.044348.044344.044339.044335.044328.005349.070826.070149.070146.042120.230220.225052.031644.031038.030840.023603.022627.192022.191147.190853.023919.022155.021611.021604.021600.021539.021527.003104.003047.003019.002750.082311.082257.081801.081750"></script>
+    <script type="module" src="js/main.js?v=20260309.181608.172716.171944.161757.161750.161742.160355.160307.160205.155820.155734.155654.155643.155621.155612.155601.155549.044353.044348.044344.044339.044335.044328.005349.070826.070149.070146.042120.230220.225052.031644.031038.030840.023603.022627.192022.191147.190853.023919.022155.021611.021604.021600.021539.021527.003104.003047.003019.002750.082311.082257.081801.081750"></script>
 
-    <script type="module" src="js/main.js?v=20260309.172716.171944.161757.161750.161742.160911.160831.160807.044353.044348.044344.044339.044335.044328.005349.070826.070149.070146.042120.230220.225052.031644.031038.030840.023603.022627.192022.191147.190853.023919.022155.021611.021604.021600.021539.021527.003104.003047.003019.002750.082311.082257.081801.081750"></script>
+    <script type="module" src="js/main.js?v=20260309.181608.172716.171944.161757.161750.161742.160911.160831.160807.044353.044348.044344.044339.044335.044328.005349.070826.070149.070146.042120.230220.225052.031644.031038.030840.023603.022627.192022.191147.190853.023919.022155.021611.021604.021600.021539.021527.003104.003047.003019.002750.082311.082257.081801.081750"></script>
 
 </body>
 </html>
