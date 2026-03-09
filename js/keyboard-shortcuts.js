@@ -234,8 +234,12 @@ function handleKeyboardShortcut(event) {
         const isButton = event.target.tagName === 'BUTTON';
         const isZoomButton = isButton && event.target.classList.contains('zoom-btn');
 
+        console.log('⌨️ [SPACE] target:', event.target.tagName, event.target.id || event.target.className);
+        console.log('⌨️ [SPACE] isTextInput:', isTextInput, 'isTextarea:', isTextarea, 'isSelect:', isSelect, 'isButton:', isButton, 'isContentEditable:', isContentEditable);
+
         // Let browser handle spacebar in form elements, except zoom buttons
         if (isTextInput || isTextarea || isSelect || (isButton && !isZoomButton) || isContentEditable) {
+            console.log('⌨️ [SPACE] BLOCKED: focused on form element');
             return;
         }
 
@@ -243,6 +247,7 @@ function handleKeyboardShortcut(event) {
 
         // In EMIC study flow, don't allow playback until welcome "Begin" has been clicked
         if (isEmicStudyMode() && getEmicFlag(EMIC_FLAGS.IS_SIMULATING) && !getEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME)) {
+            console.log('⌨️ [SPACE] BLOCKED: EMIC simulation, welcome not closed');
             return;
         }
 
@@ -250,8 +255,13 @@ function handleKeyboardShortcut(event) {
         const playbackState = State.playbackState;
         const allReceivedData = State.allReceivedData;
 
+        console.log('⌨️ [SPACE] playPauseBtn:', playPauseBtn?.id, 'disabled:', playPauseBtn?.disabled, 'state:', playbackState, 'hasData:', !!(allReceivedData && allReceivedData.length > 0));
+
         if (!playPauseBtn.disabled && (playbackState !== PlaybackState.STOPPED || (allReceivedData && allReceivedData.length > 0))) {
+            console.log('⌨️ [SPACE] ✅ Clicking playPauseBtn');
             playPauseBtn.click();
+        } else {
+            console.log('⌨️ [SPACE] ❌ NOT clicking — btn disabled or no data');
         }
         return;
     }
