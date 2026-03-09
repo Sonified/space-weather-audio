@@ -16,7 +16,6 @@ import {
 import { setPyramidReduceMode, rebuildUpperLevels } from './spectrogram-pyramid.js';
 import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas } from './spectrogram-x-axis-renderer.js';
 import { drawMinimapXAxis } from './minimap-x-axis-renderer.js';
-import { drawRegionButtons } from './minimap-buttons-renderer.js';
 import { drawDayMarkers } from './day-markers.js';
 import { initDataViewer, fetchUsers } from './data-viewer.js';
 import { zoomState } from './zoom-state.js';
@@ -398,7 +397,7 @@ export function initializeAdvancedControls() {
         advancedCheckbox.addEventListener('change', () => {
             localStorage.setItem('emic_advanced_mode', advancedCheckbox.checked);
             applyDisplayMode(advancedCheckbox.checked);
-            updateRegionsPanelVisibility();
+            updateControlsVisibility();
             // Reload features for the new active ID and redraw
             loadRegionsAfterDataFetch();
             requestAnimationFrame(() => redrawAllCanvasFeatureBoxes());
@@ -803,14 +802,10 @@ export function initializeAdvancedControls() {
         updateEdgeFadeControls();
     }
 
-    // Toggle regions panel + top bar controls visibility based on viewing mode
-    function updateRegionsPanelVisibility() {
+    // Toggle top bar controls visibility based on viewing mode
+    function updateControlsVisibility() {
         const mode = document.getElementById('viewingMode')?.value;
         const isWindowed = mode === 'static' || mode === 'scroll' || mode === 'pageTurn';
-        const panel = document.getElementById('trackedRegionsPanel');
-        if (panel) {
-            panel.style.display = isWindowed ? 'none' : '';
-        }
         const advanced = document.getElementById('advancedMode')?.checked;
         const hideControls = isWindowed && !advanced;
         const comp = document.getElementById('componentSelectorContainer');
@@ -838,17 +833,16 @@ export function initializeAdvancedControls() {
         // Sync the other select
         if (viewingModeSelect && viewingModeSelect !== sourceSelect) viewingModeSelect.value = mode;
         if (mainWindowModeSelect && mainWindowModeSelect !== sourceSelect) mainWindowModeSelect.value = mode;
-        updateRegionsPanelVisibility();
+        updateControlsVisibility();
         drawWaveformFromMinMax();
         drawMinimapXAxis();
         drawSpectrogramXAxis();
-        drawRegionButtons();
         drawDayMarkers();
         sourceSelect?.blur();
     }
 
     if (viewingModeSelect) {
-        updateRegionsPanelVisibility();
+        updateControlsVisibility();
         viewingModeSelect.addEventListener('change', () => {
             applyViewingMode(viewingModeSelect.value, viewingModeSelect);
         });

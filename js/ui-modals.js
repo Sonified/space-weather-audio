@@ -642,8 +642,9 @@ export async function openParticipantModal() {
 export async function closeParticipantModal(keepOverlay = null) {
     // Auto-detect if overlay should be kept (if keepOverlay not explicitly provided)
     if (keepOverlay === null) {
-        // EMIC mode: always keep overlay (welcome modal follows participant modal)
-        keepOverlay = true;
+        // Study mode: keep overlay (welcome modal follows participant modal)
+        // Solar Portal: dismiss overlay (no follow-up modal)
+        keepOverlay = isStudyMode();
     }
 
     // Only allow programmatic closing (after submission), not by clicking outside
