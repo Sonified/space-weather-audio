@@ -298,11 +298,13 @@ export function initializeAdvancedControls() {
         // Sync checkbox
         if (advancedCheckbox) advancedCheckbox.checked = isAdvanced;
 
-        // Gears, hamburger, questionnaires: advanced only
+        // Gears, hamburger, questionnaires: advanced only (EMIC only — Solar Portal controls via CSS)
         const gearContainers = document.querySelectorAll('.panel-gear');
         gearContainers.forEach(g => g.style.display = isAdvanced ? 'block' : 'none');
-        const hBtn = document.getElementById('hamburgerBtn');
-        if (hBtn) hBtn.style.display = isAdvanced ? 'block' : 'none';
+        if (isEmicStudyMode()) {
+            const hBtn = document.getElementById('hamburgerBtn');
+            if (hBtn) hBtn.style.display = isAdvanced ? 'block' : 'none';
+        }
         const questionnairesPanel = document.getElementById('questionnairesPanel');
         if (questionnairesPanel) questionnairesPanel.style.display = isAdvanced ? '' : 'none';
         if (!isAdvanced) closeSettingsDrawer();
@@ -398,9 +400,11 @@ export function initializeAdvancedControls() {
             localStorage.setItem('emic_advanced_mode', advancedCheckbox.checked);
             applyDisplayMode(advancedCheckbox.checked);
             updateControlsVisibility();
-            // Reload features for the new active ID and redraw
-            loadRegionsAfterDataFetch();
-            requestAnimationFrame(() => redrawAllCanvasFeatureBoxes());
+            // Reload features for the new active ID and redraw (if data is loaded)
+            if (State.currentMetadata?.spacecraft) {
+                loadRegionsAfterDataFetch();
+                requestAnimationFrame(() => redrawAllCanvasFeatureBoxes());
+            }
         });
     }
     if (hamburgerBtn) hamburgerBtn.addEventListener('click', () => {
