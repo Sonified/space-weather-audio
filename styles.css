@@ -4688,25 +4688,21 @@ select.csel-native {
 html[data-admin] .admin-only { display: flex; }
 html[data-admin] button.admin-only { display: inline-block; }
 
-/* Hide advanced-only elements before JS loads (prevents flash in production mode) */
-html:not([data-advanced]) #emicControlsPanel,
-html:not([data-advanced]) #stretchGroup,
-html:not([data-advanced]) #speedGroup,
-html:not([data-advanced]) .panel-gear,
-html:not([data-advanced]) #hamburgerBtn,
-html:not([data-advanced]) #questionnairesPanel,
-html:not([data-advanced]) #componentSelectorContainer,
-html:not([data-advanced]) #detrendContainer {
+/* EMIC study: hide advanced-only elements before JS loads (prevents flash in production mode) */
+/* Scoped to .emic-page so Solar Portal is unaffected */
+html:not([data-advanced]) .emic-page #emicControlsPanel,
+html:not([data-advanced]) .emic-page #stretchGroup,
+html:not([data-advanced]) .emic-page #speedGroup,
+html:not([data-advanced]) .emic-page .panel-gear,
+html:not([data-advanced]) .emic-page #hamburgerBtn,
+html:not([data-advanced]) .emic-page #questionnairesPanel,
+html:not([data-advanced]) .emic-page #componentSelectorContainer,
+html:not([data-advanced]) .emic-page #detrendContainer {
     display: none;
 }
-html:not([data-advanced]) .viz-controls {
+html:not([data-advanced]) .emic-page .viz-controls {
     visibility: hidden;
     pointer-events: none;
-}
-/* Solar Portal: always show viz-controls (FFT, colormap, frequency scale) */
-body:not(.emic-page) .viz-controls {
-    visibility: visible !important;
-    pointer-events: auto !important;
 }
 
 /* EMIC: taller spectrogram, shorter minimap */
