@@ -4705,6 +4705,9 @@ html:not([data-advanced]) .emic-page .viz-controls {
     pointer-events: none;
 }
 
+/* Solar Portal: no settings drawer */
+.solar-portal #hamburgerBtn { display: none; }
+
 /* EMIC: taller spectrogram, shorter minimap */
 .emic-page #spectrogram { height: var(--spec-height, clamp(250px, 62vh, 600px)); }
 .emic-page #minimap { height: 121px; }
