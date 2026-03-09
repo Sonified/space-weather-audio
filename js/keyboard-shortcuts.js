@@ -242,7 +242,7 @@ function handleKeyboardShortcut(event) {
         event.preventDefault();
 
         // In EMIC study flow, don't allow playback until welcome "Begin" has been clicked
-        if (getEmicFlag(EMIC_FLAGS.IS_SIMULATING) && !getEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME)) {
+        if (isEmicStudyMode() && getEmicFlag(EMIC_FLAGS.IS_SIMULATING) && !getEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME)) {
             return;
         }
 
