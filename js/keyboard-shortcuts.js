@@ -40,7 +40,7 @@ export function initKeyboardShortcuts() {
     keyboardShortcutsInitialized = true;
     // Only log in dev/personal modes, not study mode
     if (!isStudyMode()) {
-        console.log('⌨️ Keyboard shortcuts initialized (build 20260309.205230)');
+        fetch('version.json?' + Date.now()).then(r => r.json()).then(v => console.log('⌨️ Keyboard shortcuts initialized (v' + v.version + ')')).catch(() => console.log('⌨️ Keyboard shortcuts initialized'));
     }
 }
 
