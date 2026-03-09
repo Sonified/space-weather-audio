@@ -1,0 +1,3744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Study Builder — spaceweather.now.audio</title>
+<style>
+  :root {
+    --bg: #141a22;
+    --surface: #2a3444;
+    --surface2: #455570;
+    --border: #506078;
+    --border-hover: #6a7a92;
+    --text: #e6edf3;
+    --text-muted: #aab4c0;
+    --accent: #4DA8FF;
+    --accent-hover: #6BBFFF;
+    --green: #22C55E;
+    --orange: #F59E0B;
+    --red: #EF4444;
+    --purple: #A78BFA;
+    --emerald: #10B981;
+    --rose: #F43F5E;
+    --radius: 8px;
+    --input-font-size: 14px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .header h1 {
+    font-size: 16px;
+    font-weight: 500;
+    color: #8a94a0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0;
+  }
+
+  .header-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+  }
+  .header-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .study-name-input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: var(--input-font-size);
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: var(--radius);
+    outline: none;
+    flex: 1;
+    min-width: 150px;
+  }
+  .study-name-input:hover { border-color: var(--border); }
+  .study-name-input:focus { border-color: var(--accent); }
+
+  .header-actions { display: flex; gap: 8px; align-items: center; width: 100%; padding-top: 6px; }
+  .btn {
+    padding: 8px 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s;
+  }
+  .btn:hover { border-color: var(--border-hover); background: var(--surface2); }
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+    font-weight: 600;
+  }
+  .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+  /* File menu dropdown */
+  .dropdown-wrap { position: relative; }
+  .file-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    z-index: 20;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    min-width: 220px;
+  }
+  .file-menu.show { display: block; }
+
+  /* Slug preview */
+  .slug-preview {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--input-font-size);
+  }
+  .slug-label { color: var(--text-muted); }
+  .slug-url {
+    color: var(--text-muted);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    background: var(--bg);
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    flex: 1;
+  }
+  .slug-editable {
+    color: var(--accent);
+    outline: none;
+    min-width: 40px;
+    display: inline-block;
+  }
+  .slug-editable:focus { border-bottom: 1px solid var(--accent); }
+  .slug-status {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .slug-status.valid { color: var(--green); }
+  .slug-status.invalid { color: var(--red); }
+  .url-action-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 2px 5px;
+    font-size: 12px;
+    line-height: 1;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+  }
+  .url-action-btn:hover { opacity: 1; }
+  .slug-status.checking { color: var(--orange); }
+
+  /* Save indicator */
+  .save-indicator {
+    font-size: 11px;
+    color: var(--text-muted);
+    min-width: 80px;
+    text-align: right;
+  }
+
+  /* Step list */
+  .steps-container {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  .step-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 4px;
+    overflow: hidden;
+    transition: border-color 0.15s;
+  }
+  .step-card:hover { border-color: var(--border-hover); }
+  .step-card.active { border-color: var(--accent); }
+
+  .step-card.dragging {
+    opacity: 0.7;
+    z-index: 100;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    pointer-events: none;
+  }
+  .drag-handle {
+    cursor: grab;
+    color: var(--text-muted);
+    font-size: 14px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    user-select: none;
+  }
+  .drag-handle:hover { color: var(--text); background: var(--surface2); }
+  .drag-handle:active { cursor: grabbing; }
+
+  .lock-icon {
+    font-size: 12px;
+    flex-shrink: 0;
+    user-select: none;
+    opacity: 0.45;
+    width: 20px;
+    text-align: center;
+  }
+
+  .step-header {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    cursor: pointer;
+    gap: 12px;
+    user-select: none;
+  }
+
+  .step-number {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .step-number.registration { background: #2563EB; color: #fff; }
+  .step-number.modal { background: #7C3AED; color: #fff; }
+  .step-number.info { background: #0891B2; color: #fff; }
+  .step-number.question { background: #D97706; color: #fff; }
+  .step-number.analysis { background: #059669; color: #fff; }
+
+  .step-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .step-type-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+    min-width: 90px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .badge-registration { background: rgba(37,99,235,0.15); color: #60A5FA; }
+  .badge-modal { background: rgba(124,58,237,0.15); color: #A78BFA; }
+  .badge-info { background: rgba(8,145,178,0.15); color: #22D3EE; }
+  .badge-question { background: rgba(217,119,6,0.15); color: #FBBF24; }
+  .badge-analysis { background: rgba(5,150,105,0.15); color: #34D399; }
+  .step-actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    min-width: 100px;
+    justify-content: flex-end;
+  }
+  .step-card:hover .step-actions { opacity: 1; }
+  .step-action-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+  .step-action-btn:hover { background: var(--surface2); color: var(--text); }
+  .step-action-btn.delete { transition: color 150ms, background-color 150ms; }
+  .step-action-btn.delete:hover { color: #fff; background: #d03030; }
+  .step-action-btn.preview-btn { font-size: 12px; width: auto; padding: 0 6px; }
+  .step-action-btn.preview-btn:hover { color: var(--accent); }
+
+  /* Inline preview container */
+  .step-preview {
+    margin: 12px 16px 16px;
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    position: relative;
+    max-width: 720px;
+  }
+  .step-preview.info-preview { max-width: 460px; margin-left: auto; margin-right: auto; }
+  .step-preview .preview-close {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    background: linear-gradient(135deg, #cc3333 0%, #991111 100%);
+    color: white;
+    border: none;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    min-height: 28px;
+    border-radius: 50%;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: default;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    padding: 0;
+  }
+  .step-preview h3 { color: #333; margin: 0 0 16px; font-size: 18px; }
+  .step-preview p { color: #333; font-size: 16px; line-height: 1.6; margin: 0 0 12px; }
+  .step-preview .preview-radio-group { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+  .step-preview .preview-radio-choice {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    border: 1px solid #e0e0e0; border-radius: 8px; cursor: pointer; transition: background 0.15s;
+  }
+  .step-preview .preview-radio-choice:hover { background: #f5f5f5; }
+  .step-preview .preview-radio-choice input[type="radio"] { accent-color: #2196F3; }
+  .step-preview .preview-radio-choice strong { color: #333; }
+  .step-preview .preview-radio-choice span { color: #666; font-size: 0.92em; }
+  .step-preview textarea {
+    width: 100%; min-height: 120px; padding: 14px; font-size: 15px; font-family: inherit;
+    border: 1px solid #ddd; border-radius: 8px; resize: vertical; box-sizing: border-box;
+    line-height: 1.5; color: #333;
+  }
+  .step-preview .preview-submit {
+    display: block; margin: 16px auto 0; padding: 10px 32px; border: none; border-radius: 8px;
+    background: #2196F3; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .step-preview .preview-submit:hover { opacity: 0.85; }
+  .step-preview .preview-progress {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 16px; justify-content: flex-end;
+  }
+  .step-preview .preview-progress-text { font-size: 13px; color: #999; font-weight: 500; }
+  .step-preview .preview-progress-bar {
+    width: 120px; height: 4px; background: #e0e0e0; border-radius: 2px; overflow: hidden;
+  }
+  .step-preview .preview-progress-fill {
+    height: 100%; background: #2196F3; border-radius: 2px;
+  }
+  .step-preview .preview-nav {
+    display: flex; gap: 12px; justify-content: center; margin-top: 16px;
+  }
+  .step-preview .preview-nav button {
+    padding: 8px 24px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .step-preview .preview-nav button:hover { opacity: 0.85; }
+  .step-preview .preview-nav .back-btn { background: #e0e0e0; color: #555; }
+  .step-preview .preview-nav .next-btn { background: #2196F3; color: #fff; }
+
+  .chevron {
+    color: var(--text-muted);
+    transition: transform 0.2s;
+    font-size: 12px;
+  }
+  .step-card.active .chevron { transform: rotate(90deg); }
+
+  /* Step detail panel */
+  .step-detail {
+    display: none;
+    padding: 0 16px 16px;
+    border-top: 1px solid var(--border);
+  }
+  .step-card.active .step-detail { display: block; }
+
+  .field-group {
+    margin-top: 12px;
+  }
+  .field-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .field-input {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: var(--input-font-size);
+    outline: none;
+  }
+  .field-input:focus { border-color: var(--accent); }
+  textarea.field-input { resize: vertical; min-height: 60px; font-family: inherit; }
+
+  .dim-input-wrap { display: flex; align-items: stretch; }
+  .dim-input-wrap .field-input { border-radius: var(--radius) 0 0 var(--radius); flex: 1; }
+  .dim-arrows { display: flex; flex-direction: column; }
+  .dim-arrow {
+    background: var(--surface2); border: 1px solid var(--border); border-left: none;
+    color: var(--text-muted); cursor: pointer; padding: 0; width: 24px; flex: 1;
+    font-size: 8px; line-height: 1; display: flex; align-items: center; justify-content: center;
+  }
+  .dim-arrow:first-child { border-radius: 0 var(--radius) 0 0; }
+  .dim-arrow:last-child { border-radius: 0 0 var(--radius) 0; border-top: none; }
+  .dim-arrow:hover { background: var(--border); color: var(--text); }
+
+  .field-row {
+    display: flex;
+    gap: 12px;
+  }
+  .field-row .field-group { flex: 1; }
+
+  .font-style-bar { display: flex; align-items: flex-end; gap: 8px; }
+  .title-row { display: flex; align-items: flex-end; gap: 10px; }
+  .title-row .field-input { flex: 1; }
+  .title-row .font-style-bar { margin-top: 0; flex-shrink: 0; }
+  .font-style-bar .fs-col { display: flex; flex-direction: column; gap: 2px; }
+  .font-style-bar .fs-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .font-style-bar select.fs-size {
+    padding: 4px 6px; font-size: 13px; background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer;
+  }
+  .font-style-bar .fs-bold {
+    width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+    font-weight: 900; font-size: 14px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--surface); color: var(--text-muted); cursor: pointer; user-select: none;
+  }
+  .font-style-bar .fs-bold.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .font-style-bar input[type="color"] {
+    width: 28px; height: 28px; padding: 1px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--surface); cursor: pointer;
+  }
+  .font-style-bar .fs-hex-input {
+    width: 68px; height: 28px; padding: 2px 6px; font-size: 12px; font-family: monospace;
+    background: var(--bg); color: var(--text-muted); border: 1px solid var(--border);
+    border-radius: var(--radius); outline: none; box-sizing: border-box;
+  }
+  .font-style-bar .fs-hex-input:focus { border-color: var(--accent); color: var(--text); }
+
+  /* ── Custom Color Picker ── */
+  .color-pick { position: relative; display: inline-block; }
+  .color-pick .cp-swatch {
+    width: 28px; height: 28px; border-radius: var(--radius); border: 1px solid var(--border);
+    cursor: pointer; box-sizing: border-box; transition: border-color 0.15s;
+  }
+  .color-pick .cp-swatch:hover { border-color: var(--accent); }
+  .color-pick .cp-dropdown {
+    display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+    margin-bottom: 6px; padding: 10px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 1000; min-width: 176px;
+  }
+  .color-pick .cp-dropdown.open { display: block; }
+  .color-pick .cp-label {
+    font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .color-pick .cp-grid {
+    display: grid; grid-template-columns: repeat(6, 24px); gap: 4px; margin-bottom: 8px;
+  }
+  .color-pick .cp-cell {
+    width: 24px; height: 24px; border-radius: 4px; cursor: pointer; border: 2px solid transparent;
+    box-sizing: border-box; transition: border-color 0.1s, transform 0.1s;
+  }
+  .color-pick .cp-cell:hover { transform: scale(1.15); border-color: rgba(255,255,255,0.5); }
+  .color-pick .cp-cell.selected { border-color: #fff; box-shadow: 0 0 0 1px var(--accent); }
+  .color-pick .cp-hex-row { display: flex; align-items: center; gap: 6px; }
+  .color-pick .cp-hex-row .cp-preview {
+    width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--border); flex-shrink: 0;
+  }
+  .color-pick .cp-hex-input {
+    flex: 1; height: 26px; padding: 2px 6px; font-size: 12px; font-family: monospace;
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    border-radius: var(--radius); outline: none; box-sizing: border-box;
+  }
+  .color-pick .cp-hex-input:focus { border-color: var(--accent); }
+
+  .underline-controls { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .underline-controls .field-input { width: 60px; }
+  .underline-controls input[type="color"] {
+    width: 32px; height: 28px; padding: 1px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--surface); cursor: pointer;
+  }
+
+  /* Toggle / radio pills */
+  .pill-group {
+    display: flex;
+    gap: 4px;
+    background: var(--bg);
+    border-radius: var(--radius);
+    padding: 3px;
+    border: 1px solid var(--border);
+  }
+  .pill {
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    transition: all 0.15s;
+    font-weight: 500;
+  }
+  .pill:hover { color: var(--text); }
+  .pill.active {
+    background: var(--surface2);
+    color: var(--text);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+  .pill-group-flat {
+    background: none;
+    border: none;
+    padding: 0;
+  }
+  .pill-group-flat .pill {
+    border: 1px solid var(--border);
+  }
+
+  /* Questions list inside modal step */
+  .questions-list {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .question-item {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .question-item .q-number {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    min-width: 20px;
+  }
+  .question-item .q-text {
+    flex: 1;
+    font-size: 13px;
+  }
+  .question-item .q-type {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 2px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  .radio-options-editor {
+    margin: 4px 0 8px 30px;
+    padding: 8px;
+    background: #fafafa;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 12px;
+  }
+  .radio-options-editor .opt-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .radio-options-editor .opt-value-input {
+    width: 50px;
+    flex: 0 0 50px;
+    padding: 4px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+    text-align: center;
+  }
+  .radio-options-editor .opt-label-input {
+    width: 100px;
+    padding: 4px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  .radio-options-editor .opt-desc-input {
+    flex: 1;
+    min-height: 24px;
+    padding: 4px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+    outline: none;
+  }
+  .radio-options-editor .opt-desc-input:focus {
+    border-color: var(--accent);
+  }
+  .radio-options-editor .opt-desc-input b,
+  .radio-options-editor .opt-desc-input strong {
+    font-weight: 700;
+  }
+  .radio-options-editor .opt-header {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 4px;
+    font-size: 10px;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+  .radio-options-editor .opt-header span:first-child { width: 100px; }
+  .radio-options-editor .opt-header span:last-child { flex: 1; }
+  .add-question-btn {
+    margin-top: 8px;
+    padding: 6px 12px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 12px;
+    width: 100%;
+    text-align: center;
+  }
+  .add-question-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Toggle switch */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+    padding: 8px 0;
+  }
+  .toggle-label { font-size: 13px; }
+  .toggle {
+    width: 36px;
+    height: 20px;
+    border-radius: 10px;
+    background: var(--border);
+    cursor: pointer;
+    position: relative;
+    transition: background 0.2s;
+  }
+  .toggle.on { background: var(--accent); }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: white;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.2s;
+  }
+  .toggle.on::after { transform: translateX(16px); }
+
+  /* Connector line between steps */
+  .step-connector {
+    width: 2px;
+    height: var(--connector-height, 12px);
+    background: var(--border);
+    margin-left: 29px;
+  }
+
+  /* Add step button */
+  .add-step-area {
+    margin-top: 16px;
+    position: relative;
+  }
+  .add-step-btn {
+    width: 100%;
+    padding: 14px;
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.15s;
+  }
+  .add-step-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* Add step dropdown */
+  .add-step-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    z-index: 10;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    min-width: 220px;
+  }
+  .add-step-dropdown.show { display: block; }
+  .dropdown-item {
+    padding: 10px 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    transition: background 0.1s;
+  }
+  .dropdown-item:hover { background: var(--surface2); }
+  .dropdown-item .di-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .dropdown-item .di-icon.modal-icon { background: rgba(188,140,255,0.2); color: var(--purple); }
+  .dropdown-item .di-icon.analysis-icon { background: rgba(63,185,80,0.2); color: var(--green); }
+  .dropdown-item .di-desc { color: var(--text-muted); font-size: 11px; }
+
+  /* Analysis config */
+  .analysis-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .analysis-grid .field-group { margin-top: 0; }
+  select.field-input {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b949e' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 30px;
+  }
+
+  /* Preview bar */
+  .preview-bar {
+    max-width: 720px;
+    margin: 32px auto 0;
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .preview-bar .preview-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+  }
+  .preview-dots {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .preview-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid;
+  }
+  .preview-dot.registration { border-color: var(--accent); background: var(--accent); }
+  .preview-dot.modal { border-color: var(--purple); }
+  .preview-dot.modal.filled { background: var(--purple); }
+  .preview-dot.info { border-color: var(--purple); }
+  .preview-dot.info.filled { background: var(--purple); }
+  .preview-dot.question { border-color: var(--orange); }
+  .preview-dot.question.filled { background: var(--orange); }
+  .preview-dot.analysis { border-color: var(--green); }
+  .preview-dot.analysis.filled { background: var(--green); }
+  .preview-line {
+    width: 16px;
+    height: 2px;
+    background: var(--border);
+  }
+
+  /* Subtle info text */
+  .info-text {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 6px;
+    font-style: italic;
+  }
+    .prompts-section.open .prompts-body { display: block !important; }
+    .prompts-section.open .prompts-chevron { transform: rotate(90deg); }
+
+    .rich-editor-wrap { display: flex; flex-direction: column; }
+    .rich-toolbar { display: flex; gap: 4px; padding: 4px; background: var(--surface2); border: 1px solid var(--border); border-bottom: none; border-radius: var(--radius) var(--radius) 0 0; align-items: center; }
+    .rich-toolbar button { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; cursor: pointer; font-size: 13px; line-height: 1.4; }
+    .rich-toolbar button:hover { background: var(--border); }
+    .rich-toolbar .rt-spacer { flex: 1; }
+    .rich-toolbar select.rt-size { padding: 2px 4px; font-size: 12px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
+    .rich-toolbar input[type="color"].rt-color { width: 24px; height: 24px; padding: 1px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); cursor: pointer; }
+    .rich-toolbar .rt-hex { width: 62px; height: 24px; padding: 2px 5px; font-size: 11px; font-family: monospace; background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); border-radius: 4px; outline: none; box-sizing: border-box; }
+    .rich-toolbar .rt-hex:focus { border-color: var(--accent); color: var(--text); }
+    .rich-editable { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius); padding: 10px 12px; min-height: 180px; outline: none; font-size: 14px; line-height: 1.5; overflow-y: auto; }
+    .rich-editable:focus { border-color: var(--accent); }
+    .rich-editable a { color: var(--accent); }
+
+    </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header" style="max-width: 720px; margin: 0 auto 32px;">
+  <!-- Row 1: Title -->
+  <div style="display:flex;align-items:center;">
+    <h1 style="flex:1;">Study Builder</h1>
+    <span id="slugFlash" style="font-size:13px;color:var(--green);opacity:0;transition:opacity 0.3s;">✓ Valid URL</span>
+  </div>
+  <div class="header-panel">
+    <!-- Row 1: Study name -->
+    <div class="header-row">
+      <label for="studyNameInput" style="font-size:13px;color:var(--text-muted);font-weight:600;white-space:nowrap;">Study Name:</label>
+      <input class="study-name-input" id="studyNameInput" value="" placeholder="Study name..." oninput="updateSlug()" />
+    </div>
+    <!-- Row 2: URLs -->
+    <div class="slug-preview" id="slugPreview" style="margin-top:4px;">
+      <span class="slug-label">Study URL:</span>
+      <span class="slug-url">spaceweather.now.audio/study/<span id="slugValue" class="slug-editable" contenteditable="true" spellcheck="false"></span></span>
+      <button class="url-action-btn" onclick="copyUrl('study')" title="Copy URL">📋</button>
+      <button class="url-action-btn" onclick="openUrl('study')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
+    </div>
+    <div class="slug-preview" id="testUrlPreview" style="margin-top:2px;">
+      <span class="slug-label">Test URL:</span>
+      <span class="slug-url" id="testUrl"></span>
+      <button class="url-action-btn" onclick="copyUrl('test')" title="Copy Test URL">📋</button>
+      <button class="url-action-btn" onclick="openUrl('test')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
+    </div>
+    <div class="slug-preview" id="localUrlPreview" style="margin-top:2px;display:none;">
+      <span class="slug-label">Local URL:</span>
+      <span class="slug-url" id="localUrl" style="color:var(--text-muted);"></span>
+      <button class="url-action-btn" onclick="copyUrl('local')" title="Copy URL">📋</button>
+      <button class="url-action-btn" onclick="openUrl('local')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
+    </div>
+    <!-- Row 3: Admin Key -->
+    <div class="header-row" style="margin-top:4px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:12px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Admin Key</span>
+        <input class="field-input" id="adminKeyInput" value="emic2026" placeholder="Access key..." style="width:140px;padding:4px 8px;font-family:'SF Mono','Fira Code',monospace;" class="field-input" />
+        <button class="btn" onclick="generateAdminKey()" style="padding:4px 10px;font-size:12px;">🎲 Generate Key</button>
+      </div>
+    </div>
+    <!-- Row 3: Actions -->
+    <div class="header-actions">
+      <select id="studyPicker" class="btn" style="display:none; max-width:200px; cursor:pointer;" onchange="switchStudy(this.value)"></select>
+      <div class="dropdown-wrap">
+        <button class="btn" onclick="toggleFileMenu(this)">📁 File ▾</button>
+        <div class="file-menu" id="fileMenu">
+          <div class="dropdown-item" onclick="loadFromJson()">📄 Load from JSON file</div>
+          <div class="dropdown-item" onclick="loadFromServer()">☁️ Load from server</div>
+          <div class="dropdown-item" onclick="exportToJson()">💾 Save as JSON file</div>
+          <div class="dropdown-item" onclick="saveAsJson()">💾 Save as NEW JSON file...</div>
+          <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
+          <div class="dropdown-item" onclick="saveDraft()">☁️ Save to server</div>
+          <div class="dropdown-item" onclick="saveAsToServer()">☁️ Save as NEW to server...</div>
+        </div>
+      </div>
+      <button class="btn" onclick="previewStudy()">👁 Preview</button>
+      <button class="btn btn-primary" onclick="publishStudy()">🚀 Publish</button>
+      <div class="save-indicator" id="saveIndicator"></div>
+      <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="handleJsonFile(event)">
+    </div>
+  </div>
+</div>
+
+<div class="steps-container" id="stepList"></div>
+
+<!-- Add Step Button -->
+<div class="add-step-area" style="max-width: 720px; margin: 16px auto 0;">
+  <button class="add-step-btn" onclick="toggleDropdown(this)">
+    + Add Step
+  </button>
+  <div class="add-step-dropdown" id="addStepDropdown">
+    <div class="dropdown-item" onclick="addStep('info')">
+      <div class="di-icon modal-icon">📋</div>
+      <div>
+        <div>Information</div>
+        <div class="di-desc">Text, context, or instructions</div>
+      </div>
+    </div>
+    <div class="dropdown-item" onclick="addStep('question')">
+      <div class="di-icon" style="color: #d29922;">❓</div>
+      <div>
+        <div>Question</div>
+        <div class="di-desc">Collect a response</div>
+      </div>
+    </div>
+    <div class="dropdown-item" onclick="addStep('analysis')">
+      <div class="di-icon analysis-icon">📊</div>
+      <div>
+        <div>Analysis</div>
+        <div class="di-desc">Data listening &amp; feature identification</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- App Settings -->
+<div class="steps-container" style="margin-top:24px;">
+  <div class="step-card" id="appSettingsCard" data-type="settings">
+    <div class="step-header" onclick="toggleStep(this)">
+      <span class="lock-icon">🔒</span><span class="chevron">▶</span>
+      <div class="step-number" style="background:var(--orange);color:#000;">⚙️</div>
+      <div class="step-title">App Settings</div>
+      <span class="step-type-badge" style="background:rgba(210,153,34,0.15);color:var(--orange);">CONFIG</span>
+    </div>
+    <div class="step-detail" id="appSettingsDetail">
+
+      <!-- Session -->
+      <div class="field-group"><div class="field-label">Session</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">ID Mode</div><select class="field-input" id="as_idMode"><option value="manual" selected>Manual</option><option value="auto">Auto</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">ID in Corner</div><select class="field-input" id="as_showIdCorner"><option value="true" selected>Show</option><option value="false">Hide</option></select></div>
+      </div>
+      <div class="toggle-row"><span class="toggle-label">Skip Login & Welcome</span><div class="toggle" id="as_skipLoginWelcome" onclick="this.classList.toggle('on')"></div></div>
+
+      <!-- Data Loading -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Data Loading</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Source</div><select class="field-input" id="as_source"><option value="cloudflare" selected>Cloudflare</option><option value="cdaweb">CDAWeb</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Rendering</div><select class="field-input" id="as_rendering"><option value="progressive" selected>Progressive</option><option value="onComplete">On Complete</option><option value="triggered">Triggered</option></select></div>
+      </div>
+      <div class="toggle-row"><span class="toggle-label">Bypass Cache</span><div class="toggle" id="as_bypassCache" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Silent Download</span><div class="toggle" id="as_silentDownload" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Auto Download</span><div class="toggle" id="as_autoDownload" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Auto Play</span><div class="toggle" id="as_autoPlay" onclick="this.classList.toggle('on')"></div></div>
+
+      <!-- Feature Boxes -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Feature Boxes</div></div>
+      <div class="toggle-row"><span class="toggle-label">Show Feature Boxes</span><div class="toggle on" id="as_visible" onclick="this.classList.toggle('on')"></div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Annotation Align</div><select class="field-input" id="as_annotationAlignment"><option value="center" selected>Center</option><option value="left">Left</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Annotation Width</div><input type="number" class="field-input" id="as_annotationWidth" value="300" min="100" max="800" step="25"></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Font Size</div><input type="number" class="field-input" id="as_annotationFontSize" value="14" min="8" max="28"></div>
+      </div>
+
+      <!-- Display -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Display</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Display on Load</div><select class="field-input" id="as_displayOnLoad"><option value="all" selected>All Data</option><option value="beginning">Start at Beginning</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Initial Hours</div><input type="number" class="field-input" id="as_initialHours" value="12" min="1" max="24"></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Min UI Width</div><input type="number" class="field-input" id="as_minUIWidth" value="0" min="0" max="3000" step="50"></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Minimap Height</div><input type="number" class="field-input" id="as_heightMinimap" value="100" min="50" max="400"></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Spectrogram Height</div><input type="number" class="field-input" id="as_heightSpectrogram" value="400" min="200" max="1200"></div>
+      </div>
+
+      <!-- Audio -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Audio</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Quality</div><select class="field-input" id="as_quality"><option value="16" selected>16 Bit</option><option value="32">32 Bit</option></select></div>
+      </div>
+
+      <!-- Rendering -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Rendering</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Tile Compression</div><select class="field-input" id="as_tileCompression"><option value="uint8" selected>Uint8</option><option value="bc4">BC4</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Tile Edge Mode</div><select class="field-input" id="as_tileEdgeMode"><option value="standard" selected>Standard</option><option value="crossfade">Crossfade</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Chunk Size</div><select class="field-input" id="as_tileChunkSize"><option value="adaptive" selected>Adaptive</option><option value="60">1 min</option><option value="300">5 min</option><option value="600">10 min</option><option value="1800">30 min</option><option value="3600">1 hr</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Zoom Out</div><select class="field-input" id="as_zoomOutMode"><option value="average" selected>Average</option><option value="balanced">Balanced</option><option value="peak">Peak</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Transition</div><select class="field-input" id="as_levelTransition"><option value="stepped">Stepped</option><option value="crossfade" selected>Crossfade</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Render Order</div><select class="field-input" id="as_renderOrder"><option value="pyramid-only" selected>Pyramid Only</option><option value="all-then-pyramid">All → Pyramid</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Pan Mode</div><select class="field-input" id="as_waveformPanMode"><option value="smartFreeze" selected>Smart Freeze</option><option value="alwaysCompute">Always Compute</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Crossfade Power</div><input type="number" class="field-input" id="as_crossfadePower" value="1.0" min="0.5" max="6" step="0.5"></div>
+      </div>
+
+      <!-- Waveform Zoom -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Waveform Zoom</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Style</div><select class="field-input" id="as_catmullMode"><option value="default" selected>Rounded Bins</option><option value="smooth">Smooth Curve</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Threshold (spp)</div><select class="field-input" id="as_catmullThreshold"><option value="1">1</option><option value="8">8</option><option value="32">32</option><option value="64">64</option><option value="128" selected>128</option><option value="256">256</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Thickness</div><input type="number" class="field-input" id="as_catmullCore" value="1.0" min="0.01" max="1.0" step="0.01"></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Feather</div><input type="number" class="field-input" id="as_catmullFeather" value="1.0" min="0.1" max="5.0" step="0.1"></div>
+      </div>
+
+      <!-- Navigation -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Navigation</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Arrow Zoom Step</div><select class="field-input" id="as_arrowZoomStep"><option value="5">5%</option><option value="10">10%</option><option value="15" selected>15%</option><option value="20">20%</option><option value="25">25%</option><option value="30">30%</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Arrow Pan Step</div><select class="field-input" id="as_arrowPanStep"><option value="5">5%</option><option value="10" selected>10%</option><option value="15">15%</option><option value="20">20%</option><option value="25">25%</option><option value="30">30%</option></select></div>
+      </div>
+
+      <!-- X-Axis Ticks -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">X-Axis Ticks</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Zoom Fade</div><select class="field-input" id="as_zoomFadeMode"><option value="time" selected>Time</option><option value="spatial">Spatial</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Edge Fade</div><select class="field-input" id="as_edgeFadeMode"><option value="spatial" selected>Spatial</option><option value="time">Time</option><option value="none">None</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Fade In Curve</div><select class="field-input" id="as_fadeInCurve"><option value="linear">Linear</option><option value="easeIn">Ease In</option><option value="easeOut" selected>Ease Out</option><option value="easeInOut">Ease In-Out</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Fade In Time</div><input type="number" class="field-input" id="as_fadeInTime" value="0.9" min="0" max="2" step="0.05"></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Fade Out Curve</div><select class="field-input" id="as_fadeOutCurve"><option value="linear">Linear</option><option value="easeIn">Ease In</option><option value="easeOut" selected>Ease Out</option><option value="easeInOut">Ease In-Out</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Fade Out Time</div><input type="number" class="field-input" id="as_fadeOutTime" value="0.3" min="0" max="2" step="0.05"></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Edge Fade Curve</div><select class="field-input" id="as_edgeFadeCurve"><option value="linear">Linear</option><option value="easeIn">Ease In</option><option value="easeOut" selected>Ease Out</option><option value="easeInOut">Ease In-Out</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Edge Spatial Width</div><input type="number" class="field-input" id="as_edgeSpatialWidth" value="0.6" min="0" max="1" step="0.05"></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Zoom Spatial Curve</div><select class="field-input" id="as_zoomSpatialCurve"><option value="linear">Linear</option><option value="easeIn">Ease In</option><option value="easeOut" selected>Ease Out</option><option value="easeInOut">Ease In-Out</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Zoom Spatial Width</div><input type="number" class="field-input" id="as_zoomSpatialWidth" value="0.5" min="0" max="1" step="0.05"></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Edge Time In</div><input type="number" class="field-input" id="as_edgeTimeIn" value="0.0" min="0" max="2" step="0.05"></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Edge Time Out</div><input type="number" class="field-input" id="as_edgeTimeOut" value="0.2" min="0" max="2" step="0.05"></div>
+      </div>
+
+      <!-- Feature Playback -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Feature Playback</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">At Page Edge</div><select class="field-input" id="as_featurePlaybackMode"><option value="continue" selected>No Change</option><option value="stop">Stop Audio</option><option value="clamp">Clamp View</option></select></div>
+      </div>
+
+      <!-- Page Scroll -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Page Scroll</div></div>
+      <div class="toggle-row"><span class="toggle-label">Lock Page Scroll</span><div class="toggle" id="as_lockPageScroll" onclick="this.classList.toggle('on')"></div></div>
+
+      <!-- Nav Bar -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Navigation Bar (Minimap)</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">View</div><select class="field-input" id="as_navView"><option value="spectrogram" selected>Spectrogram</option><option value="both">Combination</option><option value="linePlot">Line Plot</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Mode</div><select class="field-input" id="as_navViewingMode"><option value="full">Region Creation</option><option value="pageTurn" selected>Page Turn</option><option value="scroll">Scroll</option><option value="static">Static</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Click</div><select class="field-input" id="as_navClick"><option value="moveWindow" selected>Move Window</option><option value="moveAndPlay">Move & Play</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Markers</div><select class="field-input" id="as_navMarkers"><option value="daily" selected>Daily</option><option value="none">None</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Feat Boxes</div><select class="field-input" id="as_navFeatureBoxes"><option value="show" selected>Show</option><option value="hide">Hide</option></select></div>
+      </div>
+
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">V-Scroll</div><select class="field-input" id="as_navVScroll"><option value="zoom" selected>Zoom</option><option value="pan">Pan</option><option value="none">None</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">V-Sensitivity</div><input type="number" class="field-input" id="as_navVSens" value="100" min="1" max="500"></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">H-Scroll</div><select class="field-input" id="as_navHScroll"><option value="pan" selected>Pan</option><option value="zoom">Zoom</option><option value="none">None</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">H-Sensitivity</div><input type="number" class="field-input" id="as_navHSens" value="100" min="1" max="500"></div>
+      </div>
+
+      <!-- Main Window -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Main Window</div></div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">View</div><select class="field-input" id="as_mainView"><option value="spectrogram" selected>Spectrogram</option><option value="both">Combination</option><option value="timeSeries">Time Series</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Mode</div><select class="field-input" id="as_mainMode"><option value="full">Region Creation</option><option value="pageTurn" selected>Page Turn</option><option value="scroll">Scroll</option><option value="static">Static</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Click</div><select class="field-input" id="as_mainClick"><option value="noAction" selected>No Action</option><option value="playAudio">Play Audio</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Release</div><select class="field-input" id="as_mainRelease"><option value="playAudio" selected>Play Audio</option><option value="noAction">No Action</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Drag</div><select class="field-input" id="as_mainDrag"><option value="drawFeature" selected>Draw Feature</option><option value="noAction">No Action</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Markers</div><select class="field-input" id="as_mainMarkers"><option value="daily" selected>Daily</option><option value="none">None</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">X-Axis</div><select class="field-input" id="as_mainXAxis"><option value="show" selected>Show</option><option value="hide">Hide</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Shader</div><select class="field-input" id="as_mainBoxFilter"><option value="linear" selected>Linear</option><option value="box">Box</option><option value="nearest">Nearest</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Numbers</div><select class="field-input" id="as_mainNumbers"><option value="hide">Hide</option><option value="white" selected>White</option><option value="black">Black</option><option value="red">Red</option><option value="outline">Outline</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Num Location</div><select class="field-input" id="as_mainNumbersLoc"><option value="above">Above</option><option value="inside" selected>Inside</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Num Weight</div><select class="field-input" id="as_mainNumbersWeight"><option value="normal" selected>Normal</option><option value="500">Medium</option><option value="bold">Bold</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Num Size</div><input type="number" class="field-input" id="as_mainNumbersSize" value="13" min="8" max="20"></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">Num Shadow</div><select class="field-input" id="as_mainNumbersShadow"><option value="on" selected>On</option><option value="off">Off</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><div class="field-label" style="font-size:10px;">V-Scroll</div><select class="field-input" id="as_mainVScroll"><option value="zoom" selected>Zoom</option><option value="pan">Pan</option><option value="none">None</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">V-Sensitivity</div><input type="number" class="field-input" id="as_mainVSens" value="100" min="1" max="500"></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">H-Scroll</div><select class="field-input" id="as_mainHScroll"><option value="pan" selected>Pan</option><option value="zoom">Zoom</option><option value="none">None</option></select></div>
+        <div class="field-group"><div class="field-label" style="font-size:10px;">H-Sensitivity</div><input type="number" class="field-input" id="as_mainHSens" value="100" min="1" max="500"></div>
+      </div>
+
+      <!-- Debug -->
+      <div class="field-group" style="margin-top:16px;"><div class="field-label">Debug Prints</div></div>
+      <div class="toggle-row"><span class="toggle-label">Initialization</span><div class="toggle" id="as_printInit" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Rendering</span><div class="toggle" id="as_printGPU" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Memory</span><div class="toggle" id="as_printMemory" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Audio</span><div class="toggle" id="as_printAudio" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Study Flow</span><div class="toggle" id="as_printStudy" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Features</span><div class="toggle" id="as_printFeatures" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Data</span><div class="toggle" id="as_printData" onclick="this.classList.toggle('on')"></div></div>
+      <div class="toggle-row"><span class="toggle-label">Interaction</span><div class="toggle" id="as_printInteraction" onclick="this.classList.toggle('on')"></div></div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Preview bar -->
+<div class="preview-bar">
+  <span class="preview-label">Participant Flow</span>
+  <div class="preview-dots" id="previewDots">
+    <!-- Generated by JS -->
+  </div>
+  <span class="preview-label" id="stepCount">6 steps</span>
+</div>
+
+<script>
+  // ── Instant restore from localStorage (synchronous, zero flash) ──
+  {
+    const _raw = localStorage.getItem('study_builder_config');
+    if (_raw) {
+      try {
+        const _config = JSON.parse(_raw);
+        console.log('%c[INIT] Instant restore from localStorage:', 'color: #bc8cff; font-weight: bold;', _config.slug);
+        // Set header fields synchronously before any paint
+        if (_config.name) document.getElementById('studyNameInput').value = _config.name;
+        if (_config.slug) document.getElementById('slugValue').textContent = _config.slug;
+        // Full config load happens below once all functions are defined
+        window._pendingConfig = _config;
+      } catch (e) {
+        console.warn('[INIT] localStorage parse failed:', e);
+      }
+    }
+    // Restore study picker dropdown synchronously
+    const _pickerRaw = localStorage.getItem('study_builder_picker');
+    if (_pickerRaw) {
+      try {
+        const _studies = JSON.parse(_pickerRaw);
+        const _picker = document.getElementById('studyPicker');
+        if (_picker && _studies.length) {
+          const _slug = document.getElementById('slugValue')?.textContent?.trim();
+          _picker.innerHTML = '';
+          _picker.style.display = '';
+          _studies.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.slug;
+            opt.textContent = s.name || s.slug;
+            if (s.slug === _slug) opt.selected = true;
+            _picker.appendChild(opt);
+          });
+        }
+      } catch (e) {}
+    }
+  }
+
+  // ── File Menu ──────────────────────────────────────────────
+  function toggleFileMenu(btn) {
+    const menu = document.getElementById('fileMenu');
+    menu.classList.toggle('show');
+    setTimeout(() => {
+      document.addEventListener('click', function close(e) {
+        if (!menu.contains(e.target) && e.target !== btn) {
+          menu.classList.remove('show');
+          document.removeEventListener('click', close);
+        }
+      });
+    }, 0);
+  }
+
+  function loadFromJson() {
+    document.getElementById('fileMenu').classList.remove('show');
+    document.getElementById('jsonFileInput').click();
+  }
+
+  function handleJsonFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const config = JSON.parse(e.target.result);
+        loadConfigIntoBuilder(config);
+        console.log('📄 Loaded study from JSON:', config.name || file.name);
+      } catch (err) {
+        alert('Invalid JSON file: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = ''; // reset for re-upload
+  }
+
+  async function loadFromServer() {
+    document.getElementById('fileMenu').classList.remove('show');
+    const slug = prompt('Enter study slug to load:', 'emic-pilot');
+    if (!slug) return;
+    const resp = await loadStudy(slug);
+    if (resp) {
+      // D1 response format: { success, study: { config: {...} } }
+      const studyData = resp.study || resp;
+      const parsed = typeof studyData.config === 'string' ? JSON.parse(studyData.config) : studyData.config || studyData;
+      loadConfigIntoBuilder(parsed);
+    } else {
+      alert('Study not found on server: ' + slug);
+    }
+  }
+
+  function exportToJson() {
+    document.getElementById('fileMenu').classList.remove('show');
+    const config = collectStudyConfig();
+    downloadJson(config, config.slug || 'study');
+  }
+
+  function saveAsJson() {
+    document.getElementById('fileMenu').classList.remove('show');
+    const config = collectStudyConfig();
+    const newName = prompt('New study name:', config.name + ' (copy)');
+    if (!newName) return;
+    config.name = newName;
+    config.slug = nameToSlug(newName);
+    // Update the builder UI to reflect the new name
+    document.getElementById('studyNameInput').value = newName;
+    document.getElementById('slugValue').textContent = config.slug;
+    updateSlug();
+    downloadJson(config, config.slug);
+  }
+
+  async function saveAsToServer() {
+    document.getElementById('fileMenu').classList.remove('show');
+    const config = collectStudyConfig();
+    const newName = prompt('New study name:', config.name + ' (copy)');
+    if (!newName) return;
+    config.name = newName;
+    config.slug = nameToSlug(newName);
+    // Update the builder UI
+    document.getElementById('studyNameInput').value = newName;
+    document.getElementById('slugValue').textContent = config.slug;
+    updateSlug();
+    // Save to server with new slug
+    await saveDraft();
+  }
+
+  function downloadJson(config, filename) {
+    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${filename}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ── Load Config Into Builder ─────────────────────────────────
+  function loadConfigIntoBuilder(config) {
+    _isLoading = true; // Suppress autoSave during rebuild
+    console.log('%c[LOAD] loadConfigIntoBuilder START', 'color: #ff6b6b; font-weight: bold;', {
+      name: config.name,
+      slug: config.slug,
+      stepCount: config.steps?.length,
+      stepTypes: config.steps?.map(s => s.type),
+      hasAppSettings: !!config.appSettings,
+      hasAdminKey: !!config.adminKey,
+      metaKeys: Object.keys(config).filter(k => !['steps','name','slug'].includes(k)),
+    });
+
+    // Preserve metadata that builder doesn't edit
+    const { steps, name, slug, ...meta } = config;
+    _loadedMeta = meta;
+
+    // Set name and slug
+    if (name) {
+      document.getElementById('studyNameInput').value = name;
+    }
+    if (slug) {
+      document.getElementById('slugValue').textContent = config.slug;
+      const statusEl = document.getElementById('slugStatus');
+      if (statusEl) {
+        statusEl.textContent = '✓ valid';
+        statusEl.className = 'slug-status valid';
+      }
+    }
+
+    // Clear existing steps
+    const container = document.getElementById('stepList');
+    container.innerHTML = '';
+
+    if (!config.steps || !config.steps.length) {
+      console.warn('[LOAD] No steps in config!');
+      _isLoading = false;
+      return;
+    }
+
+    // Migrate old formats to new type system
+    const migratedSteps = [];
+    config.steps.forEach(step => {
+      if (step.type === 'modal' && step.contentType === 'questions' && step.questions?.length) {
+        console.log(`%c[LOAD] ⚡ Migrating nested questions "${step.title}" → ${step.questions.length} individual question steps`, 'color: #d29922; font-weight: bold;');
+        step.questions.forEach(q => {
+          migratedSteps.push({
+            type: 'question',
+            title: q.text || '',
+            questionType: q.type || 'radio',
+            id: q.id || '',
+            inputName: q.inputName || '',
+            subtitle: q.subtitle || undefined,
+            placeholder: q.placeholder || undefined,
+            required: q.required !== false,
+            options: q.options || undefined,
+            skippable: false,
+          });
+        });
+      } else if (step.type === 'modal' && step.contentType === 'question') {
+        // Already migrated to single-question modal format, just change type
+        step.type = 'question';
+        migratedSteps.push(step);
+      } else if (step.type === 'modal') {
+        // Informational modal → info type
+        step.type = 'info';
+        migratedSteps.push(step);
+      } else {
+        migratedSteps.push(step);
+      }
+    });
+    config.steps = migratedSteps;
+
+    // Filter out poisoned 'settings' steps that got saved by mistake
+    const realSteps = config.steps.filter(s => s.type !== 'settings');
+    if (realSteps.length !== config.steps.length) {
+      console.warn(`[LOAD] ⚠️ Filtered out ${config.steps.length - realSteps.length} 'settings' step(s) — these were saved by mistake`);
+    }
+
+    // Build each step
+    realSteps.forEach((step, i) => {
+      if (i > 0) {
+        const conn = document.createElement('div');
+        conn.className = 'step-connector';
+        container.appendChild(conn);
+      }
+
+      const card = document.createElement('div');
+      card.className = 'step-card';
+      card.dataset.type = step.type;
+      const num = i + 1;
+
+      if (step.type === 'registration') {
+        card.innerHTML = buildRegistrationCard(num, step);
+        { const ed = card.querySelector('.reg-body-html-input'); if (ed) ed.innerHTML = step.regBodyHtml || '<p>Enter a user name to begin:</p>'; }
+        // Verify DOM population
+        const regActivePill = card.querySelector('.pill-group .pill.active');
+        console.log(`%c[LOAD]   Step ${i} (registration) DOM verify:`, 'color: #ff6b6b;', {
+          regBodyEditorFound: !!card.querySelector('.reg-body-html-input'),
+          regBodyLen: card.querySelector('.reg-body-html-input')?.innerHTML?.length || 0,
+          activePillText: regActivePill?.textContent.trim() || '(none)',
+          expectedIdMethod: step.idMethod,
+          regTitleValue: card.querySelector('.reg-title-input')?.value || '(empty)',
+          regButtonValue: card.querySelector('.reg-button-label-input')?.value || '(empty)',
+        });
+      } else if (step.type === 'info') {
+        card.setAttribute('draggable', 'true');
+        card.innerHTML = buildInfoCard(num, step);
+        { const ed = card.querySelector('.rich-editable'); if (ed) ed.innerHTML = step.bodyHtml || step.bodyText || ''; }
+        console.log(`%c[LOAD]   Step ${i} (info) DOM verify:`, 'color: #ff6b6b;', {
+          title: card.querySelector('.field-input')?.value || '(empty)',
+          bodyLen: card.querySelector('.rich-editable')?.innerHTML?.length || 0,
+        });
+      } else if (step.type === 'question') {
+        card.setAttribute('draggable', 'true');
+        if (step.id) card.dataset.questionId = step.id;
+        if (step.inputName) card.dataset.inputName = step.inputName;
+        card.innerHTML = buildQuestionCard(num, step);
+        console.log(`%c[LOAD]   Step ${i} (question) DOM verify:`, 'color: #ff6b6b;', {
+          title: step.title?.substring(0, 60),
+          questionType: step.questionType,
+          optionCount: step.options?.length || 0,
+        });
+      } else if (step.type === 'analysis') {
+        card.setAttribute('draggable', 'true');
+        card.innerHTML = buildAnalysisCard(num, step);
+        // Verify DOM population
+        const analysisToggles = card.querySelectorAll('.toggle-row .toggle');
+        console.log(`%c[LOAD]   Step ${i} (analysis) DOM verify:`, 'color: #ff6b6b;', {
+          toggleCount: analysisToggles.length,
+          expectedToggles: 5,
+          toggleStates: Array.from(analysisToggles).map((t, ti) => `[${ti}]=${t.classList.contains('on') ? 'ON' : 'OFF'}`),
+          titleValue: card.querySelector('.analysis-title-input')?.value || '(empty)',
+          selectCount: card.querySelectorAll('select.field-input').length,
+          startTime: card.querySelector('.analysis-start')?.value || '(empty)',
+          endTime: card.querySelector('.analysis-end')?.value || '(empty)',
+        });
+      } else {
+        console.warn(`[LOAD] ⚠️ Unknown step type: "${step.type}" — skipping`);
+        return;
+      }
+
+      console.log(`[LOAD]   Step ${i}: type=${step.type}`, step);
+      container.appendChild(card);
+    });
+
+    // Open first step
+    container.querySelector('.step-card')?.classList.add('active');
+    updatePreview();
+    renumberSteps();
+
+    // Load admin key
+    if (config.adminKey) {
+      const adminInput = document.getElementById('adminKeyInput');
+      if (adminInput) adminInput.value = config.adminKey;
+    }
+
+    // Load app settings
+    if (config.appSettings) {
+      loadAppSettingsIntoBuilder(config.appSettings);
+    }
+
+    console.log('%c[LOAD] loadConfigIntoBuilder DONE', 'color: #ff6b6b; font-weight: bold;');
+    _isLoading = false; // Re-enable autoSave
+  }
+
+  const FONT_SIZES = ['12px','14px','16px','18px','20px','24px','28px','32px','36px','40px'];
+
+  function buildFontStyleControls(prefix, step, defaults) {
+    const size = step[prefix + 'FontSize'] || defaults.size;
+    const color = step[prefix + 'FontColor'] || defaults.color;
+    const bold = step[prefix + 'FontBold'] !== undefined ? step[prefix + 'FontBold'] : defaults.bold;
+    const sizeOpts = FONT_SIZES.map(s => `<option ${s===size?'selected':''}>${s}</option>`).join('');
+    return `
+      <div class="font-style-bar">
+        <div class="fs-col">
+          <span class="fs-label">Size</span>
+          <select class="fs-size ${prefix}-font-size" onclick="event.stopPropagation()">${sizeOpts}</select>
+        </div>
+        <div class="fs-bold ${bold ? 'active' : ''} ${prefix}-font-bold" onclick="event.stopPropagation(); this.classList.toggle('active')" title="Bold">B</div>
+        <input type="color" class="${prefix}-font-color" value="${escapeAttr(color)}" title="Font color" onclick="event.stopPropagation()" oninput="syncHexFromPicker(this)" />
+        <input type="text" class="fs-hex-input" value="${escapeAttr(color)}" maxlength="7" spellcheck="false" onclick="event.stopPropagation(); this.select()" oninput="syncPickerFromHex(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" />
+      </div>`;
+  }
+
+  function buildBodyRichToolbar(step) {
+    const size = step.bodyFontSize || '16px';
+    const color = step.bodyFontColor || '#333333';
+    const sizeOpts = FONT_SIZES.map(s => `<option ${s===size?'selected':''}>${s}</option>`).join('');
+    return `
+      <div class="rich-toolbar">
+        <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('bold')"><b>B</b></button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('italic')"><i>I</i></button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('underline')"><u>U</u></button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="(function(){var u=prompt('URL:');if(u)document.execCommand('createLink',false,u)})()">🔗</button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('insertHorizontalRule')">—</button>
+        <select class="rt-size body-font-size" onclick="event.stopPropagation()">${sizeOpts}</select>
+        <input type="color" class="rt-color body-font-color" value="${escapeAttr(color)}" title="Font color" onclick="event.stopPropagation()" oninput="syncHexFromPicker(this)" />
+        <input type="text" class="rt-hex fs-hex-input" value="${escapeAttr(color)}" maxlength="7" spellcheck="false" onclick="event.stopPropagation(); this.select()" oninput="syncPickerFromHex(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" />
+      </div>`;
+  }
+
+  function buildTitleUnderlineControls(step) {
+    const show = step.titleUnderline !== false; // default true
+    const size = step.titleUnderlineSize || '2px';
+    const color = step.titleUnderlineColor || '#c86464';
+    return `
+      <div class="underline-controls">
+        <span class="toggle-label" style="font-size:12px;">Title underline</span>
+        <div class="toggle title-underline-toggle ${show ? 'on' : ''}" onclick="this.classList.toggle('on'); toggleUnderlineOptions(this)"></div>
+        <div class="title-underline-options" style="${show ? '' : 'display:none'}">
+          <input class="field-input title-underline-size" value="${escapeAttr(size)}" placeholder="2px" title="Line thickness" onclick="event.stopPropagation()" />
+          <input type="color" class="title-underline-color" value="${escapeAttr(color)}" title="Line color" onclick="event.stopPropagation()" />
+        </div>
+      </div>`;
+  }
+
+  function toggleUnderlineOptions(toggle) {
+    const opts = toggle.parentElement.querySelector('.title-underline-options');
+    if (opts) opts.style.display = toggle.classList.contains('on') ? '' : 'none';
+  }
+
+  /** Color picker → hex input sync */
+  function syncHexFromPicker(picker) {
+    const hexInput = picker.nextElementSibling;
+    if (hexInput) hexInput.value = picker.value;
+  }
+
+  /** Hex input → color picker sync (live as you type/paste) */
+  function syncPickerFromHex(hexInput) {
+    let val = hexInput.value.trim();
+    if (val && !val.startsWith('#')) val = '#' + val;
+    if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+      const picker = hexInput.previousElementSibling;
+      if (picker) picker.value = val;
+    }
+  }
+
+  /* ── Custom Color Picker Component ── */
+  const CP_PALETTES = {
+    text: [
+      '#ffffff','#f0f0f0','#cccccc','#999999','#666666','#333333',
+      '#000000','#ff4444','#ff8800','#ffcc00','#44bb44','#2196F3',
+      '#9c27b0','#e91e63','#00bcd4','#8bc34a','#ff5722','#607d8b',
+    ],
+    bg: [
+      '#2196F3','#1976D2','#0D47A1','#42A5F5','#64B5F6','#90CAF9',
+      '#4CAF50','#388E3C','#8BC34A','#FF9800','#F57C00','#FF5722',
+      '#9C27B0','#7B1FA2','#E91E63','#F44336','#D32F2F','#B71C1C',
+      '#00BCD4','#009688','#607D8B','#455A64','#333333','#000000',
+    ],
+  };
+
+  function buildColorPicker(cls, value, label, palette) {
+    const colors = CP_PALETTES[palette] || CP_PALETTES.bg;
+    const cells = colors.map(c => {
+      const sel = c.toLowerCase() === (value||'').toLowerCase() ? ' selected' : '';
+      return `<div class="cp-cell${sel}" style="background:${c}" data-color="${c}"></div>`;
+    }).join('');
+    return `
+      <div class="color-pick" onclick="event.stopPropagation()">
+        <div class="cp-swatch ${cls}" style="background:${escapeAttr(value)}" title="${escapeAttr(label)}" data-value="${escapeAttr(value)}"></div>
+        <div class="cp-dropdown">
+          <div class="cp-label">${escapeHtml(label)}</div>
+          <div class="cp-grid">${cells}</div>
+          <div class="cp-hex-row">
+            <div class="cp-preview" style="background:${escapeAttr(value)}"></div>
+            <input class="cp-hex-input" type="text" value="${escapeAttr(value)}" maxlength="7" spellcheck="false"
+              onclick="event.stopPropagation(); this.select()"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" />
+          </div>
+        </div>
+      </div>`;
+  }
+
+  /** Open/close color picker dropdowns + handle swatch/hex interactions */
+  document.addEventListener('click', (e) => {
+    // Click on trigger swatch → toggle dropdown
+    const swatch = e.target.closest('.cp-swatch');
+    if (swatch) {
+      const dd = swatch.nextElementSibling;
+      if (!dd) return;
+      // Close all other dropdowns first
+      document.querySelectorAll('.cp-dropdown.open').forEach(d => { if (d !== dd) d.classList.remove('open'); });
+      dd.classList.toggle('open');
+      return;
+    }
+    // Click on palette cell → select color
+    const cell = e.target.closest('.cp-cell');
+    if (cell) {
+      const dd = cell.closest('.cp-dropdown');
+      const pick = cell.closest('.color-pick');
+      const color = cell.dataset.color;
+      if (!pick || !dd) return;
+      // Update selection ring
+      dd.querySelectorAll('.cp-cell').forEach(c => c.classList.remove('selected'));
+      cell.classList.add('selected');
+      // Update hex input + preview + trigger swatch
+      const hexInput = dd.querySelector('.cp-hex-input');
+      const preview = dd.querySelector('.cp-preview');
+      const sw = pick.querySelector('.cp-swatch');
+      if (hexInput) hexInput.value = color;
+      if (preview) preview.style.background = color;
+      if (sw) { sw.style.background = color; sw.dataset.value = color; }
+      // Trigger live preview refresh
+      const card = pick.closest('.step-card');
+      if (card) refreshInlinePreview(card);
+      return;
+    }
+    // Click inside dropdown (hex input etc) → don't close
+    if (e.target.closest('.cp-dropdown')) return;
+    // Click anywhere else → close all dropdowns
+    document.querySelectorAll('.cp-dropdown.open').forEach(d => d.classList.remove('open'));
+  });
+
+  /** Live hex input → update swatch + preview + grid selection */
+  document.addEventListener('input', (e) => {
+    if (!e.target.classList.contains('cp-hex-input')) return;
+    let val = e.target.value.trim();
+    if (val && !val.startsWith('#')) val = '#' + val;
+    if (!/^#[0-9a-fA-F]{6}$/.test(val)) return;
+    const pick = e.target.closest('.color-pick');
+    if (!pick) return;
+    const sw = pick.querySelector('.cp-swatch');
+    const preview = pick.querySelector('.cp-preview');
+    const dd = pick.querySelector('.cp-dropdown');
+    if (sw) { sw.style.background = val; sw.dataset.value = val; }
+    if (preview) preview.style.background = val;
+    // Update grid selection
+    if (dd) {
+      dd.querySelectorAll('.cp-cell').forEach(c => {
+        c.classList.toggle('selected', c.dataset.color.toLowerCase() === val.toLowerCase());
+      });
+    }
+    const card = pick.closest('.step-card');
+    if (card) refreshInlinePreview(card);
+  });
+
+  function buildStepActions(type) {
+    // Modal steps get inline preview + page preview; analysis gets page preview only
+    const previewBtns = (type === 'modal' || type === 'registration' || type === 'info' || type === 'question')
+      ? `<button class="step-action-btn preview-btn" title="Toggle inline preview" onclick="event.stopPropagation(); toggleInlinePreview(this)">👁</button>
+         <button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>`
+      : type === 'analysis'
+      ? `<button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>`
+      : '';
+    const moveDel = type === 'registration' ? '' : `
+      <button class="step-action-btn delete" title="Delete step" onclick="event.stopPropagation(); confirmDeleteStep(this, event)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>`;
+    return `<div class="step-actions">
+      ${previewBtns}${moveDel}
+    </div>`;
+  }
+
+  function buildRegistrationCard(num, step) {
+    const isAuto = (step.idMethod || 'auto_generate').includes('auto');
+    const regBodyHtml = step.regBodyHtml || '';
+    return `
+      <div class="step-header" onclick="toggleStep(this)">
+        <span class="lock-icon">🔒</span><span class="chevron">▶</span>
+        <div class="step-number registration">${num}</div>
+        <div class="step-title">Participant Registration</div>
+        <span class="step-type-badge badge-registration">Registration</span>
+        ${buildStepActions('registration')}
+      </div>
+      <div class="step-detail">
+        <div class="field-group">
+          <div class="field-label">Participant ID Method</div>
+          <div class="pill-group pill-group-flat">
+            <button class="pill ${isAuto ? 'active' : ''}" onclick="selectPill(this)">Auto-generate</button>
+            <button class="pill ${!isAuto ? 'active' : ''}" onclick="selectPill(this)">Manual Entry</button>
+          </div>
+        </div>
+        <div class="field-group reg-auto-fields" style="${isAuto ? '' : 'display:none'}">
+          <div class="field-label">ID Prefix</div>
+          <input class="field-input reg-id-prefix" value="${step.idPrefix || ''}" placeholder="e.g. P, EMIC_" />
+        </div>
+        <div class="reg-manual-fields" style="${isAuto ? 'display:none' : ''}">
+          <div class="field-group">
+            <div class="field-label">Window Title</div>
+            <div class="title-row">
+              <input class="field-input reg-title-input" value="${escapeAttr(step.regTitle || 'Welcome')}" />
+              ${buildFontStyleControls('title', step, { size: '20px', color: '#550000', bold: true })}
+            </div>
+            ${buildTitleUnderlineControls(step)}
+          </div>
+          <div class="field-group">
+            <div class="field-label">Body Content</div>
+            <div class="rich-editor-wrap">
+              ${buildBodyRichToolbar(step)}
+              <div class="rich-editable reg-body-html-input" contenteditable="true"></div>
+            </div>
+          </div>
+          <div class="field-group">
+            <div class="field-label">ID Placeholder Text</div>
+            <input class="field-input reg-id-placeholder" value="${escapeAttr(step.idPlaceholder || 'Enter your ID')}" />
+          </div>
+          <div class="field-group">
+            <div class="field-label">Button Label</div>
+            <input class="field-input reg-button-label-input" value="${escapeAttr(step.regButtonLabel || 'Confirm')}" />
+          </div>
+          <div class="field-row" style="margin-top: 8px;">
+            <div class="field-group">
+              <div class="field-label">Modal Width</div>
+              <div class="dim-input-wrap">
+                <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '480px')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+                <div class="dim-arrows">
+                  <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
+                  <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
+                </div>
+              </div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Modal Height</div>
+              <div class="dim-input-wrap">
+                <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+                <div class="dim-arrows">
+                  <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
+                  <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function buildInfoCard(num, step) {
+    return `
+      <div class="step-header" onclick="toggleStep(this)">
+        <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
+        <div class="step-number info">${num}</div>
+        <div class="step-title">${escapeHtml(step.title || 'Information')}</div>
+        <span class="step-type-badge badge-info">Info</span>
+        ${buildStepActions('info')}
+      </div>
+      <div class="step-detail">
+        <div class="field-group">
+          <div class="field-label">Window Title</div>
+          <div class="title-row">
+            <input class="field-input" value="${escapeAttr(step.title || '')}" />
+            ${buildFontStyleControls('title', step, { size: '20px', color: '#550000', bold: true })}
+          </div>
+          ${buildTitleUnderlineControls(step)}
+        </div>
+        <div class="field-group">
+          <div class="field-label">Body Content</div>
+          <div class="rich-editor-wrap">
+            ${buildBodyRichToolbar(step)}
+            <div class="rich-editable body-html-input" contenteditable="true"></div>
+          </div>
+        </div>
+        <div class="field-group">
+          <div class="field-label">Button Label</div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input class="field-input dismiss-label-input" value="${escapeAttr(step.dismissLabel || 'OK')}" style="flex:1;" />
+            <div class="fs-bold ${step.dismissBold ? 'active' : ''} dismiss-font-bold" onclick="event.stopPropagation(); this.classList.toggle('active')" title="Bold">B</div>
+            ${buildColorPicker('dismiss-font-color', step.dismissColor || '#ffffff', 'Text Color', 'text')}
+            ${buildColorPicker('dismiss-bg-color', step.dismissBgColor || '#2196F3', 'Background', 'bg')}
+          </div>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Can Close</span>
+          <div class="toggle toggle-closable ${step.closable ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+          <span class="toggle-label" style="margin-left: 16px;">Skippable</span>
+          <div class="toggle toggle-skippable ${step.skippable ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="field-row" style="margin-top: 8px;">
+          <div class="field-group">
+            <div class="field-label">Modal Width</div>
+            <div class="dim-input-wrap">
+              <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '460px')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+              <div class="dim-arrows">
+                <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
+                <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
+              </div>
+            </div>
+          </div>
+          <div class="field-group">
+            <div class="field-label">Modal Height</div>
+            <div class="dim-input-wrap">
+              <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+              <div class="dim-arrows">
+                <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
+                <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function buildQuestionCard(num, step) {
+    const qType = step.questionType || 'radio';
+    const isRadio = qType === 'radio';
+    let contentHtml = '';
+
+    contentHtml += `
+      <div class="field-group">
+        <div class="field-label">Question Text</div>
+        <input class="field-input question-text-input" value="${escapeAttr(step.title || step.text || '')}" placeholder="Enter question text..." />
+      </div>`;
+    if (step.subtitle) {
+      contentHtml += `
+      <div class="field-group">
+        <div class="field-label">Subtitle</div>
+        <input class="field-input question-subtitle-input" value="${escapeAttr(step.subtitle)}" />
+      </div>`;
+    }
+    contentHtml += `
+      <div class="field-group">
+        <div class="field-label">Answer Type</div>
+        <div class="pill-group pill-group-answer-type">
+          <button class="pill ${isRadio ? 'active' : ''}" onclick="selectPill(this)">Multiple Choice</button>
+          <button class="pill ${!isRadio ? 'active' : ''}" onclick="selectPill(this)">Free Text</button>
+        </div>
+      </div>`;
+    if (isRadio && step.options && step.options.length) {
+      contentHtml += `
+      <div class="radio-options-editor">
+        <div class="opt-header"><span>Value</span><span>Label</span><span>Description (Cmd+B for bold)</span></div>`;
+      step.options.forEach(opt => {
+        contentHtml += `<div class="opt-row">
+          <input class="opt-value-input" value="${escapeAttr(opt.value || '')}" style="width:50px; flex:0 0 50px;" />
+          <input class="opt-label-input" value="${escapeAttr(opt.label || '')}" />
+          <div class="opt-desc-input" contenteditable="true">${opt.description || ''}</div>
+        </div>`;
+      });
+      contentHtml += `</div>`;
+    } else if (!isRadio) {
+      contentHtml += `
+      <div class="field-group">
+        <div class="field-label">Placeholder</div>
+        <input class="field-input question-placeholder-input" value="${escapeAttr(step.placeholder || '')}" placeholder="Type your response here..." />
+      </div>`;
+    }
+    contentHtml += `
+      <div class="toggle-row">
+        <span class="toggle-label">Required</span>
+        <div class="toggle toggle-required ${step.required !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+        <span class="toggle-label" style="margin-left: 16px;">Can Go Back</span>
+        <div class="toggle toggle-can-go-back ${step.canGoBack !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+      </div>`;
+
+    return `
+      <div class="step-header" onclick="toggleStep(this)">
+        <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
+        <div class="step-number question">${num}</div>
+        <div class="step-title">${escapeHtml(step.title || step.text || 'New Question')}</div>
+        <span class="step-type-badge badge-question">Question</span>
+        ${buildStepActions('question')}
+      </div>
+      <div class="step-detail">
+        ${contentHtml}
+      </div>`;
+  }
+
+  function buildDataPreloadOptions(currentValue) {
+    const val = currentValue || 'onEnter';
+    let opts = `<option value="pageLoad" ${val==='pageLoad'?'selected':''}>On page load</option>`;
+    opts += `<option value="onEnter" ${val==='onEnter'?'selected':''}>On step enter (default)</option>`;
+    // Add previous steps dynamically from DOM
+    const allCards = document.querySelectorAll('#stepList .step-card');
+    allCards.forEach((card, i) => {
+      const title = card.querySelector('.step-title')?.textContent || `Step ${i+1}`;
+      const stepVal = `step:${i}`;
+      opts += `<option value="${stepVal}" ${val===stepVal?'selected':''}>${title}</option>`;
+    });
+    return opts;
+  }
+
+  // Mirrors SPACECRAFT_DATASETS from js/ui-controls.js — keep in sync
+  const SPACECRAFT_DATASETS = {
+    'PSP': [
+      { group: 'Magnetic Field' },
+      { value: 'PSP_FLD_L2_MAG_RTN', label: 'MAG RTN (Full Cadence)' },
+      { value: 'PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC', label: 'MAG RTN (4 Samples/Cycle)' },
+      { group: 'Electric Field' },
+      { value: 'PSP_FLD_L2_DFB_WF_DVDC', label: 'DFB DC Voltage Waveform' }
+    ],
+    'Wind': [
+      { group: 'Magnetic Field' },
+      { value: 'WI_H2_MFI', label: 'MFI (Magnetic Field Investigation)' }
+    ],
+    'MMS': [
+      { group: 'Magnetic Field (FGM)' },
+      { value: 'MMS1_FGM_SRVY_L2', label: 'FGM Survey' },
+      { value: 'MMS1_FGM_BRST_L2', label: 'FGM Burst' },
+      { group: 'Magnetic Field (Search Coil)' },
+      { value: 'MMS1_SCM_SRVY_L2_SCSRVY', label: 'SCM Survey' },
+      { value: 'MMS1_SCM_BRST_L2_SCB', label: 'SCM Burst' },
+      { group: 'Electric Field (EDP)' },
+      { value: 'MMS1_EDP_SLOW_L2_DCE', label: 'EDP Slow Survey' },
+      { value: 'MMS1_EDP_FAST_L2_DCE', label: 'EDP Fast Survey' },
+      { value: 'MMS1_EDP_BRST_L2_DCE', label: 'EDP Burst' }
+    ],
+    'THEMIS': [
+      { group: 'Magnetic Field (FGM)' },
+      { value: 'THA_L2_FGM', label: 'THEMIS-A FGM' },
+      { value: 'THB_L2_FGM', label: 'THEMIS-B FGM' },
+      { value: 'THC_L2_FGM', label: 'THEMIS-C FGM' },
+      { value: 'THD_L2_FGM', label: 'THEMIS-D FGM' },
+      { value: 'THE_L2_FGM', label: 'THEMIS-E FGM' },
+      { group: 'Magnetic Field (Search Coil)' },
+      { value: 'THA_L2_SCM', label: 'THEMIS-A SCM' },
+      { value: 'THB_L2_SCM', label: 'THEMIS-B SCM' },
+      { value: 'THC_L2_SCM', label: 'THEMIS-C SCM' },
+      { value: 'THD_L2_SCM', label: 'THEMIS-D SCM' },
+      { value: 'THE_L2_SCM', label: 'THEMIS-E SCM' },
+      { group: 'Electric Field (EFI)' },
+      { value: 'THA_L2_EFI', label: 'THEMIS-A EFI' },
+      { value: 'THB_L2_EFI', label: 'THEMIS-B EFI' },
+      { value: 'THC_L2_EFI', label: 'THEMIS-C EFI' },
+      { value: 'THD_L2_EFI', label: 'THEMIS-D EFI' },
+      { value: 'THE_L2_EFI', label: 'THEMIS-E EFI' }
+    ],
+    'SolO': [
+      { group: 'Magnetic Field' },
+      { value: 'SOLO_L2_MAG-RTN-NORMAL', label: 'MAG Normal Mode' },
+      { value: 'SOLO_L2_MAG-RTN-BURST', label: 'MAG Burst Mode' },
+      { group: 'Electric Field' },
+      { value: 'SOLO_L2_RPW-LFR-SURV-CWF-E', label: 'RPW LFR Electric Field' }
+    ],
+    'GOES': [
+      { group: 'Magnetic Field' },
+      { value: 'DN_MAGN-L2-HIRES_G16', label: 'GOES-16 MAG 10 Hz (Aug 2018 - Apr 2025)' },
+      { value: 'DN_MAGN-L2-HIRES_G19', label: 'GOES-19 MAG 10 Hz (Jun 2025 - present)' }
+    ],
+    'ACE': [
+      { group: 'Magnetic Field' },
+      { value: 'AC_H3_MFI', label: 'MFI 1-sec GSE' }
+    ],
+    'DSCOVR': [
+      { group: 'Magnetic Field' },
+      { value: 'DSCOVR_H0_MAG', label: 'Fluxgate MAG 1-sec GSE' }
+    ],
+    'Cluster': [
+      { group: 'Magnetic Field (FGM)' },
+      { value: 'C1_CP_FGM_5VPS', label: 'C1 FGM 5 Vec/s' },
+      { value: 'C2_CP_FGM_5VPS', label: 'C2 FGM 5 Vec/s' },
+      { value: 'C3_CP_FGM_5VPS', label: 'C3 FGM 5 Vec/s' },
+      { value: 'C4_CP_FGM_5VPS', label: 'C4 FGM 5 Vec/s' },
+      { group: 'Magnetic Field (Search Coil)' },
+      { value: 'C1_CP_STA_CWF_GSE', label: 'C1 STAFF CWF GSE' },
+      { value: 'C2_CP_STA_CWF_GSE', label: 'C2 STAFF CWF GSE' },
+      { value: 'C3_CP_STA_CWF_GSE', label: 'C3 STAFF CWF GSE' },
+      { value: 'C4_CP_STA_CWF_GSE', label: 'C4 STAFF CWF GSE' },
+      { group: 'Electric Field (EFW)' },
+      { value: 'C1_CP_EFW_L3_E3D_INERT', label: 'C1 EFW E3D Inertial' },
+      { value: 'C2_CP_EFW_L3_E3D_INERT', label: 'C2 EFW E3D Inertial' },
+      { value: 'C3_CP_EFW_L3_E3D_INERT', label: 'C3 EFW E3D Inertial' },
+      { value: 'C4_CP_EFW_L3_E3D_INERT', label: 'C4 EFW E3D Inertial' }
+    ],
+    'Geotail': [
+      { group: 'Magnetic Field' },
+      { value: 'GE_EDB3SEC_MGF', label: 'MGF Editor-B 3-sec GSE' },
+      { group: 'Electric Field' },
+      { value: 'GE_K0_EFD', label: 'EFD Spherical Probe' }
+    ],
+    'Voyager 1': [
+      { group: 'Magnetic Field' },
+      { value: 'VOYAGER1_2S_MAG', label: 'MAG 1.92-sec HG' }
+    ],
+    'Voyager 2': [
+      { group: 'Magnetic Field' },
+      { value: 'VOYAGER2_2S_MAG', label: 'MAG 1.92-sec HG' }
+    ]
+  };
+
+  function buildDatasetOptions(spacecraftKey, selectedDataset) {
+    const datasets = SPACECRAFT_DATASETS[spacecraftKey] || [];
+    let html = '';
+    datasets.forEach(d => {
+      if (d.group) {
+        html += `<optgroup label="${escapeAttr(d.group)}">`;
+      } else {
+        html += `<option value="${escapeAttr(d.value)}" ${d.value === selectedDataset ? 'selected' : ''}>${escapeHtml(d.label)}</option>`;
+      }
+    });
+    return html;
+  }
+
+  function buildAnalysisCard(num, step) {
+    const confirm = step.confirmCompletion || {};
+    const spacecraft = step.spacecraft || 'GOES';
+    const ds = step.dataset || 'DN_MAGN-L2-HIRES_G16';
+    const speed = step.playbackSpeed || '1x';
+    const src = (step.dataSource || '').includes('cdaweb') ? 'cdaweb' : 'r2';
+
+    const spacecraftOpts = Object.keys(SPACECRAFT_DATASETS).map(s =>
+      `<option value="${escapeAttr(s)}" ${s === spacecraft ? 'selected' : ''}>${escapeHtml(s)}</option>`
+    ).join('');
+
+    return `
+      <div class="step-header" onclick="toggleStep(this)">
+        <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
+        <div class="step-number analysis">${num}</div>
+        <div class="step-title">${escapeHtml(step.title || 'Analysis')}</div>
+        <span class="step-type-badge badge-analysis">Analysis</span>
+        ${buildStepActions('analysis')}
+      </div>
+      <div class="step-detail">
+        <div class="field-group">
+          <div class="field-label">Step Title</div>
+          <input class="field-input analysis-title-input" value="${escapeAttr(step.title || 'Analysis')}" />
+        </div>
+        <div class="analysis-grid">
+          <div class="field-group">
+            <div class="field-label">Spacecraft</div>
+            <select class="field-input spacecraft-select" onchange="updateDatasetSelect(this)">
+              ${spacecraftOpts}
+            </select>
+          </div>
+          <div class="field-group">
+            <div class="field-label">Dataset</div>
+            <select class="field-input dataset-select">
+              ${buildDatasetOptions(spacecraft, ds)}
+            </select>
+          </div>
+          <div class="field-group">
+            <div class="field-label">Start Time</div>
+            <input class="field-input analysis-start" type="datetime-local" step="1" value="${escapeAttr(toLocalDatetime(step.startTime || step.startDate))}" />
+          </div>
+          <div class="field-group">
+            <div class="field-label">End Time</div>
+            <input class="field-input analysis-end" type="datetime-local" step="1" value="${escapeAttr(toLocalDatetime(step.endTime || step.endDate))}" />
+          </div>
+          <div class="field-group">
+            <div class="field-label">Data Source</div>
+            <div class="pill-group">
+              <button class="pill ${src==='cdaweb'?'active':''}" onclick="selectPill(this)">CDAWeb</button>
+              <button class="pill ${src==='r2'?'active':''}" onclick="selectPill(this)">Cloudflare R2</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <div class="field-label">Playback Speed</div>
+            <select class="field-input">
+              ${['0.5x','1x','1.25x','2x'].map(s => `<option ${s===speed?'selected':''}>${s}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field-group">
+            <div class="field-label">Load data</div>
+            <select class="field-input data-preload-select">
+              ${buildDataPreloadOptions(step.dataPreload)}
+            </select>
+          </div>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Allow feature drawing</span>
+          <div class="toggle ${step.allowFeatureDrawing ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Show spectrogram</span>
+          <div class="toggle ${step.showSpectrogram ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Allow stretch/speed changes</span>
+          <div class="toggle ${step.allowStretch ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Require minimum features</span>
+          <div class="toggle ${step.requireMinFeatures ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="field-group" style="margin-left:20px; margin-top:4px;">
+          <div class="field-label">Minimum Features to proceed:</div>
+          <input class="field-input min-features-input" type="number" min="1" value="${step.minFeatures || 1}" style="width:80px;" />
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Confirm analysis completion</span>
+          <div class="toggle ${confirm.enabled ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+        </div>
+        ${confirm.enabled ? `<div style="margin-left:20px;">
+          <div class="field-group">
+            <div class="field-label">Confirmation Dialog Title</div>
+            <input class="field-input confirm-title-input" value="${escapeAttr(confirm.title || 'Complete?')}" />
+          </div>
+          <div class="field-group">
+            <div class="field-label">Confirmation Message</div>
+            <input class="field-input confirm-message-input" value="${escapeAttr(confirm.message || '')}" />
+          </div>
+          <div class="field-row">
+            <div class="field-group">
+              <div class="field-label">Confirm Button</div>
+              <input class="field-input confirm-label-input" value="${escapeAttr(confirm.confirmLabel || "Yes, I'm done")}" />
+            </div>
+            <div class="field-group">
+              <div class="field-label">Cancel Button</div>
+              <input class="field-input cancel-label-input" value="${escapeAttr(confirm.cancelLabel || 'Go back')}" />
+            </div>
+          </div>
+        </div>` : ''}
+        ${buildPromptsSection(step.prompts)}
+      </div>`;
+  }
+
+  function buildPromptsSection(prompts) {
+    const items = (prompts || []).map((p, i) => buildPromptEntry(p, i)).join('');
+    return `
+      <div class="prompts-section" style="margin-top: 16px;">
+        <div class="prompts-header" onclick="this.parentElement.classList.toggle('open')" style="cursor:pointer; display:flex; align-items:center; gap:8px; padding:8px 0; border-top:1px solid #333; user-select:none;">
+          <span style="transition:transform 0.2s; display:inline-block;" class="prompts-chevron">▶</span>
+          <span style="font-weight:600; color:#ccc;">💬 Text Prompts</span>
+          <span style="color:#666; font-size:12px;" class="prompts-count">(${(prompts||[]).length})</span>
+        </div>
+        <div class="prompts-body" style="display:none; padding-left:4px;">
+          <div class="prompts-list">${items}</div>
+          <button type="button" class="add-prompt-btn" onclick="addPromptEntry(this)" style="margin-top:8px; background:#2a2a2a; color:#7eb8ff; border:1px dashed #444; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:13px; width:100%;">+ Add prompt</button>
+        </div>
+      </div>`;
+  }
+
+  function buildPromptEntry(p, i) {
+    p = p || { trigger: 'onLoad', delay: 0, text: '', effect: 'typed', speed: 'medium' };
+    const triggers = ['onLoad', 'onPlay', 'onFeatureDraw', 'afterPrevious'];
+    const triggerLabels = { onLoad: 'On load', onPlay: 'On play', onFeatureDraw: 'On feature draw', afterPrevious: 'After previous prompt' };
+    const showDelay = p.trigger === 'afterPrevious' ? '' : 'display:none;';
+    const showSpeed = p.effect === 'typed' ? '' : 'display:none;';
+    return `
+      <div class="prompt-entry" style="background:#1e1e1e; border:1px solid #333; border-radius:8px; padding:10px; margin-bottom:8px; position:relative;">
+        <button type="button" onclick="this.parentElement.remove(); updatePromptCount(this);" style="position:absolute; top:6px; right:8px; background:none; border:none; color:#666; cursor:pointer; font-size:16px; line-height:1;" title="Delete prompt">✕</button>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+          <div class="field-group" style="margin:0;">
+            <div class="field-label" style="font-size:11px;">Trigger</div>
+            <select class="field-input prompt-trigger" onchange="onPromptTriggerChange(this)">
+              ${triggers.map(t => `<option value="${t}" ${t===p.trigger?'selected':''}>${triggerLabels[t]}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field-group prompt-delay-group" style="margin:0; ${showDelay}">
+            <div class="field-label" style="font-size:11px;">Delay (seconds)</div>
+            <input class="field-input prompt-delay" type="number" min="0" value="${p.delay || 0}" style="width:80px;" />
+          </div>
+        </div>
+        <div class="field-group" style="margin:0 0 8px 0;">
+          <div class="field-label" style="font-size:11px;">Text</div>
+          <input class="field-input prompt-text" type="text" value="${escapeAttr(p.text || '')}" placeholder="Enter prompt text..." />
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div class="field-group" style="margin:0;">
+            <div class="field-label" style="font-size:11px;">Effect</div>
+            <select class="field-input prompt-effect" onchange="onPromptEffectChange(this)">
+              <option value="instant" ${p.effect==='instant'?'selected':''}>Instant</option>
+              <option value="typed" ${p.effect==='typed'?'selected':''}>Typed</option>
+            </select>
+          </div>
+          <div class="field-group prompt-speed-group" style="margin:0; ${showSpeed}">
+            <div class="field-label" style="font-size:11px;">Speed</div>
+            <select class="field-input prompt-speed">
+              <option value="slow" ${p.speed==='slow'?'selected':''}>Slow</option>
+              <option value="medium" ${p.speed==='medium'?'selected':''}>Medium</option>
+              <option value="fast" ${p.speed==='fast'?'selected':''}>Fast</option>
+            </select>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function addPromptEntry(btn) {
+    const list = btn.parentElement.querySelector('.prompts-list');
+    const div = document.createElement('div');
+    div.innerHTML = buildPromptEntry({}, list.children.length);
+    list.appendChild(div.firstElementChild);
+    updatePromptCount(btn);
+  }
+
+  function onPromptTriggerChange(sel) {
+    const entry = sel.closest('.prompt-entry');
+    const delayGroup = entry.querySelector('.prompt-delay-group');
+    delayGroup.style.display = sel.value === 'afterPrevious' ? '' : 'none';
+  }
+
+  function onPromptEffectChange(sel) {
+    const entry = sel.closest('.prompt-entry');
+    const speedGroup = entry.querySelector('.prompt-speed-group');
+    speedGroup.style.display = sel.value === 'typed' ? '' : 'none';
+  }
+
+  function updatePromptCount(el) {
+    const section = el.closest('.prompts-section');
+    if (!section) return;
+    const count = section.querySelectorAll('.prompt-entry').length;
+    const countEl = section.querySelector('.prompts-count');
+    if (countEl) countEl.textContent = `(${count})`;
+  }
+
+  function escapeAttr(s) { return (s||'').replace(/"/g, '&quot;'); }
+  function escapeHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // Style body HTML for preview.
+  // All margins set to 0 — the contenteditable blank lines ARE the spacing.
+  const BODY_P_STYLE = 'color:#333;font-size:16px;line-height:1.6;margin:0;';
+  function styleBodyHtml(html, pStyle) {
+    const style = pStyle || BODY_P_STYLE;
+    return (html || '').replace(/<p>/g, `<p style="${style}">`);
+  }
+
+  // Convert ISO string or date-only string to datetime-local value (YYYY-MM-DDTHH:MM:SS)
+  function toLocalDatetime(val) {
+    if (!val) return '';
+    // Already in datetime-local format
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(val)) return val.replace('Z','').slice(0,19);
+    // Date-only: append T00:00:00
+    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val + 'T00:00:00';
+    return val;
+  }
+
+  // Convert datetime-local value to ISO string with Z suffix
+  function toISOTime(val) {
+    if (!val) return '';
+    return val.includes('Z') ? val : val + 'Z';
+  }
+
+  // ── D1 API Framework ──────────────────────────────────────────
+  const API_BASE = window.location.hostname === 'spaceweather.now.audio'
+    ? window.location.origin
+    : 'https://spaceweather.now.audio';
+
+  // Collect the full study config from the builder UI
+  // Preserve metadata fields that the builder doesn't edit (author, contactEmail, etc.)
+  let _loadedMeta = {};
+  let _isLoading = false; // Guard: prevent autoSave during loadConfigIntoBuilder
+
+  function collectFontStyleSettings(card, step, prefix) {
+    const sizeEl = card.querySelector(`.${prefix}-font-size`);
+    const colorEl = card.querySelector(`.${prefix}-font-color`);
+    const boldEl = card.querySelector(`.${prefix}-font-bold`);
+    if (sizeEl) step[prefix + 'FontSize'] = sizeEl.value;
+    if (colorEl) step[prefix + 'FontColor'] = colorEl.value;
+    if (boldEl) step[prefix + 'FontBold'] = boldEl.classList.contains('active');
+  }
+
+  function collectUnderlineSettings(card, step) {
+    const toggle = card.querySelector('.title-underline-toggle');
+    if (toggle) {
+      step.titleUnderline = toggle.classList.contains('on');
+      step.titleUnderlineSize = card.querySelector('.title-underline-size')?.value || '2px';
+      step.titleUnderlineColor = card.querySelector('.title-underline-color')?.value || '#c86464';
+    }
+  }
+
+  function collectStudyConfig() {
+    console.log('%c[COLLECT] collectStudyConfig START', 'color: #58a6ff; font-weight: bold;');
+    const steps = [];
+    document.querySelectorAll('.step-card').forEach((card, i) => {
+      const type = card.dataset.type;
+      if (type === 'settings') return; // skip app settings card
+      const step = { type };
+
+      if (type === 'registration') {
+        const pills = card.querySelectorAll('.pill-group .pill.active');
+        step.idMethod = pills[0]?.textContent.trim().toLowerCase().includes('auto') ? 'auto_generate' : 'manual';
+        step.idPrefix = card.querySelector('.reg-id-prefix')?.value || '';
+        step.idPlaceholder = card.querySelector('.reg-id-placeholder')?.value || '';
+        step.regTitle = card.querySelector('.reg-title-input')?.value || '';
+        const regBody = card.querySelector('.reg-body-html-input');
+        if (regBody) step.regBodyHtml = regBody.innerHTML || '';
+        step.regButtonLabel = card.querySelector('.reg-button-label-input')?.value || '';
+        const mw = card.querySelector('.modal-width-input')?.value?.trim();
+        const mh = card.querySelector('.modal-height-input')?.value?.trim();
+        if (mw) step.modalWidth = mw;
+        if (mh) step.modalHeight = mh;
+        collectFontStyleSettings(card, step, 'title');
+        collectFontStyleSettings(card, step, 'body');
+        collectUnderlineSettings(card, step);
+        console.log(`%c[COLLECT]   Registration step ${i} DOM state:`, 'color: #58a6ff;', {
+          activePillText: pills[0]?.textContent.trim() || '(none)',
+          pillCount: pills.length,
+          idMethod: step.idMethod,
+          idPrefix: step.idPrefix,
+          regTitle: step.regTitle,
+          regBodyFound: !!regBody,
+          regBodyLen: step.regBodyHtml?.length || 0,
+          regButtonLabel: step.regButtonLabel,
+          modalWidth: mw || '(unset)',
+          modalHeight: mh || '(unset)',
+        });
+      }
+      else if (type === 'info') {
+        const allInputs = Array.from(card.querySelectorAll('.step-detail .field-input'))
+          .filter(el => !el.type.startsWith('date'));
+        step.title = allInputs[0]?.value || '';
+        const bodyInput = card.querySelector('.body-html-input');
+        step.bodyHtml = bodyInput ? bodyInput.innerHTML : '';
+        const dismissInput = card.querySelector('.dismiss-label-input');
+        step.dismissLabel = dismissInput?.value || 'OK';
+        step.dismissBold = card.querySelector('.dismiss-font-bold')?.classList.contains('active') || false;
+        step.dismissColor = card.querySelector('.dismiss-font-color')?.dataset?.value || '#ffffff';
+        step.dismissBgColor = card.querySelector('.dismiss-bg-color')?.dataset?.value || '#2196F3';
+        step.closable = card.querySelector('.toggle-closable')?.classList.contains('on') || false;
+        step.skippable = card.querySelector('.toggle-skippable')?.classList.contains('on') || false;
+        const mw = card.querySelector('.modal-width-input')?.value?.trim();
+        const mh = card.querySelector('.modal-height-input')?.value?.trim();
+        if (mw) step.modalWidth = mw;
+        if (mh) step.modalHeight = mh;
+        collectFontStyleSettings(card, step, 'title');
+        collectFontStyleSettings(card, step, 'body');
+        collectUnderlineSettings(card, step);
+        console.log(`%c[COLLECT]   Info step ${i}:`, 'color: #58a6ff;', {
+          title: step.title,
+          bodyHtmlLen: step.bodyHtml?.length || 0,
+          dismissLabel: step.dismissLabel,
+          skippable: step.skippable,
+        });
+      }
+      else if (type === 'question') {
+        step.title = card.querySelector('.question-text-input')?.value || '';
+        const subtitleInput = card.querySelector('.question-subtitle-input');
+        if (subtitleInput && subtitleInput.value) step.subtitle = subtitleInput.value;
+        // Answer type from pill
+        const qPills = card.querySelectorAll('.pill-group-answer-type .pill.active');
+        const qPillText = qPills[0]?.textContent.trim().toLowerCase() || 'multiple choice';
+        step.questionType = qPillText.includes('free') ? 'freetext' : 'radio';
+        // Auto-generate id/inputName, preserve from import if available
+        const qIndex = steps.filter(s => s.type === 'question').length + 1;
+        step.id = card.dataset.questionId || ('q' + qIndex);
+        step.inputName = card.dataset.inputName || step.id;
+        if (step.questionType === 'radio') {
+          const optEditor = card.querySelector('.radio-options-editor');
+          if (optEditor) {
+            const rows = optEditor.querySelectorAll('.opt-row');
+            step.options = Array.from(rows).map((row, ri) => ({
+              value: row.querySelector('.opt-value-input')?.value || String(ri + 1),
+              label: row.querySelector('.opt-label-input')?.value || '',
+              description: row.querySelector('.opt-desc-input')?.innerHTML || ''
+            }));
+          }
+        } else {
+          step.placeholder = card.querySelector('.question-placeholder-input')?.value || '';
+        }
+        const reqToggle = card.querySelector('.toggle-required');
+        step.required = reqToggle?.classList.contains('on') || false;
+        const goBackToggle = card.querySelector('.toggle-can-go-back');
+        step.canGoBack = goBackToggle?.classList.contains('on') ?? true;
+        console.log(`%c[COLLECT]   Question step ${i}:`, 'color: #58a6ff;', {
+          title: step.title,
+          questionType: step.questionType,
+          optionCount: step.options?.length || 0,
+          required: step.required,
+        });
+      }
+      else if (type === 'analysis') {
+        step.title = card.querySelector('.analysis-title-input')?.value || card.querySelector('.step-title')?.textContent || 'Analysis';
+        step.spacecraft = card.querySelector('.spacecraft-select')?.value || 'GOES';
+        step.dataset = card.querySelector('.dataset-select')?.value || 'DN_MAGN-L2-HIRES_G16';
+        const selects = card.querySelectorAll('select.field-input');
+        step.playbackSpeed = selects[2]?.value || '1x';
+        const startInput = card.querySelector('.analysis-start');
+        const endInput = card.querySelector('.analysis-end');
+        step.startTime = toISOTime(startInput?.value || '');
+        step.endTime = toISOTime(endInput?.value || '');
+        const dataSrcPills = card.querySelectorAll('.pill-group .pill.active');
+        const srcText = dataSrcPills[0]?.textContent.trim().toLowerCase() || '';
+        step.dataSource = srcText.includes('cdaweb') ? 'cdaweb' : 'cloudflare_r2';
+        const preloadSelect = card.querySelector('.data-preload-select');
+        if (preloadSelect && preloadSelect.value && preloadSelect.value !== 'onEnter') {
+          step.dataPreload = preloadSelect.value;
+        }
+        const toggles = card.querySelectorAll('.toggle-row .toggle');
+        step.allowFeatureDrawing = toggles[0]?.classList.contains('on') || false;
+        step.showSpectrogram = toggles[1]?.classList.contains('on') || false;
+        step.allowStretch = toggles[2]?.classList.contains('on') || false;
+        step.requireMinFeatures = toggles[3]?.classList.contains('on') || false;
+        step.minFeatures = parseInt(card.querySelector('.min-features-input')?.value) || 1;
+        console.log(`%c[COLLECT]   Analysis step ${i} DOM:`, 'color: #58a6ff;', {
+          title: step.title,
+          selectCount: selects.length,
+          spacecraft: step.spacecraft,
+          dataset: step.dataset,
+          playbackSpeed: step.playbackSpeed,
+          startTime: step.startTime,
+          endTime: step.endTime,
+          dataSrcPillText: srcText || '(none)',
+          dataSource: step.dataSource,
+          dataPreload: preloadSelect?.value || '(default)',
+          toggleCount: toggles.length,
+          toggleValues: Array.from(toggles).map((t, ti) => `[${ti}]=${t.classList.contains('on') ? 'ON' : 'OFF'}`),
+        });
+        // Collect prompts
+        const promptEntries = card.querySelectorAll('.prompt-entry');
+        if (promptEntries.length > 0) {
+          step.prompts = [];
+          promptEntries.forEach(entry => {
+            const trigger = entry.querySelector('.prompt-trigger')?.value || 'onLoad';
+            const delay = parseInt(entry.querySelector('.prompt-delay')?.value || '0', 10);
+            const text = entry.querySelector('.prompt-text')?.value || '';
+            const effect = entry.querySelector('.prompt-effect')?.value || 'typed';
+            const speed = entry.querySelector('.prompt-speed')?.value || 'medium';
+            if (text.trim()) {
+              step.prompts.push({ trigger, delay, text, effect, speed });
+            }
+          });
+        }
+        // confirmCompletion is the 5th toggle (index 4)
+        const confirmEnabled = toggles[4]?.classList.contains('on') || false;
+        if (confirmEnabled) {
+          step.confirmCompletion = {
+            enabled: true,
+            title: card.querySelector('.confirm-title-input')?.value || 'Complete?',
+            message: card.querySelector('.confirm-message-input')?.value || "Are you sure you're ready to finish?",
+            confirmLabel: card.querySelector('.confirm-label-input')?.value || "Yes, I'm done",
+            cancelLabel: card.querySelector('.cancel-label-input')?.value || "Go back"
+          };
+        } else {
+          step.confirmCompletion = { enabled: false };
+        }
+      }
+      console.log(`[COLLECT]   Step ${i}: type=${type}`, JSON.parse(JSON.stringify(step)));
+      steps.push(step);
+    });
+
+    // Collect admin key
+    const adminKey = document.getElementById('adminKeyInput')?.value?.trim() || '';
+
+    // Collect app settings from builder
+    const appSettings = collectAppSettingsFromBuilder();
+
+    const result = {
+      ..._loadedMeta, // Preserve author, contactEmail, version, etc.
+      name: document.getElementById('studyNameInput').value,
+      slug: document.getElementById('slugValue').textContent.trim(),
+      adminKey,
+      appSettings,
+      steps,
+      updatedAt: new Date().toISOString(),
+    };
+    console.log('%c[COLLECT] collectStudyConfig DONE', 'color: #58a6ff; font-weight: bold;', {
+      name: result.name,
+      slug: result.slug,
+      stepCount: result.steps.length,
+      stepTypes: result.steps.map(s => s.type),
+    });
+    return result;
+  }
+
+  // ── IndexedDB (primary local persistence) ──────────────────
+  const IDB_NAME = 'StudyBuilderDB';
+  const IDB_STORE = 'studies';
+  const IDB_VERSION = 1;
+
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) {
+          db.createObjectStore(IDB_STORE, { keyPath: 'slug' });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function indexdbSave(config) {
+    console.log('%c[DB] indexdbSave →', 'color: #79c0ff; font-weight: bold;', {
+      slug: config.slug,
+      name: config.name,
+      stepCount: config.steps?.length,
+      stepTypes: config.steps?.map(s => s.type),
+      hasAppSettings: !!config.appSettings,
+      hasAdminKey: !!config.adminKey,
+      updatedAt: config.updatedAt,
+    });
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(config);
+      tx.oncomplete = () => { console.log('%c[DB] indexdbSave DONE ✓', 'color: #79c0ff;', config.slug); resolve(); };
+      tx.onerror = () => { console.warn('%c[DB] indexdbSave FAILED', 'color: #f85149;', tx.error); reject(tx.error); };
+    });
+  }
+
+  async function indexdbLoad(slug) {
+    console.log('%c[DB] indexdbLoad →', 'color: #79c0ff; font-weight: bold;', slug);
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get(slug);
+      req.onsuccess = () => {
+        const result = req.result || null;
+        console.log('%c[DB] indexdbLoad result:', 'color: #79c0ff;', {
+          slug,
+          found: !!result,
+          name: result?.name || '(null)',
+          stepCount: result?.steps?.length || 0,
+          stepTypes: result?.steps?.map(s => s.type) || [],
+          updatedAt: result?.updatedAt || '(none)',
+        });
+        resolve(result);
+      };
+      req.onerror = () => { console.warn('%c[DB] indexdbLoad FAILED', 'color: #f85149;', req.error); reject(req.error); };
+    });
+  }
+
+  async function indexdbList() {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).getAll();
+      req.onsuccess = () => resolve(req.result.map(r => ({ slug: r.slug, name: r.name })));
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function indexdbDelete(slug) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).delete(slug);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  // Save draft: IndexedDB (instant) + D1 (fire-and-forget)
+  async function saveDraft() {
+    if (_isLoading) {
+      console.log('%c[SAVE] BLOCKED — _isLoading=true', 'color: #f85149; font-weight: bold;');
+      return;
+    }
+    const config = collectStudyConfig();
+    const slug = config.slug;
+    if (!slug || slug.length < 3) {
+      console.log('⚠️ saveDraft skipped — slug too short:', slug);
+      return;
+    }
+
+    console.log('%c[SAVE] saveDraft →', 'color: #3fb950; font-weight: bold;', slug, {
+      stepCount: config.steps.length,
+      stepTypes: config.steps.map(s => s.type),
+      steps: config.steps.map((s, i) => ({
+        i, type: s.type, title: s.title || s.regTitle || '(none)',
+        bodyHtml: s.bodyHtml ? s.bodyHtml.substring(0, 80) + '...' : undefined,
+        questionCount: s.questions?.length,
+        contentType: s.contentType,
+      })),
+    });
+
+    // Notify open preview tabs via localStorage event (works cross-tab regardless of COOP/COEP)
+    try {
+      localStorage.setItem('study_preview_update', JSON.stringify({
+        slug, steps: config.steps, ts: Date.now()
+      }));
+    } catch (e) { /* ignore */ }
+
+    // localStorage — synchronous, instant restore on next page load
+    try {
+      localStorage.setItem('study_builder_config', JSON.stringify(config));
+      localStorage.setItem('study_builder_last', slug);
+      console.log('%c[SAVE] ✅ Saved to localStorage:', 'color: #3fb950;', slug);
+    } catch (e) { console.warn('❌ localStorage save failed:', e); }
+
+    // IndexedDB — backup + powers the study picker dropdown
+    try {
+      await indexdbSave(config);
+      refreshStudyPicker();
+      console.log('%c[SAVE] ✅ Saved to IndexedDB:', 'color: #3fb950;', slug);
+    } catch (e) { console.warn('❌ IndexedDB save failed:', e); }
+
+    // D1 — durable, shared
+    try {
+      await fetch(`${API_BASE}/api/study/${slug}/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: config.name, config: JSON.stringify(config) }),
+      });
+    } catch (e) {
+      // silent — will retry on next change
+    }
+  }
+
+  // Auto-save: fire on every change (debounced to avoid thrashing)
+  let _autoSaveTimer = null;
+  function autoSave(source) {
+    if (_isLoading || draggedCard) return;
+    const slug = document.getElementById('slugValue')?.textContent?.trim();
+    if (!slug || slug.length < 3) return;
+    clearTimeout(_autoSaveTimer);
+    _autoSaveTimer = setTimeout(saveDraft, 300);
+  }
+  document.addEventListener('input', () => autoSave('input'));
+  document.addEventListener('change', () => autoSave('change'));
+  document.addEventListener('click', (e) => {
+    // Only auto-save on actual state-changing clicks (pills, toggles, bold buttons)
+    if (e.target.closest('.pill, .toggle, .fs-bold, .cp-cell')) {
+      setTimeout(() => autoSave('click'), 50);
+    }
+  });
+  const observer = new MutationObserver(() => autoSave('mutation'));
+  observer.observe(document.getElementById('stepList'), { childList: true, subtree: true, characterData: true, attributes: true });
+
+  // Load study from D1
+  async function loadStudy(slug) {
+    try {
+      const resp = await fetch(`${API_BASE}/api/study/${slug}/config`);
+      if (resp.ok) {
+        const data = await resp.json();
+        return data;
+      }
+    } catch (e) {
+      console.error('❌ Load error:', e);
+    }
+    return null;
+  }
+
+  // Publish = save + mark as published
+  async function publishStudy() {
+    const config = collectStudyConfig();
+    const slug = config.slug;
+
+    // Validate slug
+    if (!slug || slug.length < 3 || !/^[a-z0-9-]+$/.test(slug)) {
+      alert('Invalid study URL slug. Use lowercase letters, numbers, and hyphens (min 3 chars).');
+      return;
+    }
+
+    await saveDraft();
+    const prodUrl = `spaceweather.now.audio/study/${slug}`;
+    const localUrl = `${window.location.origin}/study.html?study=${slug}`;
+    const testUrl = `${prodUrl}?test=true`;
+    const msg = `Study published!\n\nParticipant URL:\n${prodUrl}\n\nTest URL (saves data with TEST_ prefix):\n${testUrl}\n\nLocal testing:\n${localUrl}\n\nStudy builder:\n${window.location.origin}/study-builder.html?study=${slug}`;
+    alert(msg);
+    console.log('🚀 Published:', prodUrl);
+  }
+
+  // Preview — open the participant view in a new tab
+  function previewStudy() {
+    const slug = document.getElementById('slugValue').textContent.trim();
+    // Use query-param URL (works on localhost and production)
+    const url = `${window.location.origin}/study.html?study=${slug}&preview=true`;
+    window.open(url, '_blank');
+  }
+
+  // ── Slug Generation ──────────────────────────────────────────
+  function nameToSlug(name) {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 60);
+  }
+
+  let slugFlashTimer = null;
+  function updateSlug() {
+    const name = document.getElementById('studyNameInput').value;
+    const slug = nameToSlug(name);
+    const slugEl = document.getElementById('slugValue');
+    const flash = document.getElementById('slugFlash');
+    slugEl.textContent = slug;
+    updateLocalUrl(slug);
+    updateTestUrl(slug);
+
+    // Validate & flash
+    const valid = slug.length >= 3 && /^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(slug);
+    if (valid) {
+      flash.textContent = '✓ Valid URL';
+      flash.style.color = 'var(--green)';
+      flash.style.opacity = '1';
+      clearTimeout(slugFlashTimer);
+      slugFlashTimer = setTimeout(() => { flash.style.opacity = '0'; }, 2000);
+    } else {
+      flash.textContent = slug.length < 3 ? '✕ URL too short' : '✕ Invalid URL';
+      flash.style.color = 'var(--red)';
+      flash.style.opacity = '1';
+      clearTimeout(slugFlashTimer);
+      slugFlashTimer = setTimeout(() => { flash.style.opacity = '0'; }, 2000);
+    }
+  }
+
+  const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+
+  function updateLocalUrl(slug) {
+    const row = document.getElementById('localUrlPreview');
+    if (!isLocal) { row.style.display = 'none'; return; }
+    row.style.display = '';
+    const el = document.getElementById('localUrl');
+    el.textContent = `${location.origin}/study.html?study=${slug}`;
+  }
+
+  function updateTestUrl(slug) {
+    const el = document.getElementById('testUrl');
+    if (el) el.textContent = `spaceweather.now.audio/study/${slug}?test=true`;
+  }
+
+  function getStudyUrl() {
+    const slug = document.getElementById('slugValue').textContent;
+    return `https://spaceweather.now.audio/study/${slug}`;
+  }
+
+  function getLocalUrl() {
+    const slug = document.getElementById('slugValue').textContent;
+    return `${location.origin}/study.html?study=${slug}`;
+  }
+
+  function getTestUrl() {
+    return getStudyUrl() + '?test=true';
+  }
+
+  function copyUrl(type) {
+    const url = type === 'test' ? getTestUrl() : type === 'local' ? getLocalUrl() : getStudyUrl();
+    navigator.clipboard.writeText(url).then(() => {
+      const btn = event.currentTarget;
+      const orig = btn.textContent;
+      btn.textContent = '✓';
+      setTimeout(() => btn.textContent = orig, 1200);
+    });
+  }
+
+  function openUrl(type) {
+    const url = type === 'test' ? getTestUrl() : type === 'local' ? getLocalUrl() : getStudyUrl();
+    window.open(url, '_blank');
+  }
+
+  // Allow manual slug editing
+  document.getElementById('slugValue')?.addEventListener('input', () => {
+    const el = document.getElementById('slugValue');
+    const slug = el.textContent.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+    // Instantly update local URL preview
+    updateLocalUrl(slug);
+    updateTestUrl(slug);
+    // Validate slug
+    const valid = slug.length >= 3 && /^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(slug);
+    const statusEl = document.getElementById('slugStatus');
+    if (statusEl) {
+      statusEl.textContent = valid ? '✓ valid' : '✕ invalid';
+      statusEl.className = 'slug-status ' + (valid ? 'valid' : 'invalid');
+    }
+  });
+
+  // ── Load study on page open ─────────────────────────────────
+  // Primary: localStorage (synchronous, already parsed at script top)
+  // Fallback: IndexedDB (async, for migration or if localStorage was cleared)
+  // loadOnInit is called at the end of the script, after all definitions
+
+  // Init local URL display
+  updateLocalUrl(document.getElementById('slugValue').textContent);
+  updateTestUrl(document.getElementById('slugValue').textContent);
+
+  // Keyboard shortcut: Cmd+S / Ctrl+S to save
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+      e.preventDefault();
+      saveDraft();
+    }
+  });
+
+  // ── Drag and Drop (pointer-based with FLIP animation) ─────────
+  let draggedCard = null;
+  let dragStartY = 0;
+  const CONNECTOR_HEIGHT = 12; // px — matches --connector-height CSS variable
+
+  function rebuildConnectors() {
+    const container = document.getElementById('stepList');
+    container.querySelectorAll('.step-connector').forEach(c => c.remove());
+    const cards = container.querySelectorAll('.step-card');
+    cards.forEach((card, i) => {
+      if (i === 0) return;
+      const conn = document.createElement('div');
+      conn.className = 'step-connector';
+      container.insertBefore(conn, card);
+    });
+  }
+
+  function flipAnimate(cards, firstRects) {
+    cards.forEach(card => {
+      if (card === draggedCard || !firstRects.has(card)) return;
+
+      // Cancel any in-progress animation so it doesn't interfere
+      card.style.transition = 'none';
+      card.style.transform = '';
+
+      const first = firstRects.get(card);
+      const last = card.getBoundingClientRect();
+      const dy = first.top - last.top;
+      if (Math.abs(dy) < 1) return;
+
+      card.style.transform = `translateY(${dy}px)`;
+      // Double rAF ensures the browser commits the "inverted" position before animating
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          card.style.transition = 'transform 0.2s ease';
+          card.style.transform = '';
+          card.addEventListener('transitionend', () => { card.style.transition = ''; }, { once: true });
+        });
+      });
+    });
+  }
+
+  function initDragAndDrop() {
+    const container = document.getElementById('stepList');
+
+    container.addEventListener('dragstart', (e) => e.preventDefault());
+
+    container.addEventListener('pointerdown', (e) => {
+      const handle = e.target.closest('.drag-handle');
+      if (!handle) return;
+      const card = handle.closest('.step-card');
+      if (!card || card.dataset.type === 'registration') return;
+
+      e.preventDefault();
+      draggedCard = card;
+      dragStartY = e.clientY;
+      card.classList.add('dragging');
+      card.classList.remove('active');
+      card.style.position = 'relative';
+    });
+
+    document.addEventListener('pointermove', (e) => {
+      if (!draggedCard) return;
+
+      const deltaY = e.clientY - dragStartY;
+      draggedCard.style.transform = `translateY(${deltaY}px)`;
+
+      // Dragged card's visual center (layout position + drag offset)
+      const cardCenter = draggedCard.offsetTop + draggedCard.offsetHeight / 2 + deltaY;
+
+      const allCards = [...container.querySelectorAll('.step-card')];
+      const myIndex = allCards.indexOf(draggedCard);
+
+      // Check swap DOWN: card center crosses midpoint of gap below
+      if (myIndex < allCards.length - 1) {
+        const next = allCards[myIndex + 1];
+        if (next && next.dataset.type !== 'registration') {
+          // Gap runs from dragged card's layout bottom to next card's layout top
+          const gapTop = draggedCard.offsetTop + draggedCard.offsetHeight;
+          const gapBottom = gapTop + CONNECTOR_HEIGHT;
+          const gapMid = (gapTop + gapBottom) / 2;
+
+          if (cardCenter > gapMid) {
+            doSwap(container, allCards, next, 'down', e);
+          }
+        }
+      }
+
+      // Check swap UP: card center crosses midpoint of gap above
+      if (myIndex > 0) {
+        const prev = allCards[myIndex - 1];
+        if (prev && prev.dataset.type !== 'registration') {
+          // Gap runs from prev card's layout bottom to dragged card's layout top
+          const gapTop = prev.offsetTop + prev.offsetHeight;
+          const gapBottom = gapTop + CONNECTOR_HEIGHT;
+          const gapMid = (gapTop + gapBottom) / 2;
+
+          if (cardCenter < gapMid) {
+            doSwap(container, allCards, prev, 'up', e);
+          }
+        }
+      }
+    });
+
+    document.addEventListener('pointerup', (e) => {
+      if (!draggedCard) return;
+      draggedCard.classList.remove('dragging');
+      draggedCard.style.transform = '';
+      draggedCard.style.position = '';
+      draggedCard = null;
+      rebuildConnectors();
+      renumberSteps();
+      updatePreview();
+    });
+  }
+
+  function doSwap(container, allCards, target, direction, e) {
+    const cards = [...container.querySelectorAll('.step-card')];
+    const firstRects = new Map();
+    cards.forEach(c => { if (c !== draggedCard) firstRects.set(c, c.getBoundingClientRect()); });
+
+    const beforeTop = draggedCard.offsetTop;
+    if (direction === 'down') {
+      container.insertBefore(draggedCard, target.nextElementSibling);
+    } else {
+      container.insertBefore(draggedCard, target);
+    }
+    rebuildConnectors();
+    const afterTop = draggedCard.offsetTop;
+
+    dragStartY += (afterTop - beforeTop);
+    draggedCard.style.transform = `translateY(${e.clientY - dragStartY}px)`;
+    flipAnimate(cards, firstRects);
+  }
+
+  // ── Arrow reorder ──────────────────────────────────────────────
+  function moveStep(btn, direction) {
+    event.stopPropagation();
+    const card = btn.closest('.step-card');
+    const cards = Array.from(document.querySelectorAll('.step-card'));
+    const idx = cards.indexOf(card);
+
+    if (direction === 'up' && idx <= 1) return; // Can't move above registration
+    if (direction === 'down' && idx >= cards.length - 1) return;
+
+    const prevConn = card.previousElementSibling;
+    if (prevConn && prevConn.classList.contains('step-connector')) prevConn.remove();
+    card.remove();
+
+    const connector = document.createElement('div');
+    connector.className = 'step-connector';
+    const container = document.getElementById('stepList');
+    const updatedCards = Array.from(container.querySelectorAll('.step-card'));
+    const targetIdx = direction === 'up' ? idx - 2 : idx;
+    const target = updatedCards[targetIdx];
+
+    if (target) {
+      const next = target.nextElementSibling;
+      container.insertBefore(connector, next);
+      container.insertBefore(card, connector.nextElementSibling);
+    } else {
+      container.appendChild(connector);
+      container.appendChild(card);
+    }
+
+    renumberSteps();
+    updatePreview();
+  }
+
+  initDragAndDrop();
+
+  // Toggle step expansion
+  function toggleStep(header) {
+    const card = header.closest('.step-card');
+    const wasActive = card.classList.contains('active');
+    // Close all
+    document.querySelectorAll('.step-card').forEach(c => c.classList.remove('active'));
+    // Toggle clicked
+    if (!wasActive) card.classList.add('active');
+  }
+
+  // Pill selection
+  function selectPill(pill) {
+    const group = pill.closest('.pill-group');
+    const card = pill.closest('.step-card');
+    const prevActive = group.querySelector('.pill.active')?.textContent.trim() || '(none)';
+    console.log('%c[UI] selectPill', 'color: #d2a8ff; font-weight: bold;', {
+      selected: pill.textContent.trim(),
+      previous: prevActive,
+      cardType: card?.dataset.type || '(unknown)',
+      allPills: Array.from(group.querySelectorAll('.pill')).map(p => p.textContent.trim()),
+    });
+    group.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+
+    // Toggle registration auto/manual fields
+    if (card?.dataset.type === 'registration') {
+      const isManual = pill.textContent.trim() === 'Manual Entry';
+      const manualFields = card.querySelector('.reg-manual-fields');
+      const autoFields = card.querySelector('.reg-auto-fields');
+      if (manualFields) manualFields.style.display = isManual ? '' : 'none';
+      if (autoFields) autoFields.style.display = isManual ? 'none' : '';
+    }
+  }
+
+  // Toggle add-step dropdown
+  function toggleDropdown(btn) {
+    const dropdown = document.getElementById('addStepDropdown');
+    dropdown.classList.toggle('show');
+    // Close on outside click
+    setTimeout(() => {
+      document.addEventListener('click', function close(e) {
+        if (!dropdown.contains(e.target) && e.target !== btn) {
+          dropdown.classList.remove('show');
+          document.removeEventListener('click', close);
+        }
+      });
+    }, 0);
+  }
+
+  // Add a new step
+  let stepCounter = 7;
+  function addStep(type) {
+    const container = document.getElementById('stepList');
+    const num = container.querySelectorAll('.step-card').length + 1;
+
+    const connector = document.createElement('div');
+    connector.className = 'step-connector';
+
+    const card = document.createElement('div');
+    card.className = 'step-card active';
+    card.dataset.type = type;
+    card.setAttribute('draggable', 'true');
+
+    // Use the same builder functions as JSON loading for consistency
+    let defaultStep;
+    if (type === 'info') {
+      defaultStep = { type: 'info', title: 'New Information Step', bodyHtml: '', dismissLabel: 'OK', closable: false, skippable: false };
+      card.innerHTML = buildInfoCard(num, defaultStep);
+      const ed = card.querySelector('.rich-editable'); if (ed) ed.innerHTML = '';
+    } else if (type === 'question') {
+      defaultStep = { type: 'question', title: '', questionType: 'radio', required: true, canGoBack: true, options: [{ value: '1', label: '', description: '' }] };
+      card.innerHTML = buildQuestionCard(num, defaultStep);
+    } else {
+      defaultStep = { type: 'analysis', title: 'New Analysis Step', spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16', startDate: '', endDate: '', dataSource: 'cloudflare_r2', playbackSpeed: '1x', allowFeatureDrawing: true, showSpectrogram: true, allowStretch: true, minFeatures: 1, confirmCompletion: { enabled: false } };
+      card.innerHTML = buildAnalysisCard(num, defaultStep);
+    }
+
+    // Close others
+    document.querySelectorAll('.step-card').forEach(c => c.classList.remove('active'));
+
+    container.appendChild(connector);
+    container.appendChild(card);
+
+    document.getElementById('addStepDropdown').classList.remove('show');
+    updatePreview();
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  // Delete step
+  function deleteStep(btn) {
+    const card = btn.closest('.step-card');
+    const prev = card.previousElementSibling;
+    if (prev && prev.classList.contains('step-connector')) prev.remove();
+    card.remove();
+    renumberSteps();
+    updatePreview();
+  }
+
+  function confirmDeleteStep(btn, evt) {
+    evt.stopPropagation();
+    const card = btn.closest('.step-card');
+    const stepTitle = card.querySelector('.step-title')?.textContent?.trim() || 'this step';
+
+    const dialog = document.createElement('div');
+    const x = evt.clientX, y = evt.clientY;
+    dialog.style.cssText = `
+      position: fixed; left: ${x + 20}px; top: ${y}px; transform: translateY(-50%);
+      z-index: 100000; background: #1e1e2e; color: #e0e0e0;
+      border: 1px solid rgba(102, 126, 234, 0.4); border-radius: 8px;
+      padding: 20px 28px; box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      font-family: inherit; font-size: 14px; text-align: center;
+      min-width: 240px;
+    `;
+    const msg = document.createElement('div');
+    msg.textContent = `Delete "${stepTitle}"?`;
+    msg.style.marginBottom = '16px';
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display: flex; gap: 10px; justify-content: center;';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = `
+      padding: 6px 20px; font-size: 13px; font-weight: 600; border: none;
+      border-radius: 4px; cursor: pointer;
+      background: rgba(100, 100, 120, 0.6); color: #ccc;
+    `;
+    const okBtn = document.createElement('button');
+    okBtn.textContent = 'OK \u21B5';
+    okBtn.style.cssText = `
+      padding: 6px 20px; font-size: 13px; font-weight: 600; border: none;
+      border-radius: 4px; cursor: pointer;
+      background: rgba(70, 120, 230, 0.9); color: #fff;
+    `;
+
+    const cleanup = (confirmed) => {
+      document.removeEventListener('keydown', onKey);
+      dialog.remove();
+      if (confirmed) deleteStep(btn);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); cleanup(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); cleanup(false); }
+    };
+    okBtn.addEventListener('click', () => cleanup(true));
+    cancelBtn.addEventListener('click', () => cleanup(false));
+    document.addEventListener('keydown', onKey);
+
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(okBtn);
+    dialog.appendChild(msg);
+    dialog.appendChild(btnRow);
+    document.body.appendChild(dialog);
+  }
+
+  // Renumber steps
+  function renumberSteps() {
+    document.querySelectorAll('#stepList .step-card').forEach((card, i) => {
+      const numEl = card.querySelector('.step-number');
+      if (numEl) numEl.textContent = i + 1;
+    });
+  }
+
+  // Update preview dots
+  function updatePreview() {
+    const dots = document.getElementById('previewDots');
+    const cards = document.querySelectorAll('.step-card');
+    dots.innerHTML = '';
+    cards.forEach((card, i) => {
+      if (i > 0) {
+        const line = document.createElement('div');
+        line.className = 'preview-line';
+        dots.appendChild(line);
+      }
+      const dot = document.createElement('div');
+      dot.className = `preview-dot ${card.dataset.type} filled`;
+      dots.appendChild(dot);
+    });
+    document.getElementById('stepCount').textContent = `${cards.length} steps`;
+  }
+
+  // Initial preview
+  updatePreview();
+
+  // ── Admin Key ──────────────────────────────────────────────
+  function generateAdminKey() {
+    const chars = 'abcdefghijklmnopqrstuvwxyz';
+    let key = '';
+    for (let i = 0; i < 5; i++) key += chars[Math.floor(Math.random() * chars.length)];
+    document.getElementById('adminKeyInput').value = key;
+  }
+
+  // ── App Settings Collect / Load ────────────────────────────
+  // Builder element ID → appSettings path mapping
+  const APP_SETTINGS_BUILDER_MAP = {
+    'as_idMode': 'session.idMode',
+    'as_showIdCorner': 'session.showIdCorner',
+    'as_skipLoginWelcome': 'session.skipLoginWelcome',
+    'as_source': 'dataLoading.source',
+    'as_bypassCache': 'dataLoading.bypassCache',
+    'as_silentDownload': 'dataLoading.silentDownload',
+    'as_autoDownload': 'dataLoading.autoDownload',
+    'as_autoPlay': 'dataLoading.autoPlay',
+    'as_rendering': 'dataLoading.rendering',
+    'as_visible': 'featureBoxes.visible',
+    'as_annotationAlignment': 'featureBoxes.annotationAlignment',
+    'as_annotationWidth': 'featureBoxes.annotationWidth',
+    'as_annotationFontSize': 'featureBoxes.annotationFontSize',
+    'as_displayOnLoad': 'display.displayOnLoad',
+    'as_initialHours': 'display.initialHours',
+    'as_minUIWidth': 'display.minUIWidth',
+    'as_heightMinimap': 'display.heightMinimap',
+    'as_heightSpectrogram': 'display.heightSpectrogram',
+    'as_quality': 'audio.quality',
+    'as_tileCompression': 'rendering.tileCompression',
+    'as_tileEdgeMode': 'rendering.tileEdgeMode',
+    'as_tileChunkSize': 'rendering.tileChunkSize',
+    'as_zoomOutMode': 'rendering.zoomOutMode',
+    'as_levelTransition': 'rendering.levelTransition',
+    'as_crossfadePower': 'rendering.crossfadePower',
+    'as_renderOrder': 'rendering.renderOrder',
+    'as_waveformPanMode': 'rendering.waveformPanMode',
+    'as_catmullMode': 'waveformZoom.catmullMode',
+    'as_catmullThreshold': 'waveformZoom.catmullThreshold',
+    'as_catmullCore': 'waveformZoom.catmullCore',
+    'as_catmullFeather': 'waveformZoom.catmullFeather',
+    'as_arrowZoomStep': 'navigation.arrowZoomStep',
+    'as_arrowPanStep': 'navigation.arrowPanStep',
+    'as_zoomFadeMode': 'xAxisTicks.zoomFadeMode',
+    'as_fadeInCurve': 'xAxisTicks.fadeInCurve',
+    'as_fadeInTime': 'xAxisTicks.fadeInTime',
+    'as_fadeOutCurve': 'xAxisTicks.fadeOutCurve',
+    'as_fadeOutTime': 'xAxisTicks.fadeOutTime',
+    'as_edgeFadeMode': 'xAxisTicks.edgeFadeMode',
+    'as_edgeFadeCurve': 'xAxisTicks.edgeFadeCurve',
+    'as_edgeSpatialWidth': 'xAxisTicks.edgeSpatialWidth',
+    'as_zoomSpatialCurve': 'xAxisTicks.zoomSpatialCurve',
+    'as_zoomSpatialWidth': 'xAxisTicks.zoomSpatialWidth',
+    'as_edgeTimeIn': 'xAxisTicks.edgeTimeIn',
+    'as_edgeTimeOut': 'xAxisTicks.edgeTimeOut',
+    'as_featurePlaybackMode': 'featurePlayback.mode',
+    'as_lockPageScroll': 'pageScroll.lock',
+    'as_navView': 'navBar.view',
+    'as_navViewingMode': 'navBar.viewingMode',
+    'as_navClick': 'navBar.click',
+    'as_navMarkers': 'navBar.markers',
+    'as_navFeatureBoxes': 'navBar.featureBoxes',
+    'as_navVScroll': 'navBar.vScroll',
+    'as_navVSens': 'navBar.vSens',
+    'as_navHScroll': 'navBar.hScroll',
+    'as_navHSens': 'navBar.hSens',
+    'as_mainView': 'mainWindow.view',
+    'as_mainMode': 'mainWindow.mode',
+    'as_mainClick': 'mainWindow.click',
+    'as_mainRelease': 'mainWindow.release',
+    'as_mainDrag': 'mainWindow.drag',
+    'as_mainMarkers': 'mainWindow.markers',
+    'as_mainXAxis': 'mainWindow.xAxis',
+    'as_mainBoxFilter': 'mainWindow.boxFilter',
+    'as_mainNumbers': 'mainWindow.numbers',
+    'as_mainNumbersLoc': 'mainWindow.numbersLoc',
+    'as_mainNumbersWeight': 'mainWindow.numbersWeight',
+    'as_mainNumbersSize': 'mainWindow.numbersSize',
+    'as_mainNumbersShadow': 'mainWindow.numbersShadow',
+    'as_mainVScroll': 'mainWindow.vScroll',
+    'as_mainVSens': 'mainWindow.vSens',
+    'as_mainHScroll': 'mainWindow.hScroll',
+    'as_mainHSens': 'mainWindow.hSens',
+    'as_printInit': 'debug.printInit',
+    'as_printGPU': 'debug.printGPU',
+    'as_printMemory': 'debug.printMemory',
+    'as_printAudio': 'debug.printAudio',
+    'as_printStudy': 'debug.printStudy',
+    'as_printFeatures': 'debug.printFeatures',
+    'as_printData': 'debug.printData',
+    'as_printInteraction': 'debug.printInteraction',
+  };
+
+  // Toggle IDs (use classList.contains('on') instead of .value)
+  const TOGGLE_IDS = new Set([
+    'as_skipLoginWelcome','as_bypassCache','as_silentDownload','as_autoDownload','as_autoPlay',
+    'as_visible','as_lockPageScroll',
+    'as_printInit','as_printGPU','as_printMemory','as_printAudio','as_printStudy','as_printFeatures','as_printData','as_printInteraction'
+  ]);
+
+  function collectAppSettingsFromBuilder() {
+    const settings = {};
+    for (const [elId, path] of Object.entries(APP_SETTINGS_BUILDER_MAP)) {
+      const el = document.getElementById(elId);
+      if (!el) continue;
+      const [group, key] = path.split('.');
+      if (!settings[group]) settings[group] = {};
+
+      if (TOGGLE_IDS.has(elId)) {
+        settings[group][key] = el.classList.contains('on');
+      } else if (elId === 'as_showIdCorner') {
+        settings[group][key] = el.value === 'true';
+      } else {
+        const num = Number(el.value);
+        settings[group][key] = isNaN(num) ? el.value : num;
+      }
+    }
+    return settings;
+  }
+
+  // ── Inline Preview for Modal Steps ─────────────────────────
+  /**
+   * Toggle inline preview below a modal step card.
+   * Reads current field values from the DOM for live updates.
+   */
+  function toggleInlinePreview(btn) {
+    const card = btn.closest('.step-card');
+    const existing = card.querySelector('.step-preview');
+    if (existing) { existing.remove(); return; }
+
+    const detail = card.querySelector('.step-detail');
+    const isRegistration = card.dataset.type === 'registration';
+
+    // Registration step preview
+    if (isRegistration) {
+      const title = card.querySelector('.reg-title-input')?.value || 'Welcome';
+      const bodyEl = card.querySelector('.reg-body-html-input');
+      const bodyHtml = bodyEl ? bodyEl.innerHTML : '<p>Enter a user name to begin:</p>';
+      const placeholder = card.querySelector('.reg-id-placeholder')?.value || 'Enter your ID';
+      const buttonLabel = card.querySelector('.reg-button-label-input')?.value || 'Confirm';
+      const ulStyle = getPreviewUnderlineStyle(card);
+
+      const preview = document.createElement('div');
+      preview.className = 'step-preview info-preview';
+      preview.innerHTML = `
+        <h3 style="${ulStyle}">${escapeHtml(title)}</h3>
+        <div>${styleBodyHtml(bodyHtml)}</div>
+        <input type="text" disabled placeholder="${escapeAttr(placeholder)}" style="width:100%;padding:10px 12px;font-size:18px;border:1px solid #ccc;border-radius:6px;margin-bottom:12px;box-sizing:border-box;" />
+        <button class="preview-submit">✓ ${escapeHtml(buttonLabel)}</button>
+      `;
+      const w = card.querySelector('.modal-width-input')?.value?.trim();
+      const h = card.querySelector('.modal-height-input')?.value?.trim();
+      if (w) preview.style.maxWidth = w;
+      if (h && h !== 'auto') preview.style.height = h;
+      detail.after(preview);
+      return;
+    }
+
+    // Standalone question card
+    if (card.dataset.type === 'question') {
+      const title = card.querySelector('.question-text-input')?.value || '';
+      const subtitle = card.querySelector('.question-subtitle-input')?.value || '';
+      const answerPills = card.querySelectorAll('.pill-group-answer-type .pill.active');
+      const isRadio = (answerPills[0]?.textContent.trim().toLowerCase() || '') === 'multiple choice';
+      const ulStyle = getPreviewUnderlineStyle(card);
+
+      const preview = document.createElement('div');
+      preview.className = 'step-preview info-preview';
+
+      let bodyHtml = '';
+      if (subtitle) bodyHtml += `<div style="color:#666;font-size:14px;margin-bottom:16px;">${escapeHtml(subtitle)}</div>`;
+
+      if (isRadio) {
+        const optRows = card.querySelectorAll('.opt-row');
+        if (optRows.length) {
+          bodyHtml += `<div class="preview-radio-group">`;
+          optRows.forEach(row => {
+            const label = row.querySelector('.opt-label-input')?.value || '';
+            const desc = row.querySelector('.opt-desc-input')?.innerHTML || '';
+            bodyHtml += `<label class="preview-radio-choice">
+              <input type="radio" name="preview_standalone" disabled>
+              <div><strong>${escapeHtml(label)}${desc ? ':' : ''}</strong> <span>${desc}</span></div>
+            </label>`;
+          });
+          bodyHtml += `</div>`;
+        }
+      } else {
+        const placeholder = card.querySelector('.question-placeholder-input')?.value || 'Type your response here...';
+        bodyHtml += `<textarea disabled placeholder="${escapeAttr(placeholder)}" style="opacity:0.7;"></textarea>`;
+      }
+
+      preview.innerHTML = `
+        <h3 style="${ulStyle}">${escapeHtml(title)}</h3>
+        ${bodyHtml}
+        <button class="preview-submit">Next →</button>
+      `;
+
+      const w = card.querySelector('.modal-width-input')?.value?.trim();
+      const h = card.querySelector('.modal-height-input')?.value?.trim();
+      if (w) preview.style.maxWidth = w;
+      if (h && h !== 'auto') preview.style.height = h;
+      detail.after(preview);
+
+      // Wire flow navigation
+      preview.querySelector('.preview-submit')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        advancePreviewToNext(card);
+      });
+      return;
+    }
+
+    // Read current values from DOM (modal cards: info or questions)
+    const pills = card.querySelectorAll('.pill-group .pill.active');
+    const isInfo = (pills[0]?.textContent.trim().toLowerCase() || 'informational') === 'informational';
+    const inputs = Array.from(card.querySelectorAll('.step-detail .field-input')).filter(el => !el.type.startsWith('date'));
+    const title = inputs[0]?.value || '';
+
+    const preview = document.createElement('div');
+    preview.className = 'step-preview' + (isInfo ? ' info-preview' : '');
+
+    const ulStyle = getPreviewUnderlineStyle(card);
+    const titleFontSize = card.querySelector('.title-font-size')?.value || '20px';
+    const titleFontColor = card.querySelector('.title-font-color')?.value || '#550000';
+    const titleFontBold = card.querySelector('.title-font-bold')?.classList.contains('active');
+    const titleStyle = `${ulStyle} font-size:${titleFontSize}; color:${titleFontColor}; font-weight:${titleFontBold ? '700' : 'normal'};`;
+
+    if (isInfo) {
+      const bodyInput = card.querySelector('.body-html-input');
+      const bodyHtml = bodyInput ? bodyInput.innerHTML : '';
+      const dismissInput = card.querySelector('.dismiss-label-input');
+      const dismissLabel = dismissInput?.value || 'OK';
+      const closable = card.querySelector('.toggle-closable')?.classList.contains('on') || false;
+      const btnStyle = getDismissButtonStyle(card);
+      preview.innerHTML = `
+        ${closable ? '<button class="preview-close">&times;</button>' : ''}
+        <h3 style="${titleStyle}">${escapeHtml(title)}</h3>
+        <div>${styleBodyHtml(bodyHtml)}</div>
+        <button class="preview-submit" style="${btnStyle}">${escapeHtml(dismissLabel)}</button>
+      `;
+    } else {
+      // Questions preview (modal with multiple questions)
+      const questions = card.querySelectorAll('.question-item');
+      let qHtml = '';
+      const total = questions.length;
+      questions.forEach((q, i) => {
+        const qText = q.querySelector('.q-text')?.textContent || '';
+        const qType = (q.querySelector('.q-type')?.textContent.trim().toLowerCase() || '').replace('free text', 'freetext');
+        const optionsData = q.dataset.options;
+        let options = [];
+        if (optionsData) { try { options = JSON.parse(optionsData); } catch(e) {} }
+
+        qHtml += `<div style="margin-bottom:20px;border-bottom:1px solid #eee;padding-bottom:16px;">`;
+        qHtml += `<div style="font-size:16px;color:#550000;font-weight:700;margin-bottom:10px;">${i+1}. ${escapeHtml(qText)}</div>`;
+        if (qType === 'radio' && options.length) {
+          qHtml += `<div class="preview-radio-group">`;
+          options.forEach(opt => {
+            qHtml += `<label class="preview-radio-choice">
+              <input type="radio" name="preview_q${i}" disabled>
+              <div><strong>${escapeHtml(opt.label)}:</strong> <span>${opt.description || ''}</span></div>
+            </label>`;
+          });
+          qHtml += `</div>`;
+        } else {
+          qHtml += `<textarea disabled placeholder="Type your response here..." style="opacity:0.7;"></textarea>`;
+        }
+        qHtml += `</div>`;
+      });
+
+      preview.innerHTML = `
+        <div class="preview-progress">
+          <span class="preview-progress-text">1 / ${total}</span>
+          <div class="preview-progress-bar"><div class="preview-progress-fill" style="width:${total?Math.round(100/total):0}%"></div></div>
+        </div>
+        <h3 style="${ulStyle}">${escapeHtml(title)}</h3>
+        ${qHtml}
+        <div class="preview-nav">
+          <button class="back-btn">← Back</button>
+          <button class="next-btn">Next →</button>
+        </div>
+      `;
+    }
+
+    // Apply dimensions from width/height inputs
+    const w = card.querySelector('.modal-width-input')?.value?.trim();
+    const h = card.querySelector('.modal-height-input')?.value?.trim();
+    if (w) preview.style.maxWidth = w;
+    if (h && h !== 'auto') preview.style.height = h;
+
+    // Insert after .step-detail
+    detail.after(preview);
+
+    // Wire interactive flow navigation
+    preview.querySelectorAll('.preview-submit, .preview-close').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (btn.classList.contains('preview-close')) {
+          // Close just removes this preview
+          preview.remove();
+          return;
+        }
+        advancePreviewToNext(card);
+      });
+    });
+    // Question nav buttons
+    const nextBtn = preview.querySelector('.preview-nav .next-btn');
+    if (nextBtn) nextBtn.addEventListener('click', (e) => { e.stopPropagation(); advancePreviewToNext(card); });
+  }
+
+  /**
+   * Close the current preview and open the next step's preview, scrolling into view.
+   * For analysis steps, just expand the card panel.
+   */
+  function advancePreviewToNext(currentCard) {
+    const cards = Array.from(document.querySelectorAll('#stepList .step-card'));
+    const idx = cards.indexOf(currentCard);
+    if (idx < 0 || idx >= cards.length - 1) {
+      // Last step — just close
+      currentCard.querySelector('.step-preview')?.remove();
+      return;
+    }
+
+    const nextCard = cards[idx + 1];
+    const nextType = nextCard.dataset.type;
+
+    // Animate out current preview
+    const currentPreview = currentCard.querySelector('.step-preview');
+    if (currentPreview) {
+      currentPreview.style.transition = 'opacity 0.2s, transform 0.2s';
+      currentPreview.style.opacity = '0';
+      currentPreview.style.transform = 'translateY(-8px)';
+      setTimeout(() => currentPreview.remove(), 200);
+    }
+
+    // Collapse current card, expand next
+    setTimeout(() => {
+      currentCard.classList.remove('active');
+      nextCard.classList.add('active');
+
+      if (nextType === 'analysis') {
+        // Analysis: just expand the card, scroll to it
+        nextCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        // Open the preview on the next card
+        const previewBtn = nextCard.querySelector('.preview-btn, [title="Preview"]');
+        if (previewBtn) {
+          // Use existing toggle button
+          previewBtn.click();
+        } else {
+          // Directly build the preview — pass any element inside the card
+          toggleInlinePreview(nextCard.querySelector('.step-header'));
+        }
+        nextCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 220);
+  }
+
+  function getPreviewUnderlineStyle(card) {
+    const toggle = card.querySelector('.title-underline-toggle');
+    if (!toggle || !toggle.classList.contains('on')) return '';
+    const size = card.querySelector('.title-underline-size')?.value || '2px';
+    const color = card.querySelector('.title-underline-color')?.value || '#c86464';
+    const r = parseInt(color.slice(1,3), 16);
+    const g = parseInt(color.slice(3,5), 16);
+    const b = parseInt(color.slice(5,7), 16);
+    return `padding-bottom:10px; margin-bottom:12px; border-bottom: ${size} solid rgba(${r},${g},${b},0.3);`;
+  }
+
+  function getDismissButtonStyle(card) {
+    const bold = card.querySelector('.dismiss-font-bold')?.classList.contains('active');
+    const color = card.querySelector('.dismiss-font-color')?.dataset?.value || '#ffffff';
+    const bg = card.querySelector('.dismiss-bg-color')?.dataset?.value || '#2196F3';
+    return `color:${color}; background:${bg};${bold ? ' font-weight:700;' : ''}`;
+  }
+
+  function updateDatasetSelect(spacecraftSelect) {
+    const card = spacecraftSelect.closest('.step-card');
+    const datasetSelect = card?.querySelector('.dataset-select');
+    if (!datasetSelect) return;
+    const sc = spacecraftSelect.value;
+    datasetSelect.innerHTML = buildDatasetOptions(sc, '');
+  }
+
+  function updatePreviewDimensions(input) {
+    const card = input.closest('.step-card');
+    const preview = card?.querySelector('.step-preview');
+    if (!preview) return;
+    const w = card.querySelector('.modal-width-input')?.value?.trim();
+    const h = card.querySelector('.modal-height-input')?.value?.trim();
+    preview.style.maxWidth = w || '';
+    preview.style.height = (h && h !== 'auto') ? h : '';
+  }
+
+  /** Live-update the inline preview when editable fields change */
+  function refreshInlinePreview(card) {
+    const preview = card.querySelector('.step-preview');
+    if (!preview) return;
+    const isRegistration = card.dataset.type === 'registration';
+
+    // — Shared helpers —
+    const ulStyle = getPreviewUnderlineStyle(card);
+    const titleFontSize = card.querySelector('.title-font-size')?.value || '20px';
+    const titleFontColor = card.querySelector('.title-font-color')?.value || '#550000';
+    const titleFontBold = card.querySelector('.title-font-bold')?.classList.contains('active');
+    const titleStyle = `${ulStyle} font-size:${titleFontSize}; color:${titleFontColor}; font-weight:${titleFontBold ? '700' : 'normal'};`;
+
+    const bodyFontSize = card.querySelector('.body-font-size')?.value || '16px';
+    const bodyFontColor = card.querySelector('.body-font-color')?.value || '#333333';
+    const bodyFontBold = card.querySelector('.body-font-bold')?.classList.contains('active');
+    const bodyPStyle = `color:${bodyFontColor};font-size:${bodyFontSize};line-height:1.6;margin:0;${bodyFontBold ? 'font-weight:700;' : ''}`;
+
+    // — Dimensions —
+    const w = card.querySelector('.modal-width-input')?.value?.trim();
+    const h = card.querySelector('.modal-height-input')?.value?.trim();
+    preview.style.maxWidth = w || '';
+    preview.style.height = (h && h !== 'auto') ? h : '';
+
+    if (isRegistration) {
+      const title = card.querySelector('.reg-title-input')?.value || 'Welcome';
+      const bodyEl = card.querySelector('.reg-body-html-input');
+      const bodyHtml = bodyEl ? bodyEl.innerHTML : '';
+      const placeholder = card.querySelector('.reg-id-placeholder')?.value || 'Enter your ID';
+      const buttonLabel = card.querySelector('.reg-button-label-input')?.value || 'Confirm';
+      const h3 = preview.querySelector('h3');
+      if (h3) { h3.textContent = title; h3.style.cssText = titleStyle; }
+      const bodyDiv = preview.querySelector('h3 + div');
+      if (bodyDiv) bodyDiv.innerHTML = styleBodyHtml(bodyHtml, bodyPStyle);
+      const inp = preview.querySelector('input[type="text"]');
+      if (inp) inp.placeholder = placeholder;
+      const btn = preview.querySelector('.preview-submit');
+      if (btn) btn.textContent = '✓ ' + buttonLabel;
+      return;
+    }
+
+    // Standalone question card
+    if (card.dataset.type === 'question') {
+      const title = card.querySelector('.question-text-input')?.value || '';
+      const subtitle = card.querySelector('.question-subtitle-input')?.value || '';
+      const answerPills = card.querySelectorAll('.pill-group-answer-type .pill.active');
+      const isRadio = (answerPills[0]?.textContent.trim().toLowerCase() || '') === 'multiple choice';
+
+      const h3 = preview.querySelector('h3');
+      if (h3) { h3.textContent = title; h3.style.cssText = titleStyle; }
+
+      // Rebuild the body content (radio options or textarea)
+      const subtitleEl = preview.querySelector('h3 + div[style*="color:#666"]');
+      const bodyContainer = subtitleEl ? subtitleEl.nextElementSibling : preview.querySelector('.preview-radio-group, textarea');
+
+      // Simpler: rebuild everything after h3
+      const h3El = preview.querySelector('h3');
+      const submitBtn = preview.querySelector('.preview-submit');
+      if (h3El && submitBtn) {
+        // Remove everything between h3 and submit button
+        while (h3El.nextElementSibling && h3El.nextElementSibling !== submitBtn) {
+          h3El.nextElementSibling.remove();
+        }
+        // Re-insert subtitle + body
+        let frag = '';
+        if (subtitle) frag += `<div style="color:#666;font-size:14px;margin-bottom:16px;">${escapeHtml(subtitle)}</div>`;
+        if (isRadio) {
+          const optRows = card.querySelectorAll('.opt-row');
+          if (optRows.length) {
+            frag += `<div class="preview-radio-group">`;
+            optRows.forEach(row => {
+              const label = row.querySelector('.opt-label-input')?.value || '';
+              const desc = row.querySelector('.opt-desc-input')?.innerHTML || '';
+              frag += `<label class="preview-radio-choice">
+                <input type="radio" name="preview_standalone" disabled>
+                <div><strong>${escapeHtml(label)}${desc ? ':' : ''}</strong> <span>${desc}</span></div>
+              </label>`;
+            });
+            frag += `</div>`;
+          }
+        } else {
+          const placeholder = card.querySelector('.question-placeholder-input')?.value || 'Type your response here...';
+          frag += `<textarea disabled placeholder="${escapeAttr(placeholder)}" style="opacity:0.7;"></textarea>`;
+        }
+        submitBtn.insertAdjacentHTML('beforebegin', frag);
+      }
+      return;
+    }
+
+    const pills = card.querySelectorAll('.pill-group .pill.active');
+    const isInfo = (pills[0]?.textContent.trim().toLowerCase() || 'informational') === 'informational';
+    if (!isInfo) return;
+
+    const inputs = Array.from(card.querySelectorAll('.step-detail .field-input')).filter(el => !el.type.startsWith('date'));
+    const title = inputs[0]?.value || '';
+    const bodyInput = card.querySelector('.body-html-input');
+    const bodyHtml = bodyInput ? bodyInput.innerHTML : '';
+    const dismissLabel = card.querySelector('.dismiss-label-input')?.value || 'OK';
+
+    const h3 = preview.querySelector('h3');
+    if (h3) { h3.textContent = title; h3.style.cssText = titleStyle; }
+    const bodyDiv = preview.querySelector('h3 + div');
+    if (bodyDiv) bodyDiv.innerHTML = styleBodyHtml(bodyHtml, bodyPStyle);
+    const btn = preview.querySelector('.preview-submit');
+    if (btn) {
+      btn.textContent = dismissLabel;
+      btn.style.cssText = getDismissButtonStyle(card);
+    }
+
+    // Toggle close button in preview based on "Can Close" toggle
+    const closable = card.querySelector('.toggle-closable')?.classList.contains('on') || false;
+    let closeBtn = preview.querySelector('.preview-close');
+    if (closable && !closeBtn) {
+      closeBtn = document.createElement('button');
+      closeBtn.className = 'preview-close';
+      closeBtn.innerHTML = '&times;';
+      preview.insertBefore(closeBtn, preview.firstChild);
+    } else if (!closable && closeBtn) {
+      closeBtn.remove();
+    }
+  }
+
+  // Wire live preview refresh — input covers contenteditable + text fields + selects
+  const stepListEl = document.getElementById('stepList');
+  stepListEl.addEventListener('input', (e) => {
+    const card = e.target.closest('.step-card');
+    if (card) refreshInlinePreview(card);
+  });
+  // Click catches toggles (bold, underline on/off) and color pickers
+  stepListEl.addEventListener('click', (e) => {
+    const target = e.target;
+    if (target.closest('.fs-bold, .title-underline-toggle, .toggle')) {
+      const card = target.closest('.step-card');
+      if (card) setTimeout(() => refreshInlinePreview(card), 10);
+    }
+  });
+
+  function nudgeDimension(btn, delta) {
+    const wrap = btn.closest('.dim-input-wrap');
+    const input = wrap.querySelector('.field-input');
+    const val = input.value.trim();
+    // Parse numeric value and unit (default to px)
+    const match = val.match(/^(\d+)\s*(px|%|em|rem|vh|vw)?$/i);
+    if (!match && val !== 'auto') return;
+    let num = match ? parseInt(match[1]) : 400;
+    const unit = match ? (match[2] || 'px') : 'px';
+    num = Math.max(0, num + delta);
+    input.value = num + unit;
+    updatePreviewDimensions(input);
+  }
+
+  /**
+   * Open study.html in a new tab at the given step index with preview mode.
+   */
+  function previewStepOnPage(btn) {
+    const card = btn.closest('.step-card');
+    const cards = Array.from(document.querySelectorAll('.step-card'));
+    const stepIndex = cards.indexOf(card);
+    const slug = document.getElementById('slugValue').textContent.trim();
+    const url = `${window.location.origin}/study.html?study=${slug}&step=${stepIndex}&preview=true`;
+    window.open(url, '_blank');
+  }
+
+
+  // ── Recent Studies Picker ────────────────────────────────
+  function populatePicker(studies) {
+    const picker = document.getElementById('studyPicker');
+    if (!picker) return;
+    const currentSlug = document.getElementById('slugValue')?.textContent?.trim();
+    picker.innerHTML = '';
+    if (!studies || studies.length === 0) {
+      picker.innerHTML = '<option value="">No saved studies</option>';
+      picker.style.display = 'none';
+      return;
+    }
+    picker.style.display = '';
+    studies.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.slug;
+      opt.textContent = s.name || s.slug;
+      if (s.slug === currentSlug) opt.selected = true;
+      picker.appendChild(opt);
+    });
+  }
+
+  async function refreshStudyPicker() {
+    const studies = await indexdbList().catch(() => []);
+    // Cache for instant restore on next load
+    localStorage.setItem('study_builder_picker', JSON.stringify(studies));
+    populatePicker(studies);
+  }
+
+  async function switchStudy(slug) {
+    if (!slug) return;
+    const config = await indexdbLoad(slug).catch(() => null);
+    if (config) {
+      loadConfigIntoBuilder(config);
+      updateLocalUrl(config.slug);
+      updateTestUrl(config.slug);
+      localStorage.setItem('study_builder_config', JSON.stringify(config));
+      localStorage.setItem('study_builder_last', slug);
+      console.log('💾 Switched to study:', slug);
+    }
+  }
+
+  function loadAppSettingsIntoBuilder(appSettings) {
+    if (!appSettings) return;
+    // Flatten
+    const flat = {};
+    for (const [group, values] of Object.entries(appSettings)) {
+      if (typeof values === 'object' && values !== null) {
+        for (const [key, val] of Object.entries(values)) {
+          flat[`${group}.${key}`] = val;
+        }
+      }
+    }
+    // Reverse lookup: path → elId
+    const reverseMap = {};
+    for (const [elId, path] of Object.entries(APP_SETTINGS_BUILDER_MAP)) {
+      reverseMap[path] = elId;
+    }
+    for (const [path, value] of Object.entries(flat)) {
+      const elId = reverseMap[path];
+      if (!elId) continue;
+      const el = document.getElementById(elId);
+      if (!el) continue;
+
+      if (TOGGLE_IDS.has(elId)) {
+        el.classList.toggle('on', !!value);
+      } else if (elId === 'as_showIdCorner') {
+        el.value = value ? 'true' : 'false';
+      } else {
+        el.value = String(value);
+      }
+    }
+  }
+
+  // ── Load study on page open (must be last — needs all definitions above) ──
+  (function loadOnInit() {
+    const config = window._pendingConfig;
+    delete window._pendingConfig;
+
+    if (config) {
+      console.log('%c[INIT] Loading from localStorage (synchronous):', 'color: #bc8cff; font-weight: bold;', config.slug);
+      loadConfigIntoBuilder(config);
+      updateLocalUrl(config.slug);
+      updateTestUrl(config.slug);
+      refreshStudyPicker();
+      return;
+    }
+
+    // Fallback: try IndexedDB (async)
+    const lastSlug = localStorage.getItem('study_builder_last');
+    if (!lastSlug) {
+      console.log('%c[INIT] No saved study — empty state', 'color: #bc8cff;');
+      refreshStudyPicker();
+      return;
+    }
+
+    console.log('%c[INIT] No localStorage config, falling back to IndexedDB:', 'color: #d29922;', lastSlug);
+    indexdbLoad(lastSlug).then(idbConfig => {
+      if (idbConfig) {
+        loadConfigIntoBuilder(idbConfig);
+        updateLocalUrl(idbConfig.slug || lastSlug);
+        updateTestUrl(idbConfig.slug || lastSlug);
+        localStorage.setItem('study_builder_config', JSON.stringify(idbConfig));
+        console.log('%c[INIT] ✅ Loaded from IndexedDB + migrated to localStorage', 'color: #bc8cff;');
+      }
+      refreshStudyPicker();
+    }).catch(e => {
+      console.warn('[INIT] IndexedDB fallback failed:', e);
+      refreshStudyPicker();
+    });
+  })();
+</script>
+</body>
+</html>
