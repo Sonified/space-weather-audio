@@ -397,8 +397,8 @@ async function initThreeScene() {
             antialias: false,
             alpha: false,
             preserveDrawingBuffer: true,
-            // Request higher compute limits for shared device with GPU FFT compute
-            // Stockham FFT needs two shared arrays for ping-pong: 2 × 4096 f32 = 32768 bytes
+            // Request compute limits for shared device with GPU FFT compute
+            // Default WebGPU limit is only 16KB — need at least 32KB for 2048-point FFT
             requiredLimits: {
                 maxComputeWorkgroupStorageSize: 32768,
                 maxComputeWorkgroupSizeX: 256,

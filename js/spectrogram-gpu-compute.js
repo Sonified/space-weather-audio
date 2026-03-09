@@ -15,12 +15,15 @@
 
 import { isStudyMode } from './master-modes.js';
 
-// ─── WGSL Compute Shader (inline) ───────────────────────────────────────────
+// ─── WGSL Compute Shader (generated per FFT size) ───────────────────────────
 // Stockham autosort FFT: ping-pong between two shared memory arrays.
 // 2D dispatch: workgroup_id.x = time slice within tile, workgroup_id.y = tile index.
-// 256 threads per workgroup. 2048-point FFT: 11 butterfly stages, 8 elements/thread.
+// 256 threads per workgroup. Array sizes scale with FFT size.
 
-const FFT_WGSL_SHADER = /* wgsl */ `
+function buildFFTShader(fftSize) {
+    // Each shared array holds fftSize complex values = fftSize * 2 floats
+    const sharedArraySize = fftSize * 2;
+    return /* wgsl */ `
 
 struct Params {
     fftSize:      u32,
@@ -40,9 +43,9 @@ struct Params {
 @group(0) @binding(4) var<storage, read> tileDescs: array<u32>;
 
 // Shared memory: two complex arrays for ping-pong Stockham FFT
-// 2048 complex values = 4096 f32 each = 32768 bytes total
-var<workgroup> sA: array<f32, 4096>;
-var<workgroup> sB: array<f32, 4096>;
+// ${fftSize} complex values = ${sharedArraySize} f32 each = ${sharedArraySize * 4 * 2} bytes total
+var<workgroup> sA: array<f32, ${sharedArraySize}>;
+var<workgroup> sB: array<f32, ${sharedArraySize}>;
 
 const WORKGROUP_SIZE: u32 = 256u;
 
@@ -154,6 +157,10 @@ fn fft_main(
     }
 }
 `;
+}
+
+// Default shader for init — rebuilt when FFT size changes
+let FFT_WGSL_SHADER = buildFFTShader(2048);
 
 // ─── WGSL Cascade Shader (render pass: r8unorm → r8unorm) ───────────────────
 // Fullscreen triangle vertex + fragment that downsamples two child textures
@@ -238,12 +245,12 @@ export class SpectrogramGPUCompute {
         if (this.initialized) return;
 
         if (externalDevice) {
-            // Check if shared device has sufficient compute limits for our FFT shader
-            const neededWorkgroupStorage = 32768;
-            if (externalDevice.limits.maxComputeWorkgroupStorageSize >= neededWorkgroupStorage) {
-                // Use shared device from WebGPU renderer (same GPUDevice for compute + render)
+            // Check if shared device has sufficient workgroup storage (need 32KB for 2048-point FFT)
+            const minNeeded = 32768; // 2 × 2048 × 2 × 4 bytes
+            if (externalDevice.limits.maxComputeWorkgroupStorageSize >= minNeeded) {
                 this.device = externalDevice;
                 this.ownsDevice = false;
+                this.maxWorkgroupStorage = externalDevice.limits.maxComputeWorkgroupStorageSize;
                 const limits = this.device.limits;
                 this.maxOutputBytes = Math.min(
                     limits.maxStorageBufferBindingSize,
@@ -251,8 +258,8 @@ export class SpectrogramGPUCompute {
                     256 * 1024 * 1024
                 );
             } else {
-                if (window.pm?.gpu) console.warn(`[GPU Compute] Shared device has insufficient workgroup storage ` +
-                    `(${externalDevice.limits.maxComputeWorkgroupStorageSize} < ${neededWorkgroupStorage}), creating own device`);
+                if (window.pm?.gpu) console.warn(`[GPU Compute] Shared device workgroup storage too small ` +
+                    `(${externalDevice.limits.maxComputeWorkgroupStorageSize} < ${minNeeded}), creating own device`);
                 externalDevice = null; // fall through to create own device
             }
         }
@@ -264,11 +271,9 @@ export class SpectrogramGPUCompute {
                 throw new Error('No WebGPU adapter available');
             }
 
-            // Stockham FFT needs two shared arrays for ping-pong: 2 × 4096 f32 = 32768 bytes
-            const neededWorkgroupStorage = 32768;
-            if (adapter.limits.maxComputeWorkgroupStorageSize < neededWorkgroupStorage) {
-                throw new Error(`GPU workgroup storage too small: ${adapter.limits.maxComputeWorkgroupStorageSize} < ${neededWorkgroupStorage} bytes needed`);
-            }
+            // Request the adapter's max workgroup storage — we'll validate per-FFT-size later
+            const adapterMaxWorkgroupStorage = adapter.limits.maxComputeWorkgroupStorageSize;
+            this.maxWorkgroupStorage = adapterMaxWorkgroupStorage;
 
             // Request adapter's max buffer limits (defaults are 128MB binding / 256MB buffer)
             const maxStorage = adapter.limits.maxStorageBufferBindingSize;
@@ -278,7 +283,7 @@ export class SpectrogramGPUCompute {
                 requiredLimits: {
                     maxComputeWorkgroupSizeX: 256,
                     maxComputeInvocationsPerWorkgroup: 256,
-                    maxComputeWorkgroupStorageSize: neededWorkgroupStorage,
+                    maxComputeWorkgroupStorageSize: adapterMaxWorkgroupStorage,
                     maxStorageBufferBindingSize: maxStorage,
                     maxBufferSize: maxBuffer,
                 }
@@ -375,20 +380,31 @@ export class SpectrogramGPUCompute {
         const t0 = performance.now();
 
         // All tiles must share the same FFT params (they do in pyramid)
-        const { fftSize, exactHop, dbFloor, dbRange, hannWindow } = tiles[0];
-        const freqBins = fftSize / 2;
-        const logStages = Math.log2(fftSize);
+        let { fftSize, exactHop, dbFloor, dbRange, hannWindow } = tiles[0];
+        let freqBins = fftSize / 2;
+        let logStages = Math.log2(fftSize);
         const numSlices = tiles[0].numTimeSlices;
 
-        // Upload Hann window once (or when FFT size changes)
+        // Rebuild pipeline + Hann window when FFT size changes
         if (!this.hannUploaded || this.lastFftSize !== fftSize) {
+            // Pipeline may clamp FFT size if GPU can't handle it — recompute derived values
+            fftSize = await this._rebuildPipelineForFFTSize(fftSize);
+            freqBins = fftSize / 2;
+            logStages = Math.log2(fftSize);
+
+            // Regenerate Hann window for the actual FFT size
+            const actualHannWindow = new Float32Array(fftSize);
+            for (let i = 0; i < fftSize; i++) {
+                actualHannWindow[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (fftSize - 1)));
+            }
+
             if (this.hannBuffer) this.hannBuffer.destroy();
             this.hannBuffer = this.device.createBuffer({
-                size: hannWindow.byteLength,
+                size: actualHannWindow.byteLength,
                 usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
                 label: 'hann-window'
             });
-            this.device.queue.writeBuffer(this.hannBuffer, 0, hannWindow);
+            this.device.queue.writeBuffer(this.hannBuffer, 0, actualHannWindow);
             this.hannUploaded = true;
             this.lastFftSize = fftSize;
         }
@@ -583,20 +599,29 @@ export class SpectrogramGPUCompute {
 
         const t0 = performance.now();
 
-        const { fftSize, exactHop, dbFloor, dbRange, hannWindow } = tiles[0];
-        const freqBins = fftSize / 2;
-        const logStages = Math.log2(fftSize);
+        let { fftSize, exactHop, dbFloor, dbRange, hannWindow } = tiles[0];
+        let freqBins = fftSize / 2;
+        let logStages = Math.log2(fftSize);
         const numSlices = tiles[0].numTimeSlices;
 
-        // Upload Hann window once (or when FFT size changes)
+        // Rebuild pipeline + Hann window when FFT size changes
         if (!this.hannUploaded || this.lastFftSize !== fftSize) {
+            fftSize = await this._rebuildPipelineForFFTSize(fftSize);
+            freqBins = fftSize / 2;
+            logStages = Math.log2(fftSize);
+
+            const actualHannWindow = new Float32Array(fftSize);
+            for (let i = 0; i < fftSize; i++) {
+                actualHannWindow[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (fftSize - 1)));
+            }
+
             if (this.hannBuffer) this.hannBuffer.destroy();
             this.hannBuffer = this.device.createBuffer({
-                size: hannWindow.byteLength,
+                size: actualHannWindow.byteLength,
                 usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
                 label: 'hann-window'
             });
-            this.device.queue.writeBuffer(this.hannBuffer, 0, hannWindow);
+            this.device.queue.writeBuffer(this.hannBuffer, 0, actualHannWindow);
             this.hannUploaded = true;
             this.lastFftSize = fftSize;
         }
@@ -786,6 +811,52 @@ export class SpectrogramGPUCompute {
     }
 
     // ─── Cascade Render Pipeline ────────────────────────────────────────────
+
+    /**
+     * Rebuild the FFT compute pipeline for a new FFT size.
+     * Regenerates the WGSL shader with correctly-sized shared memory arrays.
+     */
+    async _rebuildPipelineForFFTSize(fftSize) {
+        // Validate workgroup storage: 2 arrays × fftSize × 2 (complex) × 4 bytes
+        const neededBytes = 2 * fftSize * 2 * 4;
+        if (this.maxWorkgroupStorage && neededBytes > this.maxWorkgroupStorage) {
+            // Step down to the largest power-of-2 FFT size that fits
+            const maxFftSize = Math.floor(this.maxWorkgroupStorage / (2 * 2 * 4));
+            const fittingSize = Math.pow(2, Math.floor(Math.log2(maxFftSize)));
+            const originalSize = fftSize;
+            fftSize = Math.max(512, fittingSize); // floor at 512
+            console.warn(`[GPU Compute] FFT ${originalSize} needs ${neededBytes}B workgroup storage, GPU supports ${this.maxWorkgroupStorage}B. Using FFT ${fftSize}.`);
+        }
+
+        FFT_WGSL_SHADER = buildFFTShader(fftSize);
+
+        const shaderModule = this.device.createShaderModule({
+            code: FFT_WGSL_SHADER,
+            label: `fft-spectrogram-${fftSize}`
+        });
+
+        const compilationInfo = await shaderModule.getCompilationInfo();
+        for (const message of compilationInfo.messages) {
+            if (message.type === 'error') {
+                throw new Error(`WGSL compile error (fftSize=${fftSize}): ${message.message} (line ${message.lineNum})`);
+            }
+        }
+
+        this.pipeline = await this.device.createComputePipelineAsync({
+            label: `fft-pipeline-${fftSize}`,
+            layout: this.device.createPipelineLayout({
+                bindGroupLayouts: [this.bindGroupLayout]
+            }),
+            compute: {
+                module: shaderModule,
+                entryPoint: 'fft_main'
+            }
+        });
+
+        const actualBytes = 2 * fftSize * 2 * 4;
+        if (window.pm?.gpu) console.log(`[GPU Compute] Pipeline rebuilt for FFT size ${fftSize} (${actualBytes} bytes workgroup storage)`);
+        return fftSize;
+    }
 
     /**
      * Initialize the cascade render pipeline (called from initialize()).
