@@ -106,6 +106,55 @@ const DATASET_VARIABLES = {
 };
 
 /**
+ * Check if this is the default PSP dataset that's pre-cached on Cloudflare.
+ * Only this specific dataset/time range gets the Cloudflare fallback.
+ */
+function isDefaultPSPDataset(spacecraft, dataset, startTime, endTime) {
+    return spacecraft === 'PSP' &&
+        dataset === 'PSP_FLD_L2_MAG_RTN' &&
+        startTime.includes('2021-04-29T07:40') &&
+        endTime.includes('2021-04-29T08:20');
+}
+
+/**
+ * Try fetching pre-cached WAV files from Cloudflare R2 audio cache.
+ * Returns { blobs: [Blob, ...] } or null if not cached.
+ */
+async function fetchFromCloudflareAudioCache(spacecraft, dataset, startTime, endTime) {
+    const startBasic = toBasicISO8601(startTime);
+    const endBasic = toBasicISO8601(endTime);
+    // Use full Cloudflare URL when running from localhost
+    const origin = location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+        ? 'https://spaceweather.now.audio'
+        : '';
+    const baseUrl = `${origin}/api/audio-cache/${spacecraft}/${dataset}/${startBasic}/${endBasic}`;
+
+    // Check what components are available
+    const listResp = await fetch(baseUrl);
+    if (!listResp.ok) return null;
+
+    const listing = await listResp.json();
+    if (!listing.components || listing.components.length === 0) return null;
+
+    console.log(`☁️ Cloudflare cache hit: ${listing.components.length} WAV file(s)`);
+
+    // Download all component WAVs in parallel
+    const wavFiles = listing.components
+        .filter(c => c.name.endsWith('.wav'))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+    const blobs = await Promise.all(
+        wavFiles.map(async (wf) => {
+            const resp = await fetch(`${baseUrl}/${wf.name}`);
+            if (!resp.ok) throw new Error(`Failed to fetch ${wf.name}: HTTP ${resp.status}`);
+            return await resp.blob();
+        })
+    );
+
+    return { blobs };
+}
+
+/**
  * Fetch audio data from CDAWeb API
  * @param {string} spacecraft - Spacecraft name (e.g., 'PSP', 'Wind', 'MMS')
  * @param {string} dataset - Dataset ID
@@ -158,8 +207,40 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
         }
     }
     
-    console.log('🌐 Cache miss - fetching from CDAWeb API');
-    
+    // Try Cloudflare audio cache for the default PSP dataset before hitting CDAWeb
+    if (isDefaultPSPDataset(spacecraft, dataset, startTime, endTime)) {
+        console.log('🌐 Default PSP dataset — trying Cloudflare audio cache...');
+        try {
+            const cfResult = await fetchFromCloudflareAudioCache(spacecraft, dataset, startTime, endTime);
+            if (cfResult) {
+                console.log('☁️ Loaded from Cloudflare audio cache');
+                // Store in local IndexedDB too so future loads are instant
+                await storeAudioData({
+                    spacecraft, dataset, startTime, endTime,
+                    wavBlob: cfResult.blobs[0],
+                    allComponentBlobs: cfResult.blobs,
+                    metadata: {
+                        fileSize: cfResult.blobs[0].size,
+                        source: 'cloudflare-cache',
+                        allFileUrls: cfResult.blobs.map((_, i) => `cloudflare-cache:${i}`),
+                        allComponentsDownloaded: true
+                    }
+                });
+                return await decodeWAVBlob(cfResult.blobs[0], {
+                    spacecraft, dataset, startTime, endTime,
+                    metadata: {
+                        allFileUrls: cfResult.blobs.map((_, i) => `cloudflare-cache:${i}`),
+                        allComponentsDownloaded: true
+                    }
+                });
+            }
+        } catch (cfError) {
+            console.warn('☁️ Cloudflare audio cache unavailable:', cfError.message);
+        }
+    }
+
+    console.log('🌐 Fetching from CDAWeb API');
+
     // Convert to basic ISO 8601 format (required by CDASWS)
     const startTimeBasic = toBasicISO8601(startTime);
     const endTimeBasic = toBasicISO8601(endTime);

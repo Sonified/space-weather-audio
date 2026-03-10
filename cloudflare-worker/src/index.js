@@ -325,6 +325,56 @@ export default {
       }
 
       // =======================================================================
+      // Audio Cache Routes: /api/audio-cache/*
+      // Stores and serves pre-cached WAV files for default datasets
+      // R2 Structure: audio-cache/{spacecraft}/{dataset}/{startISO}/{endISO}/{component}.wav
+      // =======================================================================
+
+      // GET /api/audio-cache/:spacecraft/:dataset/:start/:end — List cached components
+      // GET /api/audio-cache/:spacecraft/:dataset/:start/:end/:component.wav — Serve WAV
+      // PUT /api/audio-cache/:spacecraft/:dataset/:start/:end/:component.wav — Upload WAV
+      const audioCacheMatch = path.match(/^\/api\/audio-cache\/([^/]+)\/([^/]+)\/([^/]+)\/([^/]+)\/?(.*)$/);
+      if (audioCacheMatch) {
+        const [, acSpacecraft, acDataset, acStart, acEnd, acRest] = audioCacheMatch;
+        const r2Prefix = `audio-cache/${acSpacecraft}/${acDataset}/${acStart}/${acEnd}`;
+
+        if (!acRest && request.method === 'GET') {
+          // List available components for this time range
+          const listed = await env.BUCKET.list({ prefix: r2Prefix + '/' });
+          const components = listed.objects.map(obj => {
+            const filename = obj.key.split('/').pop();
+            return { name: filename, size: obj.size };
+          });
+          return json({ spacecraft: acSpacecraft, dataset: acDataset, start: acStart, end: acEnd, components });
+        }
+
+        if (acRest && acRest.endsWith('.wav')) {
+          const r2Key = `${r2Prefix}/${acRest}`;
+
+          if (request.method === 'GET') {
+            const obj = await env.BUCKET.get(r2Key);
+            if (!obj) return json({ error: 'Not found', key: r2Key }, 404);
+            return new Response(obj.body, {
+              headers: {
+                'Content-Type': 'audio/wav',
+                'Cache-Control': 'public, max-age=31536000', // 1 year — data never changes
+                ...CORS_HEADERS,
+              },
+            });
+          }
+
+          if (request.method === 'PUT') {
+            const wavData = await request.arrayBuffer();
+            await env.BUCKET.put(r2Key, wavData, {
+              httpMetadata: { contentType: 'audio/wav' },
+            });
+            console.log(`Cached WAV: ${r2Key} (${wavData.byteLength} bytes)`);
+            return json({ ok: true, key: r2Key, size: wavData.byteLength });
+          }
+        }
+      }
+
+      // =======================================================================
       // EMIC Data Routes: /emic/data/*
       // Serves GOES magnetometer chunks from emic-data R2 bucket
       // =======================================================================
