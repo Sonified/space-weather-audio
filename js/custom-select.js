@@ -164,11 +164,20 @@ class CustomSelect {
         };
         document.addEventListener('click', this._outsideClick);
 
-        // Reposition menu on scroll/resize while open
+        // Close menu when its scroll container scrolls (trigger moves away)
+        // Reposition on window resize (viewport change, trigger stays put)
+        this._onAncestorScroll = (e) => {
+            if (!this.isOpen) return;
+            // Only close if the scroll happened in an ancestor of the trigger
+            // (not the menu itself scrolling its own options)
+            if (e.target !== this.menu && e.target.contains?.(this.wrapper)) {
+                this._close();
+            }
+        };
         this._reposition = () => {
             if (this.isOpen) this._positionMenu();
         };
-        window.addEventListener('scroll', this._reposition, true);
+        window.addEventListener('scroll', this._onAncestorScroll, true);
         window.addEventListener('resize', this._reposition);
 
         // Sync when native .value is set programmatically
@@ -394,7 +403,7 @@ class CustomSelect {
 
     destroy() {
         document.removeEventListener('click', this._outsideClick);
-        window.removeEventListener('scroll', this._reposition, true);
+        window.removeEventListener('scroll', this._onAncestorScroll, true);
         window.removeEventListener('resize', this._reposition);
         this.wrapper.parentNode.insertBefore(this.select, this.wrapper);
         this.wrapper.remove();

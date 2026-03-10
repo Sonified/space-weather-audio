@@ -3429,6 +3429,9 @@ input[type="range"]:disabled {
 .container {
     transition: margin-left 0.25s ease;
 }
+body.drawer-open {
+    overflow: hidden;
+}
 body.drawer-open .container {
     margin-left: 260px;
 }
