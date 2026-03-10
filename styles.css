@@ -4687,9 +4687,11 @@ select.csel-native {
 html[data-admin] .admin-only { display: flex; }
 html[data-admin] button.admin-only { display: inline-block; }
 
+/* EMIC study: Fetch Data panel is never shown on study pages (dev-only, use Solar Portal) */
+.emic-page #emicControlsPanel { display: none !important; }
+
 /* EMIC study: hide advanced-only elements before JS loads (prevents flash in production mode) */
 /* Scoped to .emic-page so Solar Portal is unaffected */
-html:not([data-advanced]) .emic-page #emicControlsPanel,
 html:not([data-advanced]) .emic-page #stretchGroup,
 html:not([data-advanced]) .emic-page #speedGroup,
 html:not([data-advanced]) .emic-page .panel-gear,

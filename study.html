@@ -224,7 +224,15 @@
                         <div id="oscilloscope-frost"></div>
                     </div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 6px; white-space: nowrap;"></div>
+                <div style="display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+                    <label id="advancedToggle" class="admin-only" style="align-items: center; gap: 5px; cursor: pointer; user-select: none; font-size: 14px; font-weight: 700; color: #e8e8ff; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap; margin-right: 8px;">
+                        <input type="checkbox" id="advancedMode" style="width: 16px; height: 16px; cursor: pointer; accent-color: #80d0ff;">
+                        Advanced
+                    </label>
+                    <button type="button" id="simulateFlowBtn" class="emic-btn admin-only" style="padding: 6px 14px; font-size: 14px; min-width: 130px;">Simulate Flow</button>
+                    <button type="button" id="showFlagsBtn" class="emic-btn admin-only" style="padding: 6px 14px; font-size: 14px;">Show Flags</button>
+                    <button type="button" id="dataViewerBtn" class="emic-btn admin-only" style="padding: 6px 14px; font-size: 14px;">Data Viewer</button>
+                </div>
                 <div class="viz-controls">
                     <div style="display: none;">
                         <input type="checkbox" id="playOnClick" checked>

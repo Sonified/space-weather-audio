@@ -347,9 +347,8 @@ export function initializeAdvancedControls() {
             pidLabel.textContent = (!isAdvanced && simulating) ? 'Participant ID' : 'User ID';
         }
 
-        // EMIC controls panel (Fetch Data, Component, De-trend): advanced only
-        const emicControlsPanel = document.getElementById('emicControlsPanel');
-        if (emicControlsPanel) emicControlsPanel.style.display = isAdvanced ? '' : 'none';
+        // EMIC controls panel (Fetch Data) is always hidden on study pages via CSS
+        // Component and De-trend are toggled independently above
 
         // Move #status between controls panel and playback bar based on mode
         const statusEl = document.getElementById('status');

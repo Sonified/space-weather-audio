@@ -6,6 +6,12 @@ export function escapeAttr(s) { return (s||'').replace(/"/g, '&quot;'); }
 
 export function escapeHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+const BODY_P_STYLE = 'line-height:1.6;margin:0;';
+export function styleBodyHtml(html, pStyle) {
+  const style = pStyle || BODY_P_STYLE;
+  return (html || '').replace(/<p>/g, `<p style="${style}">`);
+}
+
 // Convert ISO string or date-only string to datetime-local value (YYYY-MM-DDTHH:MM:SS)
 export function toLocalDatetime(val) {
   if (!val) return '';

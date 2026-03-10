@@ -401,6 +401,61 @@ export default {
       }
 
       // =======================================================================
+      // D1 Study Routes: /api/study/:studyId/*
+      // =======================================================================
+      const studyConfigMatch = path.match(/^\/api\/study\/([^/]+)\/config$/);
+      if (studyConfigMatch) {
+        const studyId = studyConfigMatch[1];
+
+        if (request.method === 'GET') {
+          const row = await env.DB.prepare('SELECT * FROM studies WHERE id = ?').bind(studyId).first();
+          if (!row) return json({ error: 'Study not found' }, 404);
+          const config = typeof row.config === 'string' ? JSON.parse(row.config) : row.config;
+          return json({ success: true, study: { id: row.id, name: row.name, config } });
+        }
+
+        if (request.method === 'PUT') {
+          const body = await request.json();
+          const configStr = typeof body.config === 'string' ? body.config : JSON.stringify(body.config);
+          const name = body.name || studyId;
+          await env.DB.prepare(
+            `INSERT INTO studies (id, name, config, updated_at) VALUES (?, ?, ?, datetime('now'))
+             ON CONFLICT(id) DO UPDATE SET name = excluded.name, config = excluded.config, updated_at = datetime('now')`
+          ).bind(studyId, name, configStr).run();
+          return json({ success: true });
+        }
+
+        return json({ error: 'Method not allowed' }, 405);
+      }
+
+      const studyParticipantsMatch = path.match(/^\/api\/study\/([^/]+)\/participants$/);
+      if (studyParticipantsMatch && request.method === 'POST') {
+        const studyId = studyParticipantsMatch[1];
+        const body = await request.json();
+        const pid = body.id;
+        if (!pid) return json({ error: 'Missing participant id' }, 400);
+        await env.DB.prepare(
+          `INSERT INTO participants (id, study_id) VALUES (?, ?)
+           ON CONFLICT(id) DO UPDATE SET study_id = excluded.study_id`
+        ).bind(pid, studyId).run();
+        return json({ success: true, participant_id: pid });
+      }
+
+      const studyResponsesMatch = path.match(/^\/api\/study\/([^/]+)\/responses$/);
+      if (studyResponsesMatch && request.method === 'POST') {
+        const studyId = studyResponsesMatch[1];
+        const body = await request.json();
+        const id = body.id || (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36));
+        const pid = body.participant_id;
+        if (!pid) return json({ error: 'Missing participant_id' }, 400);
+        const dataStr = typeof body.data === 'string' ? body.data : JSON.stringify(body.data || {});
+        await env.DB.prepare(
+          `INSERT INTO responses (id, participant_id, study_id, day, type, data) VALUES (?, ?, ?, ?, ?, ?)`
+        ).bind(id, pid, studyId, body.day || null, body.type || 'unknown', dataStr).run();
+        return json({ success: true, response_id: id });
+      }
+
+      // =======================================================================
       // Proxy everything else to GitHub Pages
       // =======================================================================
       const githubPagesUrl = 'https://sonified.github.io/space-weather-audio';
