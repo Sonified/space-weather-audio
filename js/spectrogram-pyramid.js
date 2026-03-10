@@ -435,6 +435,12 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
             continue;
         }
 
+        // Diagnostic: flag tiles rendered with incomplete data
+        const dataCompleteness = expectedTileLen > 0 ? tileSamples.length / expectedTileLen : 1;
+        if (dataCompleteness < 0.999 && window.pm?.gpu) {
+            console.warn(`⚠️ PARTIAL TILE ${tileIdx}: ${(dataCompleteness*100).toFixed(1)}% data (${tileSamples.length}/${expectedTileLen} samples), startSec=${tile.startSec}, endSec=${tile.endSec}`);
+        }
+
         const maxTimeSlices = TILE_COLS;
         // Float hop so columns span edge-to-edge across the nominal tile
         const nominalSamples = tileSamples.length - fftSize;
@@ -489,6 +495,16 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         const secPerResampledSample = tileSpanSec / meta.tileSamplesLength;
         tile.actualFirstColSec = tileOriginSec + halfFFT * secPerResampledSample;
         tile.actualLastColSec = tileOriginSec + ((meta.numTimeSlices - 1) * meta.exactHop + halfFFT) * secPerResampledSample;
+
+        // Diagnostic: sample one boundary in the middle
+        if (window.pm?.gpu && tileIdx === Math.floor(baseTiles.length / 2)) {
+            const prev = tileIdx > 0 ? baseTiles[tileIdx - 1] : null;
+            console.log(`🔍 TILE BOUNDARY (tiles ${tileIdx-1}/${tileIdx}, fft=${fftSize}, sr=${sampleRate})`);
+            if (prev) console.log(`  prev: endSec=${prev.endSec} actualLast=${prev.actualLastColSec?.toFixed(6)}`);
+            console.log(`  curr: startSec=${tile.startSec} actualFirst=${tile.actualFirstColSec.toFixed(6)}`);
+            if (prev?.actualLastColSec != null) console.log(`  GAP: ${(tile.actualFirstColSec - prev.actualLastColSec).toFixed(6)}s = ${((tile.actualFirstColSec - prev.actualLastColSec) * sampleRate).toFixed(3)} samples`);
+            console.log(`  startSample=${meta.startSample} endSample=${meta.endSample} len=${meta.tileSamplesLength} hop=${meta.exactHop.toFixed(4)}`);
+        }
     }
 
     function reportProgress(tileIdx) {

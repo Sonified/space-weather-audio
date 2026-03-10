@@ -690,8 +690,13 @@ async function initThreeScene() {
         tileMat.transparent = true;
 
         const tileOpacity = uniform(1.0);
+        const tileTexWidth = uniform(1024.0);  // texture width for half-texel UV inset
         const { texU: tTexU, texV: tTexV, effectiveY: tEffY } = buildFreqRemapNodes();
-        const tileMagUV = vec2(tTexU, tTexV);
+        // Inset U by half a texel so UV 0→1 maps to texel centers, not edges.
+        // Prevents linear filtering from smearing edge columns at tile boundaries.
+        const halfTexel = float(0.5).div(tileTexWidth);
+        const tTexUInset = halfTexel.add(tTexU.mul(float(1.0).sub(halfTexel.mul(float(2.0)))));
+        const tileMagUV = vec2(tTexUInset, tTexV);
 
         const tilePlaceholder = new THREE.DataTexture(
             new Uint8Array(1), 1, 1, THREE.RedFormat, THREE.UnsignedByteType
@@ -722,6 +727,7 @@ async function initThreeScene() {
                 magTex: tileMagTex,      // .value to swap magnitude texture
                 cmapTex: tileCmapTex,    // .value to swap colormap texture
                 opacity: tileOpacity,    // .value to set opacity
+                texWidth: tileTexWidth,  // .value to set texture width for half-texel inset
             }
         });
     }
@@ -1672,6 +1678,9 @@ function updateTileMeshPositions(visibleTiles) {
 
             // Set tile magnitude texture via TSL node swap
             tm.tsl.magTex.value = texture;
+            // Update texture width for half-texel UV inset
+            const texW = texture.image?.width ?? texture.source?.data?.width ?? 1024;
+            tm.tsl.texWidth.value = texW;
 
             // Box filter + crossfade deferred to Phase 3 (uniforms not present in TSL material)
 
@@ -1688,6 +1697,17 @@ function updateTileMeshPositions(visibleTiles) {
             tm.mesh.visible = true;
         } else {
             tm.mesh.visible = false;
+        }
+    }
+
+    // Diagnostic: log mesh positions to check abutment
+    if (window.pm?.gpu && !window._tileMeshDiagDone && visibleTiles.length >= 2) {
+        window._tileMeshDiagDone = true;
+        for (let i = 0; i < Math.min(visibleTiles.length, 4); i++) {
+            const vt = visibleTiles[i];
+            const t = vt.tile;
+            const tex = getTileTexture(t, vt.key);
+            console.log(`🔍 MESH ${i}: startSec=${t.startSec} endSec=${t.endSec} actualFirst=${t.actualFirstColSec?.toFixed(4)} actualLast=${t.actualLastColSec?.toFixed(4)} texW=${tex?.image?.width ?? tex?.source?.data?.width ?? '?'}x${tex?.image?.height ?? tex?.source?.data?.height ?? '?'} level=${t.level}`);
         }
     }
 
@@ -2179,7 +2199,12 @@ function tryUseTiles(viewStartSec, viewEndSec) {
         if (mesh) mesh.visible = false;
     }
 
-    activeTexture = visibleTiles.length > 0 ? 'tiles' : 'full';
+    const newActiveTexture = visibleTiles.length > 0 ? 'tiles' : 'full';
+    // Diagnostic: log display mode transitions
+    if (window.pm?.gpu && newActiveTexture !== activeTexture) {
+        console.log(`🖼️ Display: ${activeTexture} → ${newActiveTexture} | mesh.visible=${mesh?.visible} | pyramidOnly=${pyramidOnlyMode} | tiles=${visibleTiles.length} level=${usedLevel}`);
+    }
+    activeTexture = newActiveTexture;
     return visibleTiles.length > 0;
 }
 
@@ -2209,6 +2234,9 @@ export function resetSpectrogramState() {
 
     // Clear scroll-zoom hi-res state
     scrollZoomHiRes = { startSeconds: null, endSeconds: null, ready: false };
+
+    // Flush stale GPU texture swap queue — old entries reference destroyed textures
+    pendingGPUTextureSwaps = [];
 
     // Don't dispose full texture during transitions — we need it
     // Dispose region texture
