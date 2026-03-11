@@ -428,17 +428,25 @@ export default {
         return json({ error: 'Method not allowed' }, 405);
       }
 
+      // Helper: pick data table based on participant ID prefix
+      function dataTable(pid) {
+        if (pid.startsWith('Preview_')) return { table: 'data_preview', mode: 'preview' };
+        if (pid.startsWith('TEST_'))    return { table: 'data_test',    mode: 'test' };
+        return                                 { table: 'data_study',   mode: 'live' };
+      }
+
       const studyParticipantsMatch = path.match(/^\/api\/study\/([^/]+)\/participants$/);
       if (studyParticipantsMatch && request.method === 'POST') {
         const studyId = studyParticipantsMatch[1];
         const body = await request.json();
         const pid = body.id;
         if (!pid) return json({ error: 'Missing participant id' }, 400);
+        const { table, mode } = dataTable(pid);
+        const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36);
         await env.DB.prepare(
-          `INSERT INTO participants (id, study_id) VALUES (?, ?)
-           ON CONFLICT(id) DO UPDATE SET study_id = excluded.study_id`
-        ).bind(pid, studyId).run();
-        return json({ success: true, participant_id: pid });
+          `INSERT INTO ${table} (id, participant_id, study_id, type, data) VALUES (?, ?, ?, 'registration', '{}')`
+        ).bind(id, pid, studyId).run();
+        return json({ success: true, participant_id: pid, mode });
       }
 
       const studyResponsesMatch = path.match(/^\/api\/study\/([^/]+)\/responses$/);
@@ -449,10 +457,11 @@ export default {
         const pid = body.participant_id;
         if (!pid) return json({ error: 'Missing participant_id' }, 400);
         const dataStr = typeof body.data === 'string' ? body.data : JSON.stringify(body.data || {});
+        const { table, mode } = dataTable(pid);
         await env.DB.prepare(
-          `INSERT INTO responses (id, participant_id, study_id, day, type, data) VALUES (?, ?, ?, ?, ?, ?)`
-        ).bind(id, pid, studyId, body.day || null, body.type || 'unknown', dataStr).run();
-        return json({ success: true, response_id: id });
+          `INSERT INTO ${table} (id, participant_id, study_id, type, data) VALUES (?, ?, ?, ?, ?)`
+        ).bind(id, pid, studyId, body.type || 'unknown', dataStr).run();
+        return json({ success: true, response_id: id, mode });
       }
 
       // =======================================================================

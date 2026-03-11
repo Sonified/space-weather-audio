@@ -115,7 +115,8 @@ async function flushQueue() {
                 body: JSON.stringify(item.body),
             });
             if (resp.ok) {
-                log('✅', `flushed queued ${item.body?.type || 'item'}`);
+                const r = await resp.json().catch(() => ({}));
+                log('✅', `${(r.mode || 'LIVE').toUpperCase()} — flushed queued ${item.body?.type || 'item'}`);
             } else {
                 remaining.push(item);
             }
@@ -159,12 +160,13 @@ async function d1Post(path, body, queueOnFail = true) {
  * Register participant in D1. Call once at registration.
  */
 export function initParticipant(participantId, studyId) {
+
     const sid = studyId || getStudyId();
     const pid = participantId || getParticipantId();
     if (!pid) { log('⚠️', 'no participantId — skipping init'); return; }
 
     d1Post(`/api/study/${sid}/participants`, { id: pid })
-        .then(r => r && log('✅', `registered participant ${pid}`));
+        .then(r => r && log('✅', `${(r.mode || 'LIVE').toUpperCase()} — registered participant ${pid}`));
 }
 
 /**
@@ -174,6 +176,7 @@ export function initParticipant(participantId, studyId) {
  * @param {object} [options] - { day, participantId }
  */
 export function saveResponse(type, data, options = {}) {
+
     const pid = options.participantId || getParticipantId();
     const sid = getStudyId();
     if (!pid) { log('⚠️', 'no participantId — skipping save'); return; }
@@ -187,7 +190,7 @@ export function saveResponse(type, data, options = {}) {
     if (options.day != null) body.day = options.day;
 
     d1Post(`/api/study/${sid}/responses`, body)
-        .then(r => r && log('✅', `saved ${type}`));
+        .then(r => r && log('✅', `${(r.mode || 'LIVE').toUpperCase()} — saved ${type}`));
 }
 
 /**
