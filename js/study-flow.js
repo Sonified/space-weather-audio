@@ -948,8 +948,14 @@ function openStudyModalIfNeeded() {
         console.log('📋 openStudyModal: already open, skipping');
         return;
     }
-    console.log('📋 openStudyModal: calling modalManager.openModal("studyModal")');
-    modalManager.openModal('studyModal', { keepOverlay: true });
+    // Force modal visible directly — bypass modalManager transition race
+    if (studyModalEl) {
+        studyModalEl.style.display = 'flex';
+        studyModalEl.classList.add('modal-visible');
+    }
+    modalManager.currentModal = 'studyModal';
+    modalManager.disableBackgroundScroll();
+    console.log('📋 openStudyModal: forced visible, set currentModal=studyModal');
 }
 
 /**
