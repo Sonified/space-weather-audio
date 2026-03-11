@@ -26,6 +26,8 @@
 
         // Force EMIC_STUDY mode so main.js initializes the right infrastructure
         window.__EMIC_STUDY_MODE = true;
+        // study-flow.js drives the entire workflow — skip initializeEmicStudyMode()
+        window.__STUDY_FLOW_MANAGED = true;
         window.__DEFAULT_TILE_CHUNK = '3600';
 
         // Placeholder config — study-flow.js will populate from D1

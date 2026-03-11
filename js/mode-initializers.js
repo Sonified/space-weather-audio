@@ -180,7 +180,10 @@ export async function initializeApp() {
             break;
 
         case AppMode.EMIC_STUDY:
-            await initializeEmicStudyMode();
+            // study.html uses study-flow.js — skip the legacy emic initializer
+            if (!window.__STUDY_FLOW_MANAGED) {
+                await initializeEmicStudyMode();
+            }
             break;
 
         default:
