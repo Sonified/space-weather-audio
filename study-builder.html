@@ -1835,7 +1835,7 @@
   function buildStepActions(type) {
     // Modal steps get inline preview + page preview; analysis gets page preview only
     const previewBtns = (type === 'question' || type === 'info')
-      ? `<button class="step-action-btn preview-btn" title="Preview window" onclick="event.stopPropagation(); openPreviewWindow(this)">Preview</button>
+      ? `<button class="step-action-btn preview-btn" title="Preview window" onclick="event.stopPropagation(); openPreviewWindow(this)">👁</button>
          <button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>`
       : (type === 'modal' || type === 'registration')
       ? `<button class="step-action-btn preview-btn" title="Toggle inline preview" onclick="event.stopPropagation(); toggleInlinePreview(this)">👁</button>
@@ -1845,8 +1845,9 @@
       : '';
     const moveDel = type === 'registration' ? '' : `
       <button class="step-action-btn delete" title="Delete step" onclick="event.stopPropagation(); confirmDeleteStep(this, event)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>`;
+    const copyBtn = `<button class="step-action-btn" title="Copy step info" onclick="event.stopPropagation(); copyStepInfo(this)">📋</button>`;
     return `<div class="step-actions">
-      ${previewBtns}${moveDel}
+      ${copyBtn}${previewBtns}${moveDel}
     </div>`;
   }
 
@@ -3572,6 +3573,23 @@
     card.remove();
     renumberSteps();
     updatePreview();
+  }
+
+  function copyStepInfo(btn) {
+    const card = btn.closest('.step-card');
+    if (!card) return;
+    const cards = Array.from(document.querySelectorAll('.step-card'));
+    const idx = cards.indexOf(card);
+    const config = collectStudyConfig();
+    const step = config.steps?.[idx];
+    if (!step) return;
+    const header = `Step ${idx + 1}: ${step.type} — "${step.title || step.regTitle || ''}"`;
+    const text = header + '\n' + JSON.stringify(step, null, 2);
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = '✓';
+      setTimeout(() => { btn.textContent = orig; }, 1500);
+    });
   }
 
   function confirmDeleteStep(btn, evt) {
