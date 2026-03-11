@@ -3815,11 +3815,13 @@
     const w = card.querySelector('.modal-width-input')?.value?.trim();
     const h = card.querySelector('.modal-height-input')?.value?.trim();
     const modalTitle = card.querySelector('.modal-title-input')?.value?.trim() || '';
+    const required = card.querySelector('.toggle-required')?.classList.contains('on') ?? true;
     const question = {
       title: modalTitle || undefined,
       text: title, subtitle,
       type: isRadio ? 'radio' : 'freetext',
       questionType: isRadio ? 'radio' : 'freetext',
+      required,
       options, labelMode, placeholder, inputName: qid, id: qid
     };
     const dims = {};
