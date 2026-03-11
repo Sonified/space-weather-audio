@@ -1057,7 +1057,7 @@ async function runRegistration(step) {
     console.log(`📋 [REG] showing overlay: ${overlay ? 'found' : 'MISSING'}`);
     if (overlay) { overlay.style.display = 'flex'; overlay.style.opacity = '1'; }
 
-    if (step.idMethod === 'auto') {
+    if (step.idMethod === 'auto' || step.idMethod === 'auto_generate') {
         // Auto-generate ID
         const pid = generateParticipantId();
         storeParticipantId(pid);
