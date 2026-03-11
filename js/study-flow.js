@@ -789,21 +789,37 @@ async function init() {
 
     // Skip normal progress restore if we jumped, or are in preview/test mode
     if (jumpToStep === null && !isPreview && !isTestMode) {
-    // Restore progress or start fresh
+    // Restore progress: local first, then reconcile with D1
     const savedSlug = localStorage.getItem(STUDY_SLUG_KEY);
-    const savedStep = parseInt(localStorage.getItem(PROGRESS_KEY) || '0', 10);
+    const localStep = parseInt(localStorage.getItem(PROGRESS_KEY) || '0', 10);
+    let bestStep = (savedSlug === studySlug && localStep > 0 && localStep < studyConfig.steps.length)
+        ? localStep : 0;
 
-    if (savedSlug === studySlug && savedStep > 0 && savedStep < studyConfig.steps.length) {
-        currentStepIndex = savedStep;
+    // Try to fetch server-side progress (non-blocking — if it fails, use local)
+    try {
+        const { fetchProgress } = await import('./d1-sync.js');
+        const progress = await fetchProgress();
+        if (progress && progress.current_step > bestStep && progress.current_step < studyConfig.steps.length) {
+            bestStep = progress.current_step;
+            console.log(`📡 D1 progress ahead of local: step ${bestStep}`);
+        }
+    } catch (e) {
+        console.warn('📡 D1 progress fetch failed, using local:', e.message);
+    }
+
+    currentStepIndex = bestStep;
+    localStorage.setItem(STUDY_SLUG_KEY, studySlug);
+    if (bestStep > 0) {
         console.log(`📋 Resuming study at step ${currentStepIndex}`);
-    } else {
-        currentStepIndex = 0;
-        localStorage.setItem(STUDY_SLUG_KEY, studySlug);
+        localStorage.setItem(PROGRESS_KEY, String(currentStepIndex));
     }
     } // end jumpToStep === null / !isPreview
 
     // Init debug flags panel
     initStudyFlagsPanel();
+
+    // Init admin step navigation
+    initStepNav();
 
     // Start the flow
     flowActive = true;
@@ -977,6 +993,8 @@ function teardownStudyModal() {
 function saveProgress() {
     if (window.__PREVIEW_MODE) return; // Don't persist progress in preview mode
     localStorage.setItem(PROGRESS_KEY, String(currentStepIndex));
+    // Fire-and-forget sync to D1
+    import('./d1-sync.js').then(({ syncStep }) => syncStep(currentStepIndex));
 }
 
 function advanceStep() {
@@ -1004,8 +1022,46 @@ function advanceStep() {
     runCurrentStep();
 }
 
+// ── Admin Step Navigation ───────────────────────────────────────────────────
+
+function initStepNav() {
+    const group = document.getElementById('stepNavGroup');
+    if (!group) return;
+
+    // Show only in admin/test/preview mode
+    const isAdmin = document.documentElement.hasAttribute('data-admin')
+        || window.__PREVIEW_MODE || window.__TEST_MODE;
+    if (!isAdmin) return;
+
+    group.style.display = 'flex';
+
+    document.getElementById('stepBackBtn')?.addEventListener('click', () => {
+        if (currentStepIndex > 0) goToStep(currentStepIndex - 1);
+    });
+    document.getElementById('stepForwardBtn')?.addEventListener('click', () => {
+        if (studyConfig && currentStepIndex < studyConfig.steps.length - 1) goToStep(currentStepIndex + 1);
+    });
+}
+
+function updateStepIndicator() {
+    const el = document.getElementById('stepIndicator');
+    if (!el || !studyConfig) return;
+    const step = studyConfig.steps[currentStepIndex];
+    const label = step?.title || step?.type || '';
+    el.textContent = `Step ${currentStepIndex + 1}/${studyConfig.steps.length}: ${label}`;
+}
+
+function goToStep(index) {
+    if (!studyConfig || index < 0 || index >= studyConfig.steps.length) return;
+    teardownStudyModal();
+    currentStepIndex = index;
+    saveProgress();
+    runCurrentStep();
+}
+
 async function runCurrentStep() {
     if (!flowActive || currentStepIndex >= studyConfig.steps.length) return;
+    updateStepIndicator();
 
     const step = studyConfig.steps[currentStepIndex];
     console.log(`📋 Step ${currentStepIndex}: ${step.type}${step.contentType ? ' (' + step.contentType + ')' : ''}`);

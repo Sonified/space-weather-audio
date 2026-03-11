@@ -131,27 +131,36 @@ async function flushQueue() {
 
 // ── Core fetch wrapper ───────────────────────────────────────────────────────
 
-async function d1Post(path, body, queueOnFail = true) {
+async function d1Fetch(method, path, body = null, queueOnFail = true) {
     const url = `${getApiBase()}${path}`;
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
     try {
-        const resp = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
+        const resp = await fetch(url, opts);
         if (resp.ok) {
-            // Try flushing any pending items
             flushQueue().catch(() => {});
             return await resp.json();
         }
         log('❌', `HTTP ${resp.status} on ${path}`);
-        if (queueOnFail) enqueue({ url, body });
+        if (queueOnFail && body) enqueue({ url, method, body });
         return null;
     } catch (e) {
         log('❌', `network error: ${e.message}`);
-        if (queueOnFail) enqueue({ url, body });
+        if (queueOnFail && body) enqueue({ url, method, body });
         return null;
     }
+}
+
+function d1Post(path, body, queueOnFail = true) {
+    return d1Fetch('POST', path, body, queueOnFail);
+}
+
+function d1Put(path, body, queueOnFail = true) {
+    return d1Fetch('PUT', path, body, queueOnFail);
+}
+
+function d1Get(path) {
+    return d1Fetch('GET', path, null, false);
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -234,4 +243,54 @@ export function saveSurveyAnswer(questionId, answer, surveyType) {
  */
 export function markComplete() {
     saveResponse('milestone', { event: 'completed', completedAt: new Date().toISOString() });
+}
+
+// ── Progress & Step Sync ────────────────────────────────────────────────────
+
+/**
+ * Fire-and-forget: update current_step on server.
+ * Call when a step is completed (not on entry).
+ * @param {number} step - The step index just completed
+ */
+export function syncStep(step) {
+    const pid = getParticipantId();
+    const sid = getStudyId();
+    if (!pid) { log('⚠️', 'no participantId — skipping step sync'); return; }
+
+    d1Put(`/api/study/${sid}/participants/${encodeURIComponent(pid)}/step`, { step })
+        .then(r => r && log('✅', `synced step ${step}`));
+}
+
+/**
+ * Fetch participant progress from D1.
+ * Returns { current_step, responses, flags, completed_at } or null.
+ */
+export async function fetchProgress(participantId, studyId) {
+    const pid = participantId || getParticipantId();
+    const sid = studyId || getStudyId();
+    if (!pid) { log('⚠️', 'no participantId — skipping progress fetch'); return null; }
+
+    const data = await d1Get(`/api/study/${sid}/participants/${encodeURIComponent(pid)}/progress`);
+    if (data?.success) {
+        log('✅', `fetched progress: step ${data.current_step}`);
+        return data;
+    }
+    return null;
+}
+
+/**
+ * Fetch all features for a participant from D1.
+ * Returns array of feature objects or empty array.
+ */
+export async function fetchFeatures(participantId, studyId) {
+    const pid = participantId || getParticipantId();
+    const sid = studyId || getStudyId();
+    if (!pid) { log('⚠️', 'no participantId — skipping features fetch'); return []; }
+
+    const data = await d1Get(`/api/study/${sid}/participants/${encodeURIComponent(pid)}/features`);
+    if (data?.success) {
+        log('✅', `fetched ${data.features.length} features`);
+        return data.features;
+    }
+    return [];
 }
