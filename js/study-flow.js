@@ -138,17 +138,14 @@ function buildFlagsUI(panel) {
 
     const content = document.getElementById('emicFlagsContent') || panel;
 
-    // Style the panel
-    panel.style.cssText = 'position:fixed;bottom:10px;right:10px;background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:12px 16px;z-index:10000;max-width:360px;font-size:12px;color:#ccc;box-shadow:0 4px 20px rgba(0,0,0,0.4);max-height:60vh;overflow-y:auto;';
-
     const states = getStepFlagStates();
     const stepIcons = { registration: '👤', modal: '📋', analysis: '🔬', questions: '❓' };
 
     let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <strong style="color:#fff;font-size:13px;">Study Flags — ${studySlug}</strong>
         <div style="display:flex;gap:6px;">
+            <button id="sfSelectAll" style="font-size:11px;padding:2px 8px;background:#333;border:1px solid #555;color:#aaa;border-radius:4px;cursor:pointer;">Select All</button>
             <button id="sfDeselectAll" style="font-size:11px;padding:2px 8px;background:#333;border:1px solid #555;color:#aaa;border-radius:4px;cursor:pointer;">Deselect All</button>
-            <button id="sfClosePanel" style="font-size:14px;padding:0 6px;background:none;border:none;color:#666;cursor:pointer;">×</button>
         </div>
     </div>`;
 
@@ -180,6 +177,15 @@ function buildFlagsUI(panel) {
         });
     });
 
+    // Wire select all
+    const selectBtn = content.querySelector('#sfSelectAll');
+    if (selectBtn) {
+        selectBtn.addEventListener('click', () => {
+            for (let i = 0; i < getStepFlagStates().length; i++) setStepFlag(i);
+            syncFlagsUI();
+        });
+    }
+
     // Wire deselect all
     const deselectBtn = content.querySelector('#sfDeselectAll');
     if (deselectBtn) {
@@ -189,8 +195,8 @@ function buildFlagsUI(panel) {
         });
     }
 
-    // Wire close
-    const closeBtn = content.querySelector('#sfClosePanel');
+    // Wire close via the drag-handle close button (from HTML)
+    const closeBtn = document.getElementById('emicFlagsClose');
     if (closeBtn) {
         closeBtn.addEventListener('click', () => {
             panel.style.display = 'none';
@@ -198,6 +204,30 @@ function buildFlagsUI(panel) {
             if (btn) btn.textContent = 'Show Flags';
             window.removeEventListener('study-flag-change', syncFlagsUI);
             localStorage.setItem('study_flags_panel_visible', 'false');
+        });
+    }
+
+    // Wire drag handle
+    const dragHandle = document.getElementById('emicFlagsDragHandle');
+    if (dragHandle) {
+        let dragging = false, startX, startY, startLeft, startTop;
+        dragHandle.addEventListener('pointerdown', (e) => {
+            dragging = true;
+            startX = e.clientX; startY = e.clientY;
+            const rect = panel.getBoundingClientRect();
+            startLeft = rect.left; startTop = rect.top;
+            dragHandle.style.cursor = 'grabbing';
+            dragHandle.setPointerCapture(e.pointerId);
+        });
+        dragHandle.addEventListener('pointermove', (e) => {
+            if (!dragging) return;
+            panel.style.left = (startLeft + e.clientX - startX) + 'px';
+            panel.style.top = (startTop + e.clientY - startY) + 'px';
+            panel.style.right = 'auto';
+        });
+        dragHandle.addEventListener('pointerup', () => {
+            dragging = false;
+            dragHandle.style.cursor = 'grab';
         });
     }
 }
@@ -208,8 +238,6 @@ function syncFlagsUI() {
     for (const s of states) {
         const cb = document.querySelector(`input[data-flag-index="${s.stepIndex}"]`);
         if (cb) cb.checked = s.done;
-        const label = document.querySelector(`label[data-step-flag="${s.stepIndex}"]`);
-        if (label) label.style.opacity = s.done ? '0.5' : '1';
         if (s.done) doneCount++;
     }
     const progress = document.getElementById('sfProgress');
@@ -628,6 +656,30 @@ async function init() {
     const isPreview = mode === 'preview' || urlParams.get('preview') === 'true';
     const isTestMode = mode === 'test' || urlParams.get('test') === 'true';
 
+    // State dump for diagnostics
+    console.log('📋 [STATE] mode param:', mode, '| isPreview:', isPreview, '| isTestMode:', isTestMode, '| jumpToStep:', jumpToStep);
+    console.log('📋 [STATE] localStorage:', {
+        participantId: localStorage.getItem('participantId'),
+        progress: localStorage.getItem(PROGRESS_KEY),
+        studySlug: localStorage.getItem(STUDY_SLUG_KEY),
+        advancedMode: localStorage.getItem('emic_advanced_mode'),
+        adminUnlocked: localStorage.getItem('admin_unlocked'),
+        flagsVisible: localStorage.getItem('study_flags_panel_visible'),
+    });
+    console.log('📋 [STATE] window flags:', {
+        __PREVIEW_MODE: window.__PREVIEW_MODE,
+        __TEST_MODE: window.__TEST_MODE,
+        __EMIC_STUDY_MODE: window.__EMIC_STUDY_MODE,
+        __STUDY_SLUG: window.__STUDY_SLUG,
+    });
+    console.log('📋 [STATE] DOM:', {
+        permanentOverlay: !!document.getElementById('permanentOverlay'),
+        studyModal: !!document.getElementById('studyModal'),
+        dataAdvanced: document.documentElement.hasAttribute('data-advanced'),
+        dataAdmin: document.documentElement.hasAttribute('data-admin'),
+        modalManagerCurrent: modalManager.currentModal,
+    });
+
     // ── Test Mode ────────────────────────────────────────────
     // Like live mode (data IS saved), but participant ID is prefixed TEST_ so it can be filtered out later.
     if (isTestMode && !isPreview) {
@@ -891,7 +943,12 @@ function setStudyModalContent(html) {
 function openStudyModalIfNeeded() {
     const overlay = document.getElementById('permanentOverlay');
     if (overlay) { overlay.style.display = 'flex'; overlay.style.opacity = '1'; overlay.style.transition = ''; }
-    if (modalManager.currentModal === 'studyModal') return;
+    console.log(`📋 openStudyModal: overlay=${overlay ? 'found' : 'MISSING'}, currentModal=${modalManager.currentModal}, studyModalEl=${studyModalEl ? 'exists' : 'MISSING'}, studyModalEl.id=${studyModalEl?.id}`);
+    if (modalManager.currentModal === 'studyModal') {
+        console.log('📋 openStudyModal: already open, skipping');
+        return;
+    }
+    console.log('📋 openStudyModal: calling modalManager.openModal("studyModal")');
     modalManager.openModal('studyModal', { keepOverlay: true });
 }
 
@@ -987,6 +1044,7 @@ async function runCurrentStep() {
 async function runRegistration(step) {
     // Check if already registered — skip without showing overlay
     const existingId = getParticipantId();
+    console.log(`📋 [REG] existingId=${existingId}, idMethod=${step.idMethod}, step=`, step);
     if (existingId) {
         console.log(`📋 Already registered as ${existingId}, skipping registration`);
         updateParticipantDisplay(existingId);
@@ -996,6 +1054,7 @@ async function runRegistration(step) {
 
     // Show overlay only when we actually need the registration modal
     const overlay = document.getElementById('permanentOverlay');
+    console.log(`📋 [REG] showing overlay: ${overlay ? 'found' : 'MISSING'}`);
     if (overlay) { overlay.style.display = 'flex'; overlay.style.opacity = '1'; }
 
     if (step.idMethod === 'auto') {

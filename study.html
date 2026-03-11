@@ -70,9 +70,7 @@
                     document.documentElement.setAttribute('data-advanced', '');
                 }
             }
-            var h = window.location.hostname;
-            var isLocal = h === 'localhost' || h === '127.0.0.1' || h === '' || window.location.protocol === 'file:';
-            if (isLocal || localStorage.getItem('admin_unlocked') === 'true') {
+            if (isLocalEnv) {
                 document.documentElement.setAttribute('data-admin', '');
             }
         })();
@@ -338,8 +336,18 @@
 
     <!-- Hidden elements that existing JS may reference -->
     <div id="tutorialHelpBtn" style="display: none;"></div>
-    <div id="emicFlagsPanel" style="display: none;"></div>
-    <div id="emicFlagsContent" style="display: none;"></div>
+
+    <!-- Study Flags Panel (floating, always on top — even above overlay) -->
+    <div id="emicFlagsPanel" style="display: none; position: fixed; top: 60px; right: 20px; z-index: 10000; background: rgba(20, 20, 30, 0.95); border: 2px solid rgba(255, 255, 255, 0.2); border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); backdrop-filter: blur(8px); overflow: hidden; min-width: 320px;">
+        <div id="emicFlagsDragHandle" style="padding: 6px 12px; background: rgba(255,255,255,0.08); border-bottom: 1px solid rgba(255,255,255,0.1); cursor: grab; display: flex; align-items: center; justify-content: space-between; user-select: none;">
+            <span style="font-size: 12px; font-weight: 700; color: #aaa; letter-spacing: 0.5px;">⚑ STUDY FLAGS</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 10px; color: #555;">drag to move</span>
+                <button id="emicFlagsClose" style="font-size: 16px; line-height: 1; padding: 0 4px; border: none; background: transparent; color: #888; cursor: pointer;" title="Close">✕</button>
+            </div>
+        </div>
+        <div id="emicFlagsContent" style="padding: 10px 15px; font-family: monospace; font-size: 13px; max-height: 60vh; overflow-y: auto;"></div>
+    </div>
 
     <!-- CORE SYSTEM -->
     <script type="module">
