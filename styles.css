@@ -1,3 +1,5 @@
+@import url('css/modal-shared.css');
+
 /* Colormap-based accent colors (updated via JS when colormap changes).
    Defaults match 'inferno' colormap — the app default. */
 :root {
@@ -1496,104 +1498,8 @@ input[type="checkbox"] {
     opacity: 1;
 }
 
-.modal-content {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(245, 245, 245, 0.98) 100%);
-    border-radius: 12px;
-    padding: 24px;
-    max-width: 800px;
-    min-width: 400px;
-    width: 90%;
-    max-height: 75vh;
-    overflow-y: auto;
-    box-shadow: 
-        0 20px 60px rgba(0, 0, 0, 0.5),
-        0 10px 30px rgba(0, 0, 0, 0.4),
-        0 5px 15px rgba(0, 0, 0, 0.3);
-    border: 2px solid rgba(200, 200, 200, 0.5);
-    position: relative;
-}
-
-@media (max-width: 500px) {
-    .modal-content {
-        min-width: calc(100vw - 40px);
-        padding: 16px;
-    }
-}
-
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-    padding-bottom: 10px;
-    border-bottom: 2px solid rgba(200, 100, 100, 0.3);
-}
-
-.modal-title {
-    font-size: 20px;
-    font-weight: 700;
-    color: #550000;
-    text-shadow: 1px 1px 3px rgba(255, 200, 200, 0.5);
-}
-
-.modal-close {
-    background: linear-gradient(135deg, #cc3333 0%, #991111 100%);
-    color: white;
-    border: none;
-    width: 36px;
-    height: 36px;
-    min-width: 36px;
-    min-height: 36px;
-    border-radius: 50%;
-    font-size: 24px;
-    line-height: 1;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    padding: 0;
-}
-
-.modal-close:hover {
-    transform: scale(1.1);
-    box-shadow: 0 3px 8px rgba(200, 50, 50, 0.5);
-    background: linear-gradient(135deg, #dd4444 0%, #aa2222 100%);
-}
-
-.modal-body {
-    color: #333;
-}
-
-.modal-form-group {
-    margin-top: 16px;
-    margin-bottom: 12px;
-}
-
-.modal-form-group label {
-    display: block;
-    margin-bottom: 5px;
-    font-weight: 600;
-    color: #550000;
-}
-
-.modal-form-group input[type="text"],
-.modal-form-group input[type="number"] {
-    width: 100%;
-    padding: 10px 14px;
-    border: 2px solid rgba(200, 100, 100, 0.3);
-    border-radius: 6px;
-    font-size: 16px;
-    background: white;
-    box-sizing: border-box;
-}
-
-.modal-form-group input:focus {
-    outline: none;
-    border-color: #0056b3;
-    box-shadow: 0 0 0 3px rgba(0, 86, 179, 0.1);
-}
+/* Base modal styles (.modal-content, .modal-header, .modal-title, .modal-close,
+   .modal-body, .modal-form-group, .modal-submit, .radio-choice) are in css/modal-shared.css */
 
 .mood-scale-container {
     border-radius: 0;
@@ -1704,39 +1610,6 @@ input[type="checkbox"] {
     display: flex;
     align-items: flex-end;
     justify-content: center;
-}
-
-.modal-submit {
-    width: 100%;
-    padding: 10px 24px;
-    font-size: 16px;
-    font-weight: 600;
-    margin-top: 4px;
-    background: linear-gradient(180deg, #2196F3 0%, #1976D2 100%);
-    border: 1px solid rgba(255,255,255,0.1);
-    color: white;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.2s;
-    box-shadow: 0 2px 8px rgba(21, 101, 192, 0.35);
-    text-shadow: 0 1px 1px rgba(0,0,0,0.15);
-}
-.modal-submit:hover:not(:disabled) {
-    background: linear-gradient(180deg, #42a5f5 0%, #1e88e5 100%);
-    box-shadow: 0 4px 12px rgba(21, 101, 192, 0.45);
-}
-.modal-submit:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    box-shadow: none;
-}
-.modal-back.modal-submit {
-    transition: background 0.15s, color 0.15s;
-}
-.modal-back.modal-submit:hover {
-    background: #d6d6d6 !important;
-    color: #333 !important;
-    box-shadow: none !important;
 }
 
 .mood-survey-intro {
@@ -4380,40 +4253,7 @@ select.csel-native {
     filter: none;
 }
 
-/* ============================================================
-   Questionnaire Radio Choices
-   ============================================================ */
-.radio-choice {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 8px 14px;
-    font-size: 16px;
-    border-radius: 8px;
-    border: 1px solid transparent;
-    cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
-}
-.radio-choice:hover {
-    background: rgba(0, 123, 255, 0.06);
-}
-.radio-choice:has(input:checked) {
-    background: rgba(0, 123, 255, 0.08);
-    border-color: transparent;
-}
-.radio-choice input[type="radio"] {
-    width: 18px;
-    height: 18px;
-    accent-color: #007bff;
-}
-.radio-choice strong {
-    color: #222;
-    font-weight: 700;
-}
-.radio-choice span {
-    color: #555;
-    font-weight: 400;
-}
+/* Radio choice styles are in css/modal-shared.css */
 
 /* ============================================================
    Quick Fill Buttons (survey modals)
@@ -4776,58 +4616,9 @@ html:not([data-advanced]) .emic-page .spectrogram-controls {
     padding: 0 8px;
 }
 
-/* EMIC modal size overrides */
-.emic-page .modal-content,
-.emic-page #participantModal .modal-content {
-    max-width: 440px !important;
-    min-width: 280px !important;
-    width: 80% !important;
-}
-.emic-page #backgroundQuestionModal .modal-content,
-.emic-page #dataAnalysisQuestionModal .modal-content,
-.emic-page #musicalExperienceQuestionModal .modal-content,
-.emic-page #feedbackQuestionModal .modal-content,
-.emic-page #referralQuestionModal .modal-content,
-.emic-page .emic-questionnaire-modal {
-    max-width: 620px !important;
-    min-width: 320px !important;
-    height: 460px !important;
-    width: 88% !important;
-    padding: 24px 28px !important;
-    display: flex !important;
-    flex-direction: column !important;
-}
-.emic-page #backgroundQuestionModal .modal-body,
-.emic-page #dataAnalysisQuestionModal .modal-body,
-.emic-page #musicalExperienceQuestionModal .modal-body,
-.emic-page #feedbackQuestionModal .modal-body,
-.emic-page #referralQuestionModal .modal-body {
-    flex: 1 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: space-between !important;
-}
-.emic-page #welcomeModal .modal-content,
-.emic-page #emicAboutModal .modal-content {
-    max-width: 720px !important;
-    min-width: 320px !important;
-    width: 90% !important;
-    padding: 24px 28px !important;
-}
-.emic-page #participantModal .modal-body p:first-child {
-    font-size: 20px !important;
-}
-.emic-page #participantModal .modal-body p:nth-child(2) {
-    font-size: 16px !important;
-}
+/* EMIC modal overrides — dimensions come from study config via the renderer */
 .emic-page .begin-analysis-btn {
     display: none !important;
-}
-.emic-page .modal-submit {
-    width: auto;
-    min-width: 200px;
-    display: block;
-    margin: 16px auto 0 auto;
 }
 
 /* Playback bar: hidden-scrollbar horizontal scroll */

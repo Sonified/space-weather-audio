@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Study Builder — spaceweather.now.audio</title>
+<link rel="stylesheet" href="css/modal-shared.css">
 <style>
   :root {
     --bg: #141a22;
@@ -193,7 +194,7 @@
     transition: border-color 0.15s;
   }
   .step-card:hover { border-color: var(--border-hover); }
-  .step-card.active { border-color: var(--accent); }
+  .step-card.active { border-color: var(--accent); overflow: visible; }
 
   .step-card.dragging {
     opacity: 0.7;
@@ -377,6 +378,12 @@
   .step-preview .preview-nav .back-btn { background: #e0e0e0; color: #555; }
   .step-preview .preview-nav .next-btn { background: #2196F3; color: #fff; }
 
+  /* Builder preview — NO overrides on .modal-content; shared CSS + renderer inline styles only */
+  .step-preview.question-preview {
+    background: none; padding: 0; box-shadow: none; border: none;
+    display: flex; justify-content: center;
+  }
+
   .chevron {
     color: var(--text-muted);
     transition: transform 0.2s;
@@ -386,11 +393,16 @@
 
   /* Step detail panel */
   .step-detail {
-    display: none;
-    padding: 0 16px 16px;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.35s ease, padding 0.35s ease;
+    padding: 0 16px;
     border-top: 1px solid var(--border);
   }
-  .step-card.active .step-detail { display: block; }
+  .step-card.active .step-detail {
+    max-height: 5000px;
+    padding: 16px 16px;
+  }
 
   .field-group {
     margin-top: 12px;
@@ -816,7 +828,6 @@
   /* Collapsible settings drawer */
   .card-settings {
     margin-top: 12px;
-    background: rgba(255,255,255,0.03);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
@@ -829,33 +840,23 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    background: none;
+    background: rgba(255,255,255,0.025);
     border: none;
-    padding: 8px 12px;
+    padding: 9px 14px;
     width: 100%;
     transition: background 0.15s, color 0.15s;
   }
   .card-settings-trigger:hover {
     color: var(--text);
-    background: rgba(255,255,255,0.04);
+    background: rgba(255,255,255,0.05);
   }
-  .card-settings-trigger::before {
-    content: '▶';
-    font-size: 8px;
-    transition: transform 0.2s ease;
-    display: inline-block;
-    flex-shrink: 0;
-  }
-  .card-settings.open .card-settings-trigger::before { transform: rotate(90deg); }
   .card-settings-trigger .settings-chevron {
     margin-left: auto;
     font-size: 10px;
     transition: transform 0.2s ease;
-    opacity: 0.5;
+    opacity: 0.4;
   }
-  .card-settings.open .card-settings-trigger .settings-chevron {
-    transform: rotate(180deg);
-  }
+  .card-settings.open .settings-chevron { transform: rotate(180deg); }
   .card-settings-drawer {
     max-height: 0;
     overflow: hidden;
@@ -865,21 +866,37 @@
     max-height: 600px;
   }
   .card-settings .settings-body {
-    padding: 10px 12px 12px;
+    padding: 16px 20px;
+    background: rgba(0,0,0,0.25);
     border-top: 1px solid var(--border);
   }
   .settings-section-label {
-    font-size: 10px;
+    font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: #667;
-    margin-bottom: 8px;
-    font-weight: 600;
+    letter-spacing: 1.5px;
+    color: #5a7a9a;
+    margin-bottom: 12px;
+    font-weight: 700;
   }
-  .settings-section-label:not(:first-child) {
-    margin-top: 14px;
-    padding-top: 10px;
-    border-top: 1px solid rgba(255,255,255,0.06);
+  .settings-divider {
+    height: 1px;
+    background: rgba(255,255,255,0.15);
+    margin: 16px 0;
+  }
+  .settings-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .settings-row .toggle-label + .toggle,
+  .settings-row .toggle-label + select { margin-left: 0; }
+  .settings-row .toggle + .toggle-label,
+  .settings-row select + .toggle-label,
+  .settings-row .field-input + .toggle-label { margin-left: 14px; }
+  .settings-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
   }
   .settings-size-row {
     display: flex;
@@ -891,34 +908,26 @@
   .settings-size-row .dim-input-wrap { width: 90px; }
   .settings-size-row .field-input { text-align: center; padding: 5px 4px; font-size: 13px; }
 
-  /* Preview footer button */
-  .preview-footer {
-    margin-top: 12px;
-    padding-top: 10px;
-    border-top: 1px solid var(--border);
+  /* Preview bar */
+  .preview-bar-footer {
+    margin-top: 0;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+    padding: 10px 0;
+    border-radius: 0 0 8px 8px;
     text-align: center;
   }
-  .preview-footer-btn {
+  .preview-bar-btn {
     background: none;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border: none;
     color: var(--text-muted);
-    font-size: 12px;
-    padding: 6px 16px;
+    font-size: 13px;
     cursor: pointer;
-    transition: all 0.15s;
-    width: 100%;
+    padding: 0;
+    transition: color 0.15s;
   }
-  .preview-footer-btn:hover {
-    color: var(--text);
-    border-color: var(--border-hover);
-    background: rgba(255,255,255,0.03);
-  }
-  .preview-footer-btn.active {
-    color: var(--accent);
-    border-color: var(--accent);
-    background: rgba(77,168,255,0.06);
-  }
+  .preview-bar-btn:hover { color: var(--text); }
+  .preview-bar-btn.active { color: var(--accent); }
 
   select.field-input {
     appearance: none;
@@ -1437,6 +1446,7 @@
   // ── Load Config Into Builder ─────────────────────────────────
   function loadConfigIntoBuilder(config) {
     _isLoading = true; // Suppress autoSave during rebuild
+    if (_autoSaveObserver) _autoSaveObserver.disconnect();
     console.log('%c[LOAD] loadConfigIntoBuilder START', 'color: #ff6b6b; font-weight: bold;', {
       name: config.name,
       slug: config.slug,
@@ -1471,6 +1481,7 @@
     if (!config.steps || !config.steps.length) {
       console.warn('[LOAD] No steps in config!');
       _isLoading = false;
+      if (_autoSaveObserver) _autoSaveObserver.observe(document.getElementById('stepList'), { childList: true, subtree: true, characterData: true, attributes: true });
       return;
     }
 
@@ -1582,8 +1593,10 @@
       container.appendChild(card);
     });
 
-    // Open first step
-    container.querySelector('.step-card')?.classList.add('active');
+    // Restore previously expanded cards, or open first step as default
+    if (!restoreExpandedState()) {
+      container.querySelector('.step-card')?.classList.add('active');
+    }
     updatePreview();
     renumberSteps();
 
@@ -1599,7 +1612,15 @@
     }
 
     console.log('%c[LOAD] loadConfigIntoBuilder DONE', 'color: #ff6b6b; font-weight: bold;');
-    _isLoading = false; // Re-enable autoSave
+    // Keep _isLoading true briefly to absorb queued autoSave events from DOM changes during load
+    setTimeout(() => {
+      _lastSavedJSON = JSON.stringify(collectStudyConfig());
+      clearTimeout(_autoSaveTimer);
+      _isLoading = false;
+      if (_autoSaveObserver) {
+        _autoSaveObserver.observe(document.getElementById('stepList'), { childList: true, subtree: true, characterData: true, attributes: true });
+      }
+    }, 100);
   }
 
   const FONT_SIZES = ['12px','14px','16px','18px','20px','24px','28px','32px','36px','40px'];
@@ -1777,7 +1798,8 @@
   function buildStepActions(type) {
     // Modal steps get inline preview + page preview; analysis gets page preview only
     const previewBtns = (type === 'question')
-      ? `<button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>`
+      ? `<button class="step-action-btn preview-btn" title="Toggle inline preview" onclick="event.stopPropagation(); toggleInlinePreview(this)">👁</button>
+         <button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>`
       : (type === 'modal' || type === 'registration' || type === 'info')
       ? `<button class="step-action-btn preview-btn" title="Toggle inline preview" onclick="event.stopPropagation(); toggleInlinePreview(this)">👁</button>
          <button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>`
@@ -1997,50 +2019,51 @@
     }
     const lm = step.labelMode || (step.labelPrefixes === false ? 'hidden' : (step.boldLabelPrefixes === false ? 'visible' : 'bold'));
     contentHtml += `
-      <div class="card-settings" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open')}">
-        <div class="card-settings-trigger">&#9881; Settings <span class="settings-chevron">&#9660;</span></div>
+      <div class="card-settings" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open'); saveExpandedState()}">
+        <button class="card-settings-trigger" type="button">&#9881; Settings <span class="settings-chevron">&#9660;</span></button>
         <div class="card-settings-drawer"><div class="settings-body">
           <div class="settings-section-label">Behavior</div>
-          <div class="toggle-row">
-            <span class="toggle-label">Required</span>
-            <div class="toggle toggle-required ${step.required !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
-            <span class="toggle-label" style="margin-left: 16px;">Can Go Back</span>
-            <div class="toggle toggle-can-go-back ${step.canGoBack !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+          <div class="settings-rows">
+            <div class="settings-row">
+              <span class="toggle-label">Required</span>
+              <div class="toggle toggle-required ${step.required !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+              <span class="toggle-label">Enable back button</span>
+              <div class="toggle toggle-can-go-back ${step.canGoBack !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+              <span class="toggle-label">Show Question ID</span>
+              <div class="toggle toggle-question-id ${step.id ? 'on' : ''}" onclick="this.classList.toggle('on'); const inp = this.closest('.settings-row').querySelector('.question-id-input'); inp.style.visibility = this.classList.contains('on') ? 'visible' : 'hidden';"></div>
+              <input class="field-input question-id-input" value="${escapeAttr(qid)}" style="visibility: ${_qidVis}; flex: 1; min-width: 80px; font-size: 12px; font-family: monospace; padding: 3px 6px;" />
+            </div>
           </div>
-          <div class="toggle-row" style="margin-top: 8px;">
-            <span class="toggle-label">Question ID</span>
-            <div class="toggle toggle-question-id ${step.id ? 'on' : ''}" onclick="this.classList.toggle('on'); const inp = this.closest('.settings-body').querySelector('.question-id-input'); inp.style.visibility = this.classList.contains('on') ? 'visible' : 'hidden';"></div>
-            <input class="field-input question-id-input" value="${escapeAttr(qid)}" style="visibility: ${_qidVis}; width: 120px; font-size: 12px; font-family: monospace; padding: 3px 6px; margin-left: 4px;" />
-            <span style="display:${isRadio ? 'inline' : 'none'}; margin-left: 12px;" class="label-mode-row"><span class="toggle-label">Labels</span>
-            <select class="field-input label-mode-select" style="width:auto; margin-left: 6px;" onchange="onLabelModeChange(this)">
+          <div class="settings-divider"></div>
+          <div class="settings-section-label">Layout</div>
+          <div class="settings-row" style="flex-wrap: wrap;">
+            <span class="toggle-label label-mode-row" style="display:${isRadio ? 'inline' : 'none'};">Labels</span>
+            <select class="field-input label-mode-select label-mode-row" style="display:${isRadio ? 'inline-block' : 'none'}; width:auto;" onchange="onLabelModeChange(this)">
               <option value="hidden"${lm === 'hidden' ? ' selected' : ''}>Hidden</option>
               <option value="visible"${lm === 'visible' ? ' selected' : ''}>Visible</option>
               <option value="bold"${lm === 'bold' ? ' selected' : ''}>Bold</option>
-            </select></span>
-          </div>
-          <div class="settings-section-label">Layout</div>
-          <div class="settings-size-row">
-            <span>Size:</span>
-            <div class="dim-input-wrap">
-              <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '480px')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+            </select>
+            <span class="toggle-label">Size:</span>
+            <div class="dim-input-wrap" style="width:90px;">
+              <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '480px')}" style="text-align:center; padding:5px 4px; font-size:13px;" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
               <div class="dim-arrows">
                 <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
                 <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
               </div>
             </div>
             <span style="opacity:0.4;">×</span>
-            <div class="dim-input-wrap">
-              <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+            <div class="dim-input-wrap" style="width:90px;">
+              <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" style="text-align:center; padding:5px 4px; font-size:13px;" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
               <div class="dim-arrows">
                 <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
                 <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
               </div>
             </div>
           </div>
-        </div>
-      </div></div></div>
-      <div class="preview-footer">
-        <button class="preview-footer-btn" onclick="event.stopPropagation(); toggleFooterPreview(this)">&#9655; Preview</button>
+        </div></div>
+      </div>
+      <div class="preview-bar-footer">
+        <button class="preview-bar-btn" type="button" onclick="event.stopPropagation(); toggleFooterPreview(this)">&#9655; Preview</button>
       </div>`;
 
     return `
@@ -2228,7 +2251,7 @@
           </div>
           <div class="field-group">
             <div class="field-label">Data Source</div>
-            <div class="pill-group">
+            <div class="pill-group pill-group-flat">
               <button class="pill ${src==='cdaweb'?'active':''}" onclick="selectPill(this)">CDAWeb</button>
               <button class="pill ${src==='r2'?'active':''}" onclick="selectPill(this)">Cloudflare R2</button>
             </div>
@@ -2425,6 +2448,7 @@
   // Preserve metadata fields that the builder doesn't edit (author, contactEmail, etc.)
   let _loadedMeta = {};
   let _isLoading = false; // Guard: prevent autoSave during loadConfigIntoBuilder
+  let _autoSaveObserver = null; // MutationObserver reference — disconnected during load
 
   function collectFontStyleSettings(card, step, prefix) {
     const sizeEl = card.querySelector(`.${prefix}-font-size`);
@@ -2728,6 +2752,7 @@
   }
 
   // Save draft: IndexedDB (instant) + D1 (fire-and-forget)
+  let _lastSavedJSON = null;
   async function saveDraft() {
     if (_isLoading) {
       console.log('%c[SAVE] BLOCKED — _isLoading=true', 'color: #f85149; font-weight: bold;');
@@ -2739,6 +2764,12 @@
       console.log('⚠️ saveDraft skipped — slug too short:', slug);
       return;
     }
+    const configJSON = JSON.stringify(config);
+    if (configJSON === _lastSavedJSON) {
+      console.log('%c[SAVE] skipped — no changes', 'color: #8b949e;');
+      return;
+    }
+    _lastSavedJSON = configJSON;
 
     console.log('%c[SAVE] saveDraft →', 'color: #3fb950; font-weight: bold;', slug, {
       stepCount: config.steps.length,
@@ -2833,8 +2864,8 @@
     document.execCommand('insertHTML', false, tmp.innerHTML);
   });
 
-  const observer = new MutationObserver(() => autoSave('mutation'));
-  observer.observe(document.getElementById('stepList'), { childList: true, subtree: true, characterData: true, attributes: true });
+  _autoSaveObserver = new MutationObserver(() => autoSave('mutation'));
+  _autoSaveObserver.observe(document.getElementById('stepList'), { childList: true, subtree: true, characterData: true, attributes: true });
 
   // Load study from D1
   async function loadStudy(slug) {
@@ -3167,12 +3198,80 @@
 
   // Toggle step expansion
   function toggleStep(header) {
-    const card = header.closest('.step-card');
-    const wasActive = card.classList.contains('active');
-    // Close all
-    document.querySelectorAll('.step-card').forEach(c => c.classList.remove('active'));
-    // Toggle clicked
-    if (!wasActive) card.classList.add('active');
+    header.closest('.step-card').classList.toggle('active');
+    saveExpandedState();
+  }
+
+  // Persist which cards, settings drawers, and previews are expanded
+  function saveExpandedState() {
+    const cards = document.querySelectorAll('#stepList .step-card');
+    const openCards = [];
+    const openSettings = [];
+    const openPreviews = [];
+    cards.forEach((c, i) => {
+      if (c.classList.contains('active')) openCards.push(i);
+      if (c.querySelector('.card-settings.open')) openSettings.push(i);
+      if (c.querySelector('.step-preview')) openPreviews.push(i);
+    });
+    localStorage.setItem('sb_expandedCards', JSON.stringify(openCards));
+    localStorage.setItem('sb_expandedSettings', JSON.stringify(openSettings));
+    localStorage.setItem('sb_expandedPreviews', JSON.stringify(openPreviews));
+  }
+
+  function restoreExpandedState() {
+    try {
+      const raw = [
+        localStorage.getItem('sb_expandedCards'),
+        localStorage.getItem('sb_expandedSettings'),
+        localStorage.getItem('sb_expandedPreviews')
+      ];
+      // If nothing saved, let caller use default behavior
+      if (raw.every(r => !r)) return false;
+
+      const openCards = Array.isArray(JSON.parse(raw[0])) ? JSON.parse(raw[0]) : [];
+      const openSettings = Array.isArray(JSON.parse(raw[1])) ? JSON.parse(raw[1]) : [];
+      const openPreviews = Array.isArray(JSON.parse(raw[2])) ? JSON.parse(raw[2]) : [];
+      const cards = document.querySelectorAll('#stepList .step-card');
+      const n = cards.length;
+      if (!n) return false;
+
+      // Expand cards — skip any indices out of range
+      if (openCards.length) {
+        cards.forEach(c => c.classList.remove('active'));
+        openCards.forEach(i => { if (i >= 0 && i < n) cards[i].classList.add('active'); });
+      }
+
+      // Open settings drawers
+      openSettings.forEach(i => {
+        if (i < 0 || i >= n) return;
+        const drawer = cards[i]?.querySelector('.card-settings');
+        if (drawer) drawer.classList.add('open');
+      });
+
+      // Re-open previews in background (async — don't block page load)
+      if (openPreviews.length) {
+        (async () => {
+          for (const i of openPreviews) {
+            if (i < 0 || i >= n) continue;
+            try {
+              const btn = cards[i]?.querySelector('.preview-bar-btn');
+              if (btn) await toggleFooterPreview(btn);
+            } catch (e) {
+              console.warn('[restoreExpandedState] preview restore failed for card', i, e);
+            }
+          }
+        })();
+      }
+
+      return true;
+    } catch (e) {
+      console.warn('[restoreExpandedState] failed, using defaults:', e);
+      // Corrupted state — wipe it so we don't fail every load
+      localStorage.removeItem('sb_expandedCards');
+      localStorage.removeItem('sb_expandedSettings');
+      localStorage.removeItem('sb_expandedPreviews');
+      return false;
+    }
   }
 
   // Pill selection
@@ -3206,8 +3305,9 @@
       let freetextGroup = card.querySelector('.freetext-fields');
 
       // Show/hide labels dropdown in settings
-      const labelModeRow = card.querySelector('.label-mode-row');
-      if (labelModeRow) labelModeRow.style.display = isFreeText ? 'none' : 'inline';
+      card.querySelectorAll('.label-mode-row').forEach(el => {
+        el.style.display = isFreeText ? 'none' : '';
+      });
 
       if (isFreeText) {
         // Hide all radio controls (toggles, stepper, editor)
@@ -3588,21 +3688,83 @@
    * Toggle inline preview below a modal step card.
    * Reads current field values from the DOM for live updates.
    */
-  function toggleFooterPreview(btn) {
+  // ─── Shared question renderer (lazy-loaded) ───────────────────────────
+  let _questionRenderer = null;
+  async function getQuestionRenderer() {
+    if (!_questionRenderer) _questionRenderer = await import('./js/survey-question-renderer.js');
+    return _questionRenderer;
+  }
+
+  async function renderQuestionPreview(card, detail) {
+    const renderer = await getQuestionRenderer();
+    const title = card.querySelector('.question-text-input')?.value || '';
+    const subtitle = card.querySelector('.question-subtitle-input')?.value || '';
+    const answerPills = card.querySelectorAll('.pill-group-answer-type .pill.active');
+    const isRadio = (answerPills[0]?.textContent.trim().toLowerCase() || '') === 'multiple choice';
+    const labelMode = card.querySelector('.label-mode-select')?.value || 'bold';
+    const options = [];
+    if (isRadio) {
+      Array.from(card.querySelectorAll('.opt-row')).filter(r => r.style.display !== 'none').forEach(row => {
+        options.push({
+          value: row.querySelector('.opt-value-input')?.value || '',
+          label: row.querySelector('.opt-label-input')?.value || '',
+          description: row.querySelector('.opt-desc-input')?.innerHTML || ''
+        });
+      });
+    }
+    const placeholder = card.querySelector('.question-placeholder-input')?.value || '';
+    const qid = card.querySelector('.question-id-input')?.value || 'preview';
+    const w = card.querySelector('.modal-width-input')?.value?.trim();
+    const h = card.querySelector('.modal-height-input')?.value?.trim();
+    const question = {
+      title: 'Questionnaire',
+      text: title, subtitle,
+      type: isRadio ? 'radio' : 'freetext',
+      questionType: isRadio ? 'radio' : 'freetext',
+      options, labelMode, placeholder, inputName: qid, id: qid
+    };
+    const dims = {};
+    if (w) dims.modalWidth = w;
+    if (h) dims.modalHeight = h;
+    // Compute position among all question cards in the step list
+    const allQuestionCards = Array.from(document.querySelectorAll('.step-card[data-type="question"]'));
+    const index = allQuestionCards.indexOf(card);
+    const total = allQuestionCards.length;
+    const progressPct = total > 0 ? ((index + 1) / total) * 100 : 100;
+    const showBack = index > 0;
+
+    const html = renderer.renderQuestionModal({
+      question, index, total, progressPct,
+      previousAnswer: null, showBack, dims, preview: true
+    });
+    const preview = document.createElement('div');
+    preview.className = 'step-preview question-preview';
+    preview.innerHTML = html;
+    // Append to card (not step-detail) so preview can overflow horizontally
+    card.appendChild(preview);
+    preview.querySelector('.modal-next')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      advancePreviewToNext(card);
+    });
+  }
+
+  async function toggleFooterPreview(btn) {
     const card = btn.closest('.step-card');
     const existing = card.querySelector('.step-preview');
     if (existing) {
       existing.remove();
       btn.classList.remove('active');
       btn.innerHTML = '&#9655; Preview';
+      saveExpandedState();
       return;
     }
-    // Reuse the same logic as toggleInlinePreview
-    toggleInlinePreview(btn);
+    // Reuse the same logic as toggleInlinePreview (may be async for question cards)
+    await toggleInlinePreview(btn);
     if (card.querySelector('.step-preview')) {
       btn.classList.add('active');
       btn.innerHTML = '&#9661; Preview';
     }
+    saveExpandedState();
   }
 
   function toggleInlinePreview(btn) {
@@ -3611,7 +3773,7 @@
     if (existing) {
       existing.remove();
       // Sync footer button state
-      const footerBtn = card.querySelector('.preview-footer-btn');
+      const footerBtn = card.querySelector('.preview-bar-btn');
       if (footerBtn) { footerBtn.classList.remove('active'); footerBtn.innerHTML = '&#9655; Preview'; }
       return;
     }
@@ -3640,68 +3802,15 @@
       const h = card.querySelector('.modal-height-input')?.value?.trim();
       if (w) preview.style.maxWidth = w;
       if (h && h !== 'auto') preview.style.height = h;
-      const footer = card.querySelector('.preview-footer');
+      const footer = card.querySelector('.preview-bar-footer');
     if (footer) { detail.appendChild(preview); } else { detail.after(preview); }
       return;
     }
 
-    // Standalone question card
+
+    // Standalone question card — use shared renderer (async)
     if (card.dataset.type === 'question') {
-      const title = card.querySelector('.question-text-input')?.value || '';
-      const subtitle = card.querySelector('.question-subtitle-input')?.value || '';
-      const answerPills = card.querySelectorAll('.pill-group-answer-type .pill.active');
-      const isRadio = (answerPills[0]?.textContent.trim().toLowerCase() || '') === 'multiple choice';
-      const ulStyle = getPreviewUnderlineStyle(card);
-
-      const preview = document.createElement('div');
-      preview.className = 'step-preview info-preview';
-
-      let bodyHtml = '';
-      if (subtitle) bodyHtml += `<div style="color:#666;font-size:14px;margin-bottom:16px;">${escapeHtml(subtitle)}</div>`;
-
-      if (isRadio) {
-        const labelMode1 = card.querySelector('.label-mode-select')?.value || 'bold';
-        const optRows = Array.from(card.querySelectorAll('.opt-row')).filter(r => r.style.display !== 'none');
-        if (optRows.length) {
-          bodyHtml += `<div class="preview-radio-group">`;
-          optRows.forEach(row => {
-            const label = row.querySelector('.opt-label-input')?.value || '';
-            const desc = row.querySelector('.opt-desc-input')?.innerHTML || '';
-            let labelHtml = '';
-            if (labelMode1 !== 'hidden' && label) {
-              labelHtml = labelMode1 === 'bold' ? `<strong>${escapeHtml(label)}${desc ? ':' : ''}</strong> ` : `<span class="label-prefix">${escapeHtml(label)}${desc ? ':' : ''}</span> `;
-            }
-            bodyHtml += `<label class="preview-radio-choice">
-              <input type="radio" name="preview_standalone" disabled>
-              <div>${labelHtml}<span>${desc}</span></div>
-            </label>`;
-          });
-          bodyHtml += `</div>`;
-        }
-      } else {
-        const placeholder = card.querySelector('.question-placeholder-input')?.value || 'Type your response here...';
-        bodyHtml += `<textarea disabled placeholder="${escapeAttr(placeholder)}" style="opacity:0.7;"></textarea>`;
-      }
-
-      preview.innerHTML = `
-        <h3 style="${ulStyle}">${escapeHtml(title)}</h3>
-        ${bodyHtml}
-        <button class="preview-submit">Next →</button>
-      `;
-
-      const w = card.querySelector('.modal-width-input')?.value?.trim();
-      const h = card.querySelector('.modal-height-input')?.value?.trim();
-      if (w) preview.style.maxWidth = w;
-      if (h && h !== 'auto') preview.style.height = h;
-      const footer = card.querySelector('.preview-footer');
-    if (footer) { detail.appendChild(preview); } else { detail.after(preview); }
-
-      // Wire flow navigation
-      preview.querySelector('.preview-submit')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        advancePreviewToNext(card);
-      });
-      return;
+      return renderQuestionPreview(card, detail);
     }
 
     // Read current values from DOM (modal cards: info or questions)
@@ -3782,7 +3891,7 @@
     if (h && h !== 'auto') preview.style.height = h;
 
     // Insert after .step-detail
-    const footer = card.querySelector('.preview-footer');
+    const footer = card.querySelector('.preview-bar-footer');
     if (footer) { detail.appendChild(preview); } else { detail.after(preview); }
 
     // Wire interactive flow navigation
@@ -3880,6 +3989,16 @@
     const card = input.closest('.step-card');
     const preview = card?.querySelector('.step-preview');
     if (!preview) return;
+
+    // Question cards: re-render through shared renderer so dimensions stay in one place
+    if (preview.classList.contains('question-preview')) {
+      const detail = card.querySelector('.step-detail');
+      preview.remove();
+      renderQuestionPreview(card, detail);
+      return;
+    }
+
+    // Info/other cards: update wrapper dimensions directly
     const w = card.querySelector('.modal-width-input')?.value?.trim();
     const h = card.querySelector('.modal-height-input')?.value?.trim();
     preview.style.maxWidth = w || '';
@@ -3927,56 +4046,11 @@
       return;
     }
 
-    // Standalone question card
+    // Standalone question card — re-render via shared renderer
     if (card.dataset.type === 'question') {
-      const title = card.querySelector('.question-text-input')?.value || '';
-      const subtitle = card.querySelector('.question-subtitle-input')?.value || '';
-      const answerPills = card.querySelectorAll('.pill-group-answer-type .pill.active');
-      const isRadio = (answerPills[0]?.textContent.trim().toLowerCase() || '') === 'multiple choice';
-
-      const h3 = preview.querySelector('h3');
-      if (h3) { h3.textContent = title; h3.style.cssText = titleStyle; }
-
-      // Rebuild the body content (radio options or textarea)
-      const subtitleEl = preview.querySelector('h3 + div[style*="color:#666"]');
-      const bodyContainer = subtitleEl ? subtitleEl.nextElementSibling : preview.querySelector('.preview-radio-group, textarea');
-
-      // Simpler: rebuild everything after h3
-      const h3El = preview.querySelector('h3');
-      const submitBtn = preview.querySelector('.preview-submit');
-      if (h3El && submitBtn) {
-        // Remove everything between h3 and submit button
-        while (h3El.nextElementSibling && h3El.nextElementSibling !== submitBtn) {
-          h3El.nextElementSibling.remove();
-        }
-        // Re-insert subtitle + body
-        let frag = '';
-        if (subtitle) frag += `<div style="color:#666;font-size:14px;margin-bottom:16px;">${escapeHtml(subtitle)}</div>`;
-        if (isRadio) {
-          const labelMode2 = card.querySelector('.label-mode-select')?.value || 'bold';
-          const optRows = Array.from(card.querySelectorAll('.opt-row')).filter(r => r.style.display !== 'none');
-          if (optRows.length) {
-            frag += `<div class="preview-radio-group">`;
-            optRows.forEach(row => {
-              const label = row.querySelector('.opt-label-input')?.value || '';
-              const desc = row.querySelector('.opt-desc-input')?.innerHTML || '';
-              let labelHtml = '';
-              if (labelMode2 !== 'hidden' && label) {
-                labelHtml = labelMode2 === 'bold' ? `<strong>${escapeHtml(label)}${desc ? ':' : ''}</strong> ` : `<span class="label-prefix">${escapeHtml(label)}${desc ? ':' : ''}</span> `;
-              }
-              frag += `<label class="preview-radio-choice">
-                <input type="radio" name="preview_standalone" disabled>
-                <div>${labelHtml}<span>${desc}</span></div>
-              </label>`;
-            });
-            frag += `</div>`;
-          }
-        } else {
-          const placeholder = card.querySelector('.question-placeholder-input')?.value || 'Type your response here...';
-          frag += `<textarea disabled placeholder="${escapeAttr(placeholder)}" style="opacity:0.7;"></textarea>`;
-        }
-        submitBtn.insertAdjacentHTML('beforebegin', frag);
-      }
+      const detail = card.querySelector('.step-detail');
+      preview.remove();
+      renderQuestionPreview(card, detail);
       return;
     }
 

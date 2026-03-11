@@ -16,6 +16,7 @@ import { getParticipantId, storeParticipantId, generateParticipantId } from './p
 import { styleBodyHtml } from './study-builder/utils.js';
 import { pausePlayback } from './audio-player.js';
 import { typeText, cancelTyping } from './tutorial-effects.js';
+import { buildDimensionStyle, buildTitleFontStyle, buildBodyFontStyle, buildHeaderUnderlineStyle, renderQuestionModal } from './survey-question-renderer.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // STATE
@@ -1239,42 +1240,6 @@ function hideParticipantDisplay() {
 // MODAL DIMENSION HELPER
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/** Build inline style string for modal-content from step config dimensions */
-function buildDimensionStyle(step, defaultMaxWidth) {
-    const maxW = step.modalWidth || defaultMaxWidth;
-    let s = `width: 90% !important; max-width: ${maxW} !important;`;
-    if (step.modalHeight) s += ` height: ${step.modalHeight} !important;`;
-    return s;
-}
-
-function buildTitleFontStyle(step) {
-    let s = '';
-    if (step.titleFontSize) s += `font-size: ${step.titleFontSize};`;
-    if (step.titleFontColor) s += ` color: ${step.titleFontColor};`;
-    if (step.titleFontBold === false) s += ' font-weight: normal;';
-    else if (step.titleFontBold === true) s += ' font-weight: 700;';
-    return s;
-}
-
-function buildBodyFontStyle(step) {
-    let s = '';
-    if (step.bodyFontSize) s += `font-size: ${step.bodyFontSize};`;
-    if (step.bodyFontColor) s += ` color: ${step.bodyFontColor};`;
-    if (step.bodyFontBold) s += ' font-weight: 700;';
-    return s;
-}
-
-function buildHeaderUnderlineStyle(step) {
-    if (step.titleUnderline === false) return 'border-bottom: none;';
-    const size = step.titleUnderlineSize || '2px';
-    const color = step.titleUnderlineColor || '#c86464';
-    // Convert hex to rgba with 0.3 opacity to match default EMIC style
-    const r = parseInt(color.slice(1,3), 16);
-    const g = parseInt(color.slice(3,5), 16);
-    const b = parseInt(color.slice(5,7), 16);
-    return `border-bottom: ${size} solid rgba(${r}, ${g}, ${b}, 0.3);`;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // INFO MODAL STEP
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1696,46 +1661,10 @@ function isPreAnalysis() {
  */
 function showQuestionModal(question, index, total, progressPct, previousAnswer, showBack, stepDimensions) {
     return new Promise(async (resolve) => {
-        let questionHtml = '';
-        if (question.type === 'radio') {
-            questionHtml = buildRadioQuestion(question, previousAnswer);
-        } else if (question.type === 'freetext') {
-            questionHtml = buildFreetextQuestion(question, previousAnswer);
-        }
-
-        const isLast = index === total - 1;
-        const nextLabel = isLast ? '✓ Submit' : 'Next →';
-        const dims = stepDimensions || {};
-        const dimStyle = buildDimensionStyle(dims, '750px');
-        const ulStyle = buildHeaderUnderlineStyle(dims);
-        const titleFont = buildTitleFontStyle(dims);
-
-        const html = `
-            <div class="modal-content emic-questionnaire-modal" style="${dimStyle}">
-                <div class="modal-header" style="${ulStyle}">
-                    <h3 class="modal-title" style="${titleFont}">${question.title || '📋 Questionnaire'}</h3>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="font-size: 13px; color: #999; font-weight: 500;">${index + 1} / ${total}</span>
-                        <div style="width: 120px; height: 4px; background: #e0e0e0; border-radius: 2px;">
-                            <div style="height: 100%; width: ${progressPct}%; background: #2196F3; border-radius: 2px; transition: width 0.3s;"></div>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-body">
-                    <div style="font-size: 18px; color: #222; margin-top: 12px; margin-bottom: 16px; text-align: left; font-weight: 700;">
-                        ${index + 1}. ${question.text}
-                        ${question.subtitle ? `<br><span style="font-size: 14px; color: #555; font-weight: normal;">${question.subtitle}</span>` : ''}
-                    </div>
-                    ${questionHtml}
-                    <div style="text-align: center;">
-                        <div style="display: inline-flex; gap: 12px; align-items: center;">
-                            ${showBack ? '<button type="button" class="modal-back modal-submit" style="background: #e0e0e0; color: #555; box-shadow: none; text-shadow: none; width: auto; min-width: 100px;">← Back</button>' : ''}
-                            <button type="button" class="modal-next modal-submit" style="width: auto; min-width: 140px;" ${question.type === 'radio' && !previousAnswer ? 'disabled' : ''}>${nextLabel}</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
+        const html = renderQuestionModal({
+            question, index, total, progressPct, previousAnswer, showBack,
+            dims: stepDimensions
+        });
 
         await setStudyModalContent(html);
         openStudyModalIfNeeded();
@@ -1764,37 +1693,6 @@ function showQuestionModal(question, index, total, progressPct, previousAnswer, 
             resolve('__BACK__');
         });
     });
-}
-
-function buildRadioQuestion(question, previousAnswer) {
-    const options = question.options || [];
-    const name = `sq_${question.inputName || question.id}`;
-    const labelMode = question.labelMode || 'bold';
-    return `
-        <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;">
-            ${options.map(opt => {
-                let labelHtml = '';
-                if (labelMode !== 'hidden' && opt.label) {
-                    labelHtml = labelMode === 'bold'
-                        ? `<strong>${opt.label}${opt.description ? ':' : ''}</strong> `
-                        : `<span style="color:#333;">${opt.label}${opt.description ? ':' : ''}</span> `;
-                }
-                return `
-                <label class="radio-choice">
-                    <input type="radio" name="${name}" value="${opt.value}" ${previousAnswer === opt.value ? 'checked' : ''}>
-                    <div>${labelHtml}<span style="color: #444; font-size: 0.92em;">${opt.description || ''}</span></div>
-                </label>`;
-            }).join('')}
-        </div>
-    `;
-}
-
-function buildFreetextQuestion(question, previousAnswer) {
-    return `
-        <textarea placeholder="${question.placeholder || 'Type your response here...'}"
-            style="width: 100%; min-height: 200px; padding: 14px; font-size: 15px; font-family: inherit; border: 1px solid #ddd; border-radius: 8px; resize: vertical; box-sizing: border-box; line-height: 1.5; color: #333;"
-        >${previousAnswer || ''}</textarea>
-    `;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
