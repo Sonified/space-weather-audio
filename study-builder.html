@@ -1442,7 +1442,9 @@
         });
       } else if (step.type === 'question') {
         card.setAttribute('draggable', 'true');
-        if (step.id) card.dataset.questionId = step.id;
+        // Ensure every question has a stable ID (auto-generate if missing)
+        if (!step.id) step.id = generateQuestionSlug();
+        card.dataset.questionId = step.id;
         if (step.inputName) card.dataset.inputName = step.inputName;
         card.innerHTML = buildQuestionCard(num, step);
         console.log(`%c[LOAD]   Step ${i} (question) DOM verify:`, 'color: #ff6b6b;', {
@@ -1831,10 +1833,16 @@
     const isRadio = qType === 'radio';
     let contentHtml = '';
 
+    const qid = step.id || generateQuestionSlug();
     contentHtml += `
       <div class="field-group">
         <div class="field-label">Question Text</div>
         <input class="field-input question-text-input" value="${escapeAttr(step.title || step.text || '')}" placeholder="Enter question text..." />
+      </div>
+      <div class="toggle-row" style="margin-top: 6px; padding: 4px 0;">
+        <span class="toggle-label" style="font-size: 12px; color: #888;">Question ID</span>
+        <div class="toggle toggle-question-id ${step.id ? 'on' : ''}" onclick="this.classList.toggle('on'); const inp = this.parentElement.querySelector('.question-id-input'); inp.style.display = this.classList.contains('on') ? 'block' : 'none';"></div>
+        <input class="field-input question-id-input" value="${escapeAttr(qid)}" style="display: ${step.id ? 'block' : 'none'}; width: 140px; font-size: 12px; font-family: monospace; padding: 3px 6px; margin-left: 4px;" />
       </div>`;
     if (step.subtitle) {
       contentHtml += `
@@ -2260,6 +2268,12 @@
 
   function escapeAttr(s) { return (s||'').replace(/"/g, '&quot;'); }
   function escapeHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function generateQuestionSlug() {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    let s = 'q_';
+    for (let i = 0; i < 4; i++) s += chars[Math.floor(Math.random() * chars.length)];
+    return s;
+  }
 
   // Style body HTML for preview.
   // All margins set to 0 — the contenteditable blank lines ARE the spacing.
@@ -2387,10 +2401,10 @@
         const qPills = card.querySelectorAll('.pill-group-answer-type .pill.active');
         const qPillText = qPills[0]?.textContent.trim().toLowerCase() || 'multiple choice';
         step.questionType = qPillText.includes('free') ? 'freetext' : 'radio';
-        // Auto-generate id/inputName, preserve from import if available
-        const qIndex = steps.filter(s => s.type === 'question').length + 1;
-        step.id = card.dataset.questionId || ('q' + qIndex);
-        step.inputName = card.dataset.inputName || step.id;
+        // Read question ID from the editable input (always present, auto-generated if needed)
+        const qIdInput = card.querySelector('.question-id-input');
+        step.id = (qIdInput?.value || '').trim() || generateQuestionSlug();
+        step.inputName = step.id;
         if (step.questionType === 'radio') {
           const labelToggle = card.querySelector('.toggle-label-prefixes');
           step.labelPrefixes = labelToggle?.classList.contains('on') ?? true;
@@ -3231,7 +3245,9 @@
       card.innerHTML = buildInfoCard(num, defaultStep);
       const ed = card.querySelector('.rich-editable'); if (ed) ed.innerHTML = '';
     } else if (type === 'question') {
-      defaultStep = { type: 'question', title: '', questionType: 'radio', required: true, canGoBack: true, options: [{ value: '1', label: '', description: '' }] };
+      const newQid = generateQuestionSlug();
+      defaultStep = { type: 'question', title: '', questionType: 'radio', required: true, canGoBack: true, id: newQid, options: [{ value: '1', label: '', description: '' }] };
+      card.dataset.questionId = newQid;
       card.innerHTML = buildQuestionCard(num, defaultStep);
     } else {
       defaultStep = { type: 'analysis', title: 'New Analysis Step', spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16', startDate: '', endDate: '', dataSource: 'cloudflare_r2', playbackSpeed: '1x', allowFeatureDrawing: true, showSpectrogram: true, allowStretch: true, minFeatures: 1, confirmCompletion: { enabled: false } };
