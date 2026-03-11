@@ -64,9 +64,11 @@
         (function() {
             var h2 = window.location.hostname;
             var isLocalEnv = h2 === 'localhost' || h2 === '127.0.0.1' || h2 === '' || window.location.protocol === 'file:';
-            var savedAdv = localStorage.getItem('emic_advanced_mode');
-            if (savedAdv === 'true' || (savedAdv === null && isLocalEnv)) {
-                document.documentElement.setAttribute('data-advanced', '');
+            if (isLocalEnv) {
+                var savedAdv = localStorage.getItem('emic_advanced_mode');
+                if (savedAdv === 'true' || savedAdv === null) {
+                    document.documentElement.setAttribute('data-advanced', '');
+                }
             }
             var h = window.location.hostname;
             var isLocal = h === 'localhost' || h === '127.0.0.1' || h === '' || window.location.protocol === 'file:';
