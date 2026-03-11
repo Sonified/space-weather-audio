@@ -624,8 +624,9 @@ async function init() {
     // ── Step Jump & Preview Mode ─────────────────────────────
     const urlParams = new URLSearchParams(window.location.search);
     const jumpToStep = urlParams.get('step');
-    const isPreview = urlParams.get('preview') === 'true';
-    const isTestMode = urlParams.get('test') === 'true';
+    const mode = urlParams.get('mode');
+    const isPreview = mode === 'preview' || urlParams.get('preview') === 'true';
+    const isTestMode = mode === 'test' || urlParams.get('test') === 'true';
 
     // ── Test Mode ────────────────────────────────────────────
     // Like live mode (data IS saved), but participant ID is prefixed TEST_ so it can be filtered out later.

@@ -337,10 +337,10 @@
   .step-preview p { color: #333; font-size: 16px; line-height: 1.6; margin: 0 0 12px; }
   .step-preview .preview-radio-group { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
   .step-preview .preview-radio-choice {
-    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
-    border: 1px solid #e0e0e0; border-radius: 8px; cursor: pointer; transition: background 0.15s;
+    display: flex; align-items: center; gap: 12px; padding: 8px 14px;
+    border: 1px solid transparent; border-radius: 8px; cursor: pointer; transition: background 0.15s, border-color 0.15s;
   }
-  .step-preview .preview-radio-choice:hover { background: #f5f5f5; }
+  .step-preview .preview-radio-choice:hover { background: rgba(0, 123, 255, 0.06); }
   .step-preview .preview-radio-choice input[type="radio"] { accent-color: #2196F3; }
   .step-preview .preview-radio-choice strong { color: #333; }
   .step-preview .preview-radio-choice .label-prefix { color: #333; }
@@ -667,7 +667,8 @@
     font-size: 11px;
     font-weight: 600;
     cursor: pointer;
-    width: fit-content;
+    width: 100px;
+    box-sizing: border-box;
     transition: border-color 0.15s, color 0.15s;
   }
   .opt-add-btn:hover { border-color: #27ae60; color: #2ecc71; }
@@ -908,7 +909,7 @@
     <!-- Row 2: URLs -->
     <div class="slug-preview" id="slugPreview" style="margin-top:4px;">
       <span class="slug-label">Study URL:</span>
-      <span class="slug-url">spaceweather.now.audio/study/<span id="slugValue" class="slug-editable" contenteditable="true" spellcheck="false"></span></span>
+      <span class="slug-url">spaceweather.now.audio/study.html?s=<span id="slugValue" class="slug-editable" contenteditable="true" spellcheck="false"></span></span>
       <button class="url-action-btn" onclick="copyUrl('study')" title="Copy URL">📋</button>
       <button class="url-action-btn" onclick="openUrl('study')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
     </div>
@@ -1866,8 +1867,9 @@
           <div class="opt-desc-input" contenteditable="true">${opt.description || ''}</div>
         </div>`;
       }
+      const addBtnStyle = !showLabels ? ' style="width:auto;flex:1;"' : '';
       contentHtml += `
-        <button class="opt-add-btn" onclick="event.stopPropagation(); addOptRow(this)">
+        <button class="opt-add-btn"${addBtnStyle} onclick="event.stopPropagation(); addOptRow(this)">
           <span class="plus-circle">+</span> Add
         </button>
       </div></div>`;
@@ -2721,10 +2723,10 @@
     }
 
     await saveDraft();
-    const prodUrl = `spaceweather.now.audio/study/${slug}`;
-    const localUrl = `${window.location.origin}/study.html?study=${slug}`;
-    const testUrl = `${prodUrl}?test=true`;
-    const msg = `Study published!\n\nParticipant URL:\n${prodUrl}\n\nTest URL (saves data with TEST_ prefix):\n${testUrl}\n\nLocal testing:\n${localUrl}\n\nStudy builder:\n${window.location.origin}/study-builder.html?study=${slug}`;
+    const prodUrl = `spaceweather.now.audio/study.html?s=${slug}`;
+    const testUrl = `${prodUrl}&mode=test`;
+    const localUrl = `${window.location.origin}/study.html?s=${slug}`;
+    const msg = `Study published!\n\nLive URL:\n${prodUrl}\n\nTest URL (saves data with TEST_ prefix):\n${testUrl}\n\nLocal testing:\n${localUrl}\n\nStudy builder:\n${window.location.origin}/study-builder.html?study=${slug}`;
     alert(msg);
     console.log('🚀 Published:', prodUrl);
   }
@@ -2733,7 +2735,7 @@
   function previewStudy() {
     const slug = document.getElementById('slugValue').textContent.trim();
     // Use query-param URL (works on localhost and production)
-    const url = `${window.location.origin}/study.html?study=${slug}&preview=true`;
+    const url = `${window.location.origin}/study.html?s=${slug}&mode=preview`;
     window.open(url, '_blank');
   }
 
@@ -2783,26 +2785,26 @@
     if (!isLocal) { row.style.display = 'none'; return; }
     row.style.display = '';
     const el = document.getElementById('localUrl');
-    el.textContent = `${location.origin}/study.html?study=${slug}`;
+    el.textContent = `${location.origin}/study.html?s=${slug}`;
   }
 
   function updateTestUrl(slug) {
     const el = document.getElementById('testUrl');
-    if (el) el.textContent = `spaceweather.now.audio/study/${slug}?test=true`;
+    if (el) el.textContent = `spaceweather.now.audio/study.html?s=${slug}&mode=test`;
   }
 
   function getStudyUrl() {
     const slug = document.getElementById('slugValue').textContent;
-    return `https://spaceweather.now.audio/study/${slug}`;
+    return `https://spaceweather.now.audio/study.html?s=${slug}`;
   }
 
   function getLocalUrl() {
     const slug = document.getElementById('slugValue').textContent;
-    return `${location.origin}/study.html?study=${slug}`;
+    return `${location.origin}/study.html?s=${slug}`;
   }
 
   function getTestUrl() {
-    return getStudyUrl() + '?test=true';
+    return getStudyUrl() + '&mode=test';
   }
 
   function copyUrl(type) {
@@ -3131,6 +3133,11 @@
       editor.querySelectorAll('.opt-label-input').forEach(inp => {
         inp.style.display = isOn ? '' : 'none';
       });
+      const addBtn = editor.querySelector('.opt-add-btn');
+      if (addBtn) {
+        addBtn.style.width = isOn ? '100px' : '';
+        addBtn.style.flex = isOn ? '' : '1';
+      }
     }
     if (card?.querySelector('.step-preview')) refreshInlinePreview(card);
   }
@@ -3892,7 +3899,7 @@
     const cards = Array.from(document.querySelectorAll('.step-card'));
     const stepIndex = cards.indexOf(card);
     const slug = document.getElementById('slugValue').textContent.trim();
-    const url = `${window.location.origin}/study.html?study=${slug}&step=${stepIndex}&preview=true`;
+    const url = `${window.location.origin}/study.html?s=${slug}&step=${stepIndex}&preview=true`;
     window.open(url, '_blank');
   }
 

@@ -17,7 +17,8 @@
         // ── Study slug from URL path: /study/emic-pilot → "emic-pilot" ──
         (function() {
             var match = window.location.pathname.match(/\/study\/([^/?#]+)/);
-            window.__STUDY_SLUG = match ? match[1] : new URLSearchParams(window.location.search).get('study') || null;
+            var params = new URLSearchParams(window.location.search);
+            window.__STUDY_SLUG = match ? match[1] : params.get('s') || params.get('study') || null;
             if (!window.__STUDY_SLUG) {
                 document.title = 'Study Not Found';
             }
