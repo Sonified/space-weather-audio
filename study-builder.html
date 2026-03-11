@@ -384,6 +384,26 @@
     width: 100%; display: flex; justify-content: center;
   }
 
+  /* Preview popup overlay — renders modal in same context as live site */
+  .preview-overlay {
+    position: fixed; inset: 0; z-index: 9999;
+    background: rgba(0, 0, 0, 0);
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(0px);
+    transition: background 0.25s ease, backdrop-filter 0.25s ease;
+  }
+  .preview-overlay.visible {
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(2px);
+  }
+  .preview-overlay .modal-content {
+    opacity: 0; transform: scale(0.96);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  .preview-overlay.visible .modal-content {
+    opacity: 1; transform: scale(1);
+  }
+
   .chevron {
     color: var(--text-muted);
     transition: transform 0.2s;
@@ -391,16 +411,15 @@
   }
   .step-card.active .chevron { transform: rotate(90deg); }
 
-  /* Step detail panel */
+  /* Step detail panel — max-height driven by JS toggleStep() */
   .step-detail {
-    max-height: 0;
     overflow: hidden;
-    transition: max-height 0.35s ease, padding 0.35s ease;
+    transition: max-height 0.3s ease-out, padding 0.3s ease-out;
+    max-height: 0;
     padding: 0 16px;
     border-top: 1px solid var(--border);
   }
   .step-card.active .step-detail {
-    max-height: 5000px;
     padding: 16px 16px;
   }
 
@@ -869,6 +888,13 @@
     padding: 16px 20px;
     background: rgba(0,0,0,0.25);
     border-top: 1px solid var(--border);
+  }
+  .info-button-group.button-hidden {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+  .info-button-group.button-hidden .dismiss-label-input {
+    text-decoration: line-through;
   }
   .settings-section-label {
     font-size: 11px;
@@ -1597,6 +1623,17 @@
     if (!restoreExpandedState()) {
       container.querySelector('.step-card')?.classList.add('active');
     }
+    // Cards that start open: skip transition, set max-height:none immediately
+    container.querySelectorAll('.step-card.active .step-detail').forEach(d => {
+      d.style.transition = 'none';
+      d.style.maxHeight = 'none';
+    });
+    // Re-enable transitions after layout settles
+    requestAnimationFrame(() => {
+      container.querySelectorAll('.step-card.active .step-detail').forEach(d => {
+        d.style.transition = '';
+      });
+    });
     updatePreview();
     renumberSteps();
 
@@ -1797,10 +1834,10 @@
 
   function buildStepActions(type) {
     // Modal steps get inline preview + page preview; analysis gets page preview only
-    const previewBtns = (type === 'question')
-      ? `<button class="step-action-btn preview-btn" title="Toggle inline preview" onclick="event.stopPropagation(); toggleInlinePreview(this)">👁</button>
+    const previewBtns = (type === 'question' || type === 'info')
+      ? `<button class="step-action-btn preview-btn" title="Preview window" onclick="event.stopPropagation(); openPreviewWindow(this)">Preview</button>
          <button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>`
-      : (type === 'modal' || type === 'registration' || type === 'info')
+      : (type === 'modal' || type === 'registration')
       ? `<button class="step-action-btn preview-btn" title="Toggle inline preview" onclick="event.stopPropagation(); toggleInlinePreview(this)">👁</button>
          <button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>`
       : type === 'analysis'
@@ -1840,10 +1877,6 @@
             <span>Skip login screen</span>
           </label>
         </div>
-        <label class="toggle-row" style="margin-top:8px;">
-          <input type="checkbox" class="reg-show-id-corner" ${step.showIdCorner !== false ? 'checked' : ''} />
-          <span>Show ID in corner</span>
-        </label>
         <div class="reg-manual-fields" style="${isAuto ? 'display:none' : ''}">
           <div class="field-group">
             <div class="field-label">Window Title</div>
@@ -1860,36 +1893,50 @@
               <div class="rich-editable reg-body-html-input" contenteditable="true"></div>
             </div>
           </div>
-          <div class="field-group">
-            <div class="field-label">ID Placeholder Text</div>
-            <input class="field-input reg-id-placeholder" value="${escapeAttr(step.idPlaceholder || 'Enter your ID')}" />
-          </div>
-          <div class="field-group">
-            <div class="field-label">Button Label</div>
-            <input class="field-input reg-button-label-input" value="${escapeAttr(step.regButtonLabel || 'Confirm')}" />
-          </div>
-          <div class="field-row" style="margin-top: 8px;">
-            <div class="field-group">
-              <div class="field-label">Modal Width</div>
-              <div class="dim-input-wrap">
-                <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '480px')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+        </div>
+        <div class="field-group">
+          <div class="field-label">Button Label</div>
+          <input class="field-input reg-button-label-input" value="${escapeAttr(step.regButtonLabel || 'Confirm')}" />
+        </div>
+        <div class="card-settings" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open'); saveExpandedState()}">
+          <button class="card-settings-trigger" type="button">&#9881; Settings <span class="settings-chevron">&#9660;</span></button>
+          <div class="card-settings-drawer"><div class="settings-body">
+            <div class="settings-section-label">Behavior</div>
+            <div class="settings-rows">
+              <div class="settings-row">
+                <span class="toggle-label">Show ID in corner</span>
+                <div class="toggle toggle-show-id-corner ${step.showIdCorner !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+              </div>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section-label">Content</div>
+            <div class="settings-rows">
+              <div class="settings-row">
+                <span class="toggle-label">ID Placeholder</span>
+                <input class="field-input reg-id-placeholder" value="${escapeAttr(step.idPlaceholder || 'Enter your ID')}" style="flex: 1; min-width: 120px; font-size: 13px; padding: 4px 8px;" />
+              </div>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section-label">Layout</div>
+            <div class="settings-row">
+              <span class="toggle-label">Size:</span>
+              <div class="dim-input-wrap" style="width:90px;">
+                <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '480px')}" style="text-align:center; padding:5px 4px; font-size:13px;" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+                <div class="dim-arrows">
+                  <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
+                  <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
+                </div>
+              </div>
+              <span style="opacity:0.4;">×</span>
+              <div class="dim-input-wrap" style="width:90px;">
+                <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" style="text-align:center; padding:5px 4px; font-size:13px;" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
                 <div class="dim-arrows">
                   <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
                   <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
                 </div>
               </div>
             </div>
-            <div class="field-group">
-              <div class="field-label">Modal Height</div>
-              <div class="dim-input-wrap">
-                <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
-                <div class="dim-arrows">
-                  <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
-                  <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
-                </div>
-              </div>
-            </div>
-          </div>
+          </div></div>
         </div>
       </div>`;
   }
@@ -1919,42 +1966,50 @@
             <div class="rich-editable body-html-input" contenteditable="true"></div>
           </div>
         </div>
-        <div class="field-group">
+        <div class="field-group info-button-group ${step.hideButton ? 'button-hidden' : ''}">
           <div class="field-label">Button Label</div>
           <div style="display:flex; align-items:center; gap:8px;">
-            <input class="field-input dismiss-label-input" value="${escapeAttr(step.dismissLabel || 'OK')}" style="flex:1;" />
+            <input class="field-input dismiss-label-input" value="${escapeAttr(step.dismissLabel || 'OK')}" style="flex:1;" ${step.hideButton ? 'disabled' : ''} />
             <div class="fs-bold ${step.dismissBold ? 'active' : ''} dismiss-font-bold" onclick="event.stopPropagation(); this.classList.toggle('active')" title="Bold">B</div>
             ${buildColorPicker('dismiss-font-color', step.dismissColor || '#ffffff', 'Text Color', 'text')}
             ${buildColorPicker('dismiss-bg-color', step.dismissBgColor || '#2196F3', 'Background', 'bg')}
           </div>
         </div>
-        <div class="toggle-row">
-          <span class="toggle-label">Can Close</span>
-          <div class="toggle toggle-closable ${step.closable ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
-          <span class="toggle-label" style="margin-left: 16px;">Skippable</span>
-          <div class="toggle toggle-skippable ${step.skippable ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
-        </div>
-        <div class="field-row" style="margin-top: 8px;">
-          <div class="field-group">
-            <div class="field-label">Modal Width</div>
-            <div class="dim-input-wrap">
-              <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '460px')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
-              <div class="dim-arrows">
-                <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
-                <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
+        <div class="card-settings" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open'); saveExpandedState()}">
+          <button class="card-settings-trigger" type="button">&#9881; Settings <span class="settings-chevron">&#9660;</span></button>
+          <div class="card-settings-drawer"><div class="settings-body">
+            <div class="settings-section-label">Behavior</div>
+            <div class="settings-rows">
+              <div class="settings-row">
+                <span class="toggle-label">Can Close</span>
+                <div class="toggle toggle-closable ${step.closable ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+                <span class="toggle-label">Skippable</span>
+                <div class="toggle toggle-skippable ${step.skippable ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+                <span class="toggle-label">Hide Button</span>
+                <div class="toggle toggle-hide-button ${step.hideButton ? 'on' : ''}" onclick="this.classList.toggle('on'); toggleInfoButton(this)"></div>
               </div>
             </div>
-          </div>
-          <div class="field-group">
-            <div class="field-label">Modal Height</div>
-            <div class="dim-input-wrap">
-              <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
-              <div class="dim-arrows">
-                <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
-                <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
+            <div class="settings-divider"></div>
+            <div class="settings-section-label">Layout</div>
+            <div class="settings-row">
+              <span class="toggle-label">Size:</span>
+              <div class="dim-input-wrap" style="width:90px;">
+                <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '460px')}" style="text-align:center; padding:5px 4px; font-size:13px;" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+                <div class="dim-arrows">
+                  <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
+                  <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
+                </div>
+              </div>
+              <span style="opacity:0.4;">×</span>
+              <div class="dim-input-wrap" style="width:90px;">
+                <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" style="text-align:center; padding:5px 4px; font-size:13px;" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+                <div class="dim-arrows">
+                  <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
+                  <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
+                </div>
               </div>
             </div>
-          </div>
+          </div></div>
         </div>
       </div>`;
   }
@@ -2066,9 +2121,11 @@
           </div>
         </div></div>
       </div>
+      <!-- preview-bar-footer hidden for now
       <div class="preview-bar-footer">
         <button class="preview-bar-btn" type="button" onclick="event.stopPropagation(); toggleFooterPreview(this)">&#9655; Preview</button>
-      </div>`;
+      </div>
+      -->`;
 
     return `
       <div class="step-header" onclick="toggleStep(this)">
@@ -2485,7 +2542,7 @@
         step.idMethod = pills[0]?.textContent.trim().toLowerCase().includes('auto') ? 'auto_generate' : 'manual';
         step.idPrefix = card.querySelector('.reg-id-prefix')?.value || '';
         step.skipLogin = card.querySelector('.reg-skip-login')?.checked || false;
-        step.showIdCorner = card.querySelector('.reg-show-id-corner')?.checked ?? true;
+        step.showIdCorner = card.querySelector('.toggle-show-id-corner')?.classList.contains('on') ?? true;
         step.idPlaceholder = card.querySelector('.reg-id-placeholder')?.value || '';
         step.regTitle = card.querySelector('.reg-title-input')?.value || '';
         const regBody = card.querySelector('.reg-body-html-input');
@@ -2522,6 +2579,7 @@
         step.dismissBold = card.querySelector('.dismiss-font-bold')?.classList.contains('active') || false;
         step.dismissColor = card.querySelector('.dismiss-font-color')?.dataset?.value || '#ffffff';
         step.dismissBgColor = card.querySelector('.dismiss-bg-color')?.dataset?.value || '#2196F3';
+        step.hideButton = card.querySelector('.toggle-hide-button')?.classList.contains('on') || false;
         step.closable = card.querySelector('.toggle-closable')?.classList.contains('on') || false;
         step.skippable = card.querySelector('.toggle-skippable')?.classList.contains('on') || false;
         const mw = card.querySelector('.modal-width-input')?.value?.trim();
@@ -3202,9 +3260,33 @@
 
   initDragAndDrop();
 
-  // Toggle step expansion
+  // Toggle step expansion — JS owns max-height for smooth animation
   function toggleStep(header) {
-    header.closest('.step-card').classList.toggle('active');
+    const card = header.closest('.step-card');
+    const detail = card.querySelector('.step-detail');
+    const isOpen = card.classList.contains('active');
+
+    if (isOpen) {
+      // Closing: snapshot current height → transition to 0
+      detail.style.maxHeight = detail.scrollHeight + 'px';
+      detail.offsetHeight; // force reflow so browser registers start value
+      detail.style.maxHeight = '0';
+      card.classList.remove('active');
+    } else {
+      // Opening: add class for padding, then animate height
+      card.classList.add('active');
+      const targetHeight = detail.scrollHeight;
+      detail.style.maxHeight = '0';
+      detail.offsetHeight; // force reflow
+      detail.style.maxHeight = targetHeight + 'px';
+      // After transition, switch to 'none' so content can resize freely
+      detail.addEventListener('transitionend', function handler(e) {
+        if (e.propertyName === 'max-height') {
+          detail.style.maxHeight = 'none';
+          detail.removeEventListener('transitionend', handler);
+        }
+      });
+    }
     saveExpandedState();
   }
 
@@ -3278,6 +3360,16 @@
       localStorage.removeItem('sb_expandedPreviews');
       return false;
     }
+  }
+
+  // Toggle hide button for info cards
+  function toggleInfoButton(toggle) {
+    const card = toggle.closest('.step-card');
+    const group = card?.querySelector('.info-button-group');
+    const input = group?.querySelector('.dismiss-label-input');
+    const hidden = toggle.classList.contains('on');
+    if (group) group.classList.toggle('button-hidden', hidden);
+    if (input) input.disabled = hidden;
   }
 
   // Pill selection
@@ -3701,8 +3793,8 @@
     return _questionRenderer;
   }
 
-  async function renderQuestionPreview(card, detail) {
-    const renderer = await getQuestionRenderer();
+  // Build question + dims from a card's DOM fields — shared by inline preview & popup
+  function readQuestionFromCard(card) {
     const title = card.querySelector('.question-text-input')?.value || '';
     const subtitle = card.querySelector('.question-subtitle-input')?.value || '';
     const answerPills = card.querySelectorAll('.pill-group-answer-type .pill.active');
@@ -3733,13 +3825,151 @@
     const dims = {};
     if (w) dims.modalWidth = w;
     if (h) dims.modalHeight = h;
-    // Compute position among all question cards in the step list
     const allQuestionCards = Array.from(document.querySelectorAll('.step-card[data-type="question"]'));
     const index = allQuestionCards.indexOf(card);
     const total = allQuestionCards.length;
     const progressPct = total > 0 ? ((index + 1) / total) * 100 : 100;
     const showBack = index > 0;
+    return { question, dims, index, total, progressPct, showBack };
+  }
 
+  // Preview window — renders modal as a popup overlay, emulates the live site flow
+  function readInfoFromCard(card) {
+    const inputs = Array.from(card.querySelectorAll('.step-detail .field-input')).filter(el => !el.type.startsWith('date'));
+    const title = inputs[0]?.value || 'Information';
+    const bodyInput = card.querySelector('.body-html-input');
+    const bodyHtml = bodyInput ? bodyInput.innerHTML : '';
+    const dismissLabel = card.querySelector('.dismiss-label-input')?.value || 'OK';
+    const closable = card.querySelector('.toggle-closable')?.classList.contains('on') || false;
+    const hideButton = card.querySelector('.toggle-hide-button')?.classList.contains('on') || false;
+    const btnStyle = getDismissButtonStyle(card);
+    const w = card.querySelector('.modal-width-input')?.value?.trim() || '460px';
+    const h = card.querySelector('.modal-height-input')?.value?.trim();
+    // Read underline settings
+    const ulToggle = card.querySelector('.toggle-title-underline');
+    const titleUnderline = ulToggle ? ulToggle.classList.contains('on') : true;
+    const titleUnderlineSize = card.querySelector('.title-underline-size')?.value || '2px';
+    const titleUnderlineColor = card.querySelector('.title-underline-color')?.value || '#c86464';
+    // Build step-like object for shared renderer
+    const step = {
+      title, dismissLabel, closable, hideButton,
+      modalWidth: w,
+      modalHeight: (h && h !== 'auto') ? h : undefined,
+      titleFontSize: card.querySelector('.title-font-size')?.value || '20px',
+      titleFontColor: card.querySelector('.title-font-color')?.value || '#550000',
+      titleFontBold: card.querySelector('.title-font-bold')?.classList.contains('active'),
+      bodyFontSize: card.querySelector('.body-font-size')?.value,
+      bodyFontColor: card.querySelector('.body-font-color')?.value,
+      bodyFontBold: card.querySelector('.body-font-bold')?.classList.contains('active'),
+      titleUnderline, titleUnderlineSize, titleUnderlineColor,
+    };
+    return { step, bodyHtml, btnStyle };
+  }
+
+  function renderInfoModalHtml(info) {
+    return _questionRenderer.renderInfoModal(info);
+  }
+
+  async function openPreviewWindow(btn) {
+    const card = btn.closest('.step-card');
+    const cardType = card.dataset.type;
+
+    // For question cards, collect all question cards for navigation
+    const isQuestion = cardType === 'question';
+    const navCards = isQuestion
+      ? Array.from(document.querySelectorAll('.step-card[data-type="question"]'))
+      : [card]; // info cards preview solo
+    let currentIndex = Math.max(0, navCards.indexOf(card));
+
+    const renderer = await getQuestionRenderer();
+    const overlay = document.createElement('div');
+    overlay.className = 'preview-overlay';
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('visible'));
+
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    function close() {
+      overlay.classList.remove('visible');
+      overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
+      document.removeEventListener('keydown', onKey);
+    }
+
+    function crossfade(idx) {
+      const modal = overlay.querySelector('.modal-content');
+      if (modal) {
+        modal.style.opacity = '0';
+        modal.style.transform = 'scale(0.96)';
+        setTimeout(() => renderStep(idx), 200);
+      } else {
+        renderStep(idx);
+      }
+    }
+
+    function renderStep(idx) {
+      const c = navCards[idx];
+      if (!c) { close(); return; }
+
+      let html;
+      if (c.dataset.type === 'info') {
+        html = renderInfoModalHtml(readInfoFromCard(c));
+      } else {
+        const { question, dims, index, total, progressPct, showBack } = readQuestionFromCard(c);
+        html = renderer.renderQuestionModal({
+          question, index, total, progressPct,
+          previousAnswer: null, showBack, dims, preview: false
+        });
+      }
+      overlay.innerHTML = html;
+      // Trigger fade-in for the new content
+      requestAnimationFrame(() => {
+        const modal = overlay.querySelector('.modal-content');
+        if (modal) { modal.style.opacity = '1'; modal.style.transform = 'scale(1)'; }
+      });
+
+      // Wire radio buttons — selecting one enables Next
+      const nextBtn = overlay.querySelector('.modal-next');
+      const radios = overlay.querySelectorAll('input[type="radio"]');
+      radios.forEach(r => r.addEventListener('change', () => {
+        if (nextBtn) nextBtn.disabled = false;
+      }));
+
+      // Wire Next — advance to next card or close
+      if (nextBtn) nextBtn.addEventListener('click', () => {
+        if (idx < navCards.length - 1) {
+          currentIndex = idx + 1;
+          crossfade(currentIndex);
+        } else {
+          close();
+        }
+      });
+
+      // Wire Back — go to previous card
+      const backBtn = overlay.querySelector('.modal-back');
+      if (backBtn) backBtn.addEventListener('click', () => {
+        if (idx > 0) {
+          currentIndex = idx - 1;
+          crossfade(currentIndex);
+        }
+      });
+
+      // Wire dismiss button (info cards) — close overlay
+      const dismissBtn = overlay.querySelector('.modal-dismiss');
+      if (dismissBtn) dismissBtn.addEventListener('click', close);
+
+      // Wire close button (info cards with closable)
+      const closeBtn = overlay.querySelector('.modal-close');
+      if (closeBtn) closeBtn.addEventListener('click', close);
+    }
+
+    renderStep(currentIndex);
+  }
+
+  async function renderQuestionPreview(card, detail) {
+    const renderer = await getQuestionRenderer();
+    const { question, dims, index, total, progressPct, showBack } = readQuestionFromCard(card);
     const html = renderer.renderQuestionModal({
       question, index, total, progressPct,
       previousAnswer: null, showBack, dims, preview: true
@@ -3841,12 +4071,13 @@
       const dismissInput = card.querySelector('.dismiss-label-input');
       const dismissLabel = dismissInput?.value || 'OK';
       const closable = card.querySelector('.toggle-closable')?.classList.contains('on') || false;
+      const hideButton = card.querySelector('.toggle-hide-button')?.classList.contains('on') || false;
       const btnStyle = getDismissButtonStyle(card);
       preview.innerHTML = `
         ${closable ? '<button class="preview-close">&times;</button>' : ''}
         <h3 style="${titleStyle}">${escapeHtml(title)}</h3>
         <div>${styleBodyHtml(bodyHtml)}</div>
-        <button class="preview-submit" style="${btnStyle}">${escapeHtml(dismissLabel)}</button>
+        ${hideButton ? '' : `<button class="preview-submit" style="${btnStyle}">${escapeHtml(dismissLabel)}</button>`}
       `;
     } else {
       // Questions preview (modal with multiple questions)

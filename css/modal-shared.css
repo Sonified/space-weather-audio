@@ -10,6 +10,13 @@
 .modal-content * {
     box-sizing: content-box;
 }
+/* Buttons and inputs need border-box so width:100% + padding doesn't overflow */
+.modal-content button,
+.modal-content input,
+.modal-content textarea,
+.modal-content select {
+    box-sizing: border-box;
+}
 .modal-content {
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(245, 245, 245, 0.98) 100%);
     border-radius: 12px;
