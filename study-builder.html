@@ -343,6 +343,7 @@
   .step-preview .preview-radio-choice:hover { background: #f5f5f5; }
   .step-preview .preview-radio-choice input[type="radio"] { accent-color: #2196F3; }
   .step-preview .preview-radio-choice strong { color: #333; }
+  .step-preview .preview-radio-choice .label-prefix { color: #333; }
   .step-preview .preview-radio-choice span { color: #666; font-size: 0.92em; }
   .step-preview textarea {
     width: 100%; min-height: 120px; padding: 14px; font-size: 15px; font-family: inherit;
@@ -534,6 +535,7 @@
     background: none;
     border: none;
     padding: 0;
+    margin-bottom: 12px;
   }
   .pill-group-flat .pill {
     border: 1px solid var(--border);
@@ -573,11 +575,7 @@
     border-radius: 4px;
   }
   .radio-options-editor {
-    margin: 4px 0 8px 30px;
-    padding: 8px;
-    background: #fafafa;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    margin-top: 14px;
     font-size: 12px;
   }
   .radio-options-editor .opt-row {
@@ -587,6 +585,7 @@
     margin-bottom: 6px;
   }
   .radio-options-editor .opt-value-input {
+    display: none;
     width: 50px;
     flex: 0 0 50px;
     padding: 4px 6px;
@@ -597,18 +596,24 @@
   }
   .radio-options-editor .opt-label-input {
     width: 100px;
-    padding: 4px 6px;
+    padding: 6px 10px;
     border: 1px solid var(--border);
-    border-radius: 4px;
-    font-size: 12px;
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: #fff;
+    font-size: var(--input-font-size);
+    outline: none;
   }
+  .radio-options-editor .opt-label-input:focus { border-color: var(--accent); }
   .radio-options-editor .opt-desc-input {
     flex: 1;
     min-height: 24px;
-    padding: 4px 6px;
+    padding: 6px 10px;
     border: 1px solid var(--border);
-    border-radius: 4px;
-    font-size: 12px;
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--text);
+    font-size: var(--input-font-size);
     outline: none;
   }
   .radio-options-editor .opt-desc-input:focus {
@@ -622,12 +627,63 @@
     display: flex;
     gap: 6px;
     margin-bottom: 4px;
-    font-size: 10px;
+    font-size: 11px;
     color: var(--text-muted);
     font-weight: 600;
   }
+  .radio-options-editor .opt-header { padding-left: 26px; }
   .radio-options-editor .opt-header span:first-child { width: 100px; }
   .radio-options-editor .opt-header span:last-child { flex: 1; }
+  .opt-remove-btn {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: none;
+    background: #c0392b;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 4px;
+    transition: background 0.15s;
+  }
+  .opt-remove-btn:hover { background: #e74c3c; }
+  .opt-add-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 4px;
+    margin-left: 26px;
+    padding: 4px 8px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: #27ae60;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    width: fit-content;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .opt-add-btn:hover { border-color: #27ae60; color: #2ecc71; }
+  .opt-add-btn .plus-circle {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #27ae60;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .opt-add-btn:hover .plus-circle { background: #2ecc71; }
   .add-question-btn {
     margin-top: 8px;
     padding: 6px 12px;
@@ -1781,27 +1837,44 @@
     contentHtml += `
       <div class="field-group">
         <div class="field-label">Answer Type</div>
-        <div class="pill-group pill-group-answer-type">
+        <div class="pill-group pill-group-flat pill-group-answer-type">
           <button class="pill ${isRadio ? 'active' : ''}" onclick="selectPill(this)">Multiple Choice</button>
           <button class="pill ${!isRadio ? 'active' : ''}" onclick="selectPill(this)">Free Text</button>
         </div>
       </div>`;
-    if (isRadio && step.options && step.options.length) {
+    if (isRadio) {
+      const numOpts = (step.options && step.options.length) ? step.options.length : 1;
+      const showLabels = step.labelPrefixes !== false;
+      const boldLabels = step.boldLabelPrefixes !== false;
       contentHtml += `
+      <div class="radio-options-wrapper">
+      <div class="toggle-row" style="margin-top:12px;">
+        <span class="toggle-label">Label Prefixes</span>
+        <div class="toggle toggle-label-prefixes ${showLabels ? 'on' : ''}" onclick="this.classList.toggle('on'); toggleLabelPrefixes(this)"></div>
+        <span class="toggle-label" style="margin-left: 16px;">Bold Prefixes</span>
+        <div class="toggle toggle-bold-labels ${boldLabels ? 'on' : ''}" onclick="this.classList.toggle('on'); toggleBoldLabels(this)"></div>
+      </div>
       <div class="radio-options-editor">
-        <div class="opt-header"><span>Value</span><span>Label</span><span>Description (Cmd+B for bold)</span></div>`;
-      step.options.forEach(opt => {
+        <div class="opt-header"><span ${!showLabels ? 'style="display:none;"' : ''}>Label</span><span>Description</span></div>`;
+      for (let ri = 0; ri < numOpts; ri++) {
+        const opt = step.options?.[ri] || { value: '', label: '', description: '' };
+        const labelStyle = `${!showLabels ? 'display:none;' : ''}${boldLabels ? 'font-weight:700;' : ''}`;
         contentHtml += `<div class="opt-row">
+          <button class="opt-remove-btn" onclick="event.stopPropagation(); removeOptRow(this)" title="Remove">−</button>
           <input class="opt-value-input" value="${escapeAttr(opt.value || '')}" style="width:50px; flex:0 0 50px;" />
-          <input class="opt-label-input" value="${escapeAttr(opt.label || '')}" />
+          <input class="opt-label-input" value="${escapeAttr(opt.label || '')}" ${labelStyle ? `style="${labelStyle}"` : ''} />
           <div class="opt-desc-input" contenteditable="true">${opt.description || ''}</div>
         </div>`;
-      });
-      contentHtml += `</div>`;
+      }
+      contentHtml += `
+        <button class="opt-add-btn" onclick="event.stopPropagation(); addOptRow(this)">
+          <span class="plus-circle">+</span> Add
+        </button>
+      </div></div>`;
     } else if (!isRadio) {
       contentHtml += `
       <div class="field-group">
-        <div class="field-label">Placeholder</div>
+        <div class="field-label">Placeholder Text:</div>
         <input class="field-input question-placeholder-input" value="${escapeAttr(step.placeholder || '')}" placeholder="Type your response here..." />
       </div>`;
     }
@@ -1811,6 +1884,28 @@
         <div class="toggle toggle-required ${step.required !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
         <span class="toggle-label" style="margin-left: 16px;">Can Go Back</span>
         <div class="toggle toggle-can-go-back ${step.canGoBack !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+      </div>
+      <div class="field-row" style="margin-top: 8px;">
+        <div class="field-group">
+          <div class="field-label">Modal Width</div>
+          <div class="dim-input-wrap">
+            <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '480px')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+            <div class="dim-arrows">
+              <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
+              <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
+            </div>
+          </div>
+        </div>
+        <div class="field-group">
+          <div class="field-label">Modal Height</div>
+          <div class="dim-input-wrap">
+            <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+            <div class="dim-arrows">
+              <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
+              <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
+            </div>
+          </div>
+        </div>
       </div>`;
 
     return `
@@ -2285,6 +2380,10 @@
         step.id = card.dataset.questionId || ('q' + qIndex);
         step.inputName = card.dataset.inputName || step.id;
         if (step.questionType === 'radio') {
+          const labelToggle = card.querySelector('.toggle-label-prefixes');
+          step.labelPrefixes = labelToggle?.classList.contains('on') ?? true;
+          const boldToggle = card.querySelector('.toggle-bold-labels');
+          step.boldLabelPrefixes = boldToggle?.classList.contains('on') ?? true;
           const optEditor = card.querySelector('.radio-options-editor');
           if (optEditor) {
             const rows = optEditor.querySelectorAll('.opt-row');
@@ -2301,11 +2400,16 @@
         step.required = reqToggle?.classList.contains('on') || false;
         const goBackToggle = card.querySelector('.toggle-can-go-back');
         step.canGoBack = goBackToggle?.classList.contains('on') ?? true;
+        const mw = card.querySelector('.modal-width-input')?.value?.trim();
+        const mh = card.querySelector('.modal-height-input')?.value?.trim();
+        if (mw) step.modalWidth = mw;
+        if (mh) step.modalHeight = mh;
         console.log(`%c[COLLECT]   Question step ${i}:`, 'color: #58a6ff;', {
           title: step.title,
           questionType: step.questionType,
           optionCount: step.options?.length || 0,
           required: step.required,
+          modalWidth: mw || '(unset)',
         });
       }
       else if (type === 'analysis') {
@@ -2556,6 +2660,38 @@
       setTimeout(() => autoSave('click'), 50);
     }
   });
+  /** Sanitize paste in all contenteditable areas — strip colors/backgrounds, keep bold/italic/underline */
+  document.addEventListener('paste', (e) => {
+    const el = e.target.closest('[contenteditable="true"]');
+    if (!el) return;
+    e.preventDefault();
+    const html = e.clipboardData.getData('text/html');
+    if (!html) {
+      // Plain text fallback
+      document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
+      return;
+    }
+    // Parse and sanitize
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    tmp.querySelectorAll('*').forEach(node => {
+      // Strip color, background, and related style properties
+      const s = node.style;
+      s.removeProperty('color');
+      s.removeProperty('background');
+      s.removeProperty('background-color');
+      s.removeProperty('background-image');
+      // Remove style attribute entirely if now empty
+      if (node.getAttribute('style')?.trim() === '') node.removeAttribute('style');
+      // Remove font color attributes (legacy HTML)
+      node.removeAttribute('color');
+      node.removeAttribute('bgcolor');
+    });
+    // Remove <font> tags but keep their children (preserves bold/italic inside)
+    tmp.querySelectorAll('font').forEach(font => font.replaceWith(...font.childNodes));
+    document.execCommand('insertHTML', false, tmp.innerHTML);
+  });
+
   const observer = new MutationObserver(() => autoSave('mutation'));
   observer.observe(document.getElementById('stepList'), { childList: true, subtree: true, characterData: true, attributes: true });
 
@@ -2920,6 +3056,126 @@
       if (manualFields) manualFields.style.display = isManual ? '' : 'none';
       if (autoFields) autoFields.style.display = isManual ? 'none' : '';
     }
+
+    // Toggle question answer type: Multiple Choice ↔ Free Text
+    if (card?.dataset.type === 'question' && group.classList.contains('pill-group-answer-type')) {
+      const isFreeText = pill.textContent.trim() === 'Free Text';
+      const radioWrapper = card.querySelector('.radio-options-wrapper');
+      const radioEditor = card.querySelector('.radio-options-editor');
+      let freetextGroup = card.querySelector('.freetext-fields');
+
+      if (isFreeText) {
+        // Hide all radio controls (toggles, stepper, editor)
+        if (radioWrapper) radioWrapper.style.display = 'none';
+        else if (radioEditor) radioEditor.style.display = 'none';
+        // Create free text placeholder field if it doesn't exist
+        if (!freetextGroup) {
+          freetextGroup = document.createElement('div');
+          freetextGroup.className = 'freetext-fields';
+          freetextGroup.innerHTML = `
+            <div class="field-group">
+              <div class="field-label">Placeholder Text:</div>
+              <input class="field-input question-placeholder-input" value="" placeholder="Type your response here..." />
+            </div>`;
+          // Insert after the answer type pill group
+          const answerTypeGroup = group.closest('.field-group');
+          answerTypeGroup.after(freetextGroup);
+        }
+        freetextGroup.style.display = '';
+      } else {
+        // Show all radio controls
+        if (radioWrapper) {
+          radioWrapper.style.display = '';
+        } else {
+          // Create wrapper with toggles and editor
+          const wrapper = document.createElement('div');
+          wrapper.className = 'radio-options-wrapper';
+          wrapper.innerHTML = `
+            <div class="toggle-row" style="margin-top:12px;">
+              <span class="toggle-label">Label Prefixes</span>
+              <div class="toggle toggle-label-prefixes on" onclick="this.classList.toggle('on'); toggleLabelPrefixes(this)"></div>
+              <span class="toggle-label" style="margin-left: 16px;">Bold Prefixes</span>
+              <div class="toggle toggle-bold-labels on" onclick="this.classList.toggle('on'); toggleBoldLabels(this)"></div>
+            </div>
+            <div class="radio-options-editor">
+              <div class="opt-header"><span>Label</span><span>Description</span></div>
+              <div class="opt-row">
+                <button class="opt-remove-btn" onclick="event.stopPropagation(); removeOptRow(this)" title="Remove">−</button>
+                <input class="opt-value-input" value="" style="width:50px; flex:0 0 50px;" />
+                <input class="opt-label-input" value="" />
+                <div class="opt-desc-input" contenteditable="true"></div>
+              </div>
+              <button class="opt-add-btn" onclick="event.stopPropagation(); addOptRow(this)">
+                <span class="plus-circle">+</span> Add
+              </button>
+            </div>`;
+          const answerTypeGroup = group.closest('.field-group');
+          answerTypeGroup.after(wrapper);
+        }
+        // Hide free text fields
+        if (freetextGroup) freetextGroup.style.display = 'none';
+      }
+      // Update preview if visible
+      if (card.querySelector('.step-preview')) refreshInlinePreview(card);
+    }
+  }
+
+  // Toggle label prefixes — show/hide label column
+  function toggleLabelPrefixes(toggle) {
+    const card = toggle.closest('.step-card');
+    const isOn = toggle.classList.contains('on');
+    const editor = card.querySelector('.radio-options-editor');
+    if (editor) {
+      const headerSpan = editor.querySelector('.opt-header span:first-child');
+      if (headerSpan) headerSpan.style.display = isOn ? '' : 'none';
+      editor.querySelectorAll('.opt-label-input').forEach(inp => {
+        inp.style.display = isOn ? '' : 'none';
+      });
+    }
+    if (card?.querySelector('.step-preview')) refreshInlinePreview(card);
+  }
+
+  // Toggle bold prefixes — bold/unbold label inputs
+  function toggleBoldLabels(toggle) {
+    const card = toggle.closest('.step-card');
+    const isOn = toggle.classList.contains('on');
+    const editor = card.querySelector('.radio-options-editor');
+    if (editor) {
+      editor.querySelectorAll('.opt-label-input').forEach(inp => {
+        inp.style.fontWeight = isOn ? '700' : '400';
+      });
+    }
+    if (card?.querySelector('.step-preview')) refreshInlinePreview(card);
+  }
+
+  // Remove an option row
+  function removeOptRow(btn) {
+    const row = btn.closest('.opt-row');
+    const card = btn.closest('.step-card');
+    const editor = card.querySelector('.radio-options-editor');
+    const rows = editor.querySelectorAll('.opt-row');
+    if (rows.length <= 1) return; // keep at least one
+    row.remove();
+    if (card?.querySelector('.step-preview')) refreshInlinePreview(card);
+  }
+
+  // Add a new option row
+  function addOptRow(btn) {
+    const card = btn.closest('.step-card');
+    const editor = card.querySelector('.radio-options-editor');
+    const showLabels = card.querySelector('.toggle-label-prefixes')?.classList.contains('on') ?? true;
+    const boldLabels = card.querySelector('.toggle-bold-labels')?.classList.contains('on') ?? true;
+    const labelStyle = `${!showLabels ? 'display:none;' : ''}${boldLabels ? 'font-weight:700;' : ''}`;
+    const row = document.createElement('div');
+    row.className = 'opt-row';
+    row.innerHTML = `
+      <button class="opt-remove-btn" onclick="event.stopPropagation(); removeOptRow(this)" title="Remove">−</button>
+      <input class="opt-value-input" value="" style="width:50px; flex:0 0 50px;" />
+      <input class="opt-label-input" value="" ${labelStyle ? `style="${labelStyle}"` : ''} />
+      <div class="opt-desc-input" contenteditable="true"></div>`;
+    // Insert before the add button
+    btn.before(row);
+    if (card?.querySelector('.step-preview')) refreshInlinePreview(card);
   }
 
   // Toggle add-step dropdown
@@ -3246,15 +3502,21 @@
       if (subtitle) bodyHtml += `<div style="color:#666;font-size:14px;margin-bottom:16px;">${escapeHtml(subtitle)}</div>`;
 
       if (isRadio) {
-        const optRows = card.querySelectorAll('.opt-row');
+        const showLabels = card.querySelector('.toggle-label-prefixes')?.classList.contains('on') ?? true;
+        const boldLabels = card.querySelector('.toggle-bold-labels')?.classList.contains('on') ?? true;
+        const optRows = Array.from(card.querySelectorAll('.opt-row')).filter(r => r.style.display !== 'none');
         if (optRows.length) {
           bodyHtml += `<div class="preview-radio-group">`;
           optRows.forEach(row => {
             const label = row.querySelector('.opt-label-input')?.value || '';
             const desc = row.querySelector('.opt-desc-input')?.innerHTML || '';
+            let labelHtml = '';
+            if (showLabels && label) {
+              labelHtml = boldLabels ? `<strong>${escapeHtml(label)}${desc ? ':' : ''}</strong> ` : `<span class="label-prefix">${escapeHtml(label)}${desc ? ':' : ''}</span> `;
+            }
             bodyHtml += `<label class="preview-radio-choice">
               <input type="radio" name="preview_standalone" disabled>
-              <div><strong>${escapeHtml(label)}${desc ? ':' : ''}</strong> <span>${desc}</span></div>
+              <div>${labelHtml}<span>${desc}</span></div>
             </label>`;
           });
           bodyHtml += `</div>`;
@@ -3532,15 +3794,21 @@
         let frag = '';
         if (subtitle) frag += `<div style="color:#666;font-size:14px;margin-bottom:16px;">${escapeHtml(subtitle)}</div>`;
         if (isRadio) {
-          const optRows = card.querySelectorAll('.opt-row');
+          const showLabels = card.querySelector('.toggle-label-prefixes')?.classList.contains('on') ?? true;
+          const boldLabels = card.querySelector('.toggle-bold-labels')?.classList.contains('on') ?? true;
+          const optRows = Array.from(card.querySelectorAll('.opt-row')).filter(r => r.style.display !== 'none');
           if (optRows.length) {
             frag += `<div class="preview-radio-group">`;
             optRows.forEach(row => {
               const label = row.querySelector('.opt-label-input')?.value || '';
               const desc = row.querySelector('.opt-desc-input')?.innerHTML || '';
+              let labelHtml = '';
+              if (showLabels && label) {
+                labelHtml = boldLabels ? `<strong>${escapeHtml(label)}${desc ? ':' : ''}</strong> ` : `<span class="label-prefix">${escapeHtml(label)}${desc ? ':' : ''}</span> `;
+              }
               frag += `<label class="preview-radio-choice">
                 <input type="radio" name="preview_standalone" disabled>
-                <div><strong>${escapeHtml(label)}${desc ? ':' : ''}</strong> <span>${desc}</span></div>
+                <div>${labelHtml}<span>${desc}</span></div>
               </label>`;
             });
             frag += `</div>`;
