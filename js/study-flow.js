@@ -914,6 +914,11 @@ function advanceStep() {
     setStepFlag(currentStepIndex); // Mark completing step as done
     currentStepIndex++;
     saveProgress();
+    // Update preview banner step counter
+    const banner = document.getElementById('previewBanner');
+    if (banner && window.__PREVIEW_MODE) {
+        banner.textContent = `🔍 Preview Mode Step ${currentStepIndex + 1}`;
+    }
     if (currentStepIndex >= studyConfig.steps.length) {
         teardownStudyModal();
         onStudyComplete();
@@ -1445,6 +1450,8 @@ async function runQuestionnaire(step) {
             placeholder: step.placeholder,
             required: step.required,
             options: step.options,
+            labelPrefixes: step.labelPrefixes,
+            boldLabelPrefixes: step.boldLabelPrefixes,
         }];
     }
     if (!questions.length) { advanceStep(); return; }
@@ -1488,10 +1495,27 @@ async function runQuestionnaire(step) {
         const progress = ((displayIndex + 1) / displayTotal * 100).toFixed(0);
 
         const canGoBack = step.canGoBack !== false;
-        const result = await showQuestionModal(q, displayIndex, displayTotal, progress, answers[q.id], canGoBack && qi > 0, step);
+        // Show back button if canGoBack and not the first question in the chain
+        // For flat question steps (1 question each), chainOffset > 0 means we're past the first in the chain
+        const showBack = canGoBack && (qi > 0 || chainOffset > 0);
+        const result = await showQuestionModal(q, displayIndex, displayTotal, progress, answers[q.id], showBack, step);
 
         if (result === '__BACK__') {
-            qi = Math.max(0, qi - 1);
+            if (qi > 0) {
+                // Back within this step's questions array
+                qi = Math.max(0, qi - 1);
+                continue;
+            } else if (chainOffset > 0) {
+                // Back to previous step — decrement currentStepIndex and re-run
+                currentStepIndex--;
+                saveProgress();
+                const banner = document.getElementById('previewBanner');
+                if (banner && window.__PREVIEW_MODE) {
+                    banner.textContent = `🔍 Preview Mode Step ${currentStepIndex + 1}`;
+                }
+                runCurrentStep();
+                return; // Exit this runQuestionnaire — previous step will handle itself
+            }
             continue;
         }
 
@@ -1595,14 +1619,23 @@ function showQuestionModal(question, index, total, progressPct, previousAnswer, 
 function buildRadioQuestion(question, previousAnswer) {
     const options = question.options || [];
     const name = `sq_${question.inputName || question.id}`;
+    const showLabels = question.labelPrefixes !== false;
+    const boldLabels = question.boldLabelPrefixes !== false;
     return `
         <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;">
-            ${options.map(opt => `
+            ${options.map(opt => {
+                let labelHtml = '';
+                if (showLabels && opt.label) {
+                    labelHtml = boldLabels
+                        ? `<strong>${opt.label}${opt.description ? ':' : ''}</strong> `
+                        : `<span style="color:#333;">${opt.label}${opt.description ? ':' : ''}</span> `;
+                }
+                return `
                 <label class="radio-choice">
                     <input type="radio" name="${name}" value="${opt.value}" ${previousAnswer === opt.value ? 'checked' : ''}>
-                    <div><strong>${opt.label}:</strong> <span style="color: #444; font-size: 0.92em;">${opt.description || ''}</span></div>
-                </label>
-            `).join('')}
+                    <div>${labelHtml}<span style="color: #444; font-size: 0.92em;">${opt.description || ''}</span></div>
+                </label>`;
+            }).join('')}
         </div>
     `;
 }
