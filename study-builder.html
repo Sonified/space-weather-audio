@@ -813,6 +813,113 @@
     margin-top: 12px;
   }
   .analysis-grid .field-group { margin-top: 0; }
+  /* Collapsible settings drawer */
+  .card-settings {
+    margin-top: 12px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .card-settings-trigger {
+    font-size: 13px;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    padding: 8px 12px;
+    width: 100%;
+    transition: background 0.15s, color 0.15s;
+  }
+  .card-settings-trigger:hover {
+    color: var(--text);
+    background: rgba(255,255,255,0.04);
+  }
+  .card-settings-trigger::before {
+    content: '▶';
+    font-size: 8px;
+    transition: transform 0.2s ease;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  .card-settings.open .card-settings-trigger::before { transform: rotate(90deg); }
+  .card-settings-trigger .settings-chevron {
+    margin-left: auto;
+    font-size: 10px;
+    transition: transform 0.2s ease;
+    opacity: 0.5;
+  }
+  .card-settings.open .card-settings-trigger .settings-chevron {
+    transform: rotate(180deg);
+  }
+  .card-settings-drawer {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+  }
+  .card-settings.open .card-settings-drawer {
+    max-height: 600px;
+  }
+  .card-settings .settings-body {
+    padding: 10px 12px 12px;
+    border-top: 1px solid var(--border);
+  }
+  .settings-section-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #667;
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  .settings-section-label:not(:first-child) {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .settings-size-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .settings-size-row .dim-input-wrap { width: 90px; }
+  .settings-size-row .field-input { text-align: center; padding: 5px 4px; font-size: 13px; }
+
+  /* Preview footer button */
+  .preview-footer {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+  }
+  .preview-footer-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-muted);
+    font-size: 12px;
+    padding: 6px 16px;
+    cursor: pointer;
+    transition: all 0.15s;
+    width: 100%;
+  }
+  .preview-footer-btn:hover {
+    color: var(--text);
+    border-color: var(--border-hover);
+    background: rgba(255,255,255,0.03);
+  }
+  .preview-footer-btn.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: rgba(77,168,255,0.06);
+  }
+
   select.field-input {
     appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b949e' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
@@ -1669,7 +1776,9 @@
 
   function buildStepActions(type) {
     // Modal steps get inline preview + page preview; analysis gets page preview only
-    const previewBtns = (type === 'modal' || type === 'registration' || type === 'info' || type === 'question')
+    const previewBtns = (type === 'question')
+      ? `<button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>`
+      : (type === 'modal' || type === 'registration' || type === 'info')
       ? `<button class="step-action-btn preview-btn" title="Toggle inline preview" onclick="event.stopPropagation(); toggleInlinePreview(this)">👁</button>
          <button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>`
       : type === 'analysis'
@@ -1838,12 +1947,9 @@
       <div class="field-group">
         <div class="field-label">Question Text</div>
         <input class="field-input question-text-input" value="${escapeAttr(step.title || step.text || '')}" placeholder="Enter question text..." />
-      </div>
-      <div class="toggle-row" style="margin-top: 6px; padding: 4px 0;">
-        <span class="toggle-label" style="font-size: 12px; color: #888;">Question ID</span>
-        <div class="toggle toggle-question-id ${step.id ? 'on' : ''}" onclick="this.classList.toggle('on'); const inp = this.parentElement.querySelector('.question-id-input'); inp.style.display = this.classList.contains('on') ? 'block' : 'none';"></div>
-        <input class="field-input question-id-input" value="${escapeAttr(qid)}" style="display: ${step.id ? 'block' : 'none'}; width: 140px; font-size: 12px; font-family: monospace; padding: 3px 6px; margin-left: 4px;" />
       </div>`;
+    // question-id-input is inside settings but we still need the hidden input for export
+    const _qidVis = step.id ? 'visible' : 'hidden';
     if (step.subtitle) {
       contentHtml += `
       <div class="field-group">
@@ -1861,21 +1967,14 @@
       </div>`;
     if (isRadio) {
       const numOpts = (step.options && step.options.length) ? step.options.length : 1;
-      const showLabels = step.labelPrefixes !== false;
-      const boldLabels = step.boldLabelPrefixes !== false;
+      const labelMode = step.labelMode || (step.labelPrefixes === false ? 'hidden' : (step.boldLabelPrefixes === false ? 'visible' : 'bold'));
       contentHtml += `
       <div class="radio-options-wrapper">
-      <div class="toggle-row" style="margin-top:12px;">
-        <span class="toggle-label">Label Prefixes</span>
-        <div class="toggle toggle-label-prefixes ${showLabels ? 'on' : ''}" onclick="this.classList.toggle('on'); toggleLabelPrefixes(this)"></div>
-        <span class="toggle-label" style="margin-left: 16px;">Bold Prefixes</span>
-        <div class="toggle toggle-bold-labels ${boldLabels ? 'on' : ''}" onclick="this.classList.toggle('on'); toggleBoldLabels(this)"></div>
-      </div>
       <div class="radio-options-editor">
-        <div class="opt-header"><span ${!showLabels ? 'style="display:none;"' : ''}>Label</span><span>Description</span></div>`;
+        <div class="opt-header"><span ${labelMode === 'hidden' ? 'style="display:none;"' : ''}>Label</span><span>Description</span></div>`;
       for (let ri = 0; ri < numOpts; ri++) {
         const opt = step.options?.[ri] || { value: '', label: '', description: '' };
-        const labelStyle = `${!showLabels ? 'display:none;' : ''}${boldLabels ? 'font-weight:700;' : ''}`;
+        const labelStyle = `${labelMode === 'hidden' ? 'display:none;' : ''}${labelMode === 'bold' ? 'font-weight:700;' : ''}`;
         contentHtml += `<div class="opt-row">
           <button class="opt-remove-btn" onclick="event.stopPropagation(); removeOptRow(this)" title="Remove">−</button>
           <input class="opt-value-input" value="${escapeAttr(opt.value || '')}" style="width:50px; flex:0 0 50px;" />
@@ -1883,7 +1982,7 @@
           <div class="opt-desc-input" contenteditable="true">${opt.description || ''}</div>
         </div>`;
       }
-      const addBtnStyle = !showLabels ? ' style="width:auto;flex:1;"' : '';
+      const addBtnStyle = labelMode === 'hidden' ? ' style="width:auto;flex:1;"' : '';
       contentHtml += `
         <button class="opt-add-btn"${addBtnStyle} onclick="event.stopPropagation(); addOptRow(this)">
           <span class="plus-circle">+</span> Add
@@ -1896,34 +1995,52 @@
         <input class="field-input question-placeholder-input" value="${escapeAttr(step.placeholder || '')}" placeholder="Type your response here..." />
       </div>`;
     }
+    const lm = step.labelMode || (step.labelPrefixes === false ? 'hidden' : (step.boldLabelPrefixes === false ? 'visible' : 'bold'));
     contentHtml += `
-      <div class="toggle-row">
-        <span class="toggle-label">Required</span>
-        <div class="toggle toggle-required ${step.required !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
-        <span class="toggle-label" style="margin-left: 16px;">Can Go Back</span>
-        <div class="toggle toggle-can-go-back ${step.canGoBack !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
-      </div>
-      <div class="field-row" style="margin-top: 8px;">
-        <div class="field-group">
-          <div class="field-label">Modal Width</div>
-          <div class="dim-input-wrap">
-            <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '480px')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
-            <div class="dim-arrows">
-              <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
-              <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
+      <div class="card-settings" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open')}">
+        <div class="card-settings-trigger">&#9881; Settings <span class="settings-chevron">&#9660;</span></div>
+        <div class="card-settings-drawer"><div class="settings-body">
+          <div class="settings-section-label">Behavior</div>
+          <div class="toggle-row">
+            <span class="toggle-label">Required</span>
+            <div class="toggle toggle-required ${step.required !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+            <span class="toggle-label" style="margin-left: 16px;">Can Go Back</span>
+            <div class="toggle toggle-can-go-back ${step.canGoBack !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+          </div>
+          <div class="toggle-row" style="margin-top: 8px;">
+            <span class="toggle-label">Question ID</span>
+            <div class="toggle toggle-question-id ${step.id ? 'on' : ''}" onclick="this.classList.toggle('on'); const inp = this.closest('.settings-body').querySelector('.question-id-input'); inp.style.visibility = this.classList.contains('on') ? 'visible' : 'hidden';"></div>
+            <input class="field-input question-id-input" value="${escapeAttr(qid)}" style="visibility: ${_qidVis}; width: 120px; font-size: 12px; font-family: monospace; padding: 3px 6px; margin-left: 4px;" />
+            <span style="display:${isRadio ? 'inline' : 'none'}; margin-left: 12px;" class="label-mode-row"><span class="toggle-label">Labels</span>
+            <select class="field-input label-mode-select" style="width:auto; margin-left: 6px;" onchange="onLabelModeChange(this)">
+              <option value="hidden"${lm === 'hidden' ? ' selected' : ''}>Hidden</option>
+              <option value="visible"${lm === 'visible' ? ' selected' : ''}>Visible</option>
+              <option value="bold"${lm === 'bold' ? ' selected' : ''}>Bold</option>
+            </select></span>
+          </div>
+          <div class="settings-section-label">Layout</div>
+          <div class="settings-size-row">
+            <span>Size:</span>
+            <div class="dim-input-wrap">
+              <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '480px')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+              <div class="dim-arrows">
+                <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
+                <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
+              </div>
+            </div>
+            <span style="opacity:0.4;">×</span>
+            <div class="dim-input-wrap">
+              <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+              <div class="dim-arrows">
+                <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
+                <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
+              </div>
             </div>
           </div>
         </div>
-        <div class="field-group">
-          <div class="field-label">Modal Height</div>
-          <div class="dim-input-wrap">
-            <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
-            <div class="dim-arrows">
-              <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
-              <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
-            </div>
-          </div>
-        </div>
+      </div></div></div>
+      <div class="preview-footer">
+        <button class="preview-footer-btn" onclick="event.stopPropagation(); toggleFooterPreview(this)">&#9655; Preview</button>
       </div>`;
 
     return `
@@ -2406,10 +2523,8 @@
         step.id = (qIdInput?.value || '').trim() || generateQuestionSlug();
         step.inputName = step.id;
         if (step.questionType === 'radio') {
-          const labelToggle = card.querySelector('.toggle-label-prefixes');
-          step.labelPrefixes = labelToggle?.classList.contains('on') ?? true;
-          const boldToggle = card.querySelector('.toggle-bold-labels');
-          step.boldLabelPrefixes = boldToggle?.classList.contains('on') ?? true;
+          const labelSelect = card.querySelector('.label-mode-select');
+          step.labelMode = labelSelect?.value || 'bold';
           const optEditor = card.querySelector('.radio-options-editor');
           if (optEditor) {
             const rows = optEditor.querySelectorAll('.opt-row');
@@ -3090,6 +3205,10 @@
       const radioEditor = card.querySelector('.radio-options-editor');
       let freetextGroup = card.querySelector('.freetext-fields');
 
+      // Show/hide labels dropdown in settings
+      const labelModeRow = card.querySelector('.label-mode-row');
+      if (labelModeRow) labelModeRow.style.display = isFreeText ? 'none' : 'inline';
+
       if (isFreeText) {
         // Hide all radio controls (toggles, stepper, editor)
         if (radioWrapper) radioWrapper.style.display = 'none';
@@ -3117,12 +3236,6 @@
           const wrapper = document.createElement('div');
           wrapper.className = 'radio-options-wrapper';
           wrapper.innerHTML = `
-            <div class="toggle-row" style="margin-top:12px;">
-              <span class="toggle-label">Label Prefixes</span>
-              <div class="toggle toggle-label-prefixes on" onclick="this.classList.toggle('on'); toggleLabelPrefixes(this)"></div>
-              <span class="toggle-label" style="margin-left: 16px;">Bold Prefixes</span>
-              <div class="toggle toggle-bold-labels on" onclick="this.classList.toggle('on'); toggleBoldLabels(this)"></div>
-            </div>
             <div class="radio-options-editor">
               <div class="opt-header"><span>Label</span><span>Description</span></div>
               <div class="opt-row">
@@ -3146,35 +3259,24 @@
     }
   }
 
-  // Toggle label prefixes — show/hide label column
-  function toggleLabelPrefixes(toggle) {
-    const card = toggle.closest('.step-card');
-    const isOn = toggle.classList.contains('on');
+  // Label mode change — hidden/visible/bold
+  function onLabelModeChange(select) {
+    const card = select.closest('.step-card');
+    const mode = select.value;
+    const showLabels = mode !== 'hidden';
     const editor = card.querySelector('.radio-options-editor');
     if (editor) {
       const headerSpan = editor.querySelector('.opt-header span:first-child');
-      if (headerSpan) headerSpan.style.display = isOn ? '' : 'none';
+      if (headerSpan) headerSpan.style.display = showLabels ? '' : 'none';
       editor.querySelectorAll('.opt-label-input').forEach(inp => {
-        inp.style.display = isOn ? '' : 'none';
+        inp.style.display = showLabels ? '' : 'none';
+        inp.style.fontWeight = mode === 'bold' ? '700' : '400';
       });
       const addBtn = editor.querySelector('.opt-add-btn');
       if (addBtn) {
-        addBtn.style.width = isOn ? '100px' : '';
-        addBtn.style.flex = isOn ? '' : '1';
+        addBtn.style.width = showLabels ? '100px' : '';
+        addBtn.style.flex = showLabels ? '' : '1';
       }
-    }
-    if (card?.querySelector('.step-preview')) refreshInlinePreview(card);
-  }
-
-  // Toggle bold prefixes — bold/unbold label inputs
-  function toggleBoldLabels(toggle) {
-    const card = toggle.closest('.step-card');
-    const isOn = toggle.classList.contains('on');
-    const editor = card.querySelector('.radio-options-editor');
-    if (editor) {
-      editor.querySelectorAll('.opt-label-input').forEach(inp => {
-        inp.style.fontWeight = isOn ? '700' : '400';
-      });
     }
     if (card?.querySelector('.step-preview')) refreshInlinePreview(card);
   }
@@ -3194,9 +3296,8 @@
   function addOptRow(btn) {
     const card = btn.closest('.step-card');
     const editor = card.querySelector('.radio-options-editor');
-    const showLabels = card.querySelector('.toggle-label-prefixes')?.classList.contains('on') ?? true;
-    const boldLabels = card.querySelector('.toggle-bold-labels')?.classList.contains('on') ?? true;
-    const labelStyle = `${!showLabels ? 'display:none;' : ''}${boldLabels ? 'font-weight:700;' : ''}`;
+    const labelMode = card.querySelector('.label-mode-select')?.value || 'bold';
+    const labelStyle = `${labelMode === 'hidden' ? 'display:none;' : ''}${labelMode === 'bold' ? 'font-weight:700;' : ''}`;
     const row = document.createElement('div');
     row.className = 'opt-row';
     row.innerHTML = `
@@ -3487,10 +3588,33 @@
    * Toggle inline preview below a modal step card.
    * Reads current field values from the DOM for live updates.
    */
+  function toggleFooterPreview(btn) {
+    const card = btn.closest('.step-card');
+    const existing = card.querySelector('.step-preview');
+    if (existing) {
+      existing.remove();
+      btn.classList.remove('active');
+      btn.innerHTML = '&#9655; Preview';
+      return;
+    }
+    // Reuse the same logic as toggleInlinePreview
+    toggleInlinePreview(btn);
+    if (card.querySelector('.step-preview')) {
+      btn.classList.add('active');
+      btn.innerHTML = '&#9661; Preview';
+    }
+  }
+
   function toggleInlinePreview(btn) {
     const card = btn.closest('.step-card');
     const existing = card.querySelector('.step-preview');
-    if (existing) { existing.remove(); return; }
+    if (existing) {
+      existing.remove();
+      // Sync footer button state
+      const footerBtn = card.querySelector('.preview-footer-btn');
+      if (footerBtn) { footerBtn.classList.remove('active'); footerBtn.innerHTML = '&#9655; Preview'; }
+      return;
+    }
 
     const detail = card.querySelector('.step-detail');
     const isRegistration = card.dataset.type === 'registration';
@@ -3516,7 +3640,8 @@
       const h = card.querySelector('.modal-height-input')?.value?.trim();
       if (w) preview.style.maxWidth = w;
       if (h && h !== 'auto') preview.style.height = h;
-      detail.after(preview);
+      const footer = card.querySelector('.preview-footer');
+    if (footer) { detail.appendChild(preview); } else { detail.after(preview); }
       return;
     }
 
@@ -3535,8 +3660,7 @@
       if (subtitle) bodyHtml += `<div style="color:#666;font-size:14px;margin-bottom:16px;">${escapeHtml(subtitle)}</div>`;
 
       if (isRadio) {
-        const showLabels = card.querySelector('.toggle-label-prefixes')?.classList.contains('on') ?? true;
-        const boldLabels = card.querySelector('.toggle-bold-labels')?.classList.contains('on') ?? true;
+        const labelMode1 = card.querySelector('.label-mode-select')?.value || 'bold';
         const optRows = Array.from(card.querySelectorAll('.opt-row')).filter(r => r.style.display !== 'none');
         if (optRows.length) {
           bodyHtml += `<div class="preview-radio-group">`;
@@ -3544,8 +3668,8 @@
             const label = row.querySelector('.opt-label-input')?.value || '';
             const desc = row.querySelector('.opt-desc-input')?.innerHTML || '';
             let labelHtml = '';
-            if (showLabels && label) {
-              labelHtml = boldLabels ? `<strong>${escapeHtml(label)}${desc ? ':' : ''}</strong> ` : `<span class="label-prefix">${escapeHtml(label)}${desc ? ':' : ''}</span> `;
+            if (labelMode1 !== 'hidden' && label) {
+              labelHtml = labelMode1 === 'bold' ? `<strong>${escapeHtml(label)}${desc ? ':' : ''}</strong> ` : `<span class="label-prefix">${escapeHtml(label)}${desc ? ':' : ''}</span> `;
             }
             bodyHtml += `<label class="preview-radio-choice">
               <input type="radio" name="preview_standalone" disabled>
@@ -3569,7 +3693,8 @@
       const h = card.querySelector('.modal-height-input')?.value?.trim();
       if (w) preview.style.maxWidth = w;
       if (h && h !== 'auto') preview.style.height = h;
-      detail.after(preview);
+      const footer = card.querySelector('.preview-footer');
+    if (footer) { detail.appendChild(preview); } else { detail.after(preview); }
 
       // Wire flow navigation
       preview.querySelector('.preview-submit')?.addEventListener('click', (e) => {
@@ -3657,7 +3782,8 @@
     if (h && h !== 'auto') preview.style.height = h;
 
     // Insert after .step-detail
-    detail.after(preview);
+    const footer = card.querySelector('.preview-footer');
+    if (footer) { detail.appendChild(preview); } else { detail.after(preview); }
 
     // Wire interactive flow navigation
     preview.querySelectorAll('.preview-submit, .preview-close').forEach(btn => {
@@ -3827,8 +3953,7 @@
         let frag = '';
         if (subtitle) frag += `<div style="color:#666;font-size:14px;margin-bottom:16px;">${escapeHtml(subtitle)}</div>`;
         if (isRadio) {
-          const showLabels = card.querySelector('.toggle-label-prefixes')?.classList.contains('on') ?? true;
-          const boldLabels = card.querySelector('.toggle-bold-labels')?.classList.contains('on') ?? true;
+          const labelMode2 = card.querySelector('.label-mode-select')?.value || 'bold';
           const optRows = Array.from(card.querySelectorAll('.opt-row')).filter(r => r.style.display !== 'none');
           if (optRows.length) {
             frag += `<div class="preview-radio-group">`;
@@ -3836,8 +3961,8 @@
               const label = row.querySelector('.opt-label-input')?.value || '';
               const desc = row.querySelector('.opt-desc-input')?.innerHTML || '';
               let labelHtml = '';
-              if (showLabels && label) {
-                labelHtml = boldLabels ? `<strong>${escapeHtml(label)}${desc ? ':' : ''}</strong> ` : `<span class="label-prefix">${escapeHtml(label)}${desc ? ':' : ''}</span> `;
+              if (labelMode2 !== 'hidden' && label) {
+                labelHtml = labelMode2 === 'bold' ? `<strong>${escapeHtml(label)}${desc ? ':' : ''}</strong> ` : `<span class="label-prefix">${escapeHtml(label)}${desc ? ':' : ''}</span> `;
               }
               frag += `<label class="preview-radio-choice">
                 <input type="radio" name="preview_standalone" disabled>

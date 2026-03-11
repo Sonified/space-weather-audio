@@ -1601,8 +1601,7 @@ async function runQuestionnaire(step) {
             placeholder: step.placeholder,
             required: step.required,
             options: step.options,
-            labelPrefixes: step.labelPrefixes,
-            boldLabelPrefixes: step.boldLabelPrefixes,
+            labelMode: step.labelMode || (step.labelPrefixes === false ? 'hidden' : (step.boldLabelPrefixes === false ? 'visible' : 'bold')),
         }];
     }
     if (!questions.length) { advanceStep(); return; }
@@ -1770,14 +1769,13 @@ function showQuestionModal(question, index, total, progressPct, previousAnswer, 
 function buildRadioQuestion(question, previousAnswer) {
     const options = question.options || [];
     const name = `sq_${question.inputName || question.id}`;
-    const showLabels = question.labelPrefixes !== false;
-    const boldLabels = question.boldLabelPrefixes !== false;
+    const labelMode = question.labelMode || 'bold';
     return `
         <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;">
             ${options.map(opt => {
                 let labelHtml = '';
-                if (showLabels && opt.label) {
-                    labelHtml = boldLabels
+                if (labelMode !== 'hidden' && opt.label) {
+                    labelHtml = labelMode === 'bold'
                         ? `<strong>${opt.label}${opt.description ? ':' : ''}</strong> `
                         : `<span style="color:#333;">${opt.label}${opt.description ? ':' : ''}</span> `;
                 }
