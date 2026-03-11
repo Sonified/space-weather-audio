@@ -637,6 +637,12 @@ async function init() {
         const testId = `TEST_${testSuffix}`;
         window.__TEST_PARTICIPANT_ID = testId;
 
+        // Clear previous session so registration runs fresh with test ID
+        localStorage.removeItem('participantId');
+        localStorage.removeItem(PROGRESS_KEY);
+        localStorage.removeItem(STUDY_SLUG_KEY);
+        currentStepIndex = 0;
+
         // Show test mode banner (subtle, like preview)
         const testBanner = document.createElement('div');
         testBanner.id = 'testBanner';
@@ -730,8 +736,8 @@ async function init() {
         }
     }
 
-    // Skip normal progress restore if we jumped or are in preview mode
-    if (jumpToStep === null && !isPreview) {
+    // Skip normal progress restore if we jumped, or are in preview/test mode
+    if (jumpToStep === null && !isPreview && !isTestMode) {
     // Restore progress or start fresh
     const savedSlug = localStorage.getItem(STUDY_SLUG_KEY);
     const savedStep = parseInt(localStorage.getItem(PROGRESS_KEY) || '0', 10);
