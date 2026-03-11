@@ -61,15 +61,42 @@ export function renderRadioOptions({ options, labelMode, inputName, previousAnsw
     `;
 }
 
-export function renderFreetextInput({ placeholder, previousAnswer, preview = false, modalHeight }) {
+export function renderFreetextInput({ placeholder, previousAnswer, preview = false }) {
     const disabled = preview ? ' disabled' : '';
-    // Scale textarea with modal height: subtract ~220px for header, question text, buttons, padding
-    const parsed = parseInt(modalHeight);
-    const minH = parsed ? Math.max(200, parsed - 220) : 200;
     return `
         <textarea${disabled} placeholder="${placeholder || 'Type your response here...'}"
-            style="width: 100%; min-height: ${minH}px; padding: 14px; font-size: 15px; font-family: inherit; border: 1px solid #ddd; border-radius: 8px; resize: vertical; box-sizing: border-box; line-height: 1.5; color: #333;"
+            style="width: 100%; flex: 1; min-height: 120px; padding: 14px; font-size: 15px; font-family: inherit; border: 1px solid #ddd; border-radius: 8px; resize: vertical; box-sizing: border-box; line-height: 1.5; color: #333;"
         >${previousAnswer || ''}</textarea>
+    `;
+}
+
+export function renderInfoModal({ step, bodyHtml, btnStyle, preview = false }) {
+    const dimStyle = buildDimensionStyle(step, '560px');
+    const ulStyle = buildHeaderUnderlineStyle(step);
+    const titleFont = buildTitleFontStyle(step);
+    const bodyFont = buildBodyFontStyle(step);
+    const bodyPStyle = `${bodyFont}line-height:1.6;margin:0;`;
+
+    // Apply per-paragraph styling
+    const styledBody = (bodyHtml || '').replace(/<p>/g, `<p style="${bodyPStyle}">`);
+
+    return `
+        <div class="modal-content" style="${dimStyle} display: flex; flex-direction: column;">
+            <div class="modal-header" style="${ulStyle}">
+                <h3 class="modal-title" style="${titleFont}">${step.title || ''}</h3>
+                ${step.closable ? '<button class="modal-close">&times;</button>' : ''}
+            </div>
+            <div class="modal-body" style="flex: 1;">
+                <div style="${bodyFont}line-height: 1.6; text-align: left;">
+                    ${styledBody}
+                </div>
+                ${step.hideButton ? '' : `<div style="text-align: center; margin-top: 16px;">
+                    <div style="display: inline-flex; gap: 12px; align-items: center;">
+                        <button type="button" class="modal-submit modal-dismiss" style="${btnStyle || ''} width: auto; min-width: 140px;">${step.dismissLabel || 'OK'}</button>
+                    </div>
+                </div>`}
+            </div>
+        </div>
     `;
 }
 
@@ -88,8 +115,7 @@ export function renderQuestionModal({ question, index, total, progressPct, previ
         questionHtml = renderFreetextInput({
             placeholder: question.placeholder,
             previousAnswer,
-            preview,
-            modalHeight: (dims || {}).modalHeight
+            preview
         });
     }
 
@@ -99,7 +125,11 @@ export function renderQuestionModal({ question, index, total, progressPct, previ
     const dimStyle = buildDimensionStyle(stepDims, '750px');
     const ulStyle = buildHeaderUnderlineStyle(stepDims);
     const titleFont = buildTitleFontStyle(stepDims);
-    const disabledNext = (!preview && isRadio && !previousAnswer) ? ' disabled' : '';
+    const isRequired = question.required !== false;
+    let disabledNext = '';
+    if (!preview && isRequired && !previousAnswer) {
+        disabledNext = ' disabled';
+    }
 
     return `
         <div class="modal-content emic-questionnaire-modal" style="${dimStyle} display: flex; flex-direction: column;">

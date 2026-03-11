@@ -16,7 +16,7 @@ import { getParticipantId, storeParticipantId, generateParticipantId } from './p
 import { styleBodyHtml } from './study-builder/utils.js';
 import { pausePlayback } from './audio-player.js';
 import { typeText, cancelTyping } from './tutorial-effects.js';
-import { buildDimensionStyle, buildTitleFontStyle, buildBodyFontStyle, buildHeaderUnderlineStyle, renderQuestionModal } from './survey-question-renderer.js';
+import { buildDimensionStyle, buildTitleFontStyle, buildBodyFontStyle, buildHeaderUnderlineStyle, renderInfoModal, renderQuestionModal } from './survey-question-renderer.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // STATE
@@ -1273,26 +1273,11 @@ function rerenderInfoModal(step) {
 
 function runInfoModal(step) {
     return new Promise(async (resolve) => {
-        const dimStyle = buildDimensionStyle(step, '560px');
-        const ulStyle = buildHeaderUnderlineStyle(step);
-        const titleFont = buildTitleFontStyle(step);
-        const bodyColor = step.bodyFontColor || '#333';
-        const bodySize = step.bodyFontSize || '18px';
-        const bodyWeight = step.bodyFontBold ? 'font-weight:700;' : '';
-        const html = `
-            <div class="modal-content" style="${dimStyle} text-align: center;">
-                <div class="modal-header" style="${ulStyle}">
-                    <h3 class="modal-title" style="${titleFont}">${step.title || ''}</h3>
-                    ${step.closable ? '<button class="modal-close">&times;</button>' : ''}
-                </div>
-                <div class="modal-body">
-                    <div style="color: ${bodyColor}; font-size: ${bodySize}; line-height: 1.6; text-align: left; margin-bottom: 20px; ${bodyWeight}">
-                        ${styleBodyHtml(step.bodyHtml, `color:${bodyColor};font-size:${bodySize};line-height:1.6;margin:0;${bodyWeight}`)}
-                    </div>
-                    <button type="button" class="modal-submit" style="min-width: 140px;">${step.dismissLabel || 'OK'}</button>
-                </div>
-            </div>
-        `;
+        const btnParts = [];
+        if (step.dismissColor) btnParts.push(`color:${step.dismissColor}`);
+        if (step.dismissBgColor) btnParts.push(`background:${step.dismissBgColor}`);
+        if (step.dismissBold) btnParts.push('font-weight:700');
+        const html = renderInfoModal({ step, bodyHtml: step.bodyHtml, btnStyle: btnParts.join(';') });
 
         await setStudyModalContent(html);
         openStudyModalIfNeeded();
@@ -1680,6 +1665,13 @@ function showQuestionModal(question, index, total, progressPct, previousAnswer, 
             studyModalInner.querySelectorAll(`input[name="sq_${question.inputName || question.id}"]`).forEach(radio => {
                 radio.addEventListener('change', () => { nextBtn.disabled = false; });
             });
+        } else if (question.required !== false) {
+            const textarea = studyModalInner.querySelector('textarea');
+            if (textarea) {
+                textarea.addEventListener('input', () => {
+                    nextBtn.disabled = !textarea.value.trim();
+                });
+            }
         }
 
         nextBtn?.addEventListener('click', () => {
