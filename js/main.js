@@ -90,11 +90,11 @@ async function initializeMainApp() {
     // anything else reads it or renders dependent UI.
     const advancedCheckboxEarly = document.getElementById('advancedMode');
     if (advancedCheckboxEarly) {
-        const savedAdvanced = localStorage.getItem('emic_advanced_mode');
-        if (savedAdvanced !== null) {
-            advancedCheckboxEarly.checked = savedAdvanced === 'true';
-        } else if (isLocalEnvironment()) {
-            advancedCheckboxEarly.checked = true;
+        if (isLocalEnvironment()) {
+            const savedAdvanced = localStorage.getItem('emic_advanced_mode');
+            advancedCheckboxEarly.checked = savedAdvanced !== null ? savedAdvanced === 'true' : true;
+        } else {
+            advancedCheckboxEarly.checked = false;
         }
     }
     if (CURRENT_MODE === AppMode.EMIC_STUDY || CURRENT_MODE === AppMode.SOLAR_PORTAL) {
