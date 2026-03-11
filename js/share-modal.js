@@ -10,6 +10,7 @@ import { getParticipantId } from './participant-id.js';
 import { getCurrentColormap } from './colormaps.js';
 import { updateDatasetOptions } from './ui-controls.js';
 import { getCurrentComponentIndex } from './component-selector.js';
+import { captureRenderedCanvas } from './main-window-renderer.js';
 
 /**
  * Render x-axis with larger labels for thumbnail
@@ -252,8 +253,10 @@ function pickAdjectiveNoun() {
  * Target: ~50-150KB JPEG instead of multi-MB PNG
  * @returns {string|null} Data URL of the thumbnail JPEG, or null if capture fails
  */
-function captureSpectrogramThumbnail() {
-    const spectrogramCanvas = document.getElementById('spectrogram');
+async function captureSpectrogramThumbnail() {
+    // Render a fresh frame so WebGPU canvas has current pixels
+    const freshCanvas = await captureRenderedCanvas();
+    const spectrogramCanvas = freshCanvas || document.getElementById('spectrogram');
     const axisCanvas = document.getElementById('spectrogram-axis');
 
     if (!spectrogramCanvas) {
@@ -343,11 +346,11 @@ function captureSpectrogramThumbnail() {
 /**
  * Display thumbnail preview in the share modal
  */
-function updateThumbnailPreview() {
+async function updateThumbnailPreview() {
     const thumbnailCanvas = document.getElementById('shareThumbnail');
     if (!thumbnailCanvas) return;
 
-    capturedThumbnailDataUrl = captureSpectrogramThumbnail();
+    capturedThumbnailDataUrl = await captureSpectrogramThumbnail();
 
     if (capturedThumbnailDataUrl) {
         const img = new Image();
@@ -1118,7 +1121,7 @@ export function initShareModal() {
 /**
  * Open the share modal
  */
-export function openShareModal() {
+export async function openShareModal() {
     if (!shareModal) initShareModal();
 
     // Reset to form view
@@ -1134,8 +1137,8 @@ export function openShareModal() {
     const hint = document.getElementById('emojiHint');
     if (hint) hint.style.display = 'none';
 
-    // Capture spectrogram thumbnail
-    updateThumbnailPreview();
+    // Capture spectrogram thumbnail (async — WebGPU needs fresh render before capture)
+    await updateThumbnailPreview();
 
     // Pre-populate info
     const spacecraft = State.currentMetadata?.spacecraft || document.getElementById('spacecraft')?.value || 'Unknown';

@@ -731,6 +731,7 @@ export async function openParticipantInfoModal() {
             const newId = idInput.value.trim();
             if (newId) {
                 storeRealUsername(newId);
+                storeParticipantId(newId);
                 idDisplay.textContent = newId;
                 // Update the top-bar participant display
                 const topBarValue = document.getElementById('participantIdValue');

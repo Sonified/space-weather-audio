@@ -2880,3 +2880,15 @@ export function onColormapChanged() {
         renderFrame();
     }
 }
+
+/**
+ * Render a fresh frame and return the spectrogram canvas for thumbnail capture.
+ * WebGPU canvases may be cleared between async frames, so we must render
+ * immediately before reading pixels.
+ * @returns {Promise<HTMLCanvasElement|null>}
+ */
+export async function captureRenderedCanvas() {
+    if (!threeRenderer || !scene || !camera) return null;
+    await threeRenderer.renderAsync(scene, camera);
+    return threeRenderer.domElement;
+}
