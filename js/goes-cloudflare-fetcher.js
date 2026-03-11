@@ -372,7 +372,8 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     if (window.pm?.data) console.log(`📊 ${logTime()} Set EXPECTED totalAudioDuration: ${expectedDuration.toFixed(2)}s`);
 
     // Update sample count UI early
-    document.getElementById('sampleCount').textContent = totalExpectedSamples.toLocaleString();
+    const sampleCountEl = document.getElementById('sampleCount');
+    if (sampleCountEl) sampleCountEl.textContent = totalExpectedSamples.toLocaleString();
 
     // Frequency scale default
     const frequencyScaleSelect = document.getElementById('frequencyScale');
@@ -853,7 +854,8 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     // Update duration with actual sample count
     const originalSampleRate = State.currentMetadata?.original_sample_rate || playbackSamplesPerRealSecond;
     State.setTotalAudioDuration(totalWorkletSamples / originalSampleRate);
-    document.getElementById('sampleCount').textContent = totalWorkletSamples.toLocaleString();
+    const sampleCountEl2 = document.getElementById('sampleCount');
+    if (sampleCountEl2) sampleCountEl2.textContent = totalWorkletSamples.toLocaleString();
     if (window.pm?.data) console.log(`📊 ${logTime()} Updated totalAudioDuration to ${(totalWorkletSamples / originalSampleRate).toFixed(2)}s`);
 
     // Refine zoom with actual sample count (viewport already set during progressive init)

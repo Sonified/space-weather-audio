@@ -119,13 +119,6 @@
             </div>
         </div>
 
-        <!-- Hidden elements that main.js expects to exist -->
-        <div id="modeSelectorContainer" style="display: none;">
-            <select id="modeSelector" style="display: none;">
-                <option value="emic_study" selected>🔬 EMIC Study</option>
-            </select>
-        </div>
-
         <!-- Hidden Selection Panel — elements exist for startStreaming() -->
         <div class="panel panel-selection" style="display: none;">
             <div class="controls">
@@ -232,7 +225,6 @@
                         <input type="checkbox" id="advancedMode" style="width: 16px; height: 16px; cursor: pointer; accent-color: #80d0ff;">
                         Advanced
                     </label>
-                    <button type="button" id="simulateFlowBtn" class="emic-btn admin-only" style="padding: 6px 14px; font-size: 14px; min-width: 130px;">Simulate Flow</button>
                     <button type="button" id="showFlagsBtn" class="emic-btn admin-only" style="padding: 6px 14px; font-size: 14px;">Show Flags</button>
                     <button type="button" id="dataViewerBtn" class="emic-btn admin-only" style="padding: 6px 14px; font-size: 14px;">Data Viewer</button>
                 </div>
@@ -298,46 +290,10 @@
             </div>
         </div>
 
-        <!-- Metrics Panel (hidden by default) -->
-        <div class="panel panel-metrics" id="metricsPanel" style="display: none;">
-            <div class="metrics">
-                <div class="metric"><div class="metric-label">Time to First Audio</div><div class="metric-value" id="ttfa">--</div></div>
-                <div class="metric"><div class="metric-label">Download Size</div><div class="metric-value" id="downloadSize">--</div></div>
-                <div class="metric"><div class="metric-label">Sample Count</div><div class="metric-value" id="sampleCount">--</div></div>
-                <div class="metric"><div class="metric-label">Current Position</div><div class="metric-value" id="currentPosition">0m 0s</div></div>
-                <div class="metric"><div class="metric-label">Playback Duration</div><div class="metric-value" id="playbackDuration">--</div></div>
-            </div>
-        </div>
-
-        <!-- Hidden simulate/cache panels that main.js may reference -->
-        <div class="panel panel-cache" id="cachePanel" style="display: none;">
-            <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-                <button type="button" id="purgeCacheBtn" class="btn-action" style="display:none;">🗑️ Purge CDN Cache</button>
-                <input type="checkbox" id="bypassCache" style="display:none;">
-                <button type="button" id="downloadBtn" class="btn-action" disabled style="display:none;">💾 Download Audio File</button>
-            </div>
-        </div>
-        <div class="panel panel-simulate" style="display: none;">
-            <button type="button" id="participantModalBtn" class="btn-action" style="display:none;">👤</button>
-            <button type="button" id="welcomeModalBtn" class="btn-action" style="display:none;">👋</button>
-            <button type="button" id="preSurveyModalBtn" class="btn-action" style="display:none;">📊</button>
-            <button type="button" id="activityLevelModalBtn" class="btn-action" style="display:none;">🌋</button>
-            <button type="button" id="awesfModalBtn" class="btn-action" style="display:none;">✨</button>
-            <button type="button" id="postSurveyModalBtn" class="btn-action" style="display:none;">📊</button>
-            <button type="button" id="endModalBtn" class="btn-action" style="display:none;">🎉</button>
-            <button type="button" id="submitBtn" class="btn-action" style="display:none;">📤</button>
-            <button type="button" id="adminModeBtn" class="btn-action" style="display:none;">👑</button>
-            <button type="button" id="simulateFlowBtn" class="emic-btn" style="display:none;">Simulate Flow</button>
-            <button type="button" id="showFlagsBtn" class="emic-btn" style="display:none;">Show Flags</button>
-            <button type="button" id="dataViewerBtn" class="emic-btn" style="display:none;">Data Viewer</button>
-        </div>
     </div>
 
     <!-- Permanent Modal Overlay -->
     <div id="permanentOverlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.65); z-index: 1000; align-items: center; justify-content: center;"></div>
-
-    <!-- Hidden elements that existing JS may reference -->
-    <div id="tutorialHelpBtn" style="display: none;"></div>
 
     <!-- Study Flags Panel (floating, always on top — even above overlay) -->
     <div id="emicFlagsPanel" style="display: none; position: fixed; top: 60px; right: 20px; z-index: 10000; background: rgba(20, 20, 30, 0.95); border: 2px solid rgba(255, 255, 255, 0.2); border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); backdrop-filter: blur(8px); overflow: hidden; min-width: 320px;">

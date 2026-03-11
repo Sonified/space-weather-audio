@@ -291,7 +291,8 @@ export async function initAudioWorklet() {
             // This ensures the oscilloscope shows volume-adjusted audio, not raw worklet output
         } else if (type === 'started') {
             const ttfa = performance.now() - window.streamingStartTime;
-            document.getElementById('ttfa').textContent = `${ttfa.toFixed(0)}ms`;
+            const ttfaEl = document.getElementById('ttfa');
+            if (ttfaEl) ttfaEl.textContent = `${ttfa.toFixed(0)}ms`;
             // console.log(`⏱️ [${ttfa.toFixed(0)}ms] Worklet confirmed playback`);
         } else if (type === 'seek-ready') {
             // Worklet has cleared its buffer and is ready for samples at seek position

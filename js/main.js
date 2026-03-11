@@ -346,7 +346,7 @@ async function initializeMainApp() {
         enableFetchButton();
         e.target.blur(); // Blur so spacebar can toggle play/pause
     });
-    document.getElementById('bypassCache').addEventListener('change', (e) => {
+    document.getElementById('bypassCache')?.addEventListener('change', (e) => {
         enableFetchButton();
         e.target.blur(); // Blur so spacebar can toggle play/pause
     });
@@ -439,9 +439,9 @@ async function initializeMainApp() {
     // All event listeners are properly scoped and don't create permanent closures on window.*
     
     // Cache & Download & Share
-    document.getElementById('purgeCacheBtn').addEventListener('click', purgeCloudflareCache);
-    document.getElementById('downloadBtn').addEventListener('click', downloadAudio);
-    document.getElementById('shareBtn').addEventListener('click', openShareModal);
+    document.getElementById('purgeCacheBtn')?.addEventListener('click', purgeCloudflareCache);
+    document.getElementById('downloadBtn')?.addEventListener('click', downloadAudio);
+    document.getElementById('shareBtn')?.addEventListener('click', openShareModal);
     
     // Recent Searches
     document.getElementById('recentSearches').addEventListener('change', (e) => {
@@ -512,9 +512,9 @@ async function initializeMainApp() {
     // Anti-aliasing
     
     // Survey/Modal Buttons
-    document.getElementById('participantModalBtn').addEventListener('click', openParticipantModal);
-    document.getElementById('welcomeModalBtn').addEventListener('click', openWelcomeModal);
-    document.getElementById('adminModeBtn').addEventListener('click', toggleAdminMode);
+    document.getElementById('participantModalBtn')?.addEventListener('click', openParticipantModal);
+    document.getElementById('welcomeModalBtn')?.addEventListener('click', openWelcomeModal);
+    document.getElementById('adminModeBtn')?.addEventListener('click', toggleAdminMode);
 
     // Start event listeners setup group
     const listenersGroupOpen = logGroup('ui', 'Setting up UI event listeners');
