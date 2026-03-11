@@ -13,6 +13,7 @@ export function submitParticipantSetup() {
 
     // Save to localStorage for persistence across sessions
     if (participantId) {
+        storeParticipantId(participantId);
         storeRealUsername(participantId);
         console.log('💾 Saved participant ID:', participantId);
         // Set EMIC registration flag + sync to server
