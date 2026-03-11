@@ -1676,7 +1676,7 @@ async function runQuestionnaire(step) {
 
         // Save to D1
         const surveyType = isPreAnalysis() ? 'pre' : 'post';
-        saveSurveyAnswer(q.id, result, surveyType);
+        saveSurveyAnswer(q.id, result, surveyType, q.text);
 
         qi++;
     }

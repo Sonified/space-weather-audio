@@ -232,10 +232,16 @@ export function saveFeature(featureData) {
  * @param {string} questionId
  * @param {*} answer
  * @param {string} surveyType - 'pre' or 'post'
+ * @param {string} [questionText] - The question text for self-contained records
  */
-export function saveSurveyAnswer(questionId, answer, surveyType) {
+export function saveSurveyAnswer(questionId, answer, surveyType, questionText) {
     const type = surveyType === 'post' ? 'post_survey' : 'pre_survey';
-    saveResponse(type, { questionId, answer });
+    saveResponse(type, {
+        questionId,
+        question: questionText || null,
+        answer,
+        answered_at: new Date().toISOString(),
+    });
 }
 
 /**
