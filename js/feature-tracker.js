@@ -18,7 +18,7 @@ import { logGroup, logGroupEnd } from './logger.js';
 
 // ── Standalone features (drawn directly on spectrogram in windowed mode) ──
 // This is the PRIMARY feature tracking mechanism for EMIC study participants.
-// Each feature: { type, repetition, lowFreq, highFreq, startTime, endTime, notes, speedFactor }
+// Each feature: { lowFreq, highFreq, startTime, endTime, notes, confidence, speedFactor }
 let standaloneFeatures = [];
 
 // Cached EMIC flags module (avoids dynamic import microtask on every call)
@@ -471,8 +471,6 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
 
     // ── Save standalone feature ──
     const newFeature = {
-        type: 'Impulsive',
-        repetition: 'Unique',
         lowFreq: lowFreq.toFixed(3),
         highFreq: highFreq.toFixed(3),
         startTime: startTime || '',
@@ -623,14 +621,6 @@ export function renderStandaloneFeaturesList() {
 
         featureRow.innerHTML = `
             <span class="feature-number">Feature ${flatNum}</span>
-            <select id="repetition-sa-${idx}">
-                <option value="Unique" ${feature.repetition === 'Unique' || !feature.repetition ? 'selected' : ''}>Unique</option>
-                <option value="Repeated" ${feature.repetition === 'Repeated' ? 'selected' : ''}>Repeated</option>
-            </select>
-            <select id="type-sa-${idx}">
-                <option value="Impulsive" ${feature.type === 'Impulsive' || !feature.type ? 'selected' : ''}>Impulsive</option>
-                <option value="Continuous" ${feature.type === 'Continuous' ? 'selected' : ''}>Continuous</option>
-            </select>
             <span class="freq-display ${hasCoords ? 'completed' : ''}">${hasCoords ? formatFeatureButtonText(feature) : 'No selection'}</span>
             <label class="confidence-label" for="confidence-sa-${idx}">Confidence:</label>
             <select id="confidence-sa-${idx}">
@@ -645,22 +635,8 @@ export function renderStandaloneFeaturesList() {
         featureRow.insertBefore(deleteBtn, featureRow.firstChild);
 
         // Wire up change listeners
-        const repetitionSelect = featureRow.querySelector(`#repetition-sa-${idx}`);
-        const typeSelect = featureRow.querySelector(`#type-sa-${idx}`);
         const confidenceSelect = featureRow.querySelector(`#confidence-sa-${idx}`);
         const notesField = featureRow.querySelector(`#notes-sa-${idx}`);
-
-        repetitionSelect.addEventListener('change', function() {
-            standaloneFeatures[idx].repetition = this.value;
-            saveStandaloneFeatures();
-            this.blur();
-        });
-
-        typeSelect.addEventListener('change', function() {
-            standaloneFeatures[idx].type = this.value;
-            saveStandaloneFeatures();
-            this.blur();
-        });
 
         confidenceSelect.addEventListener('change', function() {
             standaloneFeatures[idx].confidence = this.value;

@@ -66,8 +66,6 @@ export async function syncEmicProgress(participantId, milestone) {
             index: i,
             timeRange: { start: feat.startTime || '', end: feat.endTime || '' },
             freqRange: { low: feat.lowFreq || '', high: feat.highFreq || '' },
-            type: feat.type || null,
-            repetition: feat.repetition || null,
             notes: feat.notes || null,
             speedFactor: feat.speedFactor ?? null,
             drawnAt: feat.createdAt || ''

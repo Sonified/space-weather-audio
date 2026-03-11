@@ -180,8 +180,6 @@ function renderSessionData(session, container) {
                 html += `<br><span style="color:#ccc;">${features.length} feature(s):</span>`;
                 html += '<div style="margin-top: 4px; margin-left: 12px;">';
                 for (const f of features) {
-                    const type = f.type || '?';
-                    const rep = f.repetition === 'yes' ? 'repeating' : 'unique';
                     const freq = (f.lowFreq != null && f.highFreq != null)
                         ? `${f.lowFreq}–${f.highFreq} Hz`
                         : '?';
@@ -193,8 +191,7 @@ function renderSessionData(session, container) {
 
                     html += `
                         <div style="margin-bottom: 4px; padding: 4px 8px; background: rgba(100,100,130,0.3); border-radius: 3px;">
-                            <strong style="color:${type === 'impulsive' ? '#f8a' : '#8af'};">${esc(type)}</strong>
-                            (${rep}) &nbsp;|&nbsp; ${freq} ${speed}
+                            <strong style="color:#8af;">${freq}</strong> ${speed}
                             ${fTime ? `<br><span style="color:#aaa; font-size: 12px;">${fTime}</span>` : ''}
                             ${notes ? `<br><span style="color:#dda; font-size: 12px;">${notes}</span>` : ''}
                         </div>

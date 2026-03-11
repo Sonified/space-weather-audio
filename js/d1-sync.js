@@ -204,8 +204,6 @@ export function saveFeature(featureData) {
     if (featureData.highFreq != null) coords.push(featureData.highFreq);
 
     const payload = {
-        type: featureData.type || 'unknown',
-        repetition: featureData.repetition || null,
         lowFreq: featureData.lowFreq,
         highFreq: featureData.highFreq,
         startTime: featureData.startTime,
