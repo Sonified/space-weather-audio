@@ -1661,6 +1661,10 @@ function isPreAnalysis() {
  */
 function showQuestionModal(question, index, total, progressPct, previousAnswer, showBack, stepDimensions) {
     return new Promise(async (resolve) => {
+        // Pass modalTitle from step config as question.title for the modal header
+        if (stepDimensions?.modalTitle && !question.title) {
+            question = { ...question, title: stepDimensions.modalTitle };
+        }
         const html = renderQuestionModal({
             question, index, total, progressPct, previousAnswer, showBack,
             dims: stepDimensions

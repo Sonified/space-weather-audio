@@ -381,7 +381,7 @@
   /* Builder preview — NO overrides on .modal-content; shared CSS + renderer inline styles only */
   .step-preview.question-preview {
     background: none; padding: 0; box-shadow: none; border: none;
-    display: flex; justify-content: center;
+    width: 100%; display: flex; justify-content: center;
   }
 
   .chevron {
@@ -2036,6 +2036,10 @@
           </div>
           <div class="settings-divider"></div>
           <div class="settings-section-label">Layout</div>
+          <div class="settings-row">
+            <span class="toggle-label">Title</span>
+            <input class="field-input modal-title-input" value="${escapeAttr(step.modalTitle || '📋 Questionnaire')}" style="flex: 1; min-width: 120px; font-size: 13px; padding: 4px 8px;" />
+          </div>
           <div class="settings-row" style="flex-wrap: wrap;">
             <span class="toggle-label label-mode-row" style="display:${isRadio ? 'inline' : 'none'};">Labels</span>
             <select class="field-input label-mode-select label-mode-row" style="display:${isRadio ? 'inline-block' : 'none'}; width:auto;" onchange="onLabelModeChange(this)">
@@ -2569,6 +2573,8 @@
         const mh = card.querySelector('.modal-height-input')?.value?.trim();
         if (mw) step.modalWidth = mw;
         if (mh) step.modalHeight = mh;
+        const mt = card.querySelector('.modal-title-input')?.value?.trim();
+        if (mt) step.modalTitle = mt;
         console.log(`%c[COLLECT]   Question step ${i}:`, 'color: #58a6ff;', {
           title: step.title,
           questionType: step.questionType,
@@ -3716,8 +3722,9 @@
     const qid = card.querySelector('.question-id-input')?.value || 'preview';
     const w = card.querySelector('.modal-width-input')?.value?.trim();
     const h = card.querySelector('.modal-height-input')?.value?.trim();
+    const modalTitle = card.querySelector('.modal-title-input')?.value?.trim() || '';
     const question = {
-      title: 'Questionnaire',
+      title: modalTitle || undefined,
       text: title, subtitle,
       type: isRadio ? 'radio' : 'freetext',
       questionType: isRadio ? 'radio' : 'freetext',
