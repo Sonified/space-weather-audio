@@ -767,9 +767,8 @@ async function init() {
             }
             console.log(`📋 Jumped to step ${stepIndex} from URL`);
 
-            // In preview mode, store and display the preview participant ID
-            // (registration step is skipped when jumping directly to a step)
-            if (isPreview && window.__PREVIEW_PARTICIPANT_ID) {
+            // In preview mode jumping past registration, store the preview ID
+            if (isPreview && window.__PREVIEW_PARTICIPANT_ID && stepIndex > 0) {
                 storeParticipantId(window.__PREVIEW_PARTICIPANT_ID);
                 updateParticipantDisplay(window.__PREVIEW_PARTICIPANT_ID);
             }
