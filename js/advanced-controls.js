@@ -315,11 +315,11 @@ export function initializeAdvancedControls() {
         const detrendContainer = document.getElementById('detrendContainer');
         if (detrendContainer) detrendContainer.style.display = isAdvanced ? '' : 'none';
 
-        // Bottom bar viz controls: advanced only (visibility to preserve layout)
-        const vizControls = document.querySelector('.viz-controls');
-        if (vizControls) {
-            vizControls.style.visibility = isAdvanced ? 'visible' : 'hidden';
-            vizControls.style.pointerEvents = isAdvanced ? '' : 'none';
+        // Spectrogram controls (FFT, colormap, freq scale): advanced-only in EMIC, always visible in Solar Portal
+        const spectrogramControls = document.querySelector('.spectrogram-controls');
+        if (spectrogramControls && isEmicStudyMode()) {
+            spectrogramControls.style.visibility = isAdvanced ? 'visible' : 'hidden';
+            spectrogramControls.style.pointerEvents = isAdvanced ? '' : 'none';
         }
 
         // Stretch + Speed button groups: advanced only

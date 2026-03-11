@@ -4701,7 +4701,7 @@ html:not([data-advanced]) .emic-page #componentSelectorContainer,
 html:not([data-advanced]) .emic-page #detrendContainer {
     display: none;
 }
-html:not([data-advanced]) .emic-page .viz-controls {
+html:not([data-advanced]) .emic-page .spectrogram-controls {
     visibility: hidden;
     pointer-events: none;
 }
