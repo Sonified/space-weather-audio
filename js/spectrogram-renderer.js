@@ -2241,15 +2241,6 @@ export function setupSpectrogramSelection() {
             activeRegionId: zoomState.isInitialized() ? zoomState.activeRegionId : 'N/A'
         });
         
-        // 🎯 Check if region creation is enabled (requires "Begin Analysis" to be pressed)
-        if (!State.isRegionCreationEnabled()) {
-            // User clicked spectrogram before Begin Analysis - show helpful message
-            import('./tutorial-effects.js').then(({ setStatusText }) => {
-                setStatusText('Click Begin Analysis to create a region and interact with the spectrogram.', 'status info');
-            });
-            return; // Don't allow spectrogram selection
-        }
-        
         // ✅ Check if clicking on an existing canvas box FIRST (before zoom check)
         // This allows clicking features to zoom in when zoomed out
         const canvasRect = canvas.getBoundingClientRect();

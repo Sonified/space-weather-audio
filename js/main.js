@@ -101,8 +101,6 @@ async function initializeMainApp() {
         initializeAdvancedControls();
     }
 
-    // Don't hide Begin Analysis button initially - let updateCompleteButtonState() handle visibility
-
     // Hide simulate panel in Study Mode and Solar Portal mode
     if (isStudyMode() || CURRENT_MODE === AppMode.SOLAR_PORTAL) {
         const simulatePanel = document.querySelector('.panel-simulate');
@@ -207,8 +205,8 @@ async function initializeMainApp() {
     setupModalEventListeners();
     
     // Initialize complete button state (disabled until first feature is identified)
-    updateCompleteButtonState(); // Begin Analysis button
-    updateCmpltButtonState(); // Complete button
+    updateCompleteButtonState();
+    updateCmpltButtonState();
     
     // Setup spectrogram frequency selection
     setupSpectrogramSelection();

@@ -740,14 +740,12 @@ export function hasIdentifiedFeature() {
 
 /**
  * Update the complete button state - SINGLE SOURCE OF TRUTH
- * Handles BOTH modes: "Begin Analysis" (before transformation) and "Complete" (after transformation)
+ * On emic_study.html the button starts as "Begin Analysis" (enabled when data loads).
+ * On study.html the button starts as "✓ Complete" (enabled when a feature is drawn).
  */
 export async function updateCompleteButtonState() {
     const completeBtn = document.getElementById('completeBtn');
-    if (!completeBtn) {
-        console.warn('updateCompleteButtonState: completeBtn not found in DOM');
-        return;
-    }
+    if (!completeBtn) return;
 
     const { CURRENT_MODE, AppMode } = await import('./master-modes.js');
     if (CURRENT_MODE === AppMode.SOLAR_PORTAL) {
@@ -759,41 +757,16 @@ export async function updateCompleteButtonState() {
     completeBtn.style.alignItems = 'center';
     completeBtn.style.justifyContent = 'center';
 
+    // "Begin Analysis" mode (emic_study.html): enable when data is loaded
+    // "Complete" mode (study.html): enable when a feature is drawn
     const isBeginAnalysisMode = completeBtn.textContent === 'Begin Analysis';
-
-    let shouldDisable;
-
-    if (isBeginAnalysisMode) {
-        const hasData = State.completeSamplesArray && State.completeSamplesArray.length > 0;
-        shouldDisable = !hasData;
-
-        if (!isStudyMode()) {
-            const sampleCount = State.completeSamplesArray ? State.completeSamplesArray.length : 0;
-            if (window.pm?.interaction) console.log(`Begin Analysis button: hasData=${hasData}, samples=${sampleCount.toLocaleString()}`);
-        }
-    } else {
-        const hasFeature = hasIdentifiedFeature();
-        shouldDisable = !hasFeature;
-
-        if (!isStudyMode()) {
-            if (window.pm?.interaction) console.log(`Complete button: hasFeature=${hasFeature}`);
-        }
-    }
+    const shouldDisable = isBeginAnalysisMode
+        ? !(State.completeSamplesArray && State.completeSamplesArray.length > 0)
+        : !hasIdentifiedFeature();
 
     completeBtn.disabled = shouldDisable;
-    if (shouldDisable) {
-        completeBtn.style.opacity = '0.5';
-        completeBtn.style.cursor = 'not-allowed';
-        if (!isStudyMode()) {
-            console.log(`${isBeginAnalysisMode ? 'Begin Analysis' : 'Complete'} button DISABLED`);
-        }
-    } else {
-        completeBtn.style.opacity = '1';
-        completeBtn.style.cursor = 'pointer';
-        if (!isStudyMode()) {
-            console.log(`${isBeginAnalysisMode ? 'Begin Analysis' : 'Complete'} button ENABLED`);
-        }
-    }
+    completeBtn.style.opacity = shouldDisable ? '0.5' : '1';
+    completeBtn.style.cursor = shouldDisable ? 'not-allowed' : 'pointer';
 }
 
 /**

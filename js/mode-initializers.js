@@ -70,10 +70,6 @@ export async function initializeEmicStudyMode() {
     const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
     enableAllTutorialRestrictedFeatures();
 
-    // Enable region creation
-    const { setRegionCreationEnabled } = await import('./audio-state.js');
-    setRegionCreationEnabled(true);
-
     // Advanced controls already initialized early in initializeMainApp()
 
     // Login/welcome modals are handled entirely by simulate flow (emic-study-flow.js)
