@@ -515,9 +515,11 @@ export default {
           return json({ success: true, mode });
         }
 
-        // Survey answers and other responses → store in participants.responses JSON
-        const dataStr = typeof body.data === 'string' ? body.data : JSON.stringify(body.data || {});
-        const responseKey = `$.${type}`;
+        // Survey answers — key by questionId so each answer accumulates
+        const data = typeof body.data === 'string' ? JSON.parse(body.data) : (body.data || {});
+        const qid = data.questionId;
+        const dataStr = JSON.stringify(data);
+        const responseKey = qid ? `$.${qid}` : `$.${type}`;
         await env.DB.prepare(
           `UPDATE participants SET responses = json_set(responses, ?, json(?)) WHERE participant_id = ? AND study_id = ?`
         ).bind(responseKey, dataStr, pid, studyId).run();
