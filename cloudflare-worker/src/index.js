@@ -455,7 +455,7 @@ export default {
       if (progressMatch && request.method === 'GET') {
         const [, studyId, pid] = progressMatch;
         const row = await env.DB.prepare(
-          'SELECT current_step, responses, flags, completed_at FROM participants WHERE participant_id = ? AND study_id = ?'
+          'SELECT current_step, responses, flags, step_history, completed_at FROM participants WHERE participant_id = ? AND study_id = ?'
         ).bind(decodeURIComponent(pid), studyId).first();
         if (!row) return json({ error: 'Participant not found' }, 404);
         return json({
@@ -463,20 +463,26 @@ export default {
           current_step: row.current_step,
           responses: typeof row.responses === 'string' ? JSON.parse(row.responses) : row.responses,
           flags: typeof row.flags === 'string' ? JSON.parse(row.flags) : row.flags,
+          step_history: typeof row.step_history === 'string' ? JSON.parse(row.step_history) : row.step_history,
           completed_at: row.completed_at,
         });
       }
 
-      // PUT /api/study/:studyId/participants/:pid/step — update current step
+      // PUT /api/study/:studyId/participants/:pid/step — update current step + append history
       const stepMatch = path.match(/^\/api\/study\/([^/]+)\/participants\/([^/]+)\/step$/);
       if (stepMatch && request.method === 'PUT') {
         const [, studyId, pid] = stepMatch;
         const body = await request.json();
         const step = body.step;
         if (step == null) return json({ error: 'Missing step' }, 400);
+        const decodedPid = decodeURIComponent(pid);
+        const entry = JSON.stringify({ step, completed_at: new Date().toISOString() });
         await env.DB.prepare(
-          'UPDATE participants SET current_step = ? WHERE participant_id = ? AND study_id = ?'
-        ).bind(step, decodeURIComponent(pid), studyId).run();
+          `UPDATE participants
+           SET current_step = ?,
+               step_history = json_insert(step_history, '$[#]', json(?))
+           WHERE participant_id = ? AND study_id = ?`
+        ).bind(step, entry, decodedPid, studyId).run();
         return json({ success: true, current_step: step });
       }
 
