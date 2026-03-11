@@ -1057,18 +1057,24 @@ async function runRegistration(step) {
     console.log(`📋 [REG] showing overlay: ${overlay ? 'found' : 'MISSING'}`);
     if (overlay) { overlay.style.display = 'flex'; overlay.style.opacity = '1'; }
 
-    if (step.idMethod === 'auto' || step.idMethod === 'auto_generate') {
-        // Auto-generate ID
-        const pid = generateParticipantId();
+    const isAuto = step.idMethod === 'auto' || step.idMethod === 'auto_generate';
+
+    if (isAuto && step.skipLogin) {
+        // Auto-generate and skip login screen entirely
+        const pid = generateParticipantId(step.idPrefix);
         storeParticipantId(pid);
-        updateParticipantDisplay(pid);
+        if (step.showIdCorner !== false) updateParticipantDisplay(pid);
+        else hideParticipantDisplay();
         initParticipant(pid, studySlug);
-        console.log(`📋 Auto-registered: ${pid}`);
+        console.log(`📋 Auto-registered (skip login): ${pid}`);
         advanceStep();
     } else {
-        // Show login modal
+        // Show login modal — auto-generate pre-fills the ID, manual lets user type
         await showLoginModal(step);
     }
+
+    // Apply ID corner visibility
+    if (step.showIdCorner === false) hideParticipantDisplay();
 }
 
 function showLoginModal(step) {
@@ -1122,6 +1128,17 @@ function showLoginModal(step) {
             input.parentElement.after(hint);
         }
 
+        // Auto-generate mode (but not skipping login): pre-fill with generated ID
+        const isAuto = step.idMethod === 'auto' || step.idMethod === 'auto_generate';
+        if (isAuto && !window.__PREVIEW_MODE && !window.__TEST_MODE && input) {
+            const autoId = generateParticipantId(step.idPrefix);
+            input.value = autoId;
+            submitBtn.disabled = false;
+            input.readOnly = true;
+            input.style.opacity = '0.7';
+            input.style.cursor = 'default';
+        }
+
         input?.addEventListener('input', () => {
             submitBtn.disabled = !input.value.trim();
         });
@@ -1148,6 +1165,13 @@ function showLoginModal(step) {
 function updateParticipantDisplay(pid) {
     const el = document.getElementById('participantIdValue');
     if (el) el.textContent = pid;
+    const container = document.getElementById('participantIdDisplay');
+    if (container) container.style.display = '';
+}
+
+function hideParticipantDisplay() {
+    const container = document.getElementById('participantIdDisplay');
+    if (container) container.style.display = 'none';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

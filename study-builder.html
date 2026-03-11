@@ -1702,7 +1702,15 @@
         <div class="field-group reg-auto-fields" style="${isAuto ? '' : 'display:none'}">
           <div class="field-label">ID Prefix</div>
           <input class="field-input reg-id-prefix" value="${step.idPrefix || ''}" placeholder="e.g. P, EMIC_" />
+          <label class="toggle-row" style="margin-top:8px;">
+            <input type="checkbox" class="reg-skip-login" ${step.skipLogin ? 'checked' : ''} />
+            <span>Skip login screen</span>
+          </label>
         </div>
+        <label class="toggle-row" style="margin-top:8px;">
+          <input type="checkbox" class="reg-show-id-corner" ${step.showIdCorner !== false ? 'checked' : ''} />
+          <span>Show ID in corner</span>
+        </label>
         <div class="reg-manual-fields" style="${isAuto ? 'display:none' : ''}">
           <div class="field-group">
             <div class="field-label">Window Title</div>
@@ -2317,6 +2325,8 @@
         const pills = card.querySelectorAll('.pill-group .pill.active');
         step.idMethod = pills[0]?.textContent.trim().toLowerCase().includes('auto') ? 'auto_generate' : 'manual';
         step.idPrefix = card.querySelector('.reg-id-prefix')?.value || '';
+        step.skipLogin = card.querySelector('.reg-skip-login')?.checked || false;
+        step.showIdCorner = card.querySelector('.reg-show-id-corner')?.checked ?? true;
         step.idPlaceholder = card.querySelector('.reg-id-placeholder')?.value || '';
         step.regTitle = card.querySelector('.reg-title-input')?.value || '';
         const regBody = card.querySelector('.reg-body-html-input');

@@ -94,7 +94,7 @@ export function getActiveId() {
  * Format: P_YYYYMMDD_HHMM_XXXXX (5 random uppercase letters)
  * @returns {string} - Generated participant ID
  */
-export function generateParticipantId() {
+export function generateParticipantId(prefix) {
     const now = new Date();
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, '0');
@@ -104,5 +104,6 @@ export function generateParticipantId() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     let suffix = '';
     for (let i = 0; i < 5; i++) suffix += chars[Math.floor(Math.random() * 26)];
-    return `P_${yyyy}${mm}${dd}_${hh}${mi}_${suffix}`;
+    const pfx = prefix || 'P';
+    return `${pfx}_${yyyy}${mm}${dd}_${hh}${mi}_${suffix}`;
 }
