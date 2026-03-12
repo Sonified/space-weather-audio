@@ -27,6 +27,7 @@ let currentStepIndex = 0;   // Current position in config.steps[]
 let studySlug = null;       // e.g. "emic-pilot"
 let studyStartTime = null;
 let flowActive = false;
+let analysisAbort = null;  // AbortController for current analysis step listeners
 
 // localStorage keys for progress persistence
 const PROGRESS_KEY = 'study_flow_step';
@@ -570,8 +571,8 @@ function initDataPreload(config) {
 
         if (step.dataPreload === 'pageLoad') {
             // Skip preloading steps we've already passed (e.g. resuming at step 5, don't preload step 3)
-            if (stepIndex < currentStepIndex) {
-                console.log(`📋 dataPreload: skipping step ${stepIndex} (already at step ${currentStepIndex})`);
+            if (stepIndex <= currentStepIndex) {
+                console.log(`📋 dataPreload: skipping step ${stepIndex} (already at/past step ${currentStepIndex})`);
                 return;
             }
             console.log(`📋 dataPreload: pageLoad for step ${stepIndex}`);
@@ -1462,6 +1463,11 @@ function executePrompts(prompts) {
 }
 
 async function runAnalysis(step) {
+    // Abort any previous analysis step's listeners (prevents double-fire on admin skip-back)
+    if (analysisAbort) analysisAbort.abort();
+    analysisAbort = new AbortController();
+    const signal = analysisAbort.signal;
+
     console.log(`📋 Analysis step: entering drawing phase`);
 
     // Apply this step's analysis config (spacecraft, dates, display settings)
@@ -1539,6 +1545,7 @@ async function runAnalysis(step) {
         // Wait for Complete click
         await new Promise((resolve) => {
             completeBtn.addEventListener('click', async () => {
+                if (signal.aborted) return;  // stale listener from previous analysis
                 // Close any open feature popup before proceeding
                 try {
                     const { closeFeaturePopup } = await import('./spectrogram-renderer.js');
