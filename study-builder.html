@@ -768,7 +768,56 @@
     height: var(--connector-height, 12px);
     background: var(--border);
     margin-left: 29px;
+    position: relative;
+    overflow: visible;
   }
+  .step-connector .connector-insert {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1.5px dashed var(--border);
+    background: var(--surface);
+    color: var(--text-muted);
+    font-size: 16px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, border-color 0.15s, color 0.15s;
+    padding: 0;
+    z-index: 11;
+    pointer-events: none;
+    /* left is set dynamically by JS to center within the container */
+  }
+  .step-connector .connector-insert.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .step-connector .connector-insert:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--surface2);
+  }
+  .connector-dropdown {
+    position: absolute;
+    top: 20px;
+    transform: translateX(-50%);
+    /* left is set dynamically by JS to match the button center */
+    z-index: 1000;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    padding: 4px;
+    display: none;
+    min-width: 180px;
+  }
+  .connector-dropdown.show { display: block; }
 
   /* Add step button */
   .add-step-area {
@@ -906,7 +955,7 @@
   }
   .settings-divider {
     height: 1px;
-    background: rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.06);
     margin: 16px 0;
   }
   .settings-row {
@@ -1555,6 +1604,7 @@
       if (i > 0) {
         const conn = document.createElement('div');
         conn.className = 'step-connector';
+        conn.innerHTML = '<button class="connector-insert" title="Insert step here" onclick="event.stopPropagation(); showConnectorMenu(this)">+</button>';
         container.appendChild(conn);
       }
 
@@ -2288,7 +2338,7 @@
       <div class="step-detail">
         <div class="field-group">
           <div class="field-label">Step Title</div>
-          <input class="field-input analysis-title-input" value="${escapeAttr(step.title || 'Analysis')}" />
+          <input class="field-input analysis-title-input" value="${escapeAttr(step.title || 'Analysis')}" oninput="this.closest('.step-card').querySelector('.step-title').textContent = this.value || 'Analysis'" />
         </div>
         <div class="analysis-grid">
           <div class="field-group">
@@ -2325,30 +2375,35 @@
             </select>
           </div>
         </div>
+        <div class="field-group" style="width: calc(50% - 6px);">
+          <div class="field-label">Completion Button Text</div>
+          <input class="field-input complete-btn-text-input" value="${escapeAttr(step.completeBtnText || '✓ Complete')}" />
+        </div>
         <div class="card-settings" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open'); saveExpandedState()}">
           <button class="card-settings-trigger" type="button">&#9881; Settings <span class="settings-chevron">&#9660;</span></button>
           <div class="card-settings-drawer"><div class="settings-body">
+            <div class="settings-section-label">Data</div>
             <div class="field-group">
               <div class="field-label">Load data</div>
               <select class="field-input data-preload-select">
                 ${buildDataPreloadOptions(step.dataPreload)}
               </select>
             </div>
-            <div class="toggle-row">
-              <span class="toggle-label">Allow stretch/speed changes</span>
+            <div class="settings-divider"></div>
+            <div class="settings-section-label">Participant Controls</div>
+            <div class="settings-row">
+              <span class="toggle-label">Allow stretch/speed</span>
               <div class="toggle ${step.allowStretch ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
-            </div>
-            <div class="toggle-row">
               <span class="toggle-label">Allow feature drawing</span>
               <div class="toggle ${step.allowFeatureDrawing ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
             </div>
-            <div class="toggle-row">
-              <span class="toggle-label">Require minimum features</span>
+            <div class="settings-divider"></div>
+            <div class="settings-section-label">Task Requirements</div>
+            <div class="settings-row">
+              <span class="toggle-label">Require min features</span>
               <div class="toggle toggle-require-min-features ${step.requireMinFeatures ? 'on' : ''}" onclick="this.classList.toggle('on'); toggleMinFeatures(this)"></div>
-              <input class="field-input min-features-input" type="number" min="1" value="${step.minFeatures || 1}" style="width:60px; margin-left:8px; height:20px; padding:2px 6px; font-size:13px; ${step.requireMinFeatures ? '' : 'display:none;'}" />
-            </div>
-            <div class="toggle-row">
-              <span class="toggle-label">Confirm analysis completion</span>
+              <input class="field-input min-features-input" type="number" min="1" value="${step.minFeatures || 1}" style="width:42px; margin-left:4px; height:24px; padding:2px 4px; font-size:13px; text-align:center; ${step.requireMinFeatures ? '' : 'display:none;'}" />
+              <span class="toggle-label">Confirm completion</span>
               <div class="toggle ${confirm.enabled ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
             </div>
             ${confirm.enabled ? `<div style="margin-left:20px;">
@@ -2642,6 +2697,8 @@
       }
       else if (type === 'analysis') {
         step.title = card.querySelector('.analysis-title-input')?.value || card.querySelector('.step-title')?.textContent || 'Analysis';
+        const btnText = card.querySelector('.complete-btn-text-input')?.value?.trim();
+        if (btnText && btnText !== '✓ Complete') step.completeBtnText = btnText;
         step.spacecraft = card.querySelector('.spacecraft-select')?.value || 'GOES';
         step.dataset = card.querySelector('.dataset-select')?.value || 'DN_MAGN-L2-HIRES_G16';
         const selects = card.querySelectorAll('select.field-input');
@@ -2657,7 +2714,7 @@
         if (preloadSelect && preloadSelect.value && preloadSelect.value !== 'onEnter') {
           step.dataPreload = preloadSelect.value;
         }
-        const toggles = card.querySelectorAll('.toggle-row .toggle');
+        const toggles = card.querySelectorAll('.settings-body .toggle');
         step.allowStretch = toggles[0]?.classList.contains('on') || false;
         step.allowFeatureDrawing = toggles[1]?.classList.contains('on') || false;
         step.requireMinFeatures = toggles[2]?.classList.contains('on') || false;
@@ -2691,8 +2748,8 @@
             }
           });
         }
-        // confirmCompletion is the 5th toggle (index 4)
-        const confirmEnabled = toggles[4]?.classList.contains('on') || false;
+        // confirmCompletion is the 4th toggle (index 3)
+        const confirmEnabled = toggles[3]?.classList.contains('on') || false;
         if (confirmEnabled) {
           step.confirmCompletion = {
             enabled: true,
@@ -2884,7 +2941,7 @@
     const slug = document.getElementById('slugValue')?.textContent?.trim();
     if (!slug || slug.length < 3) return;
     clearTimeout(_autoSaveTimer);
-    _autoSaveTimer = setTimeout(saveDraft, 300);
+    _autoSaveTimer = setTimeout(saveDraft, source === 'input' ? 500 : 0);
   }
   document.addEventListener('input', () => autoSave('input'));
   document.addEventListener('change', () => autoSave('change'));
@@ -3090,6 +3147,8 @@
   // ── Drag and Drop (pointer-based with FLIP animation) ─────────
   let draggedCard = null;
   let dragStartY = 0;
+  let dragStartScroll = 0;
+  let lastDragClientY = 0;
   const CONNECTOR_HEIGHT = 12; // px — matches --connector-height CSS variable
 
   function rebuildConnectors() {
@@ -3100,6 +3159,7 @@
       if (i === 0) return;
       const conn = document.createElement('div');
       conn.className = 'step-connector';
+      conn.innerHTML = '<button class="connector-insert" title="Insert step here" onclick="event.stopPropagation(); showConnectorMenu(this)">+</button>';
       container.insertBefore(conn, card);
     });
   }
@@ -3143,52 +3203,70 @@
       e.preventDefault();
       draggedCard = card;
       dragStartY = e.clientY;
+      dragStartScroll = window.scrollY;
       card.classList.add('dragging');
-      card.classList.remove('active');
+      // Collapse the card if open — fast close for drag
+      if (card.classList.contains('active')) {
+        const detail = card.querySelector('.step-detail');
+        if (detail) {
+          detail.style.transition = 'max-height 0.15s ease-out, padding 0.15s ease-out';
+          detail.style.maxHeight = detail.scrollHeight + 'px';
+          detail.offsetHeight;
+          detail.style.maxHeight = '0';
+          detail.addEventListener('transitionend', () => { detail.style.transition = ''; }, { once: true });
+        }
+        card.classList.remove('active');
+      }
       card.style.position = 'relative';
     });
 
-    document.addEventListener('pointermove', (e) => {
+    function updateDragPosition() {
       if (!draggedCard) return;
-
-      const deltaY = e.clientY - dragStartY;
+      const scrollDelta = window.scrollY - dragStartScroll;
+      const deltaY = lastDragClientY - dragStartY + scrollDelta;
       draggedCard.style.transform = `translateY(${deltaY}px)`;
 
-      // Dragged card's visual center (layout position + drag offset)
-      const cardCenter = draggedCard.offsetTop + draggedCard.offsetHeight / 2 + deltaY;
+      // Use header zones (not full card) for swap thresholds
+      const dragHeader = draggedCard.querySelector('.step-header');
+      const headerH = dragHeader ? dragHeader.offsetHeight : 48;
+      const headerCenter = draggedCard.offsetTop + headerH / 2 + deltaY;
+      const bottomHeaderCenter = draggedCard.offsetTop + draggedCard.offsetHeight - headerH / 2 + deltaY;
 
       const allCards = [...container.querySelectorAll('.step-card')];
       const myIndex = allCards.indexOf(draggedCard);
 
-      // Check swap DOWN: card center crosses midpoint of gap below
       if (myIndex < allCards.length - 1) {
         const next = allCards[myIndex + 1];
         if (next && next.dataset.type !== 'registration') {
-          // Gap runs from dragged card's layout bottom to next card's layout top
-          const gapTop = draggedCard.offsetTop + draggedCard.offsetHeight;
-          const gapBottom = gapTop + CONNECTOR_HEIGHT;
-          const gapMid = (gapTop + gapBottom) / 2;
-
-          if (cardCenter > gapMid) {
-            doSwap(container, allCards, next, 'down', e);
+          const nh = next.querySelector('.step-header');
+          const nextMid = next.offsetTop + (nh ? nh.offsetHeight / 2 : 24);
+          if (bottomHeaderCenter > nextMid) {
+            doSwap(container, allCards, next, 'down', { clientY: lastDragClientY });
           }
         }
       }
 
-      // Check swap UP: card center crosses midpoint of gap above
       if (myIndex > 0) {
         const prev = allCards[myIndex - 1];
         if (prev && prev.dataset.type !== 'registration') {
-          // Gap runs from prev card's layout bottom to dragged card's layout top
-          const gapTop = prev.offsetTop + prev.offsetHeight;
-          const gapBottom = gapTop + CONNECTOR_HEIGHT;
-          const gapMid = (gapTop + gapBottom) / 2;
-
-          if (cardCenter < gapMid) {
-            doSwap(container, allCards, prev, 'up', e);
+          const prevHeader = prev.querySelector('.step-header');
+          const prevHeaderMid = prev.offsetTop + (prevHeader ? prevHeader.offsetHeight / 2 : 24);
+          if (headerCenter < prevHeaderMid) {
+            doSwap(container, allCards, prev, 'up', { clientY: lastDragClientY });
           }
         }
       }
+    }
+
+    document.addEventListener('pointermove', (e) => {
+      if (!draggedCard) return;
+      lastDragClientY = e.clientY;
+      updateDragPosition();
+    });
+
+    window.addEventListener('scroll', () => {
+      if (!draggedCard) return;
+      updateDragPosition();
     });
 
     document.addEventListener('pointerup', (e) => {
@@ -3526,7 +3604,169 @@
     }, 0);
   }
 
-  // Add a new step
+  // ── Connector hover detection (JS-based, no extra DOM) ─────
+  // Detects when cursor is in the gap between cards and shows the + button
+  // on the nearest connector. Uses a 200ms delay before showing.
+  let connectorHoverTimer = null;
+  let activeInsertBtn = null;
+
+  (function initConnectorHover() {
+    const container = document.getElementById('stepList');
+
+    container.addEventListener('mousemove', (e) => {
+      // Don't interfere while dragging or if a menu is open
+      if (draggedCard || activeConnectorMenu) return;
+
+      const connectors = container.querySelectorAll('.step-connector');
+      let closestConn = null;
+      let closestDist = Infinity;
+
+      for (const conn of connectors) {
+        const rect = conn.getBoundingClientRect();
+        // Expand the hit zone: full page width, extending 16px above and below the connector
+        const zoneTop = rect.top - 16;
+        const zoneBottom = rect.bottom + 16;
+        if (e.clientY >= zoneTop && e.clientY <= zoneBottom) {
+          const mid = (rect.top + rect.bottom) / 2;
+          const dist = Math.abs(e.clientY - mid);
+          if (dist < closestDist) {
+            closestDist = dist;
+            closestConn = conn;
+          }
+        }
+      }
+
+      if (closestConn) {
+        const btn = closestConn.querySelector('.connector-insert');
+        if (btn && btn !== activeInsertBtn) {
+          // Hide previous
+          hideInsertBtn();
+          // Show new one after 200ms delay
+          const targetBtn = btn;
+          connectorHoverTimer = setTimeout(() => {
+            // Center button at horizontal midpoint of the adjacent card
+            const conn = targetBtn.parentElement;
+            const card = conn.nextElementSibling; // the card below this connector
+            const connRect = conn.getBoundingClientRect();
+            const cardRect = card.getBoundingClientRect();
+            const cardCenterX = cardRect.left + cardRect.width / 2;
+            targetBtn.style.left = (cardCenterX - connRect.left) + 'px';
+            targetBtn.classList.add('visible');
+            activeInsertBtn = targetBtn;
+          }, 200);
+        }
+      } else {
+        hideInsertBtn();
+      }
+    });
+
+    container.addEventListener('mouseleave', () => {
+      hideInsertBtn();
+    });
+
+    function hideInsertBtn() {
+      clearTimeout(connectorHoverTimer);
+      connectorHoverTimer = null;
+      if (activeInsertBtn && !activeConnectorMenu) {
+        activeInsertBtn.classList.remove('visible');
+        activeInsertBtn = null;
+      }
+    }
+  })();
+
+  // ── Connector insert menu ───────────────────────────────────
+  let activeConnectorMenu = null;
+
+  function showConnectorMenu(btn) {
+    // Close any existing menu
+    closeConnectorMenu();
+
+    const conn = btn.closest('.step-connector');
+    if (!conn) return;
+    const menu = document.createElement('div');
+    menu.className = 'connector-dropdown show';
+    menu.innerHTML = `
+      <div class="dropdown-item" onclick="insertStepAt(this, 'info')">
+        <div class="di-icon modal-icon">📋</div>
+        <div><div>Information</div><div class="di-desc">Text, context, or instructions</div></div>
+      </div>
+      <div class="dropdown-item" onclick="insertStepAt(this, 'question')">
+        <div class="di-icon" style="color: #d29922;">❓</div>
+        <div><div>Question</div><div class="di-desc">Collect a response</div></div>
+      </div>
+      <div class="dropdown-item" onclick="insertStepAt(this, 'analysis')">
+        <div class="di-icon analysis-icon">📊</div>
+        <div><div>Analysis</div><div class="di-desc">Data listening & feature identification</div></div>
+      </div>
+    `;
+    // Center dropdown at horizontal center of the adjacent card
+    const card = conn.nextElementSibling;
+    const connRect = conn.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    menu.style.left = (cardRect.left + cardRect.width / 2 - connRect.left) + 'px';
+    conn.appendChild(menu);
+    activeConnectorMenu = { menu, conn };
+
+    // Close on outside click
+    setTimeout(() => {
+      document.addEventListener('click', function close(e) {
+        if (!menu.contains(e.target) && e.target !== btn) {
+          closeConnectorMenu();
+          document.removeEventListener('click', close);
+        }
+      });
+    }, 0);
+  }
+
+  function closeConnectorMenu() {
+    if (activeConnectorMenu) {
+      activeConnectorMenu.menu.remove();
+      activeConnectorMenu = null;
+    }
+  }
+
+  function insertStepAt(menuItem, type) {
+    const conn = menuItem.closest('.step-connector');
+    const nextCard = conn.nextElementSibling; // the card after this connector
+    const container = document.getElementById('stepList');
+    closeConnectorMenu();
+
+    // Build the new card (same logic as addStep)
+    const num = container.querySelectorAll('.step-card').length + 1;
+    const card = document.createElement('div');
+    card.className = 'step-card';
+    card.dataset.type = type;
+    card.setAttribute('draggable', 'true');
+
+    let defaultStep;
+    if (type === 'info') {
+      defaultStep = { type: 'info', title: 'New Information Step', bodyHtml: '', dismissLabel: 'OK', closable: false, skippable: false };
+      card.innerHTML = buildInfoCard(num, defaultStep);
+      const ed = card.querySelector('.rich-editable'); if (ed) ed.innerHTML = '';
+    } else if (type === 'question') {
+      const newQid = generateQuestionSlug();
+      defaultStep = { type: 'question', title: '', questionType: 'radio', required: true, canGoBack: true, id: newQid, options: [{ value: '1', label: '', description: '' }] };
+      card.dataset.questionId = newQid;
+      card.innerHTML = buildQuestionCard(num, defaultStep);
+    } else {
+      defaultStep = { type: 'analysis', title: 'New Analysis Step', spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16', startDate: '', endDate: '', dataSource: 'cloudflare_r2', playbackSpeed: '1x', allowFeatureDrawing: true, allowStretch: true, minFeatures: 1, confirmCompletion: { enabled: false } };
+      card.innerHTML = buildAnalysisCard(num, defaultStep);
+    }
+
+    // Insert card before the next card, then rebuild all connectors
+    if (nextCard) {
+      container.insertBefore(card, nextCard);
+    } else {
+      container.appendChild(card);
+    }
+    rebuildConnectors();
+
+    renumberSteps();
+    updatePreview();
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  // Add a new step at the end
   let stepCounter = 7;
   function addStep(type) {
     const container = document.getElementById('stepList');
@@ -3534,9 +3774,10 @@
 
     const connector = document.createElement('div');
     connector.className = 'step-connector';
+    connector.innerHTML = '<button class="connector-insert" title="Insert step here" onclick="event.stopPropagation(); showConnectorMenu(this)">+</button>';
 
     const card = document.createElement('div');
-    card.className = 'step-card active';
+    card.className = 'step-card';
     card.dataset.type = type;
     card.setAttribute('draggable', 'true');
 
@@ -3555,9 +3796,6 @@
       defaultStep = { type: 'analysis', title: 'New Analysis Step', spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16', startDate: '', endDate: '', dataSource: 'cloudflare_r2', playbackSpeed: '1x', allowFeatureDrawing: true, allowStretch: true, minFeatures: 1, confirmCompletion: { enabled: false } };
       card.innerHTML = buildAnalysisCard(num, defaultStep);
     }
-
-    // Close others
-    document.querySelectorAll('.step-card').forEach(c => c.classList.remove('active'));
 
     container.appendChild(connector);
     container.appendChild(card);
