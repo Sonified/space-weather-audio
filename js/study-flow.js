@@ -569,7 +569,11 @@ function initDataPreload(config) {
         if (step.type !== 'analysis' || !step.dataPreload) return;
 
         if (step.dataPreload === 'pageLoad') {
-            // Trigger immediately
+            // Skip preloading steps we've already passed (e.g. resuming at step 5, don't preload step 3)
+            if (stepIndex < currentStepIndex) {
+                console.log(`📋 dataPreload: skipping step ${stepIndex} (already at step ${currentStepIndex})`);
+                return;
+            }
             console.log(`📋 dataPreload: pageLoad for step ${stepIndex}`);
             triggerPreloadForStep(stepIndex);
         } else if (step.dataPreload.startsWith('step:')) {
@@ -659,8 +663,8 @@ async function init() {
         initAdminMode(studyConfig);
     }
 
-    // Set up data preloading for analysis steps
-    initDataPreload(studyConfig);
+    // NOTE: initDataPreload() is called later, after currentStepIndex is determined,
+    // so it can skip preloading steps we've already passed.
 
     // ── Step Jump & Preview Mode ─────────────────────────────
     const urlParams = new URLSearchParams(window.location.search);
@@ -857,6 +861,9 @@ async function init() {
             updateParticipantDisplay(pid);
         }
     }
+
+    // Set up data preloading AFTER currentStepIndex is known (skips past steps)
+    initDataPreload(studyConfig);
 
     // Start the flow
     flowActive = true;
@@ -1480,10 +1487,18 @@ async function runAnalysis(step) {
     const silentCb = document.getElementById('silentDownload');
     if (silentCb) silentCb.checked = !!step.silentDataLoading;
 
-    // Trigger data render (same pattern as emic_study welcome modal dismiss)
+    // Trigger data fetch/render
     if (typeof window.triggerDataRender === 'function') {
+        // Data was preloaded — just trigger the render
         window.triggerDataRender();
         console.log(`📋 Triggered data render via triggerDataRender()`);
+    } else {
+        // No preload — kick off the fetch ourselves
+        const startBtn = document.getElementById('startBtn');
+        if (startBtn && !startBtn.disabled) {
+            startBtn.click();
+            console.log(`📋 Analysis: triggered data fetch via startBtn`);
+        }
     }
     // Switch to progressive rendering mode
     const renderSelect = document.getElementById('dataRendering');
