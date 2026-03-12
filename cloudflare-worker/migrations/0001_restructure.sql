@@ -1,5 +1,5 @@
 -- Migration: Restructure D1 from 3 data tables to participants + features
--- Date: 2026-03-11
+-- Date: 2026-03-12
 --
 -- Drops: data_study, data_test, data_preview (pilot-only data, not worth keeping)
 -- Creates: participants (one row per participant per study)

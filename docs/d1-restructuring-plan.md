@@ -102,3 +102,51 @@ Mode detection stays the same — just read the prefix from `participant_id` whe
 4. Wire into `study-flow.js`
 5. ~~Add admin step nav UI~~ ✅
 6. Test end-to-end (test mode → registration → analysis → survey → complete)
+
+---
+
+## Implementation Notes (2026-03-12)
+
+### Status: Phases 1-4 Complete
+
+All four phases were already implemented in the codebase prior to this branch. This branch adds the missing `step_history` column to the SQL migration and creates the canonical migration file.
+
+### What was done
+
+**Phase 1 — SQL Migration:**
+- Created `cloudflare-worker/migrations/0001_restructure.sql` with DROP of old tables (`data_study`, `data_test`, `data_preview`) and CREATE of `participants` + `features` tables
+- Added `step_history TEXT DEFAULT '[]'` column to `participants` — this was missing from the existing `0001_restructure_tables.sql` but is referenced by the worker's PUT `/step` endpoint (`json_insert(step_history, ...)`)
+- Updated existing `0001_restructure_tables.sql` to also include `step_history`
+- Run via: `wrangler d1 execute <DB_NAME> --file=cloudflare-worker/migrations/0001_restructure.sql`
+
+**Phase 2 — Worker endpoints (already implemented in `cloudflare-worker/src/index.js`):**
+- `POST /api/study/:studyId/participants` — UPSERT into participants table
+- `POST /api/study/:studyId/responses` — routes to `features` table (type=feature), `participants.completed_at` (type=milestone+completed), or `participants.responses` JSON (surveys)
+- `GET /api/study/:studyId/participants/:pid/progress` — returns `current_step`, `responses`, `flags`, `step_history`, `completed_at`
+- `PUT /api/study/:studyId/participants/:pid/step` — updates `current_step` and appends to `step_history`
+- `GET /api/study/:studyId/participants/:pid/features` — returns all features for a participant
+- Mode detection via participant ID prefix (`Preview_`, `TEST_`, or live)
+
+**Phase 3 — Frontend d1-sync.js (already implemented):**
+- `d1Put()` — PUT wrapper with offline queue
+- `d1Get()` — GET wrapper
+- `syncStep(step)` — fire-and-forget PUT to update `current_step`
+- `fetchProgress()` — GET progress, returns `{ current_step, responses, flags, step_history, completed_at }`
+- `fetchFeatures()` — GET all features for a participant
+
+**Phase 4 — study-flow.js integration (already implemented):**
+- `saveProgress()` calls `syncStep(currentStepIndex)` on every step transition
+- `init()` calls `fetchProgress()` and uses `Math.max(localStep, serverStep)` to resume
+- Survey answers saved via `saveSurveyAnswer()` → D1 on each answer
+- Features saved via `saveFeature()` at analysis step completion
+- `markComplete()` called on study completion
+
+### Files changed
+- `cloudflare-worker/migrations/0001_restructure.sql` — **NEW** canonical migration file with `step_history`
+- `cloudflare-worker/migrations/0001_restructure_tables.sql` — added missing `step_history` column
+- `docs/d1-restructuring-plan.md` — this section
+
+### Notes for review
+- The `step_history` column stores a JSON array of `{ step, completed_at }` entries, appended via SQLite `json_insert(step_history, '$[#]', ...)`
+- Both migration files are now in sync; use whichever naming convention you prefer
+- All existing worker endpoints, d1-sync.js functions, and study-flow.js integration were already in place — this branch just fixes the schema gap
