@@ -1107,13 +1107,23 @@
     <h2 style="margin:0 0 8px; font-size:20px;">Study Builder</h2>
     <p style="color:var(--text-muted); margin:0 0 20px; font-size:14px;">Enter admin key to continue</p>
     <input type="password" id="adminKeyGate" placeholder="Admin key" autocomplete="off"
+      oninput="document.getElementById('adminGateBtn').disabled = !this.value.trim()"
       style="width:100%; padding:10px 12px; font-size:15px; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:6px; box-sizing:border-box; text-align:center; letter-spacing:2px;" />
     <div id="adminGateError" style="color:#f85149; font-size:13px; margin-top:8px; min-height:20px;"></div>
-    <button id="adminGateBtn" onclick="verifyAdminKey()"
-      style="margin-top:12px; width:100%; padding:10px; font-size:15px; font-weight:600; background:#238636; color:#fff; border:none; border-radius:6px; cursor:pointer;">
+    <button id="adminGateBtn" onclick="verifyAdminKey()" disabled
+      style="margin-top:12px; width:100%; padding:10px; font-size:15px; font-weight:600; background:#58a6ff; color:#fff; border:none; border-radius:6px; cursor:pointer; transition: opacity 0.15s;">
       Unlock
     </button>
+    <style>
+      #adminGateBtn:disabled { opacity: 0.3; cursor: default; }
+      #adminGateBtn:not(:disabled):hover { opacity: 0.85; }
+    </style>
   </div>
+</div>
+
+<!-- Log out (production only) -->
+<div id="logoutBar" style="display:none; max-width:720px; margin:8px auto 0; text-align:right;">
+  <button onclick="adminLogout()" style="background:none; border:none; color:var(--text-muted); font-size:13px; cursor:pointer; padding:4px 8px;">Log out</button>
 </div>
 
 <!-- Header -->
@@ -2892,7 +2902,6 @@
       adminKey,
       appSettings,
       steps,
-      updatedAt: new Date().toISOString(),
       urlMods: {
         study: getRowMods('study'),
         local: getRowMods('local'),
@@ -3006,6 +3015,7 @@
       return;
     }
     _lastSavedJSON = configJSON;
+    config.updatedAt = new Date().toISOString();
 
     console.log('%c[SAVE] saveDraft →', 'color: #3fb950; font-weight: bold;', slug, {
       stepCount: config.steps.length,
@@ -5017,6 +5027,20 @@
     adminGate.style.display = 'none';
     document.querySelector('.header').style.visibility = '';
     document.getElementById('stepList')?.style.setProperty('visibility', '');
+    if (!isLocal) document.getElementById('logoutBar').style.display = '';
+  }
+
+  function adminLogout() {
+    sessionStorage.removeItem('admin_authed');
+    adminGate.style.display = 'flex';
+    document.querySelector('.header').style.visibility = 'hidden';
+    document.getElementById('stepList')?.style.setProperty('visibility', 'hidden');
+    document.getElementById('logoutBar').style.display = 'none';
+    // Clear the input and error
+    const input = document.getElementById('adminKeyGate');
+    if (input) { input.value = ''; input.focus(); }
+    document.getElementById('adminGateError').textContent = '';
+    document.getElementById('adminGateBtn').disabled = true;
   }
 
   // ── Load study on page open (must be last — needs all definitions above) ──
