@@ -61,13 +61,6 @@ export function cleanupKeyboardShortcuts() {
  * Handle keyboard shortcut events
  */
 function handleKeyboardShortcut(event) {
-    // Debug: Log Escape key presses
-    // if (event.key === 'Escape') {
-    //     console.log('🔍 [ESCAPE DEBUG] handleKeyboardShortcut() called with Escape key');
-    //     console.log('🔍 [ESCAPE DEBUG] event.target:', event.target);
-    //     console.log('🔍 [ESCAPE DEBUG] event.target.tagName:', event.target.tagName);
-    // }
-    
     // Don't capture shortcuts when user is typing in inputs, textareas, or contenteditable elements
     // EXCEPT for Escape key - Escape should always work to exit modes/zoom out
     const isTextInput = event.target.tagName === 'INPUT' && 
@@ -244,7 +237,8 @@ function handleKeyboardShortcut(event) {
         event.preventDefault();
 
         // In EMIC study flow, don't allow playback until welcome "Begin" has been clicked
-        if (isEmicStudyMode() && getEmicFlag(EMIC_FLAGS.IS_SIMULATING) && !getEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME)) {
+        // Skip this gate for study-flow.js managed pages (study.html) — they don't use EMIC flags
+        if (isEmicStudyMode() && getEmicFlag(EMIC_FLAGS.IS_SIMULATING) && !getEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME) && !window.__STUDY_FLOW_MANAGED) {
             return;
         }
 
