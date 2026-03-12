@@ -444,8 +444,8 @@ export default {
         if (!pid) return json({ error: 'Missing participant id' }, 400);
         const mode = detectMode(pid);
         await env.DB.prepare(
-          `INSERT INTO participants (participant_id, study_id) VALUES (?, ?)
-           ON CONFLICT(participant_id, study_id) DO UPDATE SET registered_at = registered_at`
+          `INSERT INTO participants (participant_id, study_id, updated_at) VALUES (?, ?, datetime('now'))
+           ON CONFLICT(participant_id, study_id) DO UPDATE SET updated_at = datetime('now')`
         ).bind(pid, studyId).run();
         return json({ success: true, participant_id: pid, mode });
       }
@@ -480,7 +480,8 @@ export default {
         await env.DB.prepare(
           `UPDATE participants
            SET current_step = ?,
-               step_history = json_insert(step_history, '$[#]', json(?))
+               step_history = json_insert(step_history, '$[#]', json(?)),
+               updated_at = datetime('now')
            WHERE participant_id = ? AND study_id = ?`
         ).bind(step, entry, decodedPid, studyId).run();
         return json({ success: true, current_step: step });
@@ -510,7 +511,7 @@ export default {
         if (type === 'milestone' && body.data?.event === 'completed') {
           // Mark participant as complete
           await env.DB.prepare(
-            `UPDATE participants SET completed_at = datetime('now') WHERE participant_id = ? AND study_id = ?`
+            `UPDATE participants SET completed_at = datetime('now'), updated_at = datetime('now') WHERE participant_id = ? AND study_id = ?`
           ).bind(pid, studyId).run();
           return json({ success: true, mode });
         }
@@ -521,7 +522,7 @@ export default {
         const dataStr = JSON.stringify(data);
         const responseKey = qid ? `$.${qid}` : `$.${type}`;
         await env.DB.prepare(
-          `UPDATE participants SET responses = json_set(responses, ?, json(?)) WHERE participant_id = ? AND study_id = ?`
+          `UPDATE participants SET responses = json_set(responses, ?, json(?)), updated_at = datetime('now') WHERE participant_id = ? AND study_id = ?`
         ).bind(responseKey, dataStr, pid, studyId).run();
         return json({ success: true, mode });
       }
@@ -534,6 +535,37 @@ export default {
           'SELECT * FROM features WHERE participant_id = ? AND study_id = ? ORDER BY created_at'
         ).bind(decodeURIComponent(pid), studyId).all();
         return json({ success: true, features: results });
+      }
+
+      // GET /api/study/:studyId/activity — recent activity feed
+      const activityMatch = path.match(/^\/api\/study\/([^/]+)\/activity$/);
+      if (activityMatch && request.method === 'GET') {
+        const studyId = activityMatch[1];
+        const since = url.searchParams.get('since') || new Date(Date.now() - 3600000).toISOString();
+        const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10), 200);
+
+        const [participantRows, featureRows] = await Promise.all([
+          env.DB.prepare(
+            `SELECT participant_id, current_step, updated_at, registered_at, responses, completed_at, 'participant' as source
+             FROM participants WHERE study_id = ? AND updated_at > ?
+             ORDER BY updated_at DESC LIMIT ?`
+          ).bind(studyId, since, limit).all(),
+          env.DB.prepare(
+            `SELECT participant_id, id as feature_id, confidence, start_time, end_time,
+                    created_at as updated_at, 'feature' as source
+             FROM features WHERE study_id = ? AND created_at > ?
+             ORDER BY created_at DESC LIMIT ?`
+          ).bind(studyId, since, limit).all(),
+        ]);
+
+        // Merge and sort by timestamp descending
+        const events = [
+          ...(participantRows.results || []).map(r => ({ ...r, timestamp: r.updated_at })),
+          ...(featureRows.results || []).map(r => ({ ...r, timestamp: r.updated_at })),
+        ].sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+         .slice(0, limit);
+
+        return json({ success: true, events, count: events.length });
       }
 
       // =======================================================================

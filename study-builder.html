@@ -1385,6 +1385,24 @@
   </div>
 </div>
 
+<!-- Data Stream -->
+<div class="steps-container" style="margin-top:12px;">
+  <div class="step-card" id="dataStreamCard" data-type="stream">
+    <div class="step-header" onclick="toggleStep(this)">
+      <span class="chevron">▶</span>
+      <div class="step-number" style="background:#10b981;color:#fff;">📡</div>
+      <div class="step-title">Data Stream</div>
+      <span class="step-type-badge" style="background:rgba(16,185,129,0.15);color:#10b981;">LIVE</span>
+      <span id="streamCount" style="margin-left:auto; font-size:11px; color:#666;">0 events</span>
+    </div>
+    <div class="step-detail" id="dataStreamDetail">
+      <div id="dataStreamLog" style="max-height:300px; overflow-y:auto; font-family:monospace; font-size:11px; line-height:1.6; color:#aaa; padding:8px 0;">
+        <div style="color:#555; font-style:italic;">Waiting for activity...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Preview bar -->
 <div class="preview-bar">
   <span class="preview-label">Participant Flow</span>
@@ -4880,6 +4898,82 @@
       console.warn('[INIT] IndexedDB fallback failed:', e);
       refreshStudyPicker();
     });
+  })();
+  // ── Data Stream polling ──
+  (function() {
+    const LOG_EL = 'dataStreamLog';
+    const COUNT_EL = 'streamCount';
+    const POLL_MS = 5000;
+    let lastSeen = new Date(Date.now() - 3600000).toISOString();
+    let eventCount = 0;
+
+    function getStudySlug() {
+      const el = document.getElementById('slugValue');
+      return el ? el.textContent.trim() : null;
+    }
+
+    function formatTime(iso) {
+      const d = new Date(iso);
+      return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    function formatEntry(entry) {
+      const time = formatTime(entry.timestamp || entry.updated_at || entry.created_at);
+      const pid = entry.participant_id || entry.participantId || '??';
+      const type = entry.type || entry.source || 'update';
+      let detail = '';
+
+      if (type === 'feature' || entry.source === 'feature') {
+        detail = `feature created (${entry.confidence || 'confirmed'})`;
+      } else if (entry.completed_at) {
+        detail = '✅ completed';
+      } else if (entry.current_step !== undefined) {
+        detail = `step ${entry.current_step}`;
+      } else {
+        detail = 'updated';
+      }
+
+      return `<div style="border-bottom:1px solid rgba(255,255,255,0.05); padding:2px 0;">
+        <span style="color:#555;">${time}</span>
+        <span style="color:#58a6ff;">${pid}</span>
+        <span style="color:#d29922;">${type}</span>
+        <span>${detail}</span>
+      </div>`;
+    }
+
+    async function poll() {
+      const slug = getStudySlug();
+      if (!slug) return;
+
+      try {
+        const baseUrl = window.STUDY_API_BASE || 'https://spaceweather.now.audio';
+        const resp = await fetch(`${baseUrl}/api/study/${slug}/activity?since=${encodeURIComponent(lastSeen)}&limit=50`);
+        if (!resp.ok) return;
+
+        const data = await resp.json();
+        if (!data.events || data.events.length === 0) return;
+
+        const log = document.getElementById(LOG_EL);
+        const count = document.getElementById(COUNT_EL);
+        if (!log) return;
+
+        if (eventCount === 0) log.innerHTML = '';
+
+        const html = data.events.map(formatEntry).join('');
+        log.insertAdjacentHTML('afterbegin', html);
+
+        eventCount += data.events.length;
+        if (count) count.textContent = `${eventCount} event${eventCount !== 1 ? 's' : ''}`;
+
+        const newest = data.events[0];
+        lastSeen = newest.timestamp || newest.updated_at || newest.created_at || lastSeen;
+      } catch (e) {
+        console.warn('Data stream poll error:', e);
+      }
+    }
+
+    setInterval(poll, POLL_MS);
+    setTimeout(poll, 1000);
   })();
 </script>
 </body>
