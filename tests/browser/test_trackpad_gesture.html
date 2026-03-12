@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Trackpad Gesture Detection — DEEP EVENT SNIFFER</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #1a1a2e; color: #eee; font-family: monospace; }
+        #zone {
+            width: 100vw; height: 50vh;
+            background: #16213e;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px; color: #555;
+            border-bottom: 2px solid #333;
+            user-select: none;
+            overflow: hidden;
+            touch-action: none;
+        }
+        #zone.gesture-active { background: #1a3a1a; }
+        #zone.gesture-active .label { color: #4f4; }
+        #status {
+            position: fixed; top: 20px; right: 20px;
+            font-size: 40px; padding: 16px 24px;
+            border-radius: 12px; background: #333;
+            transition: background 0.15s;
+            z-index: 10;
+        }
+        #status.active { background: #2a5a2a; }
+        #status.idle { background: #5a2a2a; }
+        #controls {
+            position: fixed; top: 20px; left: 20px;
+            background: #222; padding: 10px 14px; border-radius: 8px;
+            font-size: 12px; line-height: 1.6; z-index: 10;
+            max-height: 90vh; overflow-y: auto;
+        }
+        #controls label { display: block; cursor: pointer; }
+        #controls label:hover { color: #8cf; }
+        #controls hr { border-color: #444; margin: 4px 0; }
+        #log {
+            height: 50vh; overflow-y: auto; padding: 12px;
+            font-size: 12px; line-height: 1.5;
+        }
+        .log-wheel { color: #6cf; }
+        .log-pointer { color: #f9a; }
+        .log-mouse { color: #fc6; }
+        .log-touch { color: #f6c; }
+        .log-gesture { color: #c6f; }
+        .log-scroll { color: #6fc; }
+        .log-key { color: #cc6; }
+        .log-hack { color: #f44; font-weight: bold; }
+        .log-timing { color: #fa0; }
+        .log-other { color: #999; }
+        .log-state { color: #6f6; font-weight: bold; }
+        #clear { position: fixed; bottom: 10px; right: 10px; z-index: 10;
+                 padding: 8px 16px; background: #444; color: #eee; border: none;
+                 border-radius: 6px; cursor: pointer; font-family: monospace; }
+        #jitterGraph {
+            position: fixed; bottom: 50px; left: 20px; z-index: 10;
+            background: #111; border: 1px solid #333; border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="zone"><span class="label">Two-finger pan / pinch here — we sniff EVERYTHING</span></div>
+    <div id="status" class="idle">IDLE</div>
+    <div id="controls">
+        <strong>Standard events:</strong>
+        <label><input type="checkbox" data-cat="wheel" checked> wheel</label>
+        <label><input type="checkbox" data-cat="pointer" checked> pointer*</label>
+        <label><input type="checkbox" data-cat="mouse" checked> mouse*</label>
+        <label><input type="checkbox" data-cat="touch" checked> touch*</label>
+        <label><input type="checkbox" data-cat="gesture" checked> gesture* (Safari)</label>
+        <label><input type="checkbox" data-cat="scroll" checked> scroll / scrollend</label>
+        <label><input type="checkbox" data-cat="key"> key*</label>
+        <hr>
+        <strong>HACKS:</strong>
+        <label><input type="checkbox" data-cat="hack" checked> isInputPending / idle / force</label>
+        <label><input type="checkbox" data-cat="timing" checked> rAF timing jitter</label>
+        <label><input type="checkbox" data-cat="other" checked> other</label>
+    </div>
+    <button id="clear" onclick="document.getElementById('log').innerHTML=''">Clear Log</button>
+    <canvas id="jitterGraph" width="300" height="80"></canvas>
+    <div id="log"></div>
+
+<script>
+const zone = document.getElementById('zone');
+const statusEl = document.getElementById('status');
+const logEl = document.getElementById('log');
+
+const filters = {};
+document.querySelectorAll('#controls input[data-cat]').forEach(cb => {
+    filters[cb.dataset.cat] = cb.checked;
+    cb.addEventListener('change', () => { filters[cb.dataset.cat] = cb.checked; });
+});
+
+let gestureActive = false;
+let lastWheelTime = 0;
+let wheelCount = 0;
+let fallbackTimer = null;
+const FALLBACK_MS = 2000;
+
+function log(msg, cat = 'other') {
+    if (!filters[cat]) return;
+    const div = document.createElement('div');
+    div.className = `log-${cat}`;
+    const t = performance.now().toFixed(1);
+    div.textContent = `[${t}] ${msg}`;
+    logEl.prepend(div);
+    while (logEl.children.length > 500) logEl.lastChild.remove();
+}
+
+function setGestureActive(active, reason) {
+    if (gestureActive === active) return;
+    gestureActive = active;
+    statusEl.textContent = active ? 'GESTURE' : 'IDLE';
+    statusEl.className = active ? 'active' : 'idle';
+    zone.classList.toggle('gesture-active', active);
+    log(`>>> ${active ? 'GESTURE START' : 'GESTURE END'} (${reason})`, 'state');
+}
+
+function resetFallback() {
+    if (fallbackTimer) clearTimeout(fallbackTimer);
+    fallbackTimer = setTimeout(() => {
+        fallbackTimer = null;
+        if (gestureActive) setGestureActive(false, 'fallback timer ' + FALLBACK_MS + 'ms');
+    }, FALLBACK_MS);
+}
+
+function dumpEvent(e, extras = {}) {
+    const props = {};
+    if (e.type) props.type = e.type;
+    if ('deltaX' in e) props.dX = +e.deltaX.toFixed(2);
+    if ('deltaY' in e) props.dY = +e.deltaY.toFixed(2);
+    if ('deltaZ' in e) props.dZ = +e.deltaZ.toFixed(2);
+    if ('deltaMode' in e) props.deltaMode = e.deltaMode;
+    if ('ctrlKey' in e && e.ctrlKey) props.ctrlKey = true;
+    if ('phase' in e) props.phase = e.phase;
+    if ('momentumPhase' in e) props.momPhase = e.momentumPhase;
+    if ('webkitDirectionInvertedFromDevice' in e) props.wkInv = e.webkitDirectionInvertedFromDevice;
+    if ('wheelDelta' in e) props.wheelDelta = e.wheelDelta;
+    if ('wheelDeltaX' in e) props.wheelDeltaX = e.wheelDeltaX;
+    if ('wheelDeltaY' in e) props.wheelDeltaY = e.wheelDeltaY;
+    if ('pointerId' in e) props.id = e.pointerId;
+    if ('pointerType' in e) props.ptrType = e.pointerType;
+    if ('pressure' in e && e.pressure !== 0) props.pressure = +e.pressure.toFixed(3);
+    if ('width' in e && e.width !== 1) props.w = e.width;
+    if ('height' in e && e.height !== 1) props.h = e.height;
+    if ('tiltX' in e && e.tiltX !== 0) props.tiltX = e.tiltX;
+    if ('tiltY' in e && e.tiltY !== 0) props.tiltY = e.tiltY;
+    if ('twist' in e && e.twist !== 0) props.twist = e.twist;
+    if ('tangentialPressure' in e && e.tangentialPressure !== 0) props.tanP = e.tangentialPressure;
+    if ('isPrimary' in e) props.primary = e.isPrimary;
+    if ('touches' in e) props.touches = e.touches.length;
+    if ('changedTouches' in e) props.changed = e.changedTouches.length;
+    if ('targetTouches' in e) props.target = e.targetTouches.length;
+    if ('scale' in e && e.type.includes('gesture')) props.scale = +e.scale.toFixed(3);
+    if ('rotation' in e && e.type.includes('gesture')) props.rotation = +e.rotation.toFixed(3);
+    if ('button' in e && (e.type.includes('mouse') || e.type.includes('pointer'))) props.btn = e.button;
+    if ('buttons' in e && e.buttons !== 0) props.btns = e.buttons;
+    if ('getCoalescedEvents' in e) {
+        try { props.coalesced = e.getCoalescedEvents().length; } catch(ex) {}
+    }
+    if ('getPredictedEvents' in e) {
+        try { props.predicted = e.getPredictedEvents().length; } catch(ex) {}
+    }
+    if ('clientX' in e) { props.x = Math.round(e.clientX); props.y = Math.round(e.clientY); }
+    // Dump ANY non-standard properties we might be missing
+    if (e.type === 'wheel') {
+        for (const key of Object.keys(Object.getPrototypeOf(e))) {
+            if (!(key in props) && typeof e[key] !== 'function' && key !== 'isTrusted'
+                && key !== 'defaultPrevented' && key !== 'cancelable' && key !== 'bubbles'
+                && key !== 'eventPhase' && key !== 'timeStamp' && key !== 'composed'
+                && key !== 'returnValue' && key !== 'cancelBubble' && key !== 'srcElement'
+                && key !== 'currentTarget' && key !== 'target' && key !== 'view'
+                && key !== 'detail' && key !== 'which' && key !== 'layerX' && key !== 'layerY'
+                && key !== 'pageX' && key !== 'pageY' && key !== 'offsetX' && key !== 'offsetY'
+                && key !== 'screenX' && key !== 'screenY' && key !== 'movementX' && key !== 'movementY'
+                && key !== 'relatedTarget' && key !== 'metaKey' && key !== 'shiftKey' && key !== 'altKey') {
+                try {
+                    const v = e[key];
+                    if (v !== 0 && v !== false && v !== null && v !== undefined && v !== '') {
+                        props['?' + key] = v;
+                    }
+                } catch(ex) {}
+            }
+        }
+    }
+
+    Object.assign(props, extras);
+    return Object.entries(props).map(([k,v]) => `${k}=${v}`).join(' ');
+}
+
+// ═══════════════════════════════════════════════════════
+// STANDARD EVENTS
+// ═══════════════════════════════════════════════════════
+
+// ── WHEEL ──
+zone.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    wheelCount++;
+    lastWheelTime = performance.now();
+    if (!gestureActive) setGestureActive(true, 'wheel');
+    resetFallback();
+    log(`WHEEL #${wheelCount} ${dumpEvent(e)}`, 'wheel');
+}, { passive: false });
+
+// ── POINTER ──
+const ptrEvents = [
+    'pointerdown', 'pointerup', 'pointermove', 'pointerover', 'pointerout',
+    'pointerenter', 'pointerleave', 'pointercancel', 'lostpointercapture', 'gotpointercapture'
+];
+let lastPtrMoveLog = 0;
+ptrEvents.forEach(ev => {
+    zone.addEventListener(ev, (e) => {
+        if (ev === 'pointermove') {
+            const now = performance.now();
+            if (now - lastPtrMoveLog < 100) return;
+            lastPtrMoveLog = now;
+        }
+        log(`${ev} ${dumpEvent(e)}`, 'pointer');
+        if (ev === 'pointermove' && gestureActive && (performance.now() - lastWheelTime > 50)) {
+            setGestureActive(false, 'pointermove sentinel');
+            if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
+        }
+    }, { passive: true });
+});
+
+// pointerrawupdate (Chrome)
+try {
+    zone.addEventListener('pointerrawupdate', (e) => {
+        const now = performance.now();
+        if (now - (zone._lastRaw || 0) < 200) return;
+        zone._lastRaw = now;
+        log(`pointerrawupdate ${dumpEvent(e)}`, 'pointer');
+    }, { passive: true });
+} catch(ex) {}
+
+// ── MOUSE ──
+let lastMMLog = 0;
+['mousedown', 'mouseup', 'mousemove', 'mouseenter', 'mouseleave'].forEach(ev => {
+    zone.addEventListener(ev, (e) => {
+        if (ev === 'mousemove') {
+            const now = performance.now();
+            if (now - lastMMLog < 100) return;
+            lastMMLog = now;
+        }
+        log(`${ev} ${dumpEvent(e)}`, 'mouse');
+    }, { passive: true });
+});
+
+// ── TOUCH ──
+let lastTMLog = 0;
+['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach(ev => {
+    zone.addEventListener(ev, (e) => {
+        if (ev === 'touchmove') {
+            const now = performance.now();
+            if (now - lastTMLog < 100) return;
+            lastTMLog = now;
+        }
+        log(`${ev} ${dumpEvent(e)}`, 'touch');
+    }, { passive: true });
+});
+
+// ── GESTURE (Safari) ──
+['gesturestart', 'gesturechange', 'gestureend'].forEach(ev => {
+    zone.addEventListener(ev, (e) => {
+        e.preventDefault();
+        log(`${ev} ${dumpEvent(e)}`, 'gesture');
+    }, { passive: false });
+});
+
+// ── SCROLL ──
+zone.addEventListener('scroll', () => log('scroll', 'scroll'), { passive: true });
+zone.addEventListener('scrollend', () => log('scrollend !!!', 'scroll'), { passive: true });
+document.addEventListener('scroll', () => log('document.scroll', 'scroll'), { passive: true });
+document.addEventListener('scrollend', () => log('document.scrollend !!!', 'scroll'), { passive: true });
+window.addEventListener('scrollend', () => log('window.scrollend !!!', 'scroll'), { passive: true });
+
+// ── KEYBOARD ──
+document.addEventListener('keydown', (e) => log(`keydown ${e.key}`, 'key'));
+document.addEventListener('keyup', (e) => log(`keyup ${e.key}`, 'key'));
+
+// ── OTHER ──
+zone.addEventListener('focus', () => log('zone.focus', 'other'));
+zone.addEventListener('blur', () => log('zone.blur', 'other'));
+document.addEventListener('visibilitychange', () => log(`visibility: ${document.visibilityState}`, 'other'));
+
+// ═══════════════════════════════════════════════════════
+// HACK #1: Force Touch / WebKit Force Events
+// macOS trackpads have force sensors. Do they leak finger presence?
+// ═══════════════════════════════════════════════════════
+['webkitmouseforcechanged', 'webkitmouseforcedown', 'webkitmouseforceup',
+ 'webkitmouseforcewillbegin'].forEach(ev => {
+    zone.addEventListener(ev, (e) => {
+        const force = ('webkitForce' in e) ? e.webkitForce.toFixed(3) : '?';
+        log(`FORCE: ${ev} force=${force}`, 'hack');
+    }, { passive: true });
+});
+// Also on document in case it bubbles differently
+['webkitmouseforcechanged', 'webkitmouseforcewillbegin'].forEach(ev => {
+    document.addEventListener(ev, (e) => {
+        const force = ('webkitForce' in e) ? e.webkitForce.toFixed(3) : '?';
+        log(`FORCE(doc): ${ev} force=${force}`, 'hack');
+    }, { passive: true });
+});
+
+// ═══════════════════════════════════════════════════════
+// HACK #2: navigator.scheduling.isInputPending()
+// Chrome API — does the browser know input is "pending" while fingers are on pad?
+// ═══════════════════════════════════════════════════════
+let inputPendingSupported = false;
+let lastInputPendingCheck = 0;
+const INPUT_PENDING_INTERVAL = 50; // check every 50ms
+
+if (navigator.scheduling && navigator.scheduling.isInputPending) {
+    inputPendingSupported = true;
+    log('isInputPending: SUPPORTED — polling...', 'hack');
+
+    // Continuously poll during and after gesture
+    function pollInputPending() {
+        const now = performance.now();
+        if (now - lastWheelTime < 5000) { // only poll for 5s around gesture activity
+            const basic = navigator.scheduling.isInputPending();
+            const withContinuous = navigator.scheduling.isInputPending({ includeContinuous: true });
+
+            if (basic || withContinuous) {
+                log(`isInputPending: basic=${basic} continuous=${withContinuous}`, 'hack');
+            }
+
+            // Also log transitions
+            if (now - lastWheelTime > 200 && now - lastWheelTime < 3000) {
+                // We're in the "fingers maybe still down?" window
+                if (withContinuous) {
+                    log(`!!! isInputPending STILL TRUE ${(now - lastWheelTime).toFixed(0)}ms after last wheel`, 'hack');
+                }
+            }
+        }
+        setTimeout(pollInputPending, INPUT_PENDING_INTERVAL);
+    }
+    pollInputPending();
+} else {
+    log('isInputPending: NOT supported in this browser', 'hack');
+}
+
+// ═══════════════════════════════════════════════════════
+// HACK #3: requestIdleCallback deadline monitoring
+// If browser expects more input, idle deadlines get shorter
+// ═══════════════════════════════════════════════════════
+let idleSupported = false;
+let lastIdleDeadline = 0;
+let idleDeadlines = []; // rolling window
+
+if ('requestIdleCallback' in window) {
+    idleSupported = true;
+    log('requestIdleCallback: SUPPORTED — monitoring deadlines...', 'hack');
+
+    function checkIdle(deadline) {
+        const remaining = deadline.timeRemaining();
+        const didTimeout = deadline.didTimeout;
+        idleDeadlines.push(remaining);
+        if (idleDeadlines.length > 20) idleDeadlines.shift();
+
+        const avg = idleDeadlines.reduce((a, b) => a + b, 0) / idleDeadlines.length;
+
+        // Log when deadline is unusually short (browser expecting input?)
+        if (remaining < 5 && performance.now() - lastWheelTime < 3000) {
+            log(`IDLE deadline=${remaining.toFixed(1)}ms avg=${avg.toFixed(1)}ms (SHORT — browser busy?)`, 'hack');
+        }
+
+        // Log transition: deadlines getting longer = browser relaxed = fingers probably off
+        if (idleDeadlines.length >= 3) {
+            const recent = idleDeadlines.slice(-3);
+            const prevAvg = idleDeadlines.slice(-6, -3);
+            if (prevAvg.length >= 3) {
+                const recentMean = recent.reduce((a,b) => a+b, 0) / recent.length;
+                const prevMean = prevAvg.reduce((a,b) => a+b, 0) / prevAvg.length;
+                if (recentMean > prevMean + 20 && performance.now() - lastWheelTime < 3000) {
+                    log(`IDLE JUMP: ${prevMean.toFixed(1)}ms → ${recentMean.toFixed(1)}ms (relaxed?)`, 'hack');
+                }
+            }
+        }
+
+        requestIdleCallback(checkIdle);
+    }
+    requestIdleCallback(checkIdle);
+} else {
+    log('requestIdleCallback: NOT supported', 'hack');
+}
+
+// ═══════════════════════════════════════════════════════
+// HACK #4: rAF timing jitter analysis
+// Does the main thread's frame timing change when trackpad is active?
+// Visualized on a mini canvas graph.
+// ═══════════════════════════════════════════════════════
+const jitterCanvas = document.getElementById('jitterGraph');
+const jCtx = jitterCanvas.getContext('2d');
+const frameTimes = []; // delta between successive rAF calls
+let lastFrameTime = 0;
+const MAX_FRAMES = 300;
+
+function jitterLoop(ts) {
+    if (lastFrameTime > 0) {
+        const delta = ts - lastFrameTime;
+        frameTimes.push({ delta, duringGesture: gestureActive, t: performance.now() });
+        if (frameTimes.length > MAX_FRAMES) frameTimes.shift();
+
+        // Log anomalies (frame time > 20ms or < 14ms during gesture window)
+        if (delta > 25 && performance.now() - lastWheelTime < 3000) {
+            log(`rAF JITTER: ${delta.toFixed(1)}ms frame (normal ~16.7ms)`, 'timing');
+        }
+
+        // Draw graph
+        drawJitterGraph();
+    }
+    lastFrameTime = ts;
+    requestAnimationFrame(jitterLoop);
+}
+requestAnimationFrame(jitterLoop);
+
+function drawJitterGraph() {
+    const w = jitterCanvas.width;
+    const h = jitterCanvas.height;
+    jCtx.fillStyle = '#111';
+    jCtx.fillRect(0, 0, w, h);
+
+    // Draw 16.7ms baseline
+    const baseY = h - (16.7 / 50) * h;
+    jCtx.strokeStyle = '#333';
+    jCtx.beginPath();
+    jCtx.moveTo(0, baseY);
+    jCtx.lineTo(w, baseY);
+    jCtx.stroke();
+
+    // Draw frame times
+    const step = w / MAX_FRAMES;
+    jCtx.beginPath();
+    for (let i = 0; i < frameTimes.length; i++) {
+        const x = i * step;
+        const y = h - Math.min(frameTimes[i].delta / 50, 1) * h;
+        jCtx.strokeStyle = frameTimes[i].duringGesture ? '#4f4' : '#666';
+        if (i === 0) jCtx.moveTo(x, y);
+        else jCtx.lineTo(x, y);
+    }
+    jCtx.strokeStyle = '#6cf';
+    jCtx.stroke();
+
+    // Label
+    jCtx.fillStyle = '#888';
+    jCtx.font = '10px monospace';
+    jCtx.fillText('rAF Δt (green=gesture)', 4, 12);
+    if (frameTimes.length > 0) {
+        const last = frameTimes[frameTimes.length - 1].delta;
+        jCtx.fillText(`${last.toFixed(1)}ms`, w - 50, 12);
+    }
+}
+
+// ═══════════════════════════════════════════════════════
+// HACK #5: PerformanceObserver for event timing
+// Does the browser's internal event processing reveal gesture state?
+// ═══════════════════════════════════════════════════════
+try {
+    const perfObserver = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+            if (entry.name === 'wheel' || entry.name === 'pointerup' || entry.name === 'pointerdown') {
+                log(`PERF: ${entry.name} dur=${entry.duration.toFixed(1)}ms proc=${entry.processingEnd - entry.processingStart}ms`, 'hack');
+            }
+            // Log ANY event type that fires during gesture window
+            if (performance.now() - lastWheelTime < 3000 && entry.name !== 'pointermove' && entry.name !== 'wheel') {
+                log(`PERF(other): ${entry.name} dur=${entry.duration.toFixed(1)}ms`, 'hack');
+            }
+        }
+    });
+    perfObserver.observe({ type: 'event', buffered: false });
+    log('PerformanceObserver(event): SUPPORTED', 'hack');
+} catch(ex) {
+    log(`PerformanceObserver(event): ${ex.message}`, 'hack');
+}
+
+// ═══════════════════════════════════════════════════════
+// HACK #6: InputEvent / beforeinput on a hidden contenteditable
+// Does the browser fire input events during trackpad gestures?
+// ═══════════════════════════════════════════════════════
+const hiddenEditable = document.createElement('div');
+hiddenEditable.contentEditable = true;
+hiddenEditable.style.cssText = 'position:fixed;top:-100px;left:-100px;width:1px;height:1px;opacity:0;';
+document.body.appendChild(hiddenEditable);
+hiddenEditable.addEventListener('beforeinput', (e) => {
+    log(`HIDDEN beforeinput: inputType=${e.inputType} data=${e.data}`, 'hack');
+});
+hiddenEditable.addEventListener('input', (e) => {
+    log(`HIDDEN input: inputType=${e.inputType}`, 'hack');
+});
+
+// ═══════════════════════════════════════════════════════
+// HACK #7: Detect delta decay pattern (Lethargy-style)
+// Track wheelDelta values — consistent = active, decaying = momentum (fingers lifted)
+// ═══════════════════════════════════════════════════════
+const deltaHistory = [];
+const HISTORY_LEN = 8;
+
+zone.addEventListener('wheel', (e) => {
+    const absDelta = Math.abs(e.deltaY) + Math.abs(e.deltaX);
+    const now = performance.now();
+    deltaHistory.push({ delta: absDelta, t: now });
+    if (deltaHistory.length > HISTORY_LEN) deltaHistory.shift();
+
+    if (deltaHistory.length >= 4) {
+        const recent = deltaHistory.slice(-4);
+        let decaying = true;
+        for (let i = 1; i < recent.length; i++) {
+            if (recent[i].delta >= recent[i-1].delta * 0.95) {
+                decaying = false;
+                break;
+            }
+        }
+        if (decaying && recent[recent.length-1].delta < recent[0].delta * 0.5) {
+            log(`DECAY DETECTED: [${recent.map(r => r.delta.toFixed(1)).join(' → ')}] — MOMENTUM? Fingers lifted?`, 'hack');
+        }
+    }
+}, { passive: true });
+
+// ═══════════════════════════════════════════════════════
+// CAPABILITIES LOG
+// ═══════════════════════════════════════════════════════
+log(`Browser: ${navigator.userAgent.slice(0, 100)}`, 'state');
+log(`maxTouchPoints: ${navigator.maxTouchPoints}`, 'state');
+log(`PointerEvent: ${'PointerEvent' in window}`, 'state');
+log(`TouchEvent: ${'TouchEvent' in window}`, 'state');
+log(`GestureEvent: ${'GestureEvent' in window}`, 'state');
+log(`scrollend: ${'onscrollend' in window}`, 'state');
+log(`pointerrawupdate: ${'onpointerrawupdate' in window}`, 'state');
+log(`scheduling.isInputPending: ${!!(navigator.scheduling && navigator.scheduling.isInputPending)}`, 'state');
+log(`requestIdleCallback: ${'requestIdleCallback' in window}`, 'state');
+log(`webkitForce: ${'WEBKIT_FORCE_AT_MOUSE_DOWN' in MouseEvent}`, 'state');
+log(`PerformanceEventTiming: ${'PerformanceEventTiming' in window}`, 'state');
+log('', 'state');
+log('GO WILD — pan, pinch, hold, lift. We are logging EVERYTHING.', 'state');
+</script>
+</body>
+</html>
