@@ -233,9 +233,14 @@ function handleKeyboardShortcut(event) {
         const isSelect = event.target.tagName === 'SELECT';
         const isButton = event.target.tagName === 'BUTTON';
         const isZoomButton = isButton && event.target.classList.contains('zoom-btn');
+        // Only defer to visible, interactive buttons — not hidden modal remnants
+        const isVisibleButton = isButton && !isZoomButton && event.target.offsetParent !== null;
 
-        // Let browser handle spacebar in form elements, except zoom buttons
-        if (isTextInput || isTextarea || isSelect || (isButton && !isZoomButton) || isContentEditable) {
+        console.log(`⌨️ SPACE pressed: target=${event.target.tagName}#${event.target.id}.${event.target.className}, isButton=${isButton}, isVisibleButton=${isVisibleButton}, isTextInput=${isTextInput}, isContentEditable=${isContentEditable}, offsetParent=${event.target.offsetParent?.tagName || 'null'}`);
+
+        // Let browser handle spacebar in form elements, except zoom buttons and hidden buttons
+        if (isTextInput || isTextarea || isSelect || isVisibleButton || isContentEditable) {
+            console.log(`⌨️ SPACE blocked: isTextInput=${isTextInput}, isTextarea=${isTextarea}, isSelect=${isSelect}, isVisibleButton=${isVisibleButton}, isContentEditable=${isContentEditable}`);
             return;
         }
 
@@ -243,15 +248,21 @@ function handleKeyboardShortcut(event) {
 
         // In EMIC study flow, don't allow playback until welcome "Begin" has been clicked
         if (isEmicStudyMode() && getEmicFlag(EMIC_FLAGS.IS_SIMULATING) && !getEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME)) {
+            console.log(`⌨️ SPACE blocked: EMIC welcome not closed`);
             return;
         }
 
         const playPauseBtn = document.getElementById('playPauseBtn');
         const playbackState = State.playbackState;
-        const allReceivedData = State.allReceivedData;
+        const hasData = (State.allReceivedData && State.allReceivedData.length > 0) || State.getCompleteSamplesLength() > 0;
 
-        if (!playPauseBtn.disabled && (playbackState !== PlaybackState.STOPPED || (allReceivedData && allReceivedData.length > 0))) {
+        console.log(`⌨️ SPACE: playPauseBtn.disabled=${playPauseBtn?.disabled}, playbackState=${playbackState}, hasData=${hasData}, samplesLen=${State.getCompleteSamplesLength()}`);
+
+        if (!playPauseBtn.disabled && (playbackState !== PlaybackState.STOPPED || hasData)) {
+            console.log(`⌨️ SPACE: clicking playPauseBtn`);
             playPauseBtn.click();
+        } else {
+            console.log(`⌨️ SPACE: NOT clicking — btn disabled=${playPauseBtn?.disabled}, state=${playbackState}, hasData=${hasData}`);
         }
         return;
     }

@@ -1114,10 +1114,12 @@ function initStepNav() {
     const oldBanner = document.getElementById('previewBanner');
     if (oldBanner) oldBanner.remove();
 
-    document.getElementById('floatStepBack').addEventListener('click', () => {
+    document.getElementById('floatStepBack').addEventListener('click', (e) => {
+        e.currentTarget.blur();
         if (currentStepIndex > 0) goToStep(currentStepIndex - 1);
     });
-    document.getElementById('floatStepFwd').addEventListener('click', () => {
+    document.getElementById('floatStepFwd').addEventListener('click', (e) => {
+        e.currentTarget.blur();
         if (studyConfig && currentStepIndex < studyConfig.steps.length - 1) goToStep(currentStepIndex + 1);
     });
 }
@@ -1485,6 +1487,10 @@ async function runAnalysis(step) {
                 studyModalEl.style.display = 'none';
                 studyModalEl.classList.remove('modal-visible');
                 if (studyModalInner) studyModalInner.innerHTML = '';
+            }
+            // Release focus from any modal button so spacebar works for play/pause
+            if (document.activeElement && overlay.contains(document.activeElement)) {
+                document.activeElement.blur();
             }
         }, 300);
     }
