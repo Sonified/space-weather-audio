@@ -165,6 +165,7 @@
     padding: 2px 5px;
     font-size: 12px;
     line-height: 1;
+    color: #c9d1d9;
     opacity: 0.6;
     transition: opacity 0.15s;
   }
@@ -1114,18 +1115,14 @@
       <span class="slug-url" id="testUrl"></span>
       <button class="url-action-btn" onclick="copyUrl('test')" title="Copy Test URL">📋</button>
       <button class="url-action-btn" onclick="openUrl('test')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
-    </div>
-    <div class="slug-preview" id="cleanTestUrlPreview" style="margin-top:2px;">
-      <span class="slug-label">Clean Test:</span>
-      <span class="slug-url" id="cleanTestUrl"></span>
-      <button class="url-action-btn" onclick="copyUrl('cleantest')" title="Copy Clean Test URL">📋</button>
-      <button class="url-action-btn" onclick="openUrl('cleantest')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
+      <button class="url-action-btn" onclick="openUrl('cleantest')" title="Clean Test (reset session)">♻️</button>
     </div>
     <div class="slug-preview" id="localUrlPreview" style="margin-top:2px;display:none;">
       <span class="slug-label">Local URL:</span>
       <span class="slug-url" id="localUrl" style="color:var(--text-muted);"></span>
       <button class="url-action-btn" onclick="copyUrl('local')" title="Copy URL">📋</button>
       <button class="url-action-btn" onclick="openUrl('local')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
+      <button class="url-action-btn" onclick="openUrl('cleanlocal')" title="Clean Local (reset session)">♻️</button>
     </div>
     <!-- Row 3: Admin Key -->
     <div class="header-row" style="margin-top:4px;">
@@ -3181,8 +3178,6 @@
   function updateTestUrl(slug) {
     const el = document.getElementById('testUrl');
     if (el) el.textContent = `spaceweather.now.audio/study.html?s=${slug}&mode=test`;
-    const cleanEl = document.getElementById('cleanTestUrl');
-    if (cleanEl) cleanEl.textContent = `spaceweather.now.audio/study.html?s=${slug}&mode=test&reset`;
   }
 
   function getStudyUrl() {
@@ -3203,8 +3198,12 @@
     return getTestUrl() + '&reset';
   }
 
+  function getCleanLocalUrl() {
+    return getLocalUrl() + '&mode=test&reset';
+  }
+
   function copyUrl(type) {
-    const url = type === 'cleantest' ? getCleanTestUrl() : type === 'test' ? getTestUrl() : type === 'local' ? getLocalUrl() : getStudyUrl();
+    const url = type === 'cleantest' ? getCleanTestUrl() : type === 'cleanlocal' ? getCleanLocalUrl() : type === 'test' ? getTestUrl() : type === 'local' ? getLocalUrl() : getStudyUrl();
     navigator.clipboard.writeText(url).then(() => {
       const btn = event.currentTarget;
       const orig = btn.textContent;
@@ -3214,7 +3213,7 @@
   }
 
   function openUrl(type) {
-    const url = type === 'cleantest' ? getCleanTestUrl() : type === 'test' ? getTestUrl() : type === 'local' ? getLocalUrl() : getStudyUrl();
+    const url = type === 'cleantest' ? getCleanTestUrl() : type === 'cleanlocal' ? getCleanLocalUrl() : type === 'test' ? getTestUrl() : type === 'local' ? getLocalUrl() : getStudyUrl();
     window.open(url, '_blank');
   }
 

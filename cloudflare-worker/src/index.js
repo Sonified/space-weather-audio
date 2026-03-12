@@ -558,8 +558,8 @@ export default {
              ORDER BY updated_at DESC LIMIT ?`
           ).bind(studyId, since, limit).all(),
           env.DB.prepare(
-            `SELECT participant_id, id as feature_id, confidence, start_time, end_time,
-                    created_at as updated_at, 'feature' as source
+            `SELECT participant_id, id as feature_id, confidence, notes, start_time, end_time,
+                    low_freq, high_freq, created_at as updated_at, 'feature' as source
              FROM features WHERE study_id = ? AND created_at > ?
              ORDER BY created_at DESC LIMIT ?`
           ).bind(studyId, since, limit).all(),
