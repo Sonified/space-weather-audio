@@ -691,25 +691,45 @@ async function init() {
 
     // ── Test Mode ────────────────────────────────────────────
     // Like live mode (data IS saved), but participant ID is prefixed TEST_ so it can be filtered out later.
+    // Session persists across refreshes — only clears on first entry or with &reset.
     if (isTestMode && !isPreview) {
         window.__TEST_MODE = true;
-        const testChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-        const testSuffix = Array.from({ length: 5 }, () => testChars[Math.floor(Math.random() * 26)]).join('');
-        const testId = `TEST_${testSuffix}`;
-        window.__TEST_PARTICIPANT_ID = testId;
 
-        // Clear previous session so registration runs fresh with test ID
-        localStorage.removeItem('participantId');
-        localStorage.removeItem(PROGRESS_KEY);
-        localStorage.removeItem(STUDY_SLUG_KEY);
-        currentStepIndex = 0;
+        // Check if we already have a TEST_ session in progress
+        const existingId = localStorage.getItem('participantId');
+        const hasTestSession = existingId && existingId.startsWith('TEST_');
+
+        if (hasTestSession) {
+            // Resume existing test session
+            window.__TEST_PARTICIPANT_ID = existingId;
+            console.log(`🧪 Test mode — resuming session: ${existingId}`);
+        } else {
+            // First entry into test mode — generate new test ID and clear old session
+            const testChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            const testSuffix = Array.from({ length: 5 }, () => testChars[Math.floor(Math.random() * 26)]).join('');
+            const testId = `TEST_${testSuffix}`;
+            window.__TEST_PARTICIPANT_ID = testId;
+            localStorage.removeItem('participantId');
+            localStorage.removeItem(PROGRESS_KEY);
+            localStorage.removeItem(STUDY_SLUG_KEY);
+            currentStepIndex = 0;
+            console.log(`🧪 Test mode — new session: ${testId}`);
+        }
 
         // Update page tab
         const studyName2 = studyConfig.name || studySlug;
         document.title = `[Test] ${studyName2} — spaceweather.now.audio`;
         if (titleEl) titleEl.textContent = `[Test] ${studyName2}`;
+    }
 
-        console.log(`🧪 Test mode active — participant: ${testId}`);
+    // ── Reset Mode ───────────────────────────────────────────
+    // &reset in URL clears all session state so registration runs fresh
+    if (urlParams.has('reset')) {
+        localStorage.removeItem('participantId');
+        localStorage.removeItem(PROGRESS_KEY);
+        localStorage.removeItem(STUDY_SLUG_KEY);
+        currentStepIndex = 0;
+        console.log('🧹 Reset mode — cleared session state');
     }
 
     if (isPreview) {

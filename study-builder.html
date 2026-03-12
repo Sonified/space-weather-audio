@@ -192,6 +192,10 @@
     overflow: hidden;
     transition: border-color 0.15s;
   }
+  .step-card[data-type="registration"] { background: color-mix(in srgb, #888888 20%, var(--surface)); }
+  .step-card[data-type="info"]         { background: color-mix(in srgb, #D97706 10%, var(--surface)); }
+  .step-card[data-type="question"]     { background: color-mix(in srgb, #4361EE 20%, var(--surface)); }
+  .step-card[data-type="analysis"]     { background: color-mix(in srgb, #3d8b7a 15%, var(--surface)); }
   .step-card:hover { border-color: var(--border-hover); }
   .step-card.active { border-color: var(--accent); overflow: visible; }
 
@@ -242,11 +246,11 @@
     font-weight: 700;
     flex-shrink: 0;
   }
-  .step-number.registration { background: #2563EB; color: #fff; }
+  .step-number.registration { background: #6b7280; color: #fff; }
   .step-number.modal { background: #7C3AED; color: #fff; }
-  .step-number.info { background: #0891B2; color: #fff; }
-  .step-number.question { background: #D97706; color: #fff; }
-  .step-number.analysis { background: #059669; color: #fff; }
+  .step-number.info { background: #D97706; color: #fff; }
+  .step-number.question { background: #4361EE; color: #fff; }
+  .step-number.analysis { background: #3d8b7a; color: #fff; }
 
   .step-title {
     flex: 1;
@@ -269,11 +273,11 @@
     flex-shrink: 0;
     white-space: nowrap;
   }
-  .badge-registration { background: rgba(37,99,235,0.15); color: #60A5FA; font-size: 9px; letter-spacing: 0; padding-top: 5px; padding-bottom: 5px; }
+  .badge-registration { background: rgba(107,114,128,0.15); color: #d1d5db; font-size: 9px; letter-spacing: 0; padding-top: 5px; padding-bottom: 5px; }
   .badge-modal { background: rgba(124,58,237,0.15); color: #A78BFA; }
-  .badge-info { background: rgba(8,145,178,0.15); color: #22D3EE; }
-  .badge-question { background: rgba(217,119,6,0.15); color: #FBBF24; }
-  .badge-analysis { background: rgba(5,150,105,0.15); color: #34D399; }
+  .badge-info { background: rgba(217,119,6,0.15); color: #FBBF24; }
+  .badge-question { background: rgba(67,97,238,0.15); color: #a5b4fc; }
+  .badge-analysis { background: rgba(61,139,122,0.15); color: #6ec9b0; }
   .step-actions {
     display: flex;
     gap: 4px;
@@ -1110,6 +1114,12 @@
       <span class="slug-url" id="testUrl"></span>
       <button class="url-action-btn" onclick="copyUrl('test')" title="Copy Test URL">📋</button>
       <button class="url-action-btn" onclick="openUrl('test')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
+    </div>
+    <div class="slug-preview" id="cleanTestUrlPreview" style="margin-top:2px;">
+      <span class="slug-label">Clean Test:</span>
+      <span class="slug-url" id="cleanTestUrl"></span>
+      <button class="url-action-btn" onclick="copyUrl('cleantest')" title="Copy Clean Test URL">📋</button>
+      <button class="url-action-btn" onclick="openUrl('cleantest')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
     </div>
     <div class="slug-preview" id="localUrlPreview" style="margin-top:2px;display:none;">
       <span class="slug-label">Local URL:</span>
@@ -3133,6 +3143,8 @@
   function updateTestUrl(slug) {
     const el = document.getElementById('testUrl');
     if (el) el.textContent = `spaceweather.now.audio/study.html?s=${slug}&mode=test`;
+    const cleanEl = document.getElementById('cleanTestUrl');
+    if (cleanEl) cleanEl.textContent = `spaceweather.now.audio/study.html?s=${slug}&mode=test&reset`;
   }
 
   function getStudyUrl() {
@@ -3149,8 +3161,12 @@
     return getStudyUrl() + '&mode=test';
   }
 
+  function getCleanTestUrl() {
+    return getTestUrl() + '&reset';
+  }
+
   function copyUrl(type) {
-    const url = type === 'test' ? getTestUrl() : type === 'local' ? getLocalUrl() : getStudyUrl();
+    const url = type === 'cleantest' ? getCleanTestUrl() : type === 'test' ? getTestUrl() : type === 'local' ? getLocalUrl() : getStudyUrl();
     navigator.clipboard.writeText(url).then(() => {
       const btn = event.currentTarget;
       const orig = btn.textContent;
@@ -3160,7 +3176,7 @@
   }
 
   function openUrl(type) {
-    const url = type === 'test' ? getTestUrl() : type === 'local' ? getLocalUrl() : getStudyUrl();
+    const url = type === 'cleantest' ? getCleanTestUrl() : type === 'test' ? getTestUrl() : type === 'local' ? getLocalUrl() : getStudyUrl();
     window.open(url, '_blank');
   }
 
