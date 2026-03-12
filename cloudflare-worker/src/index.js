@@ -443,10 +443,11 @@ export default {
         const pid = body.id;
         if (!pid) return json({ error: 'Missing participant id' }, 400);
         const mode = detectMode(pid);
+        const regEvent = JSON.stringify({ type: 'registration' });
         await env.DB.prepare(
-          `INSERT INTO participants (participant_id, study_id, updated_at) VALUES (?, ?, datetime('now'))
-           ON CONFLICT(participant_id, study_id) DO UPDATE SET updated_at = datetime('now')`
-        ).bind(pid, studyId).run();
+          `INSERT INTO participants (participant_id, study_id, updated_at, last_event) VALUES (?, ?, datetime('now'), ?)
+           ON CONFLICT(participant_id, study_id) DO UPDATE SET updated_at = datetime('now'), last_event = ?`
+        ).bind(pid, studyId, regEvent, regEvent).run();
         return json({ success: true, participant_id: pid, mode });
       }
 
@@ -477,13 +478,15 @@ export default {
         if (step == null) return json({ error: 'Missing step' }, 400);
         const decodedPid = decodeURIComponent(pid);
         const entry = JSON.stringify({ step, completed_at: new Date().toISOString() });
+        const stepEvent = JSON.stringify({ type: 'step', step });
         await env.DB.prepare(
           `UPDATE participants
            SET current_step = ?,
                step_history = json_insert(step_history, '$[#]', json(?)),
-               updated_at = datetime('now')
+               updated_at = datetime('now'),
+               last_event = ?
            WHERE participant_id = ? AND study_id = ?`
-        ).bind(step, entry, decodedPid, studyId).run();
+        ).bind(step, entry, stepEvent, decodedPid, studyId).run();
         return json({ success: true, current_step: step });
       }
 
@@ -510,9 +513,10 @@ export default {
 
         if (type === 'milestone' && body.data?.event === 'completed') {
           // Mark participant as complete
+          const milestoneEvent = JSON.stringify({ type: 'milestone', event: 'completed' });
           await env.DB.prepare(
-            `UPDATE participants SET completed_at = datetime('now'), updated_at = datetime('now') WHERE participant_id = ? AND study_id = ?`
-          ).bind(pid, studyId).run();
+            `UPDATE participants SET completed_at = datetime('now'), updated_at = datetime('now'), last_event = ? WHERE participant_id = ? AND study_id = ?`
+          ).bind(milestoneEvent, pid, studyId).run();
           return json({ success: true, mode });
         }
 
@@ -521,9 +525,10 @@ export default {
         const qid = data.questionId;
         const dataStr = JSON.stringify(data);
         const responseKey = qid ? `$.${qid}` : `$.${type}`;
+        const respEvent = JSON.stringify({ type: 'response', key: responseKey, data });
         await env.DB.prepare(
-          `UPDATE participants SET responses = json_set(responses, ?, json(?)), updated_at = datetime('now') WHERE participant_id = ? AND study_id = ?`
-        ).bind(responseKey, dataStr, pid, studyId).run();
+          `UPDATE participants SET responses = json_set(responses, ?, json(?)), updated_at = datetime('now'), last_event = ? WHERE participant_id = ? AND study_id = ?`
+        ).bind(responseKey, dataStr, respEvent, pid, studyId).run();
         return json({ success: true, mode });
       }
 
@@ -546,7 +551,7 @@ export default {
 
         const [participantRows, featureRows] = await Promise.all([
           env.DB.prepare(
-            `SELECT participant_id, current_step, updated_at, registered_at, completed_at, 'participant' as source
+            `SELECT participant_id, current_step, updated_at, registered_at, completed_at, last_event, 'participant' as source
              FROM participants WHERE study_id = ? AND updated_at > ?
              ORDER BY updated_at DESC LIMIT ?`
           ).bind(studyId, since, limit).all(),

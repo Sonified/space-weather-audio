@@ -4920,15 +4920,24 @@
     function formatEntry(entry) {
       const time = formatTime(entry.timestamp || entry.updated_at || entry.created_at);
       const pid = entry.participant_id || entry.participantId || '??';
-      const type = entry.type || entry.source || 'update';
+      let evt = {};
+      try { evt = typeof entry.last_event === 'string' ? JSON.parse(entry.last_event) : (entry.last_event || {}); } catch(e) {}
+      const type = evt.type || (entry.source === 'feature' ? 'feature' : 'update');
       let detail = '';
 
       if (type === 'feature' || entry.source === 'feature') {
-        detail = `feature created (${entry.confidence || 'confirmed'})`;
-      } else if (entry.completed_at) {
+        detail = `feature (${entry.confidence || 'confirmed'})`;
+      } else if (type === 'milestone') {
         detail = '✅ completed';
-      } else if (entry.current_step !== undefined) {
-        detail = `step ${entry.current_step}`;
+      } else if (type === 'response') {
+        const key = (evt.key || '').replace('$.', '');
+        const val = evt.data || {};
+        const answer = val.answer || val.value || val.selectedOption || '';
+        detail = answer ? `response ${key}: ${answer}` : `response ${key}`;
+      } else if (type === 'step') {
+        detail = `→ step ${evt.step ?? entry.current_step}`;
+      } else if (type === 'registration') {
+        detail = 'registered';
       } else {
         detail = 'updated';
       }

@@ -7,5 +7,8 @@ ALTER TABLE participants ADD COLUMN updated_at TEXT DEFAULT (datetime('now'));
 -- Backfill existing rows
 UPDATE participants SET updated_at = registered_at WHERE updated_at IS NULL;
 
+-- Small JSON summary of last action (for activity feed)
+ALTER TABLE participants ADD COLUMN last_event TEXT DEFAULT '{}';
+
 -- NOTE: step_history is added by migration 0001 (d1-restructuring branch).
 -- If merging both branches, ensure 0001 runs first.
