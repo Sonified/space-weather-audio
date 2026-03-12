@@ -25,13 +25,13 @@
         })();
 
         // Force EMIC_STUDY mode so main.js initializes the right infrastructure
-        window.__EMIC_STUDY_MODE = true;
+        window.__STUDY_MODE = true;
         // study-flow.js drives the entire workflow — skip initializeEmicStudyMode()
         window.__STUDY_FLOW_MANAGED = true;
         window.__DEFAULT_TILE_CHUNK = '3600';
 
         // Placeholder config — study-flow.js will populate from D1
-        window.__EMIC_CONFIG = {
+        window.__STUDY_CONFIG = {
             spacecraft: 'GOES',
             dataset: 'DN_MAGN-L2-HIRES_G16',
             startTime: '2022-08-17T00:00:00.000Z',
@@ -67,7 +67,7 @@
             var h2 = window.location.hostname;
             var isLocalEnv = h2 === 'localhost' || h2 === '127.0.0.1' || h2 === '' || window.location.protocol === 'file:';
             if (isLocalEnv) {
-                var savedAdv = localStorage.getItem('emic_advanced_mode');
+                var savedAdv = localStorage.getItem('study_advanced_mode');
                 if (savedAdv === 'true' || savedAdv === null) {
                     document.documentElement.setAttribute('data-advanced', '');
                 }
@@ -101,9 +101,9 @@
             </div>
         </div>
 
-        <!-- EMIC Study Controls: Stretch Algorithm + Speed -->
-        <div id="emicControlsPanel" class="panel" style="padding: 8px 15px;">
-            <div class="emic-controls-bar">
+        <!-- Study Controls: Stretch Algorithm + Speed -->
+        <div id="studyControlsPanel" class="panel" style="padding: 8px 15px;">
+            <div class="study-controls-bar">
                 <button type="button" id="startBtn" class="btn-action" style="padding: 6px 14px; font-size: 14px;">📡 Fetch Data</button>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 8px;"></div>
                 <div id="componentSelectorContainer" style="display: flex; align-items: center; gap: 6px; padding: 0 8px; opacity: 0.4; pointer-events: none;">
@@ -116,8 +116,8 @@
                 </div>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 4px;"></div>
                 <div id="detrendContainer" style="display: flex; align-items: center; gap: 6px; padding: 0 8px;">
-                    <label for="removeDCOffsetEmic" style="font-size: var(--panel-label-size); font-weight: 600; color: #666; cursor: pointer; white-space: nowrap;">De-trend:</label>
-                    <input type="checkbox" id="removeDCOffsetEmic" style="width: 16px; height: 16px; cursor: pointer;" onchange="document.getElementById('removeDCOffset').checked = this.checked; document.getElementById('removeDCOffset').dispatchEvent(new Event('change'));">
+                    <label for="removeDCOffsetStudy" style="font-size: var(--panel-label-size); font-weight: 600; color: #666; cursor: pointer; white-space: nowrap;">De-trend:</label>
+                    <input type="checkbox" id="removeDCOffsetStudy" style="width: 16px; height: 16px; cursor: pointer;" onchange="document.getElementById('removeDCOffset').checked = this.checked; document.getElementById('removeDCOffset').dispatchEvent(new Event('change'));">
                 </div>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 8px;"></div>
                 <div id="statusAnchorControls" style="display: contents;"></div>
@@ -183,19 +183,19 @@
                     <div class="status info" id="status" style="margin: 0; padding: 6px 12px; flex: 1; min-width: 80px; font-size: 13px;"></div>
                 </div>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 4px;"></div>
-                <div class="emic-btn-group" id="stretchGroup">
+                <div class="study-btn-group" id="stretchGroup">
                     <label>Stretch:</label>
-                    <button type="button" class="emic-btn active" data-stretch="resample">Resample</button>
-                    <button type="button" class="emic-btn" data-stretch="granular">Granular</button>
-                    <button type="button" class="emic-btn" data-stretch="paulstretch">Paulstretch</button>
-                    <button type="button" class="emic-btn" data-stretch="wavelet">Wavelet</button>
+                    <button type="button" class="study-btn active" data-stretch="resample">Resample</button>
+                    <button type="button" class="study-btn" data-stretch="granular">Granular</button>
+                    <button type="button" class="study-btn" data-stretch="paulstretch">Paulstretch</button>
+                    <button type="button" class="study-btn" data-stretch="wavelet">Wavelet</button>
                 </div>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 4px;"></div>
-                <div class="emic-btn-group" id="speedGroup">
+                <div class="study-btn-group" id="speedGroup">
                     <label>Speed:</label>
-                    <button type="button" class="emic-btn" data-speed="0.5">0.5×</button>
-                    <button type="button" class="emic-btn" data-speed="0.75">0.75×</button>
-                    <button type="button" class="emic-btn active" data-speed="1">1×</button>
+                    <button type="button" class="study-btn" data-speed="0.5">0.5×</button>
+                    <button type="button" class="study-btn" data-speed="0.75">0.75×</button>
+                    <button type="button" class="study-btn active" data-speed="1">1×</button>
                 </div>
                 <!-- Complete button — shown by study-flow.js during analysis -->
                 <button type="button" id="completeBtn" disabled class="btn-action begin-analysis-btn" style="display: none;">✓ Complete</button>
@@ -230,12 +230,12 @@
                         <input type="checkbox" id="advancedMode" style="width: 16px; height: 16px; cursor: pointer; accent-color: #80d0ff;">
                         Advanced
                     </label>
-                    <button type="button" id="showFlagsBtn" class="emic-btn admin-only" style="padding: 6px 14px; font-size: 14px;">Show Flags</button>
-                    <button type="button" id="dataViewerBtn" class="emic-btn admin-only" style="padding: 6px 14px; font-size: 14px;">Data Viewer</button>
+                    <button type="button" id="showFlagsBtn" class="study-btn admin-only" style="padding: 6px 14px; font-size: 14px;">Show Flags</button>
+                    <button type="button" id="dataViewerBtn" class="study-btn admin-only" style="padding: 6px 14px; font-size: 14px;">Data Viewer</button>
                     <div id="stepNavGroup" class="admin-only" style="display: none; align-items: center; gap: 4px; margin-left: 8px;">
-                        <button type="button" id="stepBackBtn" class="emic-btn" style="padding: 4px 8px; font-size: 14px;" title="Previous step">◀</button>
+                        <button type="button" id="stepBackBtn" class="study-btn" style="padding: 4px 8px; font-size: 14px;" title="Previous step">◀</button>
                         <span id="stepIndicator" style="font-size: 13px; color: #ccd; min-width: 120px; text-align: center;">Step 0</span>
-                        <button type="button" id="stepForwardBtn" class="emic-btn" style="padding: 4px 8px; font-size: 14px;" title="Next step">▶</button>
+                        <button type="button" id="stepForwardBtn" class="study-btn" style="padding: 4px 8px; font-size: 14px;" title="Next step">▶</button>
                     </div>
                 </div>
                 <div class="viz-controls">
@@ -306,15 +306,15 @@
     <div id="permanentOverlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.65); z-index: 1000; align-items: center; justify-content: center;"></div>
 
     <!-- Study Flags Panel (floating, always on top — even above overlay) -->
-    <div id="emicFlagsPanel" style="display: none; position: fixed; top: 60px; right: 20px; z-index: 10000; background: rgba(20, 20, 30, 0.95); border: 2px solid rgba(255, 255, 255, 0.2); border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); backdrop-filter: blur(8px); overflow: hidden; min-width: 320px;">
-        <div id="emicFlagsDragHandle" style="padding: 6px 12px; background: rgba(255,255,255,0.08); border-bottom: 1px solid rgba(255,255,255,0.1); cursor: grab; display: flex; align-items: center; justify-content: space-between; user-select: none;">
+    <div id="studyFlagsPanel" style="display: none; position: fixed; top: 60px; right: 20px; z-index: 10000; background: rgba(20, 20, 30, 0.95); border: 2px solid rgba(255, 255, 255, 0.2); border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); backdrop-filter: blur(8px); overflow: hidden; min-width: 320px;">
+        <div id="studyFlagsDragHandle" style="padding: 6px 12px; background: rgba(255,255,255,0.08); border-bottom: 1px solid rgba(255,255,255,0.1); cursor: grab; display: flex; align-items: center; justify-content: space-between; user-select: none;">
             <span style="font-size: 12px; font-weight: 700; color: #aaa; letter-spacing: 0.5px;">⚑ STUDY FLAGS</span>
             <div style="display: flex; align-items: center; gap: 8px;">
                 <span style="font-size: 10px; color: #555;">drag to move</span>
-                <button id="emicFlagsClose" style="font-size: 16px; line-height: 1; padding: 0 4px; border: none; background: transparent; color: #888; cursor: pointer;" title="Close">✕</button>
+                <button id="studyFlagsClose" style="font-size: 16px; line-height: 1; padding: 0 4px; border: none; background: transparent; color: #888; cursor: pointer;" title="Close">✕</button>
             </div>
         </div>
-        <div id="emicFlagsContent" style="padding: 10px 15px; font-family: monospace; font-size: 13px; max-height: 60vh; overflow-y: auto;"></div>
+        <div id="studyFlagsContent" style="padding: 10px 15px; font-family: monospace; font-size: 13px; max-height: 60vh; overflow-y: auto;"></div>
     </div>
 
     <!-- CORE SYSTEM -->
@@ -327,58 +327,15 @@
         window.exitOverheatMode = () => flame.exitOverheatMode();
     </script>
 
-    <!-- EMIC-specific IndexedDB cache (same as emic_study.html) -->
-    <script>
-        window.__emicCache = {
-            DB_NAME: 'emic-study-cache',
-            STORE_NAME: 'audio-data',
-            _getKey: function() {
-                var c = window.__EMIC_CONFIG;
-                return c.dataset + '_' + c.startTime + '_' + c.endTime + '_b_gse';
-            },
-            openDB: function() {
-                var self = this;
-                return new Promise(function(resolve, reject) {
-                    var req = indexedDB.open(self.DB_NAME, 1);
-                    req.onupgradeneeded = function(e) { e.target.result.createObjectStore(self.STORE_NAME); };
-                    req.onsuccess = function(e) { resolve(e.target.result); };
-                    req.onerror = function(e) { reject(e.target.error); };
-                });
-            },
-            get: async function() {
-                try {
-                    var db = await this.openDB();
-                    return new Promise(function(resolve) {
-                        var tx = db.transaction('audio-data', 'readonly');
-                        var req = tx.objectStore('audio-data').get(window.__emicCache._getKey());
-                        req.onsuccess = function() { resolve(req.result || null); };
-                        req.onerror = function() { resolve(null); };
-                    });
-                } catch(e) { return null; }
-            },
-            put: async function(blob) {
-                try {
-                    var db = await this.openDB();
-                    return new Promise(function(resolve) {
-                        var tx = db.transaction('audio-data', 'readwrite');
-                        tx.objectStore('audio-data').put(blob, window.__emicCache._getKey());
-                        tx.oncomplete = function() { resolve(); };
-                        tx.onerror = function() { resolve(); };
-                    });
-                } catch(e) { /* ignore */ }
-            }
-        };
-    </script>
-
-    <!-- APPLICATION LAYER (same main.js as emic_study.html) -->
+    <!-- APPLICATION LAYER -->
     <script type="module" src="js/main.js"></script>
 
-    <!-- Stretch/Speed button toggles (same as emic_study.html) -->
+    <!-- Stretch/Speed button toggles -->
     <script>
         (function() {
-            document.querySelectorAll('.emic-btn[data-stretch]').forEach(function(btn) {
+            document.querySelectorAll('.study-btn[data-stretch]').forEach(function(btn) {
                 btn.addEventListener('click', async function() {
-                    document.querySelectorAll('.emic-btn[data-stretch]').forEach(function(b) { b.classList.remove('active'); });
+                    document.querySelectorAll('.study-btn[data-stretch]').forEach(function(b) { b.classList.remove('active'); });
                     btn.classList.add('active');
                     var stretchMap = { resample: 'resample', granular: 'granular', paulstretch: 'paul', wavelet: 'wavelet' };
                     var algorithm = stretchMap[btn.getAttribute('data-stretch')] || 'paul';
@@ -386,9 +343,9 @@
                     switchStretchAlgorithm(algorithm);
                 });
             });
-            document.querySelectorAll('.emic-btn[data-speed]').forEach(function(btn) {
+            document.querySelectorAll('.study-btn[data-speed]').forEach(function(btn) {
                 btn.addEventListener('click', function() {
-                    document.querySelectorAll('.emic-btn[data-speed]').forEach(function(b) { b.classList.remove('active'); });
+                    document.querySelectorAll('.study-btn[data-speed]').forEach(function(b) { b.classList.remove('active'); });
                     btn.classList.add('active');
                     var speed = parseFloat(btn.getAttribute('data-speed'));
                     var slider = document.getElementById('playbackSpeed');

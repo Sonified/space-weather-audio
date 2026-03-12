@@ -2402,6 +2402,20 @@
           <button class="card-settings-trigger" type="button">&#9881; Settings <span class="settings-chevron">&#9660;</span></button>
           <div class="card-settings-drawer"><div class="settings-body">
             <div class="settings-section-label">Data</div>
+            <div class="settings-row">
+              <span class="toggle-label">Initial View</span>
+              <select class="field-input" data-setting="displayOnLoad" style="width:auto;" onchange="this.closest('.settings-body').querySelector('.initial-hours-wrap').style.display = this.value === 'beginning' ? 'flex' : 'none'">
+                <option value="all" ${(step.displayOnLoad || 'all') === 'all' ? 'selected' : ''}>All Data</option>
+                <option value="beginning" ${step.displayOnLoad === 'beginning' ? 'selected' : ''}>Start at Beginning</option>
+              </select>
+              <span class="initial-hours-wrap" style="${step.displayOnLoad === 'beginning' ? 'display:flex;' : 'display:none;'} align-items:center; gap:4px;">
+                <select class="field-input" data-setting="initialHours" style="width:auto;">
+                  ${Array.from({length: 24}, (_, i) => i + 1).map(h =>
+                    `<option value="${h}" ${h === (step.initialHours || 12) ? 'selected' : ''}>${h}h</option>`
+                  ).join('')}
+                </select>
+              </span>
+            </div>
             <div class="field-group">
               <div class="field-label">Load data</div>
               <select class="field-input data-preload-select">
@@ -2750,6 +2764,9 @@
         if (preloadSelect && preloadSelect.value && preloadSelect.value !== 'onEnter') {
           step.dataPreload = preloadSelect.value;
         }
+        step.displayOnLoad = card.querySelector('[data-setting="displayOnLoad"]')?.value || 'all';
+        const initHours = parseInt(card.querySelector('[data-setting="initialHours"]')?.value) || 12;
+        if (step.displayOnLoad === 'beginning') step.initialHours = initHours;
         step.silentDataLoading = card.querySelector('.toggle-silent-loading')?.classList.contains('on') || false;
         step.allowStretch = card.querySelector('[data-setting="allowStretch"]')?.classList.contains('on') || false;
         step.requireMinFeatures = card.querySelector('[data-setting="requireMinFeatures"]')?.classList.contains('on') || false;
@@ -3836,7 +3853,7 @@
       card.dataset.questionId = newQid;
       card.innerHTML = buildQuestionCard(num, defaultStep);
     } else {
-      { const today = new Date().toISOString().slice(0,10); defaultStep = { type: 'analysis', title: 'New Analysis Step', spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16', startTime: today + 'T00:00:00Z', endTime: today + 'T00:00:00Z', dataSource: 'cloudflare_r2', playbackSpeed: '1x', allowFeatureDrawing: true, allowStretch: true, minFeatures: 1, confirmCompletion: { enabled: false } }; }
+      { const today = new Date().toISOString().slice(0,10); defaultStep = { type: 'analysis', title: 'New Analysis Step', spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16', startTime: today + 'T00:00:00Z', endTime: today + 'T00:00:00Z', dataSource: 'cloudflare_r2', playbackSpeed: '1x', allowFeatureDrawing: true, allowStretch: true, minFeatures: 1, displayOnLoad: 'beginning', initialHours: 24, confirmCompletion: { enabled: false } }; }
       card.innerHTML = buildAnalysisCard(num, defaultStep);
     }
 
@@ -3880,7 +3897,7 @@
       card.dataset.questionId = newQid;
       card.innerHTML = buildQuestionCard(num, defaultStep);
     } else {
-      { const today = new Date().toISOString().slice(0,10); defaultStep = { type: 'analysis', title: 'New Analysis Step', spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16', startTime: today + 'T00:00:00Z', endTime: today + 'T00:00:00Z', dataSource: 'cloudflare_r2', playbackSpeed: '1x', allowFeatureDrawing: true, allowStretch: true, minFeatures: 1, confirmCompletion: { enabled: false } }; }
+      { const today = new Date().toISOString().slice(0,10); defaultStep = { type: 'analysis', title: 'New Analysis Step', spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16', startTime: today + 'T00:00:00Z', endTime: today + 'T00:00:00Z', dataSource: 'cloudflare_r2', playbackSpeed: '1x', allowFeatureDrawing: true, allowStretch: true, minFeatures: 1, displayOnLoad: 'beginning', initialHours: 24, confirmCompletion: { enabled: false } }; }
       card.innerHTML = buildAnalysisCard(num, defaultStep);
     }
 

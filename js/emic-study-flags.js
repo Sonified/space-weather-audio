@@ -74,7 +74,7 @@ let flagChangeListener = null; // Stored reference for cleanup
 /** Initialize the Show Flags button and live flags panel */
 export function initFlagsPanel() {
     const btn = document.getElementById('showFlagsBtn');
-    const panel = document.getElementById('emicFlagsPanel');
+    const panel = document.getElementById('studyFlagsPanel') || document.getElementById('emicFlagsPanel');
     if (!btn || !panel) return;
 
     // Show flags button in all display modes
@@ -111,7 +111,7 @@ export function initFlagsPanel() {
     }
 
     // Select All button — sets all boolean flags to true
-    const selectAllBtn = document.getElementById('emicFlagsSelectAll');
+    const selectAllBtn = document.getElementById('studyFlagsSelectAll') || document.getElementById('emicFlagsSelectAll');
     if (selectAllBtn) {
         selectAllBtn.addEventListener('click', (e) => {
             e.stopPropagation(); // Don't trigger drag
@@ -125,7 +125,7 @@ export function initFlagsPanel() {
     }
 
     // Deselect All button — clears all boolean flags
-    const deselectAllBtn = document.getElementById('emicFlagsDeselectAll');
+    const deselectAllBtn = document.getElementById('studyFlagsDeselectAll') || document.getElementById('emicFlagsDeselectAll');
     if (deselectAllBtn) {
         deselectAllBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -139,7 +139,7 @@ export function initFlagsPanel() {
     }
 
     // Close button
-    const closeBtn = document.getElementById('emicFlagsClose');
+    const closeBtn = document.getElementById('studyFlagsClose') || document.getElementById('emicFlagsClose');
     if (closeBtn) {
         closeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -148,7 +148,7 @@ export function initFlagsPanel() {
     }
 
     // Make panel draggable
-    const handle = document.getElementById('emicFlagsDragHandle') || panel;
+    const handle = document.getElementById('studyFlagsDragHandle') || document.getElementById('emicFlagsDragHandle') || panel;
     let dragging = false, offsetX = 0, offsetY = 0;
     handle.addEventListener('mousedown', (e) => {
         dragging = true;
@@ -178,7 +178,7 @@ export function initFlagsPanel() {
  * across page close/open. Useful for simulating arbitrary study states.
  */
 function buildFlagCheckboxes() {
-    const container = document.getElementById('emicFlagsContent');
+    const container = document.getElementById('studyFlagsContent') || document.getElementById('emicFlagsContent');
     if (!container || flagsBuilt) return;
     flagsBuilt = true;
 

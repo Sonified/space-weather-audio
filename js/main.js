@@ -91,7 +91,7 @@ async function initializeMainApp() {
     const advancedCheckboxEarly = document.getElementById('advancedMode');
     if (advancedCheckboxEarly) {
         if (isLocalEnvironment()) {
-            const savedAdvanced = localStorage.getItem('emic_advanced_mode');
+            const savedAdvanced = localStorage.getItem('study_advanced_mode') || localStorage.getItem('emic_advanced_mode');
             advancedCheckboxEarly.checked = savedAdvanced !== null ? savedAdvanced === 'true' : true;
         } else {
             advancedCheckboxEarly.checked = false;
@@ -183,6 +183,7 @@ async function initializeMainApp() {
     // 🚨 STUDY MODE: Show overlay only during active simulation in participant mode
     // ═══════════════════════════════════════════════════════════
     if (isStudyMode() && localStorage.getItem('emic_is_simulating') === 'true'
+        && localStorage.getItem('study_advanced_mode') !== 'true'
         && localStorage.getItem('emic_advanced_mode') !== 'true') {
         const overlay = document.getElementById('permanentOverlay');
         if (overlay) {
@@ -467,7 +468,7 @@ async function initializeMainApp() {
             // EMIC mode: use config defined in emic_study.html
             const { isEmicStudyMode } = await import('./master-modes.js');
             if (isEmicStudyMode()) {
-                await startStreaming(e, window.__EMIC_CONFIG);
+                await startStreaming(e, window.__STUDY_CONFIG || window.__EMIC_CONFIG);
             } else {
                 await startStreaming(e);
             }
@@ -541,7 +542,7 @@ async function initializeMainApp() {
         aboutInfoBtn.addEventListener('click', async (e) => {
             e.preventDefault();
             e.stopPropagation();
-            const modalId = window.__EMIC_STUDY_MODE ? 'emicAboutModal' : 'aboutModal';
+            const modalId = (window.__EMIC_STUDY_MODE || window.__STUDY_MODE) ? 'emicAboutModal' : 'aboutModal';
             await modalManager.openModal(modalId);
         });
 

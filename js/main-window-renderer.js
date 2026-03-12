@@ -2587,7 +2587,7 @@ function updateSpectrogramOverlay(progress) {
     if (!spectrogramOverlay) return;
 
     // In EMIC study mode, never dim the spectrogram
-    if (window.__EMIC_STUDY_MODE) {
+    if (window.__EMIC_STUDY_MODE || window.__STUDY_MODE) {
         spectrogramOverlay.style.opacity = '0';
         return;
     }

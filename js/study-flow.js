@@ -101,7 +101,7 @@ let flagsPanelBuilt = false;
 
 function initStudyFlagsPanel() {
     const btn = document.getElementById('showFlagsBtn');
-    const panel = document.getElementById('emicFlagsPanel');
+    const panel = document.getElementById('studyFlagsPanel') || document.getElementById('emicFlagsPanel');
     if (!btn || !panel) return;
 
     btn.style.display = '';
@@ -137,7 +137,7 @@ function buildFlagsUI(panel) {
     if (flagsPanelBuilt) return;
     flagsPanelBuilt = true;
 
-    const content = document.getElementById('emicFlagsContent') || panel;
+    const content = document.getElementById('studyFlagsContent') || document.getElementById('emicFlagsContent') || panel;
 
     const states = getStepFlagStates();
     const stepIcons = { registration: '👤', modal: '📋', analysis: '🔬', questions: '❓' };
@@ -197,7 +197,7 @@ function buildFlagsUI(panel) {
     }
 
     // Wire close via the drag-handle close button (from HTML)
-    const closeBtn = document.getElementById('emicFlagsClose');
+    const closeBtn = document.getElementById('studyFlagsClose') || document.getElementById('emicFlagsClose');
     if (closeBtn) {
         closeBtn.addEventListener('click', () => {
             panel.style.display = 'none';
@@ -209,7 +209,7 @@ function buildFlagsUI(panel) {
     }
 
     // Wire drag handle
-    const dragHandle = document.getElementById('emicFlagsDragHandle');
+    const dragHandle = document.getElementById('studyFlagsDragHandle') || document.getElementById('emicFlagsDragHandle');
     if (dragHandle) {
         let dragging = false, startX, startY, startLeft, startTop;
         dragHandle.addEventListener('pointerdown', (e) => {
@@ -624,7 +624,7 @@ async function init() {
     if (titleEl) titleEl.textContent = studyConfig.name || studySlug;
     document.title = (studyConfig.name || studySlug) + ' — spaceweather.now.audio';
 
-    // Apply analysis step config to window.__EMIC_CONFIG so main.js uses it
+    // Apply analysis step config to window.__STUDY_CONFIG so main.js uses it
     const analysisStep = studyConfig.steps.find(s => s.type === 'analysis');
     if (analysisStep) {
         applyAnalysisConfig(analysisStep);
@@ -671,13 +671,14 @@ async function init() {
         participantId: localStorage.getItem('participantId'),
         progress: localStorage.getItem(PROGRESS_KEY),
         studySlug: localStorage.getItem(STUDY_SLUG_KEY),
-        advancedMode: localStorage.getItem('emic_advanced_mode'),
+        advancedMode: localStorage.getItem('study_advanced_mode') || localStorage.getItem('emic_advanced_mode'),
         adminUnlocked: localStorage.getItem('admin_unlocked'),
         flagsVisible: localStorage.getItem('study_flags_panel_visible'),
     });
     console.log('📋 [STATE] window flags:', {
         __PREVIEW_MODE: window.__PREVIEW_MODE,
         __TEST_MODE: window.__TEST_MODE,
+        __STUDY_MODE: window.__STUDY_MODE,
         __EMIC_STUDY_MODE: window.__EMIC_STUDY_MODE,
         __STUDY_SLUG: window.__STUDY_SLUG,
     });
@@ -881,11 +882,12 @@ function applyAnalysisConfig(step) {
     const mapped = spacecraftMap[step.spacecraft] || { spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16' };
 
     // Build ISO date strings from config
-    const startTime = step.startTime || (step.startDate ? step.startDate + 'T00:00:00.000Z' : null) || window.__EMIC_CONFIG.startTime;
-    const endTime = step.endTime || (step.endDate ? step.endDate + 'T00:00:00.000Z' : null) || window.__EMIC_CONFIG.endTime;
+    const prevConfig = window.__STUDY_CONFIG || window.__EMIC_CONFIG || {};
+    const startTime = step.startTime || (step.startDate ? step.startDate + 'T00:00:00.000Z' : null) || prevConfig.startTime;
+    const endTime = step.endTime || (step.endDate ? step.endDate + 'T00:00:00.000Z' : null) || prevConfig.endTime;
 
     // Update global config
-    window.__EMIC_CONFIG = {
+    window.__STUDY_CONFIG = {
         spacecraft: mapped.spacecraft,
         dataset: mapped.dataset,
         startTime,
@@ -916,7 +918,19 @@ function applyAnalysisConfig(step) {
         console.log(`📋 Data source set to: ${dataSourceEl.value}`);
     }
 
-    console.log(`📋 Analysis config applied: ${mapped.spacecraft} / ${mapped.dataset} / ${startTime} → ${endTime}`);
+    // Set display-on-load from step config (overrides any local setting)
+    if (step.displayOnLoad) {
+        localStorage.setItem('emic_display_on_load', step.displayOnLoad);
+        const displayEl = document.getElementById('displayOnLoad');
+        if (displayEl) displayEl.value = step.displayOnLoad;
+    }
+    if (step.initialHours) {
+        localStorage.setItem('emic_initial_hours', String(step.initialHours));
+        const hoursEl = document.getElementById('initialHours');
+        if (hoursEl) hoursEl.value = String(step.initialHours);
+    }
+
+    console.log(`📋 Analysis config applied: ${mapped.spacecraft} / ${mapped.dataset} / ${startTime} → ${endTime} / display=${step.displayOnLoad || 'all'}`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1438,6 +1452,9 @@ function executePrompts(prompts) {
 
 async function runAnalysis(step) {
     console.log(`📋 Analysis step: entering drawing phase`);
+
+    // Apply this step's analysis config (spacecraft, dates, display settings)
+    applyAnalysisConfig(step);
 
     // Hide overlay so the player is visible (study modal fades out with it)
     const overlay = document.getElementById('permanentOverlay');

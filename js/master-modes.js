@@ -32,7 +32,7 @@ export function isLocalEnvironment() {
 
 // Detect mode from page context
 const isEmicStudyPage = typeof window !== 'undefined' &&
-    (window.location.pathname.includes('emic_study') || window.__EMIC_STUDY_MODE === true);
+    (window.location.pathname.includes('emic_study') || window.__EMIC_STUDY_MODE === true || window.__STUDY_MODE === true);
 
 export const CURRENT_MODE = isEmicStudyPage ? AppMode.EMIC_STUDY : AppMode.SOLAR_PORTAL;
 
