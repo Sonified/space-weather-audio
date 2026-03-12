@@ -2911,7 +2911,7 @@ input[type="range"]:disabled {
     border-top: 8px solid #b35900;
 }
 
-/* Begin Analysis Button Sparkle Effect */
+/* Begin Analysis / Complete Button Sparkle Effect */
 .begin-analysis-btn:not(:disabled) {
     position: relative;
     animation: subtle-sparkle 3s ease-in-out infinite;

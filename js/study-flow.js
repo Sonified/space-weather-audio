@@ -1026,30 +1026,56 @@ function advanceStep() {
 // ── Admin Step Navigation ───────────────────────────────────────────────────
 
 function initStepNav() {
-    const group = document.getElementById('stepNavGroup');
-    if (!group) return;
-
     // Show only in admin/test/preview mode
     const isAdmin = document.documentElement.hasAttribute('data-admin')
         || window.__PREVIEW_MODE || window.__TEST_MODE;
     if (!isAdmin) return;
 
-    group.style.display = 'flex';
+    // Remove the old bottom-bar nav if present
+    const oldGroup = document.getElementById('stepNavGroup');
+    if (oldGroup) oldGroup.style.display = 'none';
 
-    document.getElementById('stepBackBtn')?.addEventListener('click', () => {
+    // Insert into top header bar's left spacer (mirrors participant ID on the right)
+    const headerBar = document.querySelector('.top-header-bar');
+    if (!headerBar) return;
+    const leftSpacer = headerBar.firstElementChild;
+    if (!leftSpacer) return;
+
+    const nav = document.createElement('div');
+    nav.id = 'floatingStepNav';
+    nav.style.cssText = 'display:flex;align-items:center;gap:4px;font-family:system-ui;font-size:11px;max-width:320px;';
+
+    const btnStyle = 'background:rgba(33,150,243,0.7);color:#fff;border:none;border-radius:4px;padding:2px 7px;font-size:11px;cursor:pointer;backdrop-filter:blur(4px);flex-shrink:0;';
+    nav.innerHTML = `
+        <button id="floatStepBack" style="${btnStyle}" title="Previous step">◀</button>
+        <span id="floatStepLabel" style="color:#fff;background:rgba(33,150,243,0.55);padding:2px 8px;border-radius:4px;backdrop-filter:blur(4px);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;"></span>
+        <button id="floatStepFwd" style="${btnStyle}" title="Next step">▶</button>
+    `;
+    leftSpacer.appendChild(nav);
+
+    // Remove the old preview banner if present (step nav replaces it)
+    const oldBanner = document.getElementById('previewBanner');
+    if (oldBanner) oldBanner.remove();
+
+    document.getElementById('floatStepBack').addEventListener('click', () => {
         if (currentStepIndex > 0) goToStep(currentStepIndex - 1);
     });
-    document.getElementById('stepForwardBtn')?.addEventListener('click', () => {
+    document.getElementById('floatStepFwd').addEventListener('click', () => {
         if (studyConfig && currentStepIndex < studyConfig.steps.length - 1) goToStep(currentStepIndex + 1);
     });
 }
 
 function updateStepIndicator() {
-    const el = document.getElementById('stepIndicator');
-    if (!el || !studyConfig) return;
+    const label = document.getElementById('floatStepLabel') || document.getElementById('stepIndicator');
+    if (!label || !studyConfig) return;
     const step = studyConfig.steps[currentStepIndex];
-    const label = step?.title || step?.type || '';
-    el.textContent = `Step ${currentStepIndex + 1}/${studyConfig.steps.length}: ${label}`;
+    const stepName = step?.title || step?.type || '';
+    const prefix = window.__PREVIEW_MODE ? '🔍 Preview ' : '';
+    label.textContent = `${prefix}Step ${currentStepIndex + 1}/${studyConfig.steps.length}: ${stepName}`;
+
+    // Also update old banner if it still exists
+    const banner = document.getElementById('previewBanner');
+    if (banner) banner.style.display = 'none';
 }
 
 function goToStep(index) {
@@ -1437,10 +1463,11 @@ async function runAnalysis(step) {
 
         // Poll for features, show Complete when user draws at least minFeatures
         const minFeatures = step.minFeatures || 1;
+        const showComplete = () => { completeBtn.style.setProperty('display', 'block', 'important'); };
         const pollInterval = setInterval(() => {
             const count = getStandaloneFeatures().length;
             if (count >= minFeatures) {
-                completeBtn.style.display = '';
+                showComplete();
                 clearInterval(pollInterval);
             }
         }, 500);
@@ -1448,7 +1475,7 @@ async function runAnalysis(step) {
         // If features not required, show immediately
         if (step.requireMinFeatures === false) {
             setTimeout(() => {
-                completeBtn.style.display = '';
+                showComplete();
                 clearInterval(pollInterval);
             }, 2000);
         }
@@ -1456,6 +1483,11 @@ async function runAnalysis(step) {
         // Wait for Complete click
         await new Promise((resolve) => {
             completeBtn.addEventListener('click', async () => {
+                // Close any open feature popup before proceeding
+                try {
+                    const { closeFeaturePopup } = await import('./spectrogram-renderer.js');
+                    closeFeaturePopup();
+                } catch (e) { /* not critical */ }
                 pausePlayback();
 
                 // Save features to D1

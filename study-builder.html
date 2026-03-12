@@ -2332,24 +2332,17 @@
           </div>
         </div>
         <div class="toggle-row">
-          <span class="toggle-label">Allow feature drawing</span>
-          <div class="toggle ${step.allowFeatureDrawing ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
-        </div>
-        <div class="toggle-row">
-          <span class="toggle-label">Show spectrogram</span>
-          <div class="toggle ${step.showSpectrogram ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
-        </div>
-        <div class="toggle-row">
           <span class="toggle-label">Allow stretch/speed changes</span>
           <div class="toggle ${step.allowStretch ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
         </div>
         <div class="toggle-row">
-          <span class="toggle-label">Require minimum features</span>
-          <div class="toggle ${step.requireMinFeatures ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+          <span class="toggle-label">Allow feature drawing</span>
+          <div class="toggle ${step.allowFeatureDrawing ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
         </div>
-        <div class="field-group" style="margin-left:20px; margin-top:4px;">
-          <div class="field-label">Minimum Features to proceed:</div>
-          <input class="field-input min-features-input" type="number" min="1" value="${step.minFeatures || 1}" style="width:80px;" />
+        <div class="toggle-row">
+          <span class="toggle-label">Require minimum features</span>
+          <div class="toggle toggle-require-min-features ${step.requireMinFeatures ? 'on' : ''}" onclick="this.classList.toggle('on'); toggleMinFeatures(this)"></div>
+          <input class="field-input min-features-input" type="number" min="1" value="${step.minFeatures || 1}" style="width:60px; margin-left:8px; ${step.requireMinFeatures ? '' : 'display:none;'}" />
         </div>
         <div class="toggle-row">
           <span class="toggle-label">Confirm analysis completion</span>
@@ -2660,10 +2653,9 @@
           step.dataPreload = preloadSelect.value;
         }
         const toggles = card.querySelectorAll('.toggle-row .toggle');
-        step.allowFeatureDrawing = toggles[0]?.classList.contains('on') || false;
-        step.showSpectrogram = toggles[1]?.classList.contains('on') || false;
-        step.allowStretch = toggles[2]?.classList.contains('on') || false;
-        step.requireMinFeatures = toggles[3]?.classList.contains('on') || false;
+        step.allowStretch = toggles[0]?.classList.contains('on') || false;
+        step.allowFeatureDrawing = toggles[1]?.classList.contains('on') || false;
+        step.requireMinFeatures = toggles[2]?.classList.contains('on') || false;
         step.minFeatures = parseInt(card.querySelector('.min-features-input')?.value) || 1;
         console.log(`%c[COLLECT]   Analysis step ${i} DOM:`, 'color: #58a6ff;', {
           title: step.title,
@@ -3364,6 +3356,11 @@
   }
 
   // Toggle hide button for info cards
+  function toggleMinFeatures(toggle) {
+    const input = toggle.parentElement.querySelector('.min-features-input');
+    if (input) input.style.display = toggle.classList.contains('on') ? '' : 'none';
+  }
+
   function toggleInfoButton(toggle) {
     const card = toggle.closest('.step-card');
     const group = card?.querySelector('.info-button-group');
@@ -3550,7 +3547,7 @@
       card.dataset.questionId = newQid;
       card.innerHTML = buildQuestionCard(num, defaultStep);
     } else {
-      defaultStep = { type: 'analysis', title: 'New Analysis Step', spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16', startDate: '', endDate: '', dataSource: 'cloudflare_r2', playbackSpeed: '1x', allowFeatureDrawing: true, showSpectrogram: true, allowStretch: true, minFeatures: 1, confirmCompletion: { enabled: false } };
+      defaultStep = { type: 'analysis', title: 'New Analysis Step', spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16', startDate: '', endDate: '', dataSource: 'cloudflare_r2', playbackSpeed: '1x', allowFeatureDrawing: true, allowStretch: true, minFeatures: 1, confirmCompletion: { enabled: false } };
       card.innerHTML = buildAnalysisCard(num, defaultStep);
     }
 
