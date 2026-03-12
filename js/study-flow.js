@@ -844,6 +844,15 @@ async function init() {
     // Init admin step navigation
     initStepNav();
 
+    // If resuming past registration, show participant ID if config says so
+    if (currentStepIndex > 0) {
+        const regStep = studyConfig.steps.find(s => s.type === 'registration');
+        const pid = getParticipantId();
+        if (pid && (!regStep || regStep.showIdCorner !== false)) {
+            updateParticipantDisplay(pid);
+        }
+    }
+
     // Start the flow
     flowActive = true;
     studyStartTime = new Date().toISOString();
@@ -1039,7 +1048,7 @@ function advanceStep() {
     const nextStep = studyConfig.steps[currentStepIndex];
     if (nextStep.type === 'analysis') {
         if (studyModalEl) modalManager.currentModal = null;
-    } else if (nextStep.type !== 'modal' && nextStep.type !== 'registration' && nextStep.type !== 'question') {
+    } else if (nextStep.type !== 'modal' && nextStep.type !== 'registration' && nextStep.type !== 'question' && nextStep.type !== 'info') {
         teardownStudyModal();
     }
     runCurrentStep();
