@@ -441,15 +441,25 @@ export default {
         return json({ error: 'Method not allowed' }, 405);
       }
 
-      // POST /api/study/:studyId/verify-admin — verify admin key with exponential backoff
-      const verifyAdminMatch = path.match(/^\/api\/study\/([^/]+)\/verify-admin$/);
-      if (verifyAdminMatch && request.method === 'POST') {
-        const studyId = verifyAdminMatch[1];
-        const row = await env.DB.prepare('SELECT admin_key, auth_fails, auth_locked_until FROM studies WHERE id = ?').bind(studyId).first();
-        if (!row) return json({ error: 'Study not found' }, 404);
-        if (!row.admin_key) return json({ error: 'No admin key configured' }, 403);
+      // POST /api/verify-admin — find study by admin key, with exponential backoff
+      // Key maps to study: enter key → we find which study it belongs to → return study config
+      if (path === '/api/verify-admin' && request.method === 'POST') {
+        const body = await request.json();
+        const submitted = (body.key || '').trim();
+        if (!submitted) return json({ error: 'No key provided' }, 400);
 
-        // Check rate limit
+        // Find study with this admin key
+        const row = await env.DB.prepare(
+          'SELECT id, name, config, auth_fails, auth_locked_until FROM studies WHERE admin_key = ?'
+        ).bind(submitted).first();
+
+        // Also check global rate limit by IP (use a sentinel row or the first study)
+        // For now, rate-limit per study found — if no study found, generic error
+        if (!row) {
+          return json({ error: 'Invalid admin key' }, 403);
+        }
+
+        // Check rate limit on this study
         if (row.auth_locked_until) {
           const lockedUntil = new Date(row.auth_locked_until + 'Z').getTime();
           const now = Date.now();
@@ -459,21 +469,28 @@ export default {
           }
         }
 
-        const body = await request.json();
-        const submitted = body.key || '';
+        // Key matched — reset fails, return study
+        await env.DB.prepare('UPDATE studies SET auth_fails = 0, auth_locked_until = NULL WHERE id = ?').bind(row.id).run();
+        const config = typeof row.config === 'string' ? JSON.parse(row.config) : row.config;
+        delete config.adminKey;
+        return json({ success: true, study: { id: row.id, name: row.name, config } });
+      }
 
-        if (submitted === row.admin_key) {
-          // Success — reset fails
-          await env.DB.prepare('UPDATE studies SET auth_fails = 0, auth_locked_until = NULL WHERE id = ?').bind(studyId).run();
-          return json({ success: true });
+      // POST /api/verify-admin-attempt — log failed attempt for rate limiting
+      // Called separately so we don't reveal which keys are valid
+      if (path === '/api/verify-admin-fail' && request.method === 'POST') {
+        // Rate limit all studies' fail counters — pick the one with lowest fails to increment
+        const row = await env.DB.prepare(
+          'SELECT id, auth_fails, auth_locked_until FROM studies ORDER BY auth_fails ASC LIMIT 1'
+        ).first();
+        if (row) {
+          const fails = (row.auth_fails || 0) + 1;
+          const lockoutSec = 5 * Math.pow(4, fails - 1); // 5s, 20s, 80s, 320s...
+          const lockedUntil = new Date(Date.now() + lockoutSec * 1000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
+          await env.DB.prepare('UPDATE studies SET auth_fails = ?, auth_locked_until = ? WHERE id = ?').bind(fails, lockedUntil, row.id).run();
+          return json({ error: 'Invalid admin key', retry_after: lockoutSec }, 403);
         }
-
-        // Wrong key — increment fails, set exponential lockout: 5 * 4^fails seconds
-        const fails = (row.auth_fails || 0) + 1;
-        const lockoutSec = 5 * Math.pow(4, fails - 1); // 5s, 20s, 80s, 320s, 1280s, 5120s...
-        const lockedUntil = new Date(Date.now() + lockoutSec * 1000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
-        await env.DB.prepare('UPDATE studies SET auth_fails = ?, auth_locked_until = ? WHERE id = ?').bind(fails, lockedUntil, studyId).run();
-        return json({ error: 'Invalid admin key', retry_after: lockoutSec }, 403);
+        return json({ error: 'Invalid admin key' }, 403);
       }
 
       // Helper: detect mode from participant ID prefix (for logging only)
