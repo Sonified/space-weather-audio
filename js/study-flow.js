@@ -646,6 +646,10 @@ async function init() {
         applyAppSettings(studyConfig.appSettings);
     }
 
+    // CSS rule in study.html keeps participantIdDisplay hidden by default.
+    // study-flow.js is the sole authority — updateParticipantDisplay() adds
+    // .sf-pid-visible to show it when showIdCorner !== false.
+
     // Check for admin mode
     if (studyConfig.adminKey) {
         initAdminMode(studyConfig);
@@ -768,7 +772,8 @@ async function init() {
             // In preview mode jumping past registration, store the preview ID
             if (isPreview && window.__PREVIEW_PARTICIPANT_ID && stepIndex > 0) {
                 storeParticipantId(window.__PREVIEW_PARTICIPANT_ID);
-                updateParticipantDisplay(window.__PREVIEW_PARTICIPANT_ID);
+                const regStep = studyConfig.steps.find(s => s.type === 'registration');
+                if (!regStep || regStep.showIdCorner !== false) updateParticipantDisplay(window.__PREVIEW_PARTICIPANT_ID);
             }
 
             // For analysis steps jumped to directly, apply config and auto-trigger
@@ -1132,7 +1137,8 @@ async function runRegistration(step) {
     console.log(`📋 [REG] existingId=${existingId}, idMethod=${step.idMethod}, step=`, step);
     if (existingId) {
         console.log(`📋 Already registered as ${existingId}, skipping registration`);
-        updateParticipantDisplay(existingId);
+        if (step.showIdCorner !== false) updateParticipantDisplay(existingId);
+        else hideParticipantDisplay();
         advanceStep();
         return;
     }
@@ -1212,7 +1218,8 @@ function showLoginModal(step) {
             const pid = input.value.trim();
             if (!pid) return;
             storeParticipantId(pid);
-            updateParticipantDisplay(pid);
+            if (step.showIdCorner !== false) updateParticipantDisplay(pid);
+            else hideParticipantDisplay();
             initParticipant(pid, studySlug);
             console.log(`📋 Registered: ${pid}`);
             resolve();
@@ -1231,12 +1238,15 @@ function updateParticipantDisplay(pid) {
     const el = document.getElementById('participantIdValue');
     if (el) el.textContent = pid;
     const container = document.getElementById('participantIdDisplay');
-    if (container) container.style.display = '';
+    if (container) {
+        container.classList.add('sf-pid-visible');
+        container.style.removeProperty('display');
+    }
 }
 
 function hideParticipantDisplay() {
     const container = document.getElementById('participantIdDisplay');
-    if (container) container.style.display = 'none';
+    if (container) container.classList.remove('sf-pid-visible');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

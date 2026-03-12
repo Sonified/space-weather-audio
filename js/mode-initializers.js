@@ -12,6 +12,9 @@ import { isAdminUnlocked } from './admin-unlock.js';
 
 
 export async function updateParticipantIdDisplay() {
+    // On study.html, study-flow.js owns the participant ID display — don't touch it here
+    if (window.__STUDY_FLOW_MANAGED) return;
+
     const displayElement = document.getElementById('participantIdDisplay');
     const valueElement = document.getElementById('participantIdValue');
 

@@ -328,9 +328,10 @@ export function initializeAdvancedControls() {
         const speedGroup = document.getElementById('speedGroup');
         if (speedGroup) speedGroup.style.display = isAdvanced ? '' : 'none';
 
-        // Participant ID display (top right): respect "ID in Corner" setting
+        // Participant ID display (top right): on study.html, study-flow.js owns this
+        const isStudyPage = !!window.__STUDY_FLOW_MANAGED;
         const pidDisplay = document.getElementById('participantIdDisplay');
-        if (pidDisplay) {
+        if (pidDisplay && !isStudyPage) {
             const cornerSetting = document.getElementById('pidCornerDisplay')?.value || 'show';
             pidDisplay.style.display = (!isAdvanced && cornerSetting === 'hide') ? 'none' : '';
         }
@@ -338,11 +339,11 @@ export function initializeAdvancedControls() {
         // Show the correct ID and label for the current context
         const pidValue = document.getElementById('participantIdValue');
         const pidLabel = document.getElementById('participantIdLabel');
-        if (pidValue) {
+        if (pidValue && !isStudyPage) {
             const activeId = getActiveId();
             pidValue.textContent = activeId !== 'anonymous' ? activeId : '--';
         }
-        if (pidLabel) {
+        if (pidLabel && !isStudyPage) {
             const simulating = getEmicFlag(EMIC_FLAGS.IS_SIMULATING);
             pidLabel.textContent = (!isAdvanced && simulating) ? 'Participant ID' : 'User ID';
         }
