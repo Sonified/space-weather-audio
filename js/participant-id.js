@@ -49,10 +49,8 @@ export function getParticipantId() {
         return urlId;
     }
 
-    // Fall back to localStorage (check both keys — Solar Portal stores via storeRealUsername)
-    const storedId = localStorage.getItem('participantId');
-    if (storedId) return storedId;
-    return localStorage.getItem('emic_real_username') || null;
+    // Fall back to localStorage
+    return localStorage.getItem('participantId') || null;
 }
 
 /**

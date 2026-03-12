@@ -16,7 +16,7 @@ import { getParticipantId, storeParticipantId, generateParticipantId } from './p
 import { styleBodyHtml } from './study-builder/utils.js';
 import { pausePlayback } from './audio-player.js';
 import { typeText, cancelTyping } from './tutorial-effects.js';
-import { buildDimensionStyle, buildTitleFontStyle, buildBodyFontStyle, buildHeaderUnderlineStyle, renderInfoModal, renderQuestionModal } from './survey-question-renderer.js';
+import { buildDimensionStyle, buildTitleFontStyle, buildHeaderUnderlineStyle, renderInfoModal, renderRegistrationModal, renderQuestionModal } from './survey-question-renderer.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // STATE
@@ -538,6 +538,10 @@ function triggerPreloadForStep(stepIndex) {
     // Apply the analysis config so main.js knows what to fetch
     applyAnalysisConfig(step);
 
+    // Apply silent data loading setting from config
+    const silentCb = document.getElementById('silentDownload');
+    if (silentCb) silentCb.checked = !!step.silentDataLoading;
+
     // Trigger the data fetch via the start button
     // This is the same mechanism runAnalysis() uses
     const startBtn = document.getElementById('startBtn');
@@ -695,13 +699,6 @@ async function init() {
         localStorage.removeItem(PROGRESS_KEY);
         localStorage.removeItem(STUDY_SLUG_KEY);
         currentStepIndex = 0;
-
-        // Show test mode banner (subtle, like preview)
-        const testBanner = document.createElement('div');
-        testBanner.id = 'testBanner';
-        testBanner.style.cssText = 'position:fixed;top:8px;left:8px;z-index:999999;background:rgba(255,152,0,0.55);color:#fff;padding:3px 10px;font-family:system-ui;font-size:11px;font-weight:500;border-radius:4px;pointer-events:none;backdrop-filter:blur(4px);';
-        testBanner.textContent = '🧪 Test Mode';
-        document.body.prepend(testBanner);
 
         // Update page tab
         const studyName2 = studyConfig.name || studySlug;
@@ -1167,28 +1164,8 @@ async function runRegistration(step) {
 
 function showLoginModal(step) {
     return new Promise(async (resolve) => {
-        const title = step.regTitle || 'Welcome';
         const bodyHtml = step.regBodyHtml || '<p style="margin-bottom: 10px; color: #550000; font-size: 16px; font-weight: bold;">Enter a user name to begin:</p>';
-        const buttonLabel = step.regButtonLabel || 'Confirm';
-        const dimStyle = buildDimensionStyle(step, '480px');
-        console.log('📋 Registration modal dimensions:', { modalWidth: step.modalWidth, modalHeight: step.modalHeight, dimStyle, stepKeys: Object.keys(step) });
-        const ulStyle = buildHeaderUnderlineStyle(step);
-        const titleFont = buildTitleFontStyle(step);
-        const bodyFont = buildBodyFontStyle(step);
-        const html = `
-            <div class="modal-content" style="${dimStyle}">
-                <div class="modal-header" style="${ulStyle}">
-                    <h3 class="modal-title" style="${titleFont}">🔬 ${title}</h3>
-                </div>
-                <div class="modal-body" style="${bodyFont}">
-                    ${styleBodyHtml(bodyHtml, `${bodyFont} line-height:1.6;margin:0;`)}
-                    <div class="modal-form-group">
-                        <input type="text" id="studyLoginInput" placeholder="${step.idPlaceholder || 'Enter your ID'}" style="font-size: 18px;" autocomplete="off">
-                    </div>
-                    <button type="button" id="studyLoginSubmit" class="modal-submit" disabled>✓ ${buttonLabel}</button>
-                </div>
-            </div>
-        `;
+        const html = renderRegistrationModal({ step, bodyHtml });
 
         await setStudyModalContent(html);
         openStudyModalIfNeeded();
@@ -1438,6 +1415,10 @@ async function runAnalysis(step) {
             }
         }, 300);
     }
+
+    // Apply silent data loading setting from config
+    const silentCb = document.getElementById('silentDownload');
+    if (silentCb) silentCb.checked = !!step.silentDataLoading;
 
     // Trigger data render (same pattern as emic_study welcome modal dismiss)
     if (typeof window.triggerDataRender === 'function') {

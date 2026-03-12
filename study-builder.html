@@ -1077,7 +1077,7 @@
     .rich-toolbar input[type="color"].rt-color { width: 24px; height: 24px; padding: 1px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); cursor: pointer; }
     .rich-toolbar .rt-hex { width: 62px; height: 24px; padding: 2px 5px; font-size: 11px; font-family: monospace; background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); border-radius: 4px; outline: none; box-sizing: border-box; }
     .rich-toolbar .rt-hex:focus { border-color: var(--accent); color: var(--text); }
-    .rich-editable { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius); padding: 10px 12px; min-height: 180px; outline: none; font-size: 14px; line-height: 1.5; overflow-y: auto; }
+    .rich-editable { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius); padding: 10px 12px; min-height: 90px; outline: none; font-size: 14px; line-height: 1.5; overflow-y: auto; }
     .rich-editable:focus { border-color: var(--accent); }
     .rich-editable a { color: var(--accent); }
 
@@ -1181,7 +1181,7 @@
 </div>
 
 <!-- App Settings -->
-<div class="steps-container" style="margin-top:24px;">
+<div class="steps-container" style="margin-top:12px;">
   <div class="step-card" id="appSettingsCard" data-type="settings">
     <div class="step-header" onclick="toggleStep(this)">
       <span class="lock-icon">🔒</span><span class="chevron">▶</span>
@@ -1650,14 +1650,13 @@
       } else if (step.type === 'analysis') {
         card.setAttribute('draggable', 'true');
         card.innerHTML = buildAnalysisCard(num, step);
-        // Verify DOM population
-        const analysisToggles = card.querySelectorAll('.toggle-row .toggle');
         console.log(`%c[LOAD]   Step ${i} (analysis) DOM verify:`, 'color: #ff6b6b;', {
-          toggleCount: analysisToggles.length,
-          expectedToggles: 5,
-          toggleStates: Array.from(analysisToggles).map((t, ti) => `[${ti}]=${t.classList.contains('on') ? 'ON' : 'OFF'}`),
           titleValue: card.querySelector('.analysis-title-input')?.value || '(empty)',
-          selectCount: card.querySelectorAll('select.field-input').length,
+          allowStretch: card.querySelector('[data-setting="allowStretch"]')?.classList.contains('on'),
+          requireMinFeatures: card.querySelector('[data-setting="requireMinFeatures"]')?.classList.contains('on'),
+          confirmCompletion: card.querySelector('[data-setting="confirmCompletion"]')?.classList.contains('on'),
+          dataSource: card.querySelector('[data-setting="dataSource"] .pill.active')?.textContent?.trim(),
+          playbackSpeed: card.querySelector('[data-setting="playbackSpeed"]')?.value,
           startTime: card.querySelector('.analysis-start')?.value || '(empty)',
           endTime: card.querySelector('.analysis-end')?.value || '(empty)',
         });
@@ -1739,7 +1738,7 @@
         <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('bold')"><b>B</b></button>
         <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('italic')"><i>I</i></button>
         <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('underline')"><u>U</u></button>
-        <button type="button" onmousedown="event.preventDefault()" onclick="(function(){var u=prompt('URL:');if(u)document.execCommand('createLink',false,u)})()">🔗</button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="insertOrEditLink()">🔗</button>
         <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('insertHorizontalRule')">—</button>
         <select class="rt-size body-font-size" onclick="event.stopPropagation()">${sizeOpts}</select>
         <input type="color" class="rt-color body-font-color" value="${escapeAttr(color)}" title="Font color" onclick="event.stopPropagation()" oninput="syncHexFromPicker(this)" />
@@ -1885,10 +1884,10 @@
 
   function buildStepActions(type) {
     // Modal steps get inline preview + page preview; analysis gets page preview only
-    const previewBtns = (type === 'question' || type === 'info')
+    const previewBtns = (type === 'question' || type === 'info' || type === 'registration')
       ? `<button class="step-action-btn preview-btn" title="Preview window" onclick="event.stopPropagation(); openPreviewWindow(this)">👁</button>
          <button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>`
-      : (type === 'modal' || type === 'registration')
+      : (type === 'modal')
       ? `<button class="step-action-btn preview-btn" title="Toggle inline preview" onclick="event.stopPropagation(); toggleInlinePreview(this)">👁</button>
          <button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>`
       : type === 'analysis'
@@ -1914,55 +1913,64 @@
         ${buildStepActions('registration')}
       </div>
       <div class="step-detail">
-        <div class="field-group">
-          <div class="field-label">Participant ID Method</div>
-          <div class="pill-group pill-group-flat">
-            <button class="pill ${isAuto ? 'active' : ''}" onclick="selectPill(this)">Auto-generate</button>
-            <button class="pill ${!isAuto ? 'active' : ''}" onclick="selectPill(this)">Manual Entry</button>
+        <div style="display:flex; gap:16px; flex-wrap:wrap;">
+          <div class="field-group">
+            <div class="field-label">Participant ID Method</div>
+            <div class="pill-group pill-group-flat" data-setting="idMethod">
+              <button class="pill ${isAuto ? 'active' : ''}" onclick="selectPill(this)">Auto-generate</button>
+              <button class="pill ${!isAuto ? 'active' : ''}" onclick="selectPill(this)">Manual Entry</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <div class="field-label">Persistent User ID</div>
+            <select class="field-input show-id-corner-select" style="width:auto;">
+              <option value="hidden" ${step.showIdCorner === false ? 'selected' : ''}>Hidden</option>
+              <option value="corner" ${step.showIdCorner !== false ? 'selected' : ''}>Upper Right Corner</option>
+            </select>
           </div>
         </div>
-        <div class="field-group reg-auto-fields" style="${isAuto ? '' : 'display:none'}">
-          <div class="field-label">ID Prefix</div>
-          <input class="field-input reg-id-prefix" value="${step.idPrefix || ''}" placeholder="e.g. P, EMIC_" />
-          <label class="toggle-row" style="margin-top:8px;">
-            <input type="checkbox" class="reg-skip-login" ${step.skipLogin ? 'checked' : ''} />
-            <span>Skip login screen</span>
+        <div class="reg-auto-fields" style="${isAuto ? '' : 'display:none'}; margin-top:8px;">
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" class="reg-skip-login" ${step.skipLogin ? 'checked' : ''} onchange="toggleSkipLogin(this)" />
+            <span style="font-size:13px;">Skip login screen</span>
           </label>
         </div>
         <div class="reg-manual-fields" style="${isAuto ? 'display:none' : ''}">
           <div class="field-group">
-            <div class="field-label">Window Title</div>
-            <div class="title-row">
-              <input class="field-input reg-title-input" value="${escapeAttr(step.regTitle || 'Welcome')}" />
-              ${buildFontStyleControls('title', step, { size: '20px', color: '#550000', bold: true })}
-            </div>
-            ${buildTitleUnderlineControls(step)}
-          </div>
-          <div class="field-group">
-            <div class="field-label">Body Content</div>
+            <div class="field-label">Text</div>
             <div class="rich-editor-wrap">
               ${buildBodyRichToolbar(step)}
               <div class="rich-editable reg-body-html-input" contenteditable="true"></div>
             </div>
           </div>
         </div>
-        <div class="field-group">
+        <div class="field-group reg-skip-hideable" style="${step.skipLogin ? 'display:none' : ''}">
           <div class="field-label">Button Label</div>
           <input class="field-input reg-button-label-input" value="${escapeAttr(step.regButtonLabel || 'Confirm')}" />
         </div>
-        <div class="card-settings" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open'); saveExpandedState()}">
+        <div class="card-settings reg-skip-hideable" style="${step.skipLogin ? 'display:none' : ''}" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open'); saveExpandedState()}">
           <button class="card-settings-trigger" type="button">&#9881; Settings <span class="settings-chevron">&#9660;</span></button>
           <div class="card-settings-drawer"><div class="settings-body">
-            <div class="settings-section-label">Behavior</div>
-            <div class="settings-rows">
+            <div class="settings-section-label">Title</div>
+            <div class="title-row reg-manual-setting" style="${isAuto ? 'display:none' : ''}">
+              <input class="field-input reg-title-input" value="${escapeAttr(step.regTitle || 'Welcome')}" style="flex:1; min-width:100px; font-size:13px; padding:4px 8px;" />
+              ${buildFontStyleControls('title', step, { size: '20px', color: '#550000', bold: true })}
+            </div>
+            ${buildTitleUnderlineControls(step)}
+            <div class="settings-divider"></div>
+            <div class="settings-section-label reg-auto-setting" style="${isAuto ? '' : 'display:none'}">Behavior</div>
+            <div class="settings-rows reg-auto-setting" style="${isAuto ? '' : 'display:none'}">
               <div class="settings-row">
-                <span class="toggle-label">Show ID in corner</span>
-                <div class="toggle toggle-show-id-corner ${step.showIdCorner !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+                <span class="toggle-label">Custom ID Prefix</span>
+                <div class="toggle toggle-custom-prefix ${step.idPrefix ? 'on' : ''}" onclick="this.classList.toggle('on'); this.closest('.settings-row').querySelector('.reg-id-prefix-wrap').style.display = this.classList.contains('on') ? '' : 'none'"></div>
+                <div class="reg-id-prefix-wrap" style="${step.idPrefix ? '' : 'display:none'}">
+                  <input class="field-input reg-id-prefix" value="${escapeAttr(step.idPrefix || '')}" placeholder="e.g. EMIC" style="width:80px; font-size:13px; padding:4px 8px;" />
+                </div>
               </div>
             </div>
-            <div class="settings-divider"></div>
-            <div class="settings-section-label">Content</div>
-            <div class="settings-rows">
+            <div class="settings-divider reg-auto-setting" style="${isAuto ? '' : 'display:none'}"></div>
+            <div class="settings-section-label reg-manual-setting" style="${isAuto ? 'display:none' : ''}">Content</div>
+            <div class="settings-rows reg-manual-setting" style="${isAuto ? 'display:none' : ''}">
               <div class="settings-row">
                 <span class="toggle-label">ID Placeholder</span>
                 <input class="field-input reg-id-placeholder" value="${escapeAttr(step.idPlaceholder || 'Enter your ID')}" style="flex: 1; min-width: 120px; font-size: 13px; padding: 4px 8px;" />
@@ -2006,13 +2014,13 @@
         <div class="field-group">
           <div class="field-label">Window Title</div>
           <div class="title-row">
-            <input class="field-input" value="${escapeAttr(step.title || '')}" />
+            <input class="field-input info-title-input" value="${escapeAttr(step.title || '')}" oninput="this.closest('.step-card').querySelector('.step-title').textContent = this.value || 'Information'" />
             ${buildFontStyleControls('title', step, { size: '20px', color: '#550000', bold: true })}
           </div>
           ${buildTitleUnderlineControls(step)}
         </div>
         <div class="field-group">
-          <div class="field-label">Body Content</div>
+          <div class="field-label">Text</div>
           <div class="rich-editor-wrap">
             ${buildBodyRichToolbar(step)}
             <div class="rich-editable body-html-input" contenteditable="true"></div>
@@ -2364,14 +2372,14 @@
           </div>
           <div class="field-group">
             <div class="field-label">Data Source</div>
-            <div class="pill-group pill-group-flat">
+            <div class="pill-group pill-group-flat" data-setting="dataSource">
               <button class="pill ${src==='cdaweb'?'active':''}" onclick="selectPill(this)">CDAWeb</button>
               <button class="pill ${src==='r2'?'active':''}" onclick="selectPill(this)">Cloudflare R2</button>
             </div>
           </div>
           <div class="field-group">
             <div class="field-label">Playback Speed</div>
-            <select class="field-input">
+            <select class="field-input" data-setting="playbackSpeed">
               ${['0.5x','1x','1.25x','2x'].map(s => `<option ${s===speed?'selected':''}>${s}</option>`).join('')}
             </select>
           </div>
@@ -2390,22 +2398,24 @@
                 ${buildDataPreloadOptions(step.dataPreload)}
               </select>
             </div>
+            <div class="settings-row" style="margin-top: 8px;">
+              <span class="toggle-label">Silent data loading</span>
+              <div class="toggle toggle-silent-loading ${step.silentDataLoading ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+            </div>
             <div class="settings-divider"></div>
             <div class="settings-section-label">Participant Controls</div>
             <div class="settings-row">
               <span class="toggle-label">Allow stretch/speed</span>
-              <div class="toggle ${step.allowStretch ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
-              <span class="toggle-label">Allow feature drawing</span>
-              <div class="toggle ${step.allowFeatureDrawing ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+              <div class="toggle ${step.allowStretch ? 'on' : ''}" data-setting="allowStretch" onclick="this.classList.toggle('on')"></div>
             </div>
             <div class="settings-divider"></div>
             <div class="settings-section-label">Task Requirements</div>
             <div class="settings-row">
               <span class="toggle-label">Require min features</span>
-              <div class="toggle toggle-require-min-features ${step.requireMinFeatures ? 'on' : ''}" onclick="this.classList.toggle('on'); toggleMinFeatures(this)"></div>
+              <div class="toggle toggle-require-min-features ${step.requireMinFeatures ? 'on' : ''}" data-setting="requireMinFeatures" onclick="this.classList.toggle('on'); toggleMinFeatures(this)"></div>
               <input class="field-input min-features-input" type="number" min="1" value="${step.minFeatures || 1}" style="width:42px; margin-left:4px; height:24px; padding:2px 4px; font-size:13px; text-align:center; ${step.requireMinFeatures ? '' : 'display:none;'}" />
               <span class="toggle-label">Confirm completion</span>
-              <div class="toggle ${confirm.enabled ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+              <div class="toggle ${confirm.enabled ? 'on' : ''}" data-setting="confirmCompletion" onclick="this.classList.toggle('on')"></div>
             </div>
             ${confirm.enabled ? `<div style="margin-left:20px;">
               <div class="field-group">
@@ -2440,7 +2450,7 @@
         <div class="prompts-header" onclick="this.parentElement.classList.toggle('open')" style="cursor:pointer; display:flex; align-items:center; gap:8px; padding:8px 0; border-top:1px solid #333; user-select:none;">
           <span style="transition:transform 0.2s; display:inline-block;" class="prompts-chevron">▶</span>
           <span style="font-weight:600; color:#ccc;">💬 Text Prompts</span>
-          <span style="color:#666; font-size:12px;" class="prompts-count">(${(prompts||[]).length})</span>
+          <span style="color:#aab; font-size:12px;" class="prompts-count">(${(prompts||[]).length})</span>
         </div>
         <div class="prompts-body" style="display:none; padding-left:4px;">
           <div class="prompts-list">${items}</div>
@@ -2450,7 +2460,7 @@
   }
 
   function buildPromptEntry(p, i) {
-    p = p || { trigger: 'onLoad', delay: 0, text: '', effect: 'typed', speed: 'medium' };
+    p = Object.assign({ trigger: 'onLoad', delay: 0, text: '', effect: 'typed', speed: 'medium' }, p);
     const triggers = ['onLoad', 'onPlay', 'onFeatureDraw', 'afterPrevious'];
     const triggerLabels = { onLoad: 'On load', onPlay: 'On play', onFeatureDraw: 'On feature draw', afterPrevious: 'After previous prompt' };
     const showDelay = p.trigger === 'afterPrevious' ? '' : 'display:none;';
@@ -2492,6 +2502,21 @@
           </div>
         </div>
       </div>`;
+  }
+
+  function insertOrEditLink() {
+    const sel = window.getSelection();
+    // Check if selection or cursor is inside an existing link
+    const anchor = sel.anchorNode?.parentElement?.closest('a') || sel.focusNode?.parentElement?.closest('a');
+    const existingUrl = anchor ? anchor.href : '';
+    const url = prompt('URL:', existingUrl);
+    if (url === null) return;
+    if (url === '' && anchor) {
+      // Clear = unlink
+      anchor.replaceWith(...anchor.childNodes);
+    } else if (url) {
+      document.execCommand('createLink', false, url);
+    }
   }
 
   function addPromptEntry(btn) {
@@ -2536,7 +2561,9 @@
   const BODY_P_STYLE = 'color:#333;font-size:16px;line-height:1.6;margin:0;';
   function styleBodyHtml(html, pStyle) {
     const style = pStyle || BODY_P_STYLE;
-    return (html || '').replace(/<p>/g, `<p style="${style}">`);
+    return (html || '')
+      .replace(/<p>/g, `<p style="${style}">`)
+      .replace(/<a /g, '<a target="_blank" rel="noopener" ');
   }
 
   // Convert ISO string or date-only string to datetime-local value (YYYY-MM-DDTHH:MM:SS)
@@ -2593,11 +2620,14 @@
       const step = { type };
 
       if (type === 'registration') {
-        const pills = card.querySelectorAll('.pill-group .pill.active');
-        step.idMethod = pills[0]?.textContent.trim().toLowerCase().includes('auto') ? 'auto_generate' : 'manual';
-        step.idPrefix = card.querySelector('.reg-id-prefix')?.value || '';
+        const idMethodPill = card.querySelector('[data-setting="idMethod"] .pill.active');
+        step.idMethod = idMethodPill?.textContent.trim().toLowerCase().includes('auto') ? 'auto_generate' : 'manual';
+        const prefixToggle = card.querySelector('.toggle-custom-prefix');
+        if (prefixToggle?.classList.contains('on')) {
+          step.idPrefix = card.querySelector('.reg-id-prefix')?.value || '';
+        }
         step.skipLogin = card.querySelector('.reg-skip-login')?.checked || false;
-        step.showIdCorner = card.querySelector('.toggle-show-id-corner')?.classList.contains('on') ?? true;
+        step.showIdCorner = card.querySelector('.show-id-corner-select')?.value !== 'hidden';
         step.idPlaceholder = card.querySelector('.reg-id-placeholder')?.value || '';
         step.regTitle = card.querySelector('.reg-title-input')?.value || '';
         const regBody = card.querySelector('.reg-body-html-input');
@@ -2611,8 +2641,6 @@
         collectFontStyleSettings(card, step, 'body');
         collectUnderlineSettings(card, step);
         console.log(`%c[COLLECT]   Registration step ${i} DOM state:`, 'color: #58a6ff;', {
-          activePillText: pills[0]?.textContent.trim() || '(none)',
-          pillCount: pills.length,
           idMethod: step.idMethod,
           idPrefix: step.idPrefix,
           regTitle: step.regTitle,
@@ -2624,9 +2652,7 @@
         });
       }
       else if (type === 'info') {
-        const allInputs = Array.from(card.querySelectorAll('.step-detail .field-input'))
-          .filter(el => !el.type.startsWith('date'));
-        step.title = allInputs[0]?.value || '';
+        step.title = card.querySelector('.info-title-input')?.value || '';
         const bodyInput = card.querySelector('.body-html-input');
         step.bodyHtml = bodyInput ? bodyInput.innerHTML : '';
         const dismissInput = card.querySelector('.dismiss-label-input');
@@ -2656,8 +2682,8 @@
         const subtitleInput = card.querySelector('.question-subtitle-input');
         if (subtitleInput && subtitleInput.value) step.subtitle = subtitleInput.value;
         // Answer type from pill
-        const qPills = card.querySelectorAll('.pill-group-answer-type .pill.active');
-        const qPillText = qPills[0]?.textContent.trim().toLowerCase() || 'multiple choice';
+        const qPill = card.querySelector('.pill-group-answer-type .pill.active');
+        const qPillText = qPill?.textContent.trim().toLowerCase() || 'multiple choice';
         step.questionType = qPillText.includes('free') ? 'freetext' : 'radio';
         // Read question ID from the editable input (always present, auto-generated if needed)
         const qIdInput = card.querySelector('.question-id-input');
@@ -2702,27 +2728,24 @@
         if (btnText && btnText !== '✓ Complete') step.completeBtnText = btnText;
         step.spacecraft = card.querySelector('.spacecraft-select')?.value || 'GOES';
         step.dataset = card.querySelector('.dataset-select')?.value || 'DN_MAGN-L2-HIRES_G16';
-        const selects = card.querySelectorAll('select.field-input');
-        step.playbackSpeed = selects[2]?.value || '1x';
+        step.playbackSpeed = card.querySelector('[data-setting="playbackSpeed"]')?.value || '1x';
         const startInput = card.querySelector('.analysis-start');
         const endInput = card.querySelector('.analysis-end');
         step.startTime = toISOTime(startInput?.value || '');
         step.endTime = toISOTime(endInput?.value || '');
-        const dataSrcPills = card.querySelectorAll('.pill-group .pill.active');
-        const srcText = dataSrcPills[0]?.textContent.trim().toLowerCase() || '';
+        const dataSrcPill = card.querySelector('[data-setting="dataSource"] .pill.active');
+        const srcText = dataSrcPill?.textContent.trim().toLowerCase() || '';
         step.dataSource = srcText.includes('cdaweb') ? 'cdaweb' : 'cloudflare_r2';
         const preloadSelect = card.querySelector('.data-preload-select');
         if (preloadSelect && preloadSelect.value && preloadSelect.value !== 'onEnter') {
           step.dataPreload = preloadSelect.value;
         }
-        const toggles = card.querySelectorAll('.settings-body .toggle');
-        step.allowStretch = toggles[0]?.classList.contains('on') || false;
-        step.allowFeatureDrawing = toggles[1]?.classList.contains('on') || false;
-        step.requireMinFeatures = toggles[2]?.classList.contains('on') || false;
+        step.silentDataLoading = card.querySelector('.toggle-silent-loading')?.classList.contains('on') || false;
+        step.allowStretch = card.querySelector('[data-setting="allowStretch"]')?.classList.contains('on') || false;
+        step.requireMinFeatures = card.querySelector('[data-setting="requireMinFeatures"]')?.classList.contains('on') || false;
         step.minFeatures = parseInt(card.querySelector('.min-features-input')?.value) || 1;
         console.log(`%c[COLLECT]   Analysis step ${i} DOM:`, 'color: #58a6ff;', {
           title: step.title,
-          selectCount: selects.length,
           spacecraft: step.spacecraft,
           dataset: step.dataset,
           playbackSpeed: step.playbackSpeed,
@@ -2731,8 +2754,9 @@
           dataSrcPillText: srcText || '(none)',
           dataSource: step.dataSource,
           dataPreload: preloadSelect?.value || '(default)',
-          toggleCount: toggles.length,
-          toggleValues: Array.from(toggles).map((t, ti) => `[${ti}]=${t.classList.contains('on') ? 'ON' : 'OFF'}`),
+          allowStretch: step.allowStretch,
+          requireMinFeatures: step.requireMinFeatures,
+          silentDataLoading: step.silentDataLoading,
         });
         // Collect prompts
         const promptEntries = card.querySelectorAll('.prompt-entry');
@@ -2749,8 +2773,7 @@
             }
           });
         }
-        // confirmCompletion is the 4th toggle (index 3)
-        const confirmEnabled = toggles[3]?.classList.contains('on') || false;
+        const confirmEnabled = card.querySelector('[data-setting="confirmCompletion"]')?.classList.contains('on') || false;
         if (confirmEnabled) {
           step.confirmCompletion = {
             enabled: true,
@@ -2982,6 +3005,35 @@
     // Remove <font> tags but keep their children (preserves bold/italic inside)
     tmp.querySelectorAll('font').forEach(font => font.replaceWith(...font.childNodes));
     document.execCommand('insertHTML', false, tmp.innerHTML);
+  });
+
+  /** Cmd/Ctrl+K: Insert link on selected text in contenteditable */
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      const el = e.target.closest('[contenteditable="true"]');
+      if (!el) return;
+      e.preventDefault();
+      const sel = window.getSelection();
+      if (!sel.rangeCount || sel.isCollapsed) return;
+      const url = prompt('URL:');
+      if (url) document.execCommand('createLink', false, url);
+    }
+  });
+
+  /** Click on a link inside contenteditable: edit its URL */
+  document.addEventListener('click', (e) => {
+    const anchor = e.target.closest('a');
+    if (!anchor) return;
+    const editable = anchor.closest('[contenteditable="true"]');
+    if (!editable) return;
+    e.preventDefault();
+    const newUrl = prompt('Edit URL:', anchor.href);
+    if (newUrl === null) return; // cancelled
+    if (newUrl === '') { // empty = remove link, keep text
+      anchor.replaceWith(...anchor.childNodes);
+    } else {
+      anchor.href = newUrl;
+    }
   });
 
   _autoSaveObserver = new MutationObserver(() => autoSave('mutation'));
@@ -3440,6 +3492,14 @@
   }
 
   // Toggle hide button for info cards
+  function toggleSkipLogin(checkbox) {
+    const card = checkbox.closest('.step-card');
+    const skip = checkbox.checked;
+    card.querySelectorAll('.reg-skip-hideable').forEach(el => {
+      el.style.display = skip ? 'none' : '';
+    });
+  }
+
   function toggleMinFeatures(toggle) {
     const input = toggle.parentElement.querySelector('.min-features-input');
     if (input) input.style.display = toggle.classList.contains('on') ? '' : 'none';
@@ -3475,6 +3535,16 @@
       const autoFields = card.querySelector('.reg-auto-fields');
       if (manualFields) manualFields.style.display = isManual ? '' : 'none';
       if (autoFields) autoFields.style.display = isManual ? 'none' : '';
+      card.querySelectorAll('.reg-manual-setting').forEach(el => el.style.display = isManual ? '' : 'none');
+      card.querySelectorAll('.reg-auto-setting').forEach(el => el.style.display = isManual ? 'none' : '');
+      // Switching to manual: uncheck skip login and show everything
+      if (isManual) {
+        const skipBox = card.querySelector('.reg-skip-login');
+        if (skipBox && skipBox.checked) {
+          skipBox.checked = false;
+          toggleSkipLogin(skipBox);
+        }
+      }
     }
 
     // Toggle question answer type: Multiple Choice ↔ Free Text
@@ -3750,7 +3820,7 @@
       card.dataset.questionId = newQid;
       card.innerHTML = buildQuestionCard(num, defaultStep);
     } else {
-      defaultStep = { type: 'analysis', title: 'New Analysis Step', spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16', startDate: '', endDate: '', dataSource: 'cloudflare_r2', playbackSpeed: '1x', allowFeatureDrawing: true, allowStretch: true, minFeatures: 1, confirmCompletion: { enabled: false } };
+      { const today = new Date().toISOString().slice(0,10); defaultStep = { type: 'analysis', title: 'New Analysis Step', spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16', startTime: today + 'T00:00:00Z', endTime: today + 'T00:00:00Z', dataSource: 'cloudflare_r2', playbackSpeed: '1x', allowFeatureDrawing: true, allowStretch: true, minFeatures: 1, confirmCompletion: { enabled: false } }; }
       card.innerHTML = buildAnalysisCard(num, defaultStep);
     }
 
@@ -3794,7 +3864,7 @@
       card.dataset.questionId = newQid;
       card.innerHTML = buildQuestionCard(num, defaultStep);
     } else {
-      defaultStep = { type: 'analysis', title: 'New Analysis Step', spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16', startDate: '', endDate: '', dataSource: 'cloudflare_r2', playbackSpeed: '1x', allowFeatureDrawing: true, allowStretch: true, minFeatures: 1, confirmCompletion: { enabled: false } };
+      { const today = new Date().toISOString().slice(0,10); defaultStep = { type: 'analysis', title: 'New Analysis Step', spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16', startTime: today + 'T00:00:00Z', endTime: today + 'T00:00:00Z', dataSource: 'cloudflare_r2', playbackSpeed: '1x', allowFeatureDrawing: true, allowStretch: true, minFeatures: 1, confirmCompletion: { enabled: false } }; }
       card.innerHTML = buildAnalysisCard(num, defaultStep);
     }
 
@@ -4096,8 +4166,7 @@
 
   // Preview window — renders modal as a popup overlay, emulates the live site flow
   function readInfoFromCard(card) {
-    const inputs = Array.from(card.querySelectorAll('.step-detail .field-input')).filter(el => !el.type.startsWith('date'));
-    const title = inputs[0]?.value || 'Information';
+    const title = card.querySelector('.info-title-input')?.value || 'Information';
     const bodyInput = card.querySelector('.body-html-input');
     const bodyHtml = bodyInput ? bodyInput.innerHTML : '';
     const dismissLabel = card.querySelector('.dismiss-label-input')?.value || 'OK';
@@ -4127,6 +4196,35 @@
     return { step, bodyHtml, btnStyle };
   }
 
+  function readRegistrationFromCard(card) {
+    const title = card.querySelector('.reg-title-input')?.value || 'Welcome';
+    const bodyEl = card.querySelector('.reg-body-html-input');
+    const bodyHtml = bodyEl ? bodyEl.innerHTML : '<p>Enter a user name to begin:</p>';
+    const placeholder = card.querySelector('.reg-id-placeholder')?.value || 'Enter your ID';
+    const buttonLabel = card.querySelector('.reg-button-label-input')?.value || 'Confirm';
+    const w = card.querySelector('.modal-width-input')?.value?.trim() || '480px';
+    const h = card.querySelector('.modal-height-input')?.value?.trim();
+    const ulToggle = card.querySelector('.toggle-title-underline');
+    const titleUnderline = ulToggle ? ulToggle.classList.contains('on') : true;
+    const titleUnderlineSize = card.querySelector('.title-underline-size')?.value || '2px';
+    const titleUnderlineColor = card.querySelector('.title-underline-color')?.value || '#c86464';
+    const step = {
+      regTitle: title,
+      regButtonLabel: buttonLabel,
+      idPlaceholder: placeholder,
+      modalWidth: w,
+      modalHeight: (h && h !== 'auto') ? h : undefined,
+      titleFontSize: card.querySelector('.title-font-size')?.value || '20px',
+      titleFontColor: card.querySelector('.title-font-color')?.value || '#550000',
+      titleFontBold: card.querySelector('.title-font-bold')?.classList.contains('active'),
+      bodyFontSize: card.querySelector('.body-font-size')?.value,
+      bodyFontColor: card.querySelector('.body-font-color')?.value,
+      bodyFontBold: card.querySelector('.body-font-bold')?.classList.contains('active'),
+      titleUnderline, titleUnderlineSize, titleUnderlineColor,
+    };
+    return { step, bodyHtml: styleBodyHtml(bodyHtml) };
+  }
+
   function renderInfoModalHtml(info) {
     return _questionRenderer.renderInfoModal(info);
   }
@@ -4139,7 +4237,7 @@
     const isQuestion = cardType === 'question';
     const navCards = isQuestion
       ? Array.from(document.querySelectorAll('.step-card[data-type="question"]'))
-      : [card]; // info cards preview solo
+      : [card]; // info/registration cards preview solo
     let currentIndex = Math.max(0, navCards.indexOf(card));
 
     const renderer = await getQuestionRenderer();
@@ -4174,7 +4272,9 @@
       if (!c) { close(); return; }
 
       let html;
-      if (c.dataset.type === 'info') {
+      if (c.dataset.type === 'registration') {
+        html = renderer.renderRegistrationModal(readRegistrationFromCard(c));
+      } else if (c.dataset.type === 'info') {
         html = renderInfoModalHtml(readInfoFromCard(c));
       } else {
         const { question, dims, index, total, progressPct, showBack } = readQuestionFromCard(c);
@@ -4223,6 +4323,16 @@
       // Wire close button (info cards with closable)
       const closeBtn = overlay.querySelector('.modal-close');
       if (closeBtn) closeBtn.addEventListener('click', close);
+
+      // Wire registration login button — enable on input, close on click (preview only)
+      const loginInput = overlay.querySelector('#studyLoginInput');
+      const loginSubmit = overlay.querySelector('#studyLoginSubmit');
+      if (loginInput && loginSubmit) {
+        loginInput.addEventListener('input', () => {
+          loginSubmit.disabled = !loginInput.value.trim();
+        });
+        loginSubmit.addEventListener('click', close);
+      }
     }
 
     renderStep(currentIndex);

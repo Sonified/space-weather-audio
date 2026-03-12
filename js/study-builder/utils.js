@@ -9,7 +9,9 @@ export function escapeHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</
 const BODY_P_STYLE = 'line-height:1.6;margin:0;';
 export function styleBodyHtml(html, pStyle) {
   const style = pStyle || BODY_P_STYLE;
-  return (html || '').replace(/<p>/g, `<p style="${style}">`);
+  return (html || '')
+    .replace(/<p>/g, `<p style="${style}">`)
+    .replace(/<a /g, '<a target="_blank" rel="noopener" ');
 }
 
 // Convert ISO string or date-only string to datetime-local value (YYYY-MM-DDTHH:MM:SS)

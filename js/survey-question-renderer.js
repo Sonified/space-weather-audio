@@ -77,8 +77,10 @@ export function renderInfoModal({ step, bodyHtml, btnStyle, preview = false }) {
     const bodyFont = buildBodyFontStyle(step);
     const bodyPStyle = `${bodyFont}line-height:1.6;margin:0;`;
 
-    // Apply per-paragraph styling
-    const styledBody = (bodyHtml || '').replace(/<p>/g, `<p style="${bodyPStyle}">`);
+    // Apply per-paragraph styling + force links to open in new tab
+    const styledBody = (bodyHtml || '')
+        .replace(/<p>/g, `<p style="${bodyPStyle}">`)
+        .replace(/<a /g, '<a target="_blank" rel="noopener" ');
 
     return `
         <div class="modal-content" style="${dimStyle} display: flex; flex-direction: column;">
@@ -95,6 +97,36 @@ export function renderInfoModal({ step, bodyHtml, btnStyle, preview = false }) {
                         <button type="button" class="modal-submit modal-dismiss" style="${btnStyle || ''} width: auto; min-width: 140px;">${step.dismissLabel || 'OK'}</button>
                     </div>
                 </div>`}
+            </div>
+        </div>
+    `;
+}
+
+export function renderRegistrationModal({ step, bodyHtml, preview = false }) {
+    const dimStyle = buildDimensionStyle(step, '480px');
+    const ulStyle = buildHeaderUnderlineStyle(step);
+    const titleFont = buildTitleFontStyle(step);
+    const bodyFont = buildBodyFontStyle(step);
+    const bodyPStyle = `${bodyFont}line-height:1.6;margin:0;`;
+    const title = step.regTitle || 'Welcome';
+    const buttonLabel = step.regButtonLabel || 'Confirm';
+    const placeholder = step.idPlaceholder || 'Enter your ID';
+
+    const styledBody = (bodyHtml || '')
+        .replace(/<p>/g, `<p style="${bodyPStyle}">`)
+        .replace(/<a /g, '<a target="_blank" rel="noopener" ');
+
+    return `
+        <div class="modal-content" style="${dimStyle}">
+            <div class="modal-header" style="${ulStyle}">
+                <h3 class="modal-title" style="${titleFont}">🔬 ${title}</h3>
+            </div>
+            <div class="modal-body" style="${bodyFont}">
+                ${styledBody}
+                <div class="modal-form-group">
+                    <input type="text" id="studyLoginInput" placeholder="${placeholder}" style="font-size: 18px;" autocomplete="off"${preview ? ' disabled' : ''}>
+                </div>
+                <button type="button" id="studyLoginSubmit" class="modal-submit" disabled>✓ ${buttonLabel}</button>
             </div>
         </div>
     `;

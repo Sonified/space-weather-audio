@@ -100,8 +100,8 @@ function handleKeyboardShortcut(event) {
         return;
     }
 
-    // 'f' key: Toggle flags panel
-    if (event.key === 'f' || event.key === 'F') {
+    // 'f' key: Toggle flags panel (not in study mode)
+    if ((event.key === 'f' || event.key === 'F') && !isStudyMode()) {
         const btn = document.getElementById('showFlagsBtn');
         if (btn) {
             event.preventDefault();
