@@ -4965,21 +4965,28 @@
     btn.textContent = 'Checking...';
     errorEl.textContent = '';
 
-    // Get current study slug
-    const slug = new URLSearchParams(location.search).get('study')
-      || localStorage.getItem('study_builder_last')
-      || 'emic-pilot';
-
     try {
-      const resp = await fetch(`${API_BASE}/api/study/${slug}/verify-admin`, {
+      // Global verify — key determines which study to load
+      const resp = await fetch(`${API_BASE}/api/verify-admin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key }),
       });
       const data = await resp.json();
 
-      if (data.success) {
+      if (data.success && data.study) {
         sessionStorage.setItem('admin_authed', 'true');
+        // Load the study config that matched the key
+        const config = data.study.config;
+        config.slug = config.slug || data.study.id;
+        config.name = config.name || data.study.name;
+        loadConfigIntoBuilder(config);
+        updateLocalUrl(config.slug);
+        // Persist locally
+        localStorage.setItem('study_builder_config', JSON.stringify(config));
+        localStorage.setItem('study_builder_last', config.slug);
+        await indexdbSave(config).catch(() => {});
+        refreshStudyPicker();
         dismissAdminGate();
       } else if (resp.status === 429) {
         const wait = data.retry_after;
@@ -4989,6 +4996,12 @@
         btn.textContent = 'Locked';
         setTimeout(() => { btn.disabled = false; btn.textContent = 'Unlock'; }, Math.min(wait * 1000, 30000));
       } else {
+        // Wrong key — log the failed attempt for rate limiting
+        fetch(`${API_BASE}/api/verify-admin-fail`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        }).catch(() => {});
         errorEl.innerHTML = 'Invalid admin key<br><span style="color:var(--text-muted);font-size:12px;">Contact <a href="mailto:robert@auralab.io" style="color:#58a6ff;">robert@auralab.io</a> for support</span>';
         input.value = '';
         input.focus();
