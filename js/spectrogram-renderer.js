@@ -1084,28 +1084,38 @@ function showFeaturePopup(box) {
                 </div>
             </div>
         </div>
-        <div class="feature-popup-row">
-            <div class="feature-popup-field">
-                <label>Start Time (UTC)</label>
-                <input type="text" data-key="startTime" data-original="${feature.startTime || ''}" value="${formatTimeForPopup(feature.startTime)}" />
-            </div>
-            <div class="feature-popup-field">
-                <label>End Time (UTC)</label>
-                <input type="text" data-key="endTime" data-original="${feature.endTime || ''}" value="${formatTimeForPopup(feature.endTime)}" />
-            </div>
-        </div>
-        <div class="feature-popup-row">
-            <div class="feature-popup-field">
-                <label>Low Freq (Hz)</label>
-                <input type="text" data-key="lowFreq" value="${feature.lowFreq ? parseFloat(feature.lowFreq).toFixed(3) : ''}" />
-            </div>
-            <div class="feature-popup-field">
-                <label>High Freq (Hz)</label>
-                <input type="text" data-key="highFreq" value="${feature.highFreq ? parseFloat(feature.highFreq).toFixed(3) : ''}" />
+        <div class="feature-popup-confidence">
+            <span class="feature-popup-confidence-label">Is this an EMIC wave?</span>
+            <div class="feature-popup-pills">
+                <button class="feature-popup-pill${feature.confidence === 'confirmed' ? ' active' : ''}" data-confidence="confirmed">Yes</button>
+                <button class="feature-popup-pill${feature.confidence === 'uncertain' ? ' active' : ''}" data-confidence="uncertain">Possibly</button>
             </div>
         </div>
         <textarea class="feature-popup-notes" placeholder="Describe this feature...">${feature.notes || ''}</textarea>
-        <button class="feature-popup-save" disabled>Save</button>
+        <details class="feature-popup-details">
+            <summary>Details</summary>
+            <div class="feature-popup-row">
+                <div class="feature-popup-field">
+                    <label>Start Time (UTC)</label>
+                    <input type="text" data-key="startTime" data-original="${feature.startTime || ''}" value="${formatTimeForPopup(feature.startTime)}" />
+                </div>
+                <div class="feature-popup-field">
+                    <label>End Time (UTC)</label>
+                    <input type="text" data-key="endTime" data-original="${feature.endTime || ''}" value="${formatTimeForPopup(feature.endTime)}" />
+                </div>
+            </div>
+            <div class="feature-popup-row">
+                <div class="feature-popup-field">
+                    <label>Low Freq (Hz)</label>
+                    <input type="text" data-key="lowFreq" value="${feature.lowFreq ? parseFloat(feature.lowFreq).toFixed(3) : ''}" />
+                </div>
+                <div class="feature-popup-field">
+                    <label>High Freq (Hz)</label>
+                    <input type="text" data-key="highFreq" value="${feature.highFreq ? parseFloat(feature.highFreq).toFixed(3) : ''}" />
+                </div>
+            </div>
+        </details>
+        <button class="feature-popup-save" disabled>Done</button>
     `;
 
     popup.style.visibility = 'hidden';
@@ -1248,13 +1258,30 @@ function showFeaturePopup(box) {
     // Grab references
     const notesArea = popup.querySelector('.feature-popup-notes');
     const saveBtn = popup.querySelector('.feature-popup-save');
+    const pills = popup.querySelectorAll('.feature-popup-pill');
 
-    // Auto-focus the notes textarea
-    requestAnimationFrame(() => {
-        notesArea.focus();
-        // Place cursor at end of existing text
-        notesArea.selectionStart = notesArea.selectionEnd = notesArea.value.length;
+    // Wire confidence pills
+    pills.forEach(pill => {
+        pill.addEventListener('click', (e) => {
+            e.stopPropagation();
+            pills.forEach(p => p.classList.remove('active'));
+            pill.classList.add('active');
+            // Write confidence immediately to feature object
+            const features = getStandaloneFeatures();
+            const f = features[box.featureIndex];
+            if (f) f.confidence = pill.dataset.confidence;
+            updateSaveState();
+        });
     });
+
+    // Auto-focus: if confidence already set, focus notes; otherwise let eye land on pills
+    const hasConfidence = popup.querySelector('.feature-popup-pill.active');
+    if (hasConfidence) {
+        requestAnimationFrame(() => {
+            notesArea.focus();
+            notesArea.selectionStart = notesArea.selectionEnd = notesArea.value.length;
+        });
+    }
 
     // Track whether user has modified anything
     const originalNotes = notesArea.value;
@@ -1265,8 +1292,7 @@ function showFeaturePopup(box) {
     let isDirty = false;
 
     function updateSaveState() {
-        const hasContent = notesArea.value.trim().length > 0;
-        const textRequired = (localStorage.getItem('feature_text_required') || 'optional') === 'required';
+        const confidenceSelected = popup.querySelector('.feature-popup-pill.active');
         // Check if anything changed from the original
         isDirty = notesArea.value !== originalNotes;
         if (!isDirty) {
@@ -1274,7 +1300,7 @@ function showFeaturePopup(box) {
                 if (input.value !== originalFields[input.dataset.key]) isDirty = true;
             });
         }
-        saveBtn.disabled = textRequired && !hasContent;
+        saveBtn.disabled = !confidenceSelected;
         saveBtn.textContent = isDirty ? 'Save' : 'Done';
     }
     notesArea.addEventListener('input', updateSaveState);
@@ -1315,6 +1341,8 @@ function showFeaturePopup(box) {
         const f = features[box.featureIndex];
         if (f) {
             f.notes = notesArea.value.trim();
+            const activePill = popup.querySelector('.feature-popup-pill.active');
+            if (activePill) f.confidence = activePill.dataset.confidence;
             // Update editable fields if changed
             popup.querySelectorAll('input[data-key]').forEach(input => {
                 const key = input.dataset.key;

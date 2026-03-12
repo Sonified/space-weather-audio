@@ -402,7 +402,8 @@ export function initializeAdvancedControls() {
             applyDisplayMode(advancedCheckbox.checked);
             updateControlsVisibility();
             // Reload features for the new active ID and redraw (if data is loaded)
-            if (State.currentMetadata?.spacecraft) {
+            // On study.html, participant ID doesn't change with advanced toggle
+            if (State.currentMetadata?.spacecraft && !window.__STUDY_FLOW_MANAGED) {
                 loadRegionsAfterDataFetch();
                 requestAnimationFrame(() => redrawAllCanvasFeatureBoxes());
             }

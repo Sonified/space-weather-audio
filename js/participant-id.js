@@ -80,6 +80,10 @@ export function getRealUsernameStored() {
  * @returns {string} - The active ID or 'anonymous'
  */
 export function getActiveId() {
+    // On study.html, always use the participant ID from registration
+    if (window.__STUDY_FLOW_MANAGED) {
+        return localStorage.getItem('participantId') || 'anonymous';
+    }
     const isAdvanced = document.getElementById('advancedMode')?.checked;
     const isSimulating = localStorage.getItem('emic_is_simulating') === 'true';
     if (!isAdvanced && isSimulating) {

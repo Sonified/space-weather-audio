@@ -386,6 +386,10 @@ function applyAppSettings(settings) {
         const el = document.getElementById(elId);
         if (!el) continue;
 
+        // Debug checkboxes: only apply if config explicitly enables them.
+        // false/undefined = leave the user's hamburger preference alone.
+        if (path.startsWith('debug.') && !value) continue;
+
         // Handle booleans for checkboxes
         if (el.type === 'checkbox') {
             el.checked = !!value;

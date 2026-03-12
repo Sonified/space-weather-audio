@@ -189,43 +189,53 @@ export function drawSpectrogramPlayhead() {
         
         lastPlayheadX = playheadX;
         
-        // 🎉 MUCH SIMPLER: Just clear and redraw on overlay canvas!
-        // No need to restore background - overlay is transparent!
+        // Clear and redraw on transparent overlay canvas
         playheadOverlayCtx.clearRect(0, 0, width, height);
-        
-        // Cool playhead with glow and gradient
-        const time = performance.now() * 0.001;
-        const pulseIntensity = 0.2 + Math.sin(time * 3) * 0.08;
-        
-        playheadOverlayCtx.shadowBlur = 6;
-        playheadOverlayCtx.shadowColor = 'rgba(255, 50, 50, 0.45)';
-        playheadOverlayCtx.shadowOffsetX = 0;
-        
-        const gradient = playheadOverlayCtx.createLinearGradient(playheadX, 0, playheadX, height);
-        gradient.addColorStop(0, `rgba(255, 80, 80, ${(0.5 + pulseIntensity) * 0.9})`);
-        gradient.addColorStop(0.5, `rgba(255, 50, 50, ${(0.6 + pulseIntensity) * 0.9})`);
-        gradient.addColorStop(1, `rgba(255, 80, 80, ${(0.5 + pulseIntensity) * 0.9})`);
-        
-        playheadOverlayCtx.strokeStyle = gradient;
-        playheadOverlayCtx.lineWidth = 2.5;
-        playheadOverlayCtx.globalAlpha = 0.9;
-        // Account for line width and shadow to prevent extending beyond canvas bounds
+
         const maxY = height - 1;
+
+        // Main playhead line
+        playheadOverlayCtx.strokeStyle = 'rgba(255, 60, 60, 0.55)';
+        playheadOverlayCtx.lineWidth = 2.5;
         playheadOverlayCtx.beginPath();
         playheadOverlayCtx.moveTo(playheadX, 0);
         playheadOverlayCtx.lineTo(playheadX, maxY);
         playheadOverlayCtx.stroke();
-        
-        playheadOverlayCtx.shadowBlur = 0;
-        playheadOverlayCtx.strokeStyle = `rgba(255, 150, 150, ${(0.2 + pulseIntensity * 0.1) * 0.9})`;
+
+        // Soft outer glow line
+        playheadOverlayCtx.strokeStyle = 'rgba(255, 150, 150, 0.18)';
         playheadOverlayCtx.lineWidth = 1;
         playheadOverlayCtx.beginPath();
         playheadOverlayCtx.moveTo(playheadX, 0);
         playheadOverlayCtx.lineTo(playheadX, maxY);
         playheadOverlayCtx.stroke();
-        
-        playheadOverlayCtx.globalAlpha = 1.0;
-        playheadOverlayCtx.shadowColor = 'transparent';
+
+        // ── Animated pulse version (commented out — re-enable for glow effect) ──
+        // const time = performance.now() * 0.001;
+        // const pulseIntensity = 0.2 + Math.sin(time * 3) * 0.08;
+        // playheadOverlayCtx.shadowBlur = 6;
+        // playheadOverlayCtx.shadowColor = 'rgba(255, 50, 50, 0.45)';
+        // playheadOverlayCtx.shadowOffsetX = 0;
+        // const gradient = playheadOverlayCtx.createLinearGradient(playheadX, 0, playheadX, height);
+        // gradient.addColorStop(0, `rgba(255, 80, 80, ${(0.5 + pulseIntensity) * 0.9})`);
+        // gradient.addColorStop(0.5, `rgba(255, 50, 50, ${(0.6 + pulseIntensity) * 0.9})`);
+        // gradient.addColorStop(1, `rgba(255, 80, 80, ${(0.5 + pulseIntensity) * 0.9})`);
+        // playheadOverlayCtx.strokeStyle = gradient;
+        // playheadOverlayCtx.lineWidth = 2.5;
+        // playheadOverlayCtx.globalAlpha = 0.9;
+        // playheadOverlayCtx.beginPath();
+        // playheadOverlayCtx.moveTo(playheadX, 0);
+        // playheadOverlayCtx.lineTo(playheadX, maxY);
+        // playheadOverlayCtx.stroke();
+        // playheadOverlayCtx.shadowBlur = 0;
+        // playheadOverlayCtx.strokeStyle = `rgba(255, 150, 150, ${(0.2 + pulseIntensity * 0.1) * 0.9})`;
+        // playheadOverlayCtx.lineWidth = 1;
+        // playheadOverlayCtx.beginPath();
+        // playheadOverlayCtx.moveTo(playheadX, 0);
+        // playheadOverlayCtx.lineTo(playheadX, maxY);
+        // playheadOverlayCtx.stroke();
+        // playheadOverlayCtx.globalAlpha = 1.0;
+        // playheadOverlayCtx.shadowColor = 'transparent';
     }
 }
 
