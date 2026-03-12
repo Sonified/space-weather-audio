@@ -546,7 +546,9 @@ export default {
       const activityMatch = path.match(/^\/api\/study\/([^/]+)\/activity$/);
       if (activityMatch && request.method === 'GET') {
         const studyId = activityMatch[1];
-        const since = url.searchParams.get('since') || new Date(Date.now() - 3600000).toISOString();
+        // Normalize to SQLite format (D1 stores 'YYYY-MM-DD HH:MM:SS', no T/Z)
+        const rawSince = url.searchParams.get('since') || new Date(Date.now() - 3600000).toISOString();
+        const since = rawSince.replace('T', ' ').replace(/\.\d+Z$/, '').replace('Z', '');
         const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10), 200);
 
         const [participantRows, featureRows] = await Promise.all([

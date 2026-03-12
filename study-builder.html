@@ -2658,7 +2658,7 @@
     const steps = [];
     document.querySelectorAll('.step-card').forEach((card, i) => {
       const type = card.dataset.type;
-      if (type === 'settings') return; // skip app settings card
+      if (type === 'settings' || type === 'stream') return; // skip non-step cards
       const step = { type };
 
       if (type === 'registration') {
@@ -4904,16 +4904,23 @@
     const LOG_EL = 'dataStreamLog';
     const COUNT_EL = 'streamCount';
     const POLL_MS = 5000;
-    let lastSeen = new Date(Date.now() - 3600000).toISOString();
     let eventCount = 0;
+
+    // D1 stores datetime('now') as 'YYYY-MM-DD HH:MM:SS' (UTC, no T/Z).
+    // JS toISOString() produces '2026-03-12T22:43:08.888Z' which breaks string comparison.
+    function toSqliteUTC(date) {
+      return date.toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
+    }
+    let lastSeen = toSqliteUTC(new Date(Date.now() - 86400000)); // last 24h on first load
 
     function getStudySlug() {
       const el = document.getElementById('slugValue');
       return el ? el.textContent.trim() : null;
     }
 
-    function formatTime(iso) {
-      const d = new Date(iso);
+    function formatTime(raw) {
+      // D1 returns 'YYYY-MM-DD HH:MM:SS' (UTC, no Z) — append Z so Date parses as UTC
+      const d = new Date(raw.includes('Z') || raw.includes('+') ? raw : raw + 'Z');
       return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
 
@@ -4943,7 +4950,7 @@
       }
 
       return `<div style="border-bottom:1px solid rgba(255,255,255,0.05); padding:2px 0;">
-        <span style="color:#555;">${time}</span>
+        <span style="color:#8b949e;">${time}</span>
         <span style="color:#58a6ff;">${pid}</span>
         <span style="color:#d29922;">${type}</span>
         <span>${detail}</span>
@@ -4975,7 +4982,8 @@
         if (count) count.textContent = `${eventCount} event${eventCount !== 1 ? 's' : ''}`;
 
         const newest = data.events[0];
-        lastSeen = newest.timestamp || newest.updated_at || newest.created_at || lastSeen;
+        const ts = newest.timestamp || newest.updated_at || newest.created_at;
+        if (ts) lastSeen = ts.replace('T', ' ').replace(/\.\d+Z$/, '').replace('Z', '');
       } catch (e) {
         console.warn('Data stream poll error:', e);
       }
