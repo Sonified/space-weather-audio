@@ -408,24 +408,72 @@ export default {
         const studyId = studyConfigMatch[1];
 
         if (request.method === 'GET') {
-          const row = await env.DB.prepare('SELECT * FROM studies WHERE id = ?').bind(studyId).first();
+          const row = await env.DB.prepare('SELECT id, name, config, created_at, updated_at FROM studies WHERE id = ?').bind(studyId).first();
           if (!row) return json({ error: 'Study not found' }, 404);
           const config = typeof row.config === 'string' ? JSON.parse(row.config) : row.config;
+          // Strip adminKey from config — it lives in its own column now
+          delete config.adminKey;
           return json({ success: true, study: { id: row.id, name: row.name, config } });
         }
 
         if (request.method === 'PUT') {
           const body = await request.json();
-          const configStr = typeof body.config === 'string' ? body.config : JSON.stringify(body.config);
+          const config = typeof body.config === 'string' ? JSON.parse(body.config) : body.config;
+          // Extract adminKey from config, store in its own column
+          const adminKey = config.adminKey || null;
+          delete config.adminKey;
+          const configStr = JSON.stringify(config);
           const name = body.name || studyId;
-          await env.DB.prepare(
-            `INSERT INTO studies (id, name, config, updated_at) VALUES (?, ?, ?, datetime('now'))
-             ON CONFLICT(id) DO UPDATE SET name = excluded.name, config = excluded.config, updated_at = datetime('now')`
-          ).bind(studyId, name, configStr).run();
+          if (adminKey) {
+            await env.DB.prepare(
+              `INSERT INTO studies (id, name, config, admin_key, updated_at) VALUES (?, ?, ?, ?, datetime('now'))
+               ON CONFLICT(id) DO UPDATE SET name = excluded.name, config = excluded.config, admin_key = excluded.admin_key, updated_at = datetime('now')`
+            ).bind(studyId, name, configStr, adminKey).run();
+          } else {
+            await env.DB.prepare(
+              `INSERT INTO studies (id, name, config, updated_at) VALUES (?, ?, ?, datetime('now'))
+               ON CONFLICT(id) DO UPDATE SET name = excluded.name, config = excluded.config, updated_at = datetime('now')`
+            ).bind(studyId, name, configStr).run();
+          }
           return json({ success: true });
         }
 
         return json({ error: 'Method not allowed' }, 405);
+      }
+
+      // POST /api/study/:studyId/verify-admin — verify admin key with exponential backoff
+      const verifyAdminMatch = path.match(/^\/api\/study\/([^/]+)\/verify-admin$/);
+      if (verifyAdminMatch && request.method === 'POST') {
+        const studyId = verifyAdminMatch[1];
+        const row = await env.DB.prepare('SELECT admin_key, auth_fails, auth_locked_until FROM studies WHERE id = ?').bind(studyId).first();
+        if (!row) return json({ error: 'Study not found' }, 404);
+        if (!row.admin_key) return json({ error: 'No admin key configured' }, 403);
+
+        // Check rate limit
+        if (row.auth_locked_until) {
+          const lockedUntil = new Date(row.auth_locked_until + 'Z').getTime();
+          const now = Date.now();
+          if (now < lockedUntil) {
+            const waitSec = Math.ceil((lockedUntil - now) / 1000);
+            return json({ error: 'Too many attempts', retry_after: waitSec }, 429);
+          }
+        }
+
+        const body = await request.json();
+        const submitted = body.key || '';
+
+        if (submitted === row.admin_key) {
+          // Success — reset fails
+          await env.DB.prepare('UPDATE studies SET auth_fails = 0, auth_locked_until = NULL WHERE id = ?').bind(studyId).run();
+          return json({ success: true });
+        }
+
+        // Wrong key — increment fails, set exponential lockout: 5 * 4^fails seconds
+        const fails = (row.auth_fails || 0) + 1;
+        const lockoutSec = 5 * Math.pow(4, fails - 1); // 5s, 20s, 80s, 320s, 1280s, 5120s...
+        const lockedUntil = new Date(Date.now() + lockoutSec * 1000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
+        await env.DB.prepare('UPDATE studies SET auth_fails = ?, auth_locked_until = ? WHERE id = ?').bind(fails, lockedUntil, studyId).run();
+        return json({ error: 'Invalid admin key', retry_after: lockoutSec }, 403);
       }
 
       // Helper: detect mode from participant ID prefix (for logging only)

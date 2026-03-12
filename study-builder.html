@@ -132,8 +132,9 @@
     align-items: center;
     gap: 6px;
     font-size: var(--input-font-size);
+    min-width: 0;
   }
-  .slug-label { color: var(--text-muted); }
+  .slug-label { color: var(--text-muted); flex-shrink: 0; }
   .slug-url {
     color: var(--text-muted);
     font-family: 'SF Mono', 'Fira Code', monospace;
@@ -142,6 +143,12 @@
     border-radius: 4px;
     border: 1px solid var(--border);
     flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    min-height: 22px;
+    display: flex;
+    align-items: center;
   }
   .slug-editable {
     color: var(--accent);
@@ -168,8 +175,12 @@
     color: #c9d1d9;
     opacity: 0.6;
     transition: opacity 0.15s;
+    flex-shrink: 0;
   }
   .url-action-btn:hover { opacity: 1; }
+  .url-toggle { opacity: 0.35; transition: filter 0.15s, opacity 0.15s, background 0.15s; }
+  .url-toggle:hover { opacity: 0.7; }
+  .url-toggle.active { opacity: 1; background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.35); }
   .slug-status.checking { color: var(--orange); }
 
   /* Save indicator */
@@ -1090,6 +1101,21 @@
 </head>
 <body>
 
+<!-- Admin Gate Overlay (production only) -->
+<div id="adminGate" style="display:none; position:fixed; inset:0; z-index:9999; background:var(--bg); display:flex; align-items:center; justify-content:center;">
+  <div style="background:var(--card-bg); border:1px solid var(--border); border-radius:12px; padding:32px; max-width:360px; width:90%; text-align:center;">
+    <h2 style="margin:0 0 8px; font-size:20px;">Study Builder</h2>
+    <p style="color:var(--text-muted); margin:0 0 20px; font-size:14px;">Enter admin key to continue</p>
+    <input type="password" id="adminKeyGate" placeholder="Admin key" autocomplete="off"
+      style="width:100%; padding:10px 12px; font-size:15px; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:6px; box-sizing:border-box; text-align:center; letter-spacing:2px;" />
+    <div id="adminGateError" style="color:#f85149; font-size:13px; margin-top:8px; min-height:20px;"></div>
+    <button id="adminGateBtn" onclick="verifyAdminKey()"
+      style="margin-top:12px; width:100%; padding:10px; font-size:15px; font-weight:600; background:#238636; color:#fff; border:none; border-radius:6px; cursor:pointer;">
+      Unlock
+    </button>
+  </div>
+</div>
+
 <!-- Header -->
 <div class="header" style="max-width: 720px; margin: 0 auto 24px;">
   <!-- Row 1: Title -->
@@ -1103,26 +1129,27 @@
       <label for="studyNameInput" style="font-size:13px;color:var(--text-muted);font-weight:600;white-space:nowrap;">Study Name:</label>
       <input class="study-name-input" id="studyNameInput" value="" placeholder="Study name..." oninput="updateSlug()" />
     </div>
+    <!-- Row 1b: URL tag -->
+    <div class="header-row" style="margin-top:2px;">
+      <label for="urlTagInput" style="font-size:13px;color:var(--text-muted);font-weight:600;white-space:nowrap;">URL Tag:</label>
+      <input class="study-name-input" id="urlTagInput" value="" placeholder="e.g. emic-pilot" style="font-family:monospace; font-size:13px;" oninput="updateSlugFromTag()" />
+    </div>
     <!-- Row 2: URLs -->
     <div class="slug-preview" id="slugPreview" style="margin-top:4px;">
-      <span class="slug-label">Study URL:</span>
-      <span class="slug-url">spaceweather.now.audio/study.html?s=<span id="slugValue" class="slug-editable" contenteditable="true" spellcheck="false"></span></span>
+      <span class="slug-label">Live:</span>
+      <span class="slug-url">spaceweather.now.audio/study.html?s=<span id="slugValue" style="color:#58a6ff;"></span><span id="studyUrlMods" style="color:#d29922;"></span></span>
       <button class="url-action-btn" onclick="copyUrl('study')" title="Copy URL">📋</button>
-      <button class="url-action-btn" onclick="openUrl('study')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
-    </div>
-    <div class="slug-preview" id="testUrlPreview" style="margin-top:2px;">
-      <span class="slug-label">Test URL:</span>
-      <span class="slug-url" id="testUrl"></span>
-      <button class="url-action-btn" onclick="copyUrl('test')" title="Copy Test URL">📋</button>
-      <button class="url-action-btn" onclick="openUrl('test')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
-      <button class="url-action-btn" onclick="openUrl('cleantest')" title="Clean Test (reset session)">♻️</button>
+      <button class="url-action-btn" onclick="openUrl('study')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#79b8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
+      <button class="url-action-btn url-toggle" data-row="study" data-mod="test" onclick="toggleUrlMod(this)" title="Test mode">🧪</button>
+      <button class="url-action-btn url-toggle" data-row="study" data-mod="reset" onclick="toggleUrlMod(this)" title="Reset session">♻️</button>
     </div>
     <div class="slug-preview" id="localUrlPreview" style="margin-top:2px;display:none;">
-      <span class="slug-label">Local URL:</span>
-      <span class="slug-url" id="localUrl" style="color:var(--text-muted);"></span>
+      <span class="slug-label">Local:</span>
+      <span class="slug-url"><span id="localUrl" style="color:var(--text-muted);"></span><span id="localUrlMods" style="color:#d29922;"></span></span>
       <button class="url-action-btn" onclick="copyUrl('local')" title="Copy URL">📋</button>
-      <button class="url-action-btn" onclick="openUrl('local')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
-      <button class="url-action-btn" onclick="openUrl('cleanlocal')" title="Clean Local (reset session)">♻️</button>
+      <button class="url-action-btn" onclick="openUrl('local')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#79b8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
+      <button class="url-action-btn url-toggle" data-row="local" data-mod="test" onclick="toggleUrlMod(this)" title="Test mode">🧪</button>
+      <button class="url-action-btn url-toggle" data-row="local" data-mod="reset" onclick="toggleUrlMod(this)" title="Reset session">♻️</button>
     </div>
     <!-- Row 3: Admin Key -->
     <div class="header-row" style="margin-top:4px;">
@@ -1568,6 +1595,8 @@
     }
     if (slug) {
       document.getElementById('slugValue').textContent = config.slug;
+      const tagInput = document.getElementById('urlTagInput');
+      if (tagInput) tagInput.value = config.slug;
       const statusEl = document.getElementById('slugStatus');
       if (statusEl) {
         statusEl.textContent = '✓ valid';
@@ -1721,6 +1750,21 @@
     // Load app settings
     if (config.appSettings) {
       loadAppSettingsIntoBuilder(config.appSettings);
+    }
+
+    // Restore URL toggle states
+    if (config.urlMods) {
+      document.querySelectorAll('.url-toggle').forEach(btn => {
+        const row = btn.dataset.row;
+        const mod = btn.dataset.mod;
+        if (config.urlMods[row]?.[mod]) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+      updateUrlModsDisplay('study');
+      updateUrlModsDisplay('local');
     }
 
     console.log('%c[LOAD] loadConfigIntoBuilder DONE', 'color: #ff6b6b; font-weight: bold;');
@@ -2849,6 +2893,10 @@
       appSettings,
       steps,
       updatedAt: new Date().toISOString(),
+      urlMods: {
+        study: getRowMods('study'),
+        local: getRowMods('local'),
+      },
     };
     console.log('%c[COLLECT] collectStudyConfig DONE', 'color: #58a6ff; font-weight: bold;', {
       name: result.name,
@@ -3139,16 +3187,31 @@
   }
 
   let slugFlashTimer = null;
+
+  // Called when URL Tag input changes directly
+  function updateSlugFromTag() {
+    const raw = document.getElementById('urlTagInput').value;
+    const slug = raw.toLowerCase().replace(/[^a-z0-9-]/g, '').replace(/^-|-$/g, '').slice(0, 60);
+    document.getElementById('slugValue').textContent = slug;
+    updateLocalUrl(slug);
+    validateSlug(slug);
+    fitUrlText(document.getElementById('slugPreview'));
+  }
+
   function updateSlug() {
     const name = document.getElementById('studyNameInput').value;
     const slug = nameToSlug(name);
     const slugEl = document.getElementById('slugValue');
-    const flash = document.getElementById('slugFlash');
+    const tagInput = document.getElementById('urlTagInput');
     slugEl.textContent = slug;
+    if (tagInput) tagInput.value = slug;
     updateLocalUrl(slug);
-    updateTestUrl(slug);
+    validateSlug(slug);
+    fitUrlText(document.getElementById('slugPreview'));
+  }
 
-    // Validate & flash
+  function validateSlug(slug) {
+    const flash = document.getElementById('slugFlash');
     const valid = slug.length >= 3 && /^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(slug);
     if (valid) {
       flash.textContent = '✓ Valid URL';
@@ -3172,38 +3235,62 @@
     if (!isLocal) { row.style.display = 'none'; return; }
     row.style.display = '';
     const el = document.getElementById('localUrl');
-    el.textContent = `${location.origin}/study.html?s=${slug}`;
+    el.innerHTML = `${location.origin}/study.html?s=<span style="color:#58a6ff;">${slug}</span>`;
+    fitUrlText(row);
   }
 
-  function updateTestUrl(slug) {
-    const el = document.getElementById('testUrl');
-    if (el) el.textContent = `spaceweather.now.audio/study.html?s=${slug}&mode=test`;
+  // Auto-shrink URL font so full text stays visible
+  function fitUrlText(rowEl) {
+    if (!rowEl) return;
+    const urlEl = rowEl.querySelector('.slug-url');
+    if (!urlEl) return;
+    // Reset to default size, then shrink until no overflow
+    urlEl.style.fontSize = '';
+    let size = 14; // matches --input-font-size
+    while (urlEl.scrollWidth > urlEl.clientWidth && size > 9) {
+      size -= 0.5;
+      urlEl.style.fontSize = size + 'px';
+    }
   }
 
-  function getStudyUrl() {
+  // URL modifier toggles — 🧪 and ♻️ modify what 🌐 and 📋 do
+  function toggleUrlMod(btn) {
+    btn.classList.toggle('active');
+    updateUrlModsDisplay(btn.dataset.row);
+    autoSave('toggle');
+  }
+
+  function updateUrlModsDisplay(row) {
+    const mods = getRowMods(row);
+    let suffix = '';
+    if (mods.test) suffix += '&mode=test';
+    if (mods.reset) suffix += '&reset';
+    const el = document.getElementById(row === 'local' ? 'localUrlMods' : 'studyUrlMods');
+    if (el) el.textContent = suffix;
+    fitUrlText(document.getElementById(row === 'local' ? 'localUrlPreview' : 'slugPreview'));
+  }
+
+  function getRowMods(row) {
+    const toggles = document.querySelectorAll(`.url-toggle[data-row="${row}"].active`);
+    const mods = {};
+    toggles.forEach(t => mods[t.dataset.mod] = true);
+    return mods;
+  }
+
+  function buildUrl(row) {
     const slug = document.getElementById('slugValue').textContent;
-    return `https://spaceweather.now.audio/study.html?s=${slug}`;
+    const base = row === 'local'
+      ? `${location.origin}/study.html?s=${slug}`
+      : `https://spaceweather.now.audio/study.html?s=${slug}`;
+    const mods = getRowMods(row);
+    let url = base;
+    if (mods.test) url += '&mode=test';
+    if (mods.reset) url += '&reset';
+    return url;
   }
 
-  function getLocalUrl() {
-    const slug = document.getElementById('slugValue').textContent;
-    return `${location.origin}/study.html?s=${slug}`;
-  }
-
-  function getTestUrl() {
-    return getStudyUrl() + '&mode=test';
-  }
-
-  function getCleanTestUrl() {
-    return getTestUrl() + '&reset';
-  }
-
-  function getCleanLocalUrl() {
-    return getLocalUrl() + '&mode=test&reset';
-  }
-
-  function copyUrl(type) {
-    const url = type === 'cleantest' ? getCleanTestUrl() : type === 'cleanlocal' ? getCleanLocalUrl() : type === 'test' ? getTestUrl() : type === 'local' ? getLocalUrl() : getStudyUrl();
+  function copyUrl(row) {
+    const url = buildUrl(row);
     navigator.clipboard.writeText(url).then(() => {
       const btn = event.currentTarget;
       const orig = btn.textContent;
@@ -3212,26 +3299,10 @@
     });
   }
 
-  function openUrl(type) {
-    const url = type === 'cleantest' ? getCleanTestUrl() : type === 'cleanlocal' ? getCleanLocalUrl() : type === 'test' ? getTestUrl() : type === 'local' ? getLocalUrl() : getStudyUrl();
-    window.open(url, '_blank');
+  function openUrl(row) {
+    window.open(buildUrl(row), '_blank');
   }
 
-  // Allow manual slug editing
-  document.getElementById('slugValue')?.addEventListener('input', () => {
-    const el = document.getElementById('slugValue');
-    const slug = el.textContent.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
-    // Instantly update local URL preview
-    updateLocalUrl(slug);
-    updateTestUrl(slug);
-    // Validate slug
-    const valid = slug.length >= 3 && /^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(slug);
-    const statusEl = document.getElementById('slugStatus');
-    if (statusEl) {
-      statusEl.textContent = valid ? '✓ valid' : '✕ invalid';
-      statusEl.className = 'slug-status ' + (valid ? 'valid' : 'invalid');
-    }
-  });
 
   // ── Load study on page open ─────────────────────────────────
   // Primary: localStorage (synchronous, already parsed at script top)
@@ -3240,7 +3311,6 @@
 
   // Init local URL display
   updateLocalUrl(document.getElementById('slugValue').textContent);
-  updateTestUrl(document.getElementById('slugValue').textContent);
 
   // Keyboard shortcut: Cmd+S / Ctrl+S to save
   document.addEventListener('keydown', (e) => {
@@ -4825,7 +4895,6 @@
     if (config) {
       loadConfigIntoBuilder(config);
       updateLocalUrl(config.slug);
-      updateTestUrl(config.slug);
       localStorage.setItem('study_builder_config', JSON.stringify(config));
       localStorage.setItem('study_builder_last', slug);
       console.log('💾 Switched to study:', slug);
@@ -4864,6 +4933,79 @@
     }
   }
 
+  // ── Admin Gate (production only) ──
+  // Reuse same API_BASE as the rest of the builder
+  const adminGate = document.getElementById('adminGate');
+
+  if (!isLocal) {
+    // Show gate, hide page content
+    adminGate.style.display = 'flex';
+    document.querySelector('.header').style.visibility = 'hidden';
+    document.getElementById('stepList')?.style.setProperty('visibility', 'hidden');
+
+    // Check sessionStorage for prior auth
+    if (sessionStorage.getItem('admin_authed') === 'true') {
+      dismissAdminGate();
+    } else {
+      // Enter key submits
+      document.getElementById('adminKeyGate')?.addEventListener('keydown', e => {
+        if (e.key === 'Enter') verifyAdminKey();
+      });
+    }
+  }
+
+  async function verifyAdminKey() {
+    const input = document.getElementById('adminKeyGate');
+    const errorEl = document.getElementById('adminGateError');
+    const btn = document.getElementById('adminGateBtn');
+    const key = input.value.trim();
+    if (!key) { errorEl.textContent = 'Please enter a key'; return; }
+
+    btn.disabled = true;
+    btn.textContent = 'Checking...';
+    errorEl.textContent = '';
+
+    // Get current study slug
+    const slug = new URLSearchParams(location.search).get('study')
+      || localStorage.getItem('study_builder_last')
+      || 'emic-pilot';
+
+    try {
+      const resp = await fetch(`${API_BASE}/api/study/${slug}/verify-admin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+      });
+      const data = await resp.json();
+
+      if (data.success) {
+        sessionStorage.setItem('admin_authed', 'true');
+        dismissAdminGate();
+      } else if (resp.status === 429) {
+        const wait = data.retry_after;
+        const fmt = wait >= 60 ? `${Math.ceil(wait / 60)} minute${wait >= 120 ? 's' : ''}` : `${wait} seconds`;
+        errorEl.textContent = `Too many attempts. Try again in ${fmt}.`;
+        btn.disabled = true;
+        btn.textContent = 'Locked';
+        setTimeout(() => { btn.disabled = false; btn.textContent = 'Unlock'; }, Math.min(wait * 1000, 30000));
+      } else {
+        errorEl.innerHTML = 'Invalid admin key<br><span style="color:var(--text-muted);font-size:12px;">Contact <a href="mailto:robert@auralab.io" style="color:#58a6ff;">robert@auralab.io</a> for support</span>';
+        input.value = '';
+        input.focus();
+      }
+    } catch (e) {
+      errorEl.textContent = 'Connection error — try again';
+    }
+    btn.disabled = false;
+    btn.textContent = 'Unlock';
+  }
+
+  function dismissAdminGate() {
+    adminGate.style.display = 'none';
+    document.querySelector('.header').style.visibility = '';
+    document.getElementById('stepList')?.style.setProperty('visibility', '');
+  }
+
   // ── Load study on page open (must be last — needs all definitions above) ──
   (function loadOnInit() {
     const config = window._pendingConfig;
@@ -4873,7 +5015,6 @@
       console.log('%c[INIT] Loading from localStorage (synchronous):', 'color: #bc8cff; font-weight: bold;', config.slug);
       loadConfigIntoBuilder(config);
       updateLocalUrl(config.slug);
-      updateTestUrl(config.slug);
       refreshStudyPicker();
       return;
     }
@@ -4891,7 +5032,6 @@
       if (idbConfig) {
         loadConfigIntoBuilder(idbConfig);
         updateLocalUrl(idbConfig.slug || lastSlug);
-        updateTestUrl(idbConfig.slug || lastSlug);
         localStorage.setItem('study_builder_config', JSON.stringify(idbConfig));
         console.log('%c[INIT] ✅ Loaded from IndexedDB + migrated to localStorage', 'color: #bc8cff;');
       }

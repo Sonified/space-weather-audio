@@ -230,8 +230,7 @@
                         <input type="checkbox" id="advancedMode" style="width: 16px; height: 16px; cursor: pointer; accent-color: #80d0ff;">
                         Advanced
                     </label>
-                    <button type="button" id="showFlagsBtn" class="study-btn admin-only" style="padding: 6px 14px; font-size: 14px;">Show Flags</button>
-                    <button type="button" id="dataViewerBtn" class="study-btn admin-only" style="padding: 6px 14px; font-size: 14px;">Data Viewer</button>
+
                     <div id="stepNavGroup" class="admin-only" style="display: none; align-items: center; gap: 4px; margin-left: 8px;">
                         <button type="button" id="stepBackBtn" class="study-btn" style="padding: 4px 8px; font-size: 14px;" title="Previous step">◀</button>
                         <span id="stepIndicator" style="font-size: 13px; color: #ccd; min-width: 120px; text-align: center;">Step 0</span>
@@ -306,16 +305,6 @@
     <div id="permanentOverlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.65); z-index: 1000; align-items: center; justify-content: center;"></div>
 
     <!-- Study Flags Panel (floating, always on top — even above overlay) -->
-    <div id="studyFlagsPanel" style="display: none; position: fixed; top: 60px; right: 20px; z-index: 10000; background: rgba(20, 20, 30, 0.95); border: 2px solid rgba(255, 255, 255, 0.2); border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); backdrop-filter: blur(8px); overflow: hidden; min-width: 320px;">
-        <div id="studyFlagsDragHandle" style="padding: 6px 12px; background: rgba(255,255,255,0.08); border-bottom: 1px solid rgba(255,255,255,0.1); cursor: grab; display: flex; align-items: center; justify-content: space-between; user-select: none;">
-            <span style="font-size: 12px; font-weight: 700; color: #aaa; letter-spacing: 0.5px;">⚑ STUDY FLAGS</span>
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 10px; color: #555;">drag to move</span>
-                <button id="studyFlagsClose" style="font-size: 16px; line-height: 1; padding: 0 4px; border: none; background: transparent; color: #888; cursor: pointer;" title="Close">✕</button>
-            </div>
-        </div>
-        <div id="studyFlagsContent" style="padding: 10px 15px; font-family: monospace; font-size: 13px; max-height: 60vh; overflow-y: auto;"></div>
-    </div>
 
     <!-- CORE SYSTEM -->
     <script type="module">
