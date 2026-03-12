@@ -7,5 +7,5 @@ ALTER TABLE participants ADD COLUMN updated_at TEXT DEFAULT (datetime('now'));
 -- Backfill existing rows
 UPDATE participants SET updated_at = registered_at WHERE updated_at IS NULL;
 
--- step_history may not exist yet depending on migration order
-ALTER TABLE participants ADD COLUMN step_history TEXT DEFAULT '[]';
+-- NOTE: step_history is added by migration 0001 (d1-restructuring branch).
+-- If merging both branches, ensure 0001 runs first.

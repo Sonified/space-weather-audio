@@ -546,7 +546,7 @@ export default {
 
         const [participantRows, featureRows] = await Promise.all([
           env.DB.prepare(
-            `SELECT participant_id, current_step, updated_at, registered_at, responses, completed_at, 'participant' as source
+            `SELECT participant_id, current_step, updated_at, registered_at, completed_at, 'participant' as source
              FROM participants WHERE study_id = ? AND updated_at > ?
              ORDER BY updated_at DESC LIMIT ?`
           ).bind(studyId, since, limit).all(),
