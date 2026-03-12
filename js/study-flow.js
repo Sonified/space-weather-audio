@@ -1459,7 +1459,7 @@ async function runAnalysis(step) {
     if (completeBtn) {
         completeBtn.style.display = 'none';
         completeBtn.disabled = false;
-        completeBtn.textContent = '✓ Complete';
+        completeBtn.textContent = step.completeBtnText || '✓ Complete';
 
         // Poll for features, show Complete when user draws at least minFeatures
         const minFeatures = step.minFeatures || 1;
