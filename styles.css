@@ -4515,7 +4515,7 @@ select.csel-native {
    ============================================================ */
 
 /* EMIC-specific CSS custom properties */
-.emic-page {
+.emic-page, .study-page {
     --axis-label-font-size: 14px;
     --axis-label-color: #bbb;
     --axis-tick-color: #666;
@@ -4527,21 +4527,30 @@ select.csel-native {
 html[data-admin] .admin-only { display: flex; }
 html[data-admin] button.admin-only { display: inline-block; }
 
-/* EMIC study: Fetch Data panel is never shown on study pages (dev-only, use Solar Portal) */
-.emic-page #emicControlsPanel { display: none !important; }
+/* Study pages: Fetch Data panel is never shown (dev-only, use Solar Portal) */
+.emic-page #emicControlsPanel,
+.study-page #emicControlsPanel { display: none !important; }
 
-/* EMIC study: hide advanced-only elements before JS loads (prevents flash in production mode) */
-/* Scoped to .emic-page so Solar Portal is unaffected */
+/* Study pages: hide advanced-only elements before JS loads (prevents flash in production mode) */
+/* Scoped to study pages so Solar Portal is unaffected */
 html:not([data-advanced]) .emic-page #stretchGroup,
 html:not([data-advanced]) .emic-page #speedGroup,
 html:not([data-advanced]) .emic-page .panel-gear,
 html:not([data-advanced]) .emic-page #hamburgerBtn,
 html:not([data-advanced]) .emic-page #questionnairesPanel,
 html:not([data-advanced]) .emic-page #componentSelectorContainer,
-html:not([data-advanced]) .emic-page #detrendContainer {
+html:not([data-advanced]) .emic-page #detrendContainer,
+html:not([data-advanced]) .study-page #stretchGroup,
+html:not([data-advanced]) .study-page #speedGroup,
+html:not([data-advanced]) .study-page .panel-gear,
+html:not([data-advanced]) .study-page #hamburgerBtn,
+html:not([data-advanced]) .study-page #questionnairesPanel,
+html:not([data-advanced]) .study-page #componentSelectorContainer,
+html:not([data-advanced]) .study-page #detrendContainer {
     display: none;
 }
-html:not([data-advanced]) .emic-page .spectrogram-controls {
+html:not([data-advanced]) .emic-page .spectrogram-controls,
+html:not([data-advanced]) .study-page .spectrogram-controls {
     visibility: hidden;
     pointer-events: none;
 }
@@ -4551,7 +4560,7 @@ html:not([data-advanced]) .emic-page .spectrogram-controls {
 
 /* EMIC: taller spectrogram, shorter minimap */
 /* --spec-height is set dynamically by fitSpectrogram() in both HTML pages */
-.emic-page #minimap { height: 121px; }
+.emic-page #minimap, .study-page #minimap { height: 121px; }
 
 /* EMIC Study header */
 .emic-header {
@@ -4647,15 +4656,15 @@ html:not([data-advanced]) .emic-page .spectrogram-controls {
     border-radius: 2px;
 }
 
-/* EMIC viz-controls — compact styling override */
-.emic-page .viz-controls {
+/* Study page viz-controls — compact styling override */
+.emic-page .viz-controls, .study-page .viz-controls {
     gap: 18px !important;
 }
-.emic-page .viz-controls label {
+.emic-page .viz-controls label, .study-page .viz-controls label {
     font-size: 12px !important;
     opacity: 0.8;
 }
-.emic-page .viz-controls select {
+.emic-page .viz-controls select, .study-page .viz-controls select {
     font-size: 12px !important;
     padding: 2px 6px !important;
     background: rgba(255, 255, 255, 0.12) !important;
