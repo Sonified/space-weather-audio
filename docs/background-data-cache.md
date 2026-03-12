@@ -155,3 +155,48 @@ The background cache is browser-side only. D1's role:
 - **Service Worker**: Not needed. Cache API is available from main thread and web workers.
 - **CDAWeb source**: Would need equivalent cache logic if data comes from CDAWeb instead of R2. Same pattern, different URL structure.
 - **Cache invalidation**: R2 data is immutable (historical spacecraft data doesn't change), so no invalidation needed. Version the cache name (`v1`) for breaking changes.
+
+---
+
+## Implementation Notes (2026-03-12)
+
+### What Was Done
+
+All 5 migration steps implemented on `feature/browser-cache`:
+
+1. **Extracted chunk URL computation** → `js/chunk-url-utils.js`
+   - Exports: `fetchAllDayMetadata`, `buildChunkSchedule`, `resolveStepParams`
+   - Exports shared constants: `WORKER_BASE`, `INSTRUMENT_SAMPLE_RATE`, `DATASET_TO_SATELLITE`, `COMPONENT_MAP`
+   - `resolveStepParams(step)` maps study step config → `{ satellite, component, dataset, startTimeISO, endTimeISO }`
+
+2. **Created `js/background-preloader.js`**
+   - `backgroundDownload(step, signal)` — fetches all chunks for a step into Cache API, no decoding/rendering
+   - `fetchWithCache(url, opts)` — drop-in fetch wrapper that checks cache first
+   - Cache name: `sw-audio-data-v1`
+   - Dispatches `preload-complete` event on window when done
+
+3. **Modified `js/goes-cloudflare-fetcher.js`**
+   - Replaced inline constants with imports from `chunk-url-utils.js`
+   - Added `fetchChunk(url, signal)` that checks Cache API before network
+   - Replaced `fetch(chunk.url, ...)` call in download loop with `fetchChunk()`
+   - Imported `CACHE_NAME` from `background-preloader.js` for consistent cache name
+
+4. **Updated `js/study-flow.js`**
+   - `initDataPreload()` now calls `backgroundDownload(step)` for `pageLoad` preloads instead of `triggerPreloadForStep()` (which called `startBtn.click()` and ran the full destructive pipeline)
+   - `step:N` trigger preloads also use `backgroundDownload()` instead of `triggerPreloadForStep()`
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `js/chunk-url-utils.js` | **NEW** — shared chunk URL computation |
+| `js/background-preloader.js` | **NEW** — Cache API background downloader |
+| `js/goes-cloudflare-fetcher.js` | Import shared utils, add cache-aware `fetchChunk()` |
+| `js/study-flow.js` | Import `backgroundDownload`, replace `triggerPreloadForStep` calls |
+
+### Review Notes
+
+- The `buildChunkSchedule` algorithm in `chunk-url-utils.js` is an exact copy of the one in `goes-cloudflare-fetcher.js`. The fetcher still has its own copy (used in the rendering pipeline with metadata it fetches itself). Future cleanup could have the fetcher import it from the shared module, but that would require refactoring metadata flow.
+- `fetchWithCache` in `background-preloader.js` and `fetchChunk` in `goes-cloudflare-fetcher.js` do the same thing. The fetcher uses its own version for tighter abort signal handling. Could be unified later.
+- The background preloader defaults to component `bx` (index 0). If a study step specifies a different component, it should set `componentIndex` in the step config.
+- No service worker needed — Cache API works from the main thread.
