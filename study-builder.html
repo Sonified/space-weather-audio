@@ -2324,50 +2324,55 @@
               ${['0.5x','1x','1.25x','2x'].map(s => `<option ${s===speed?'selected':''}>${s}</option>`).join('')}
             </select>
           </div>
-          <div class="field-group">
-            <div class="field-label">Load data</div>
-            <select class="field-input data-preload-select">
-              ${buildDataPreloadOptions(step.dataPreload)}
-            </select>
-          </div>
         </div>
-        <div class="toggle-row">
-          <span class="toggle-label">Allow stretch/speed changes</span>
-          <div class="toggle ${step.allowStretch ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
-        </div>
-        <div class="toggle-row">
-          <span class="toggle-label">Allow feature drawing</span>
-          <div class="toggle ${step.allowFeatureDrawing ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
-        </div>
-        <div class="toggle-row">
-          <span class="toggle-label">Require minimum features</span>
-          <div class="toggle toggle-require-min-features ${step.requireMinFeatures ? 'on' : ''}" onclick="this.classList.toggle('on'); toggleMinFeatures(this)"></div>
-          <input class="field-input min-features-input" type="number" min="1" value="${step.minFeatures || 1}" style="width:60px; margin-left:8px; ${step.requireMinFeatures ? '' : 'display:none;'}" />
-        </div>
-        <div class="toggle-row">
-          <span class="toggle-label">Confirm analysis completion</span>
-          <div class="toggle ${confirm.enabled ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
-        </div>
-        ${confirm.enabled ? `<div style="margin-left:20px;">
-          <div class="field-group">
-            <div class="field-label">Confirmation Dialog Title</div>
-            <input class="field-input confirm-title-input" value="${escapeAttr(confirm.title || 'Complete?')}" />
-          </div>
-          <div class="field-group">
-            <div class="field-label">Confirmation Message</div>
-            <input class="field-input confirm-message-input" value="${escapeAttr(confirm.message || '')}" />
-          </div>
-          <div class="field-row">
+        <div class="card-settings" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open'); saveExpandedState()}">
+          <button class="card-settings-trigger" type="button">&#9881; Settings <span class="settings-chevron">&#9660;</span></button>
+          <div class="card-settings-drawer"><div class="settings-body">
             <div class="field-group">
-              <div class="field-label">Confirm Button</div>
-              <input class="field-input confirm-label-input" value="${escapeAttr(confirm.confirmLabel || "Yes, I'm done")}" />
+              <div class="field-label">Load data</div>
+              <select class="field-input data-preload-select">
+                ${buildDataPreloadOptions(step.dataPreload)}
+              </select>
             </div>
-            <div class="field-group">
-              <div class="field-label">Cancel Button</div>
-              <input class="field-input cancel-label-input" value="${escapeAttr(confirm.cancelLabel || 'Go back')}" />
+            <div class="toggle-row">
+              <span class="toggle-label">Allow stretch/speed changes</span>
+              <div class="toggle ${step.allowStretch ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
             </div>
-          </div>
-        </div>` : ''}
+            <div class="toggle-row">
+              <span class="toggle-label">Allow feature drawing</span>
+              <div class="toggle ${step.allowFeatureDrawing ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-label">Require minimum features</span>
+              <div class="toggle toggle-require-min-features ${step.requireMinFeatures ? 'on' : ''}" onclick="this.classList.toggle('on'); toggleMinFeatures(this)"></div>
+              <input class="field-input min-features-input" type="number" min="1" value="${step.minFeatures || 1}" style="width:60px; margin-left:8px; height:20px; padding:2px 6px; font-size:13px; ${step.requireMinFeatures ? '' : 'display:none;'}" />
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-label">Confirm analysis completion</span>
+              <div class="toggle ${confirm.enabled ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+            </div>
+            ${confirm.enabled ? `<div style="margin-left:20px;">
+              <div class="field-group">
+                <div class="field-label">Confirmation Dialog Title</div>
+                <input class="field-input confirm-title-input" value="${escapeAttr(confirm.title || 'Complete?')}" />
+              </div>
+              <div class="field-group">
+                <div class="field-label">Confirmation Message</div>
+                <input class="field-input confirm-message-input" value="${escapeAttr(confirm.message || '')}" />
+              </div>
+              <div class="field-row">
+                <div class="field-group">
+                  <div class="field-label">Confirm Button</div>
+                  <input class="field-input confirm-label-input" value="${escapeAttr(confirm.confirmLabel || "Yes, I'm done")}" />
+                </div>
+                <div class="field-group">
+                  <div class="field-label">Cancel Button</div>
+                  <input class="field-input cancel-label-input" value="${escapeAttr(confirm.cancelLabel || 'Go back')}" />
+                </div>
+              </div>
+            </div>` : ''}
+          </div></div>
+        </div>
         ${buildPromptsSection(step.prompts)}
       </div>`;
   }

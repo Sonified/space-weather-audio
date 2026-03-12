@@ -152,7 +152,6 @@
       "dataSource": "cloudflare_r2",
       "playbackSpeed": "1x",
       "allowFeatureDrawing": true,
-      "showSpectrogram": true,
       "allowStretch": true,
       "requireMinFeatures": false,
       "prompts": [
