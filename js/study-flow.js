@@ -15,6 +15,7 @@ import { getStandaloneFeatures } from './feature-tracker.js';
 import { getParticipantId, storeParticipantId, generateParticipantId } from './participant-id.js';
 import { styleBodyHtml } from './study-builder/utils.js';
 import { pausePlayback } from './audio-player.js';
+import { backgroundDownload } from './background-preloader.js';
 import { typeText, cancelTyping } from './tutorial-effects.js';
 import { buildDimensionStyle, buildTitleFontStyle, buildHeaderUnderlineStyle, renderInfoModal, renderRegistrationModal, renderQuestionModal } from './survey-question-renderer.js';
 
@@ -575,8 +576,13 @@ function initDataPreload(config) {
                 console.log(`📋 dataPreload: skipping step ${stepIndex} (already at/past step ${currentStepIndex})`);
                 return;
             }
-            console.log(`📋 dataPreload: pageLoad for step ${stepIndex}`);
-            triggerPreloadForStep(stepIndex);
+            console.log(`📋 dataPreload: pageLoad → background cache for step ${stepIndex}`);
+            // Background download to Cache API only — no decoding, no rendering
+            backgroundDownload(step).then(result => {
+                console.log(`📋 Background preload complete for step ${stepIndex}:`, result);
+            }).catch(err => {
+                console.warn(`📋 Background preload failed for step ${stepIndex}:`, err.message);
+            });
         } else if (step.dataPreload.startsWith('step:')) {
             // Trigger when the specified step begins rendering
             const triggerAtStep = parseInt(step.dataPreload.split(':')[1], 10);
@@ -1155,7 +1161,16 @@ async function runCurrentStep() {
     // Check if entering this step should trigger a preload for another step
     if (window.__PRELOAD_TRIGGERS && window.__PRELOAD_TRIGGERS[currentStepIndex] !== undefined) {
         const analysisStepIndex = window.__PRELOAD_TRIGGERS[currentStepIndex];
-        triggerPreloadForStep(analysisStepIndex);
+        const preloadStep = studyConfig.steps[analysisStepIndex];
+        if (preloadStep && preloadStep.type === 'analysis' && !preloadTriggered[analysisStepIndex]) {
+            preloadTriggered[analysisStepIndex] = true;
+            console.log(`📋 dataPreload: step:${currentStepIndex} → background cache for step ${analysisStepIndex}`);
+            backgroundDownload(preloadStep).then(result => {
+                console.log(`📋 Background preload complete for step ${analysisStepIndex}:`, result);
+            }).catch(err => {
+                console.warn(`📋 Background preload failed for step ${analysisStepIndex}:`, err.message);
+            });
+        }
     }
 
     switch (step.type) {

@@ -22,17 +22,9 @@ import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas } from './spectrog
 import { renderProgressiveSpectrogram, resetProgressiveSpectrogram } from './main-window-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { updateCompleteButtonState, loadRegionsAfterDataFetch } from './feature-tracker.js';
-const WORKER_BASE = 'https://spaceweather.now.audio/emic';
-const INSTRUMENT_SAMPLE_RATE = 10; // Hz — GOES mag high-res cadence
-
-// Dataset → satellite name mapping (mirrors goes_to_r2.py)
-const DATASET_TO_SATELLITE = {
-    'DN_MAGN-L2-HIRES_G16': 'GOES-16',
-    'DN_MAGN-L2-HIRES_G19': 'GOES-19',
-};
-
-// Component index → R2 component name
-const COMPONENT_MAP = ['bx', 'by', 'bz'];
+import { fetchWithCache } from './background-preloader.js';
+import { WORKER_BASE, INSTRUMENT_SAMPLE_RATE, DATASET_TO_SATELLITE, COMPONENT_MAP } from './chunk-url-utils.js';
+import { CACHE_NAME } from './background-preloader.js';
 
 // =============================================================================
 // fzstd dynamic loader
@@ -65,6 +57,37 @@ async function ensureFzstd() {
         script.onerror = () => reject(new Error('Failed to load fzstd from CDN'));
         document.head.appendChild(script);
     });
+}
+
+// =============================================================================
+// Cache-aware chunk fetcher
+// =============================================================================
+
+/**
+ * Fetch a chunk URL, checking Cache API first. On cache miss, fetch from
+ * network and store the response in cache for future use.
+ */
+async function fetchChunk(url, signal) {
+    if (typeof caches !== 'undefined') {
+        try {
+            const cache = await caches.open(CACHE_NAME);
+            const cached = await cache.match(url);
+            if (cached) {
+                if (window.pm?.data) console.log(`💾 Cache hit: ${url.split('/').slice(-3).join('/')}`);
+                return cached;
+            }
+            // Cache miss — fetch from network and store
+            const resp = await fetch(url, { signal });
+            if (resp.ok) {
+                cache.put(url, resp.clone());
+            }
+            return resp;
+        } catch (e) {
+            if (e.name === 'AbortError') throw e;
+            // Cache API error — fall through to plain fetch
+        }
+    }
+    return fetch(url, { signal });
 }
 
 // =============================================================================
@@ -683,7 +706,7 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
 
         if (chunk.url && !chunk.isMissing) {
             try {
-                const resp = await fetch(chunk.url, { signal: abortSignal });
+                const resp = await fetchChunk(chunk.url, abortSignal);
                 if (!resp.ok) {
                     console.warn(`⚠️ Chunk ${progress} failed: ${resp.status} — filling zeros`);
                     const zeroSamples = new Float32Array(chunk.samples);
