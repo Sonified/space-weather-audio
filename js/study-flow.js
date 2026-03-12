@@ -1354,11 +1354,21 @@ function runInfoModal(step) {
 
         const dismiss = () => {
             if (outsideHandler) studyModalEl.removeEventListener('click', outsideHandler);
+            if (enterHandler) document.removeEventListener('keydown', enterHandler);
             resolve();
             advanceStep();
         };
         studyModalInner.querySelector('.modal-submit')?.addEventListener('click', dismiss);
         studyModalInner.querySelector('.modal-close')?.addEventListener('click', dismiss);
+
+        // Enter key confirms (default: true)
+        let enterHandler = null;
+        if (step.enterConfirms !== false) {
+            enterHandler = (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); dismiss(); }
+            };
+            document.addEventListener('keydown', enterHandler);
+        }
 
         // Click outside modal content to close (only when closable)
         let outsideHandler = null;

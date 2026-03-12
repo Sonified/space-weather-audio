@@ -2075,6 +2075,8 @@
                 <div class="toggle toggle-skippable ${step.skippable ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
                 <span class="toggle-label">Hide Button</span>
                 <div class="toggle toggle-hide-button ${step.hideButton ? 'on' : ''}" onclick="this.classList.toggle('on'); toggleInfoButton(this)"></div>
+                <span class="toggle-label">Enter Confirms</span>
+                <div class="toggle toggle-enter-confirms ${step.enterConfirms !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
               </div>
             </div>
             <div class="settings-divider"></div>
@@ -2705,6 +2707,7 @@
         step.hideButton = card.querySelector('.toggle-hide-button')?.classList.contains('on') || false;
         step.closable = card.querySelector('.toggle-closable')?.classList.contains('on') || false;
         step.skippable = card.querySelector('.toggle-skippable')?.classList.contains('on') || false;
+        step.enterConfirms = card.querySelector('.toggle-enter-confirms')?.classList.contains('on') ?? true;
         const mw = card.querySelector('.modal-width-input')?.value?.trim();
         const mh = card.querySelector('.modal-height-input')?.value?.trim();
         if (mw) step.modalWidth = mw;
@@ -4905,6 +4908,7 @@
     const COUNT_EL = 'streamCount';
     const POLL_MS = 5000;
     let eventCount = 0;
+    const featureCounts = {}; // participant_id → count (for feature numbering)
 
     // D1 stores datetime('now') as 'YYYY-MM-DD HH:MM:SS' (UTC, no T/Z).
     // JS toISOString() produces '2026-03-12T22:43:08.888Z' which breaks string comparison.
@@ -4933,7 +4937,19 @@
       let detail = '';
 
       if (type === 'feature' || entry.source === 'feature') {
-        detail = `feature (${entry.confidence || 'confirmed'})`;
+        // Track feature number per participant
+        featureCounts[pid] = (featureCounts[pid] || 0) + 1;
+        const num = featureCounts[pid];
+        // Format time range (just HH:MM from the ISO timestamps)
+        const fmtT = (iso) => { if (!iso) return '?'; const d = new Date(iso); return `${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`; };
+        const tRange = `${fmtT(entry.start_time)}–${fmtT(entry.end_time)}`;
+        // Frequency range
+        const lo = entry.low_freq != null ? Number(entry.low_freq).toFixed(2) : '?';
+        const hi = entry.high_freq != null ? Number(entry.high_freq).toFixed(2) : '?';
+        const fRange = `${lo}–${hi} Hz`;
+        const conf = entry.confidence || 'confirmed';
+        const notes = entry.notes ? ` "${entry.notes}"` : '';
+        detail = `#${num} ${tRange} ${fRange} <span style="color:#3fb950;">${conf}</span>${notes}`;
       } else if (type === 'milestone') {
         detail = '✅ completed';
       } else if (type === 'response') {
