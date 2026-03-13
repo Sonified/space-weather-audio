@@ -1,0 +1,2010 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EMIC Randomization Horse Race</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0f;
+    color: #e0e0e0;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    overflow-x: hidden;
+  }
+  h1 {
+    text-align: center;
+    padding: 20px 0 5px;
+    font-size: 1.4em;
+    color: #88ccff;
+    letter-spacing: 2px;
+  }
+  .subtitle {
+    text-align: center;
+    font-size: 0.75em;
+    color: #556;
+    margin-bottom: 15px;
+  }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    padding: 10px 30px 20px;
+  }
+  .control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-width: 90px;
+  }
+  .control-group label {
+    font-size: 0.65em;
+    color: #778;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    line-height: 1.3;
+    min-height: 2.6em;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    text-align: center;
+  }
+  .control-group input {
+    background: #151520;
+    border: 1px solid #333;
+    color: #e0e0e0;
+    padding: 6px 4px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.9em;
+    width: 80px;
+    text-align: center;
+  }
+  .control-group input:focus {
+    outline: none;
+    border-color: #88ccff;
+  }
+  .toggle-switch {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    min-height: auto !important;
+    cursor: pointer;
+  }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .toggle-slider {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: #1a1a2a;
+    border: 1px solid #333;
+    border-radius: 11px;
+    transition: all 0.2s;
+  }
+  .toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 16px; height: 16px;
+    left: 2px; bottom: 2px;
+    background: #556;
+    border-radius: 50%;
+    transition: all 0.2s;
+  }
+  .toggle-switch input:checked + .toggle-slider {
+    background: #1a2a3a;
+    border-color: #2a5a8c;
+  }
+  .toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(18px);
+    background: #88ccff;
+  }
+  button {
+    background: #1a3a5c;
+    border: 1px solid #2a5a8c;
+    color: #88ccff;
+    padding: 10px 28px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.95em;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+  button:hover { background: #2a4a6c; border-color: #4a8acc; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  #stopBtn {
+    background: #3a1a1a;
+    border-color: #8c2a2a;
+    color: #ff8888;
+  }
+  #stopBtn:hover { background: #4a2a2a; }
+
+  /* Top race area: scoreboard + lanes */
+  .race-area {
+    display: flex;
+    gap: 16px;
+    padding: 0 30px;
+    align-items: flex-start;
+  }
+  /* Race lanes */
+  .race-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+  }
+  .lane {
+    background: #0e0e16;
+    border: 1px solid #1a1a2a;
+    border-radius: 8px;
+    padding: 12px 16px;
+    display: grid;
+    grid-template-columns: 200px 100px 1fr;
+    gap: 12px;
+    align-items: center;
+  }
+  .lane-header {
+    display: flex;
+    flex-direction: column;
+  }
+  .lane-name {
+    font-size: 0.95em;
+    font-weight: bold;
+  }
+  .lane-desc {
+    font-size: 0.65em;
+    color: #556;
+    margin-top: 2px;
+  }
+  .lane-score {
+    font-size: 1.8em;
+    font-weight: bold;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .lane-canvas-wrap {
+    height: 70px;
+    position: relative;
+    overflow: hidden;
+    border-radius: 4px;
+    background: #08080c;
+  }
+  .lane-canvas-wrap canvas {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Colors */
+  .heal-algo .lane-name { color: #44ddaa; }
+  .heal-algo .lane-score { color: #44ddaa; }
+  .block-algo .lane-name { color: #ddaa44; }
+  .block-algo .lane-score { color: #ddaa44; }
+  .random-algo .lane-name { color: #dd6688; }
+  .random-algo .lane-score { color: #dd6688; }
+  .dheal-algo .lane-name { color: #aa77ff; }
+  .dheal-algo .lane-score { color: #aa77ff; }
+
+  /* Stats bar */
+  .stats-bar {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    padding: 14px 30px 8px;
+    font-size: 0.8em;
+    color: #667;
+  }
+  .stat-val { color: #aab; font-weight: bold; }
+
+  /* Perfect balance reference */
+  .perfect-line {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  /* Race log */
+  .log-section {
+    padding: 12px 30px 30px;
+  }
+  .log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .log-header h2 {
+    font-size: 0.8em;
+    color: #556;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+  .log-header button {
+    font-size: 0.7em;
+    padding: 5px 14px;
+  }
+  #clearLogBtn {
+    background: #1a1a20;
+    border-color: #333;
+    color: #667;
+  }
+  #clearLogBtn:hover { color: #aab; border-color: #555; }
+  .log-entries {
+    background: #08080c;
+    border: 1px solid #1a1a2a;
+    border-radius: 8px;
+    max-height: 400px;
+    overflow-y: auto;
+    font-size: 0.75em;
+    line-height: 1.6;
+  }
+  .log-entry {
+    padding: 10px 14px;
+    border-bottom: 1px solid #111118;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .log-entry:hover { background: #0e0e18; }
+  .log-entry:last-child { border-bottom: none; }
+  .log-entry .log-run-num {
+    color: #445;
+    font-size: 0.9em;
+    margin-right: 6px;
+  }
+  .log-entry .log-settings {
+    color: #667;
+  }
+  .log-entry .log-results {
+    margin-top: 3px;
+  }
+  .log-entry .log-heal { color: #44ddaa; }
+  .log-entry .log-block { color: #ddaa44; }
+  .log-entry .log-random { color: #dd6688; }
+  .log-entry .log-winner {
+    color: #88ccff;
+    margin-left: 8px;
+    font-weight: bold;
+  }
+  .log-entry .log-stats {
+    color: #445;
+    margin-top: 2px;
+  }
+  .log-empty {
+    padding: 20px;
+    text-align: center;
+    color: #334;
+  }
+  .copied-toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1a3a5c;
+    color: #88ccff;
+    padding: 8px 20px;
+    border-radius: 6px;
+    font-size: 0.8em;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    z-index: 100;
+  }
+  .copied-toast.show { opacity: 1; }
+
+  /* Bottom section: algorithm description */
+  .bottom-section {
+    padding: 20px 30px 40px;
+    max-width: 800px;
+    margin: 0 auto;
+  }
+  .win-scoreboard {
+    flex: 0 0 180px;
+    background: #0e0e16;
+    border: 1px solid #1a1a2a;
+    border-radius: 8px;
+    padding: 16px;
+    height: fit-content;
+  }
+  .win-scoreboard h2 {
+    font-size: 0.8em;
+    color: #556;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+  .win-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #111118;
+  }
+  .win-row:last-of-type { border-bottom: none; }
+  .win-row .win-label { font-size: 0.75em; }
+  .win-row .win-count {
+    font-size: 1.4em;
+    font-weight: bold;
+    font-variant-numeric: tabular-nums;
+  }
+  .win-row.heal .win-label { color: #44ddaa; }
+  .win-row.heal .win-count { color: #44ddaa; }
+  .win-row.block .win-label { color: #ddaa44; }
+  .win-row.block .win-count { color: #ddaa44; }
+  .win-row.random .win-label { color: #dd6688; }
+  .win-row.random .win-count { color: #dd6688; }
+  .win-row.tie .win-label { color: #667; }
+  .win-row.tie .win-count { color: #667; }
+  .win-total {
+    text-align: center;
+    font-size: 0.65em;
+    color: #445;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #1a1a2a;
+  }
+  .win-total span { color: #667; font-weight: bold; }
+  #resetWinsBtn {
+    display: block;
+    width: 100%;
+    margin-top: 10px;
+    font-size: 0.65em;
+    padding: 6px;
+    background: #1a1a20;
+    border-color: #333;
+    color: #667;
+  }
+  #resetWinsBtn:hover { color: #aab; border-color: #555; }
+
+  /* Running average bar plot */
+  .avg-panel {
+    flex: 0 0 200px;
+    background: #0e0e16;
+    border: 1px solid #1a1a2a;
+    border-radius: 8px;
+    padding: 16px;
+    height: fit-content;
+  }
+  .avg-panel h2 {
+    font-size: 0.8em;
+    color: #556;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+  .avg-bar-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .avg-bar-row {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .avg-bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7em;
+  }
+  .avg-bar-track {
+    background: #08080c;
+    border-radius: 4px;
+    height: 22px;
+    position: relative;
+    overflow: hidden;
+  }
+  .avg-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    min-width: 0px;
+  }
+  .avg-bar-row.heal .avg-bar-label { color: #44ddaa; }
+  .avg-bar-row.heal .avg-bar-fill { background: #44ddaa; }
+  .avg-bar-row.block .avg-bar-label { color: #ddaa44; }
+  .avg-bar-row.block .avg-bar-fill { background: #ddaa44; }
+  .avg-bar-row.random .avg-bar-label { color: #dd6688; }
+  .avg-bar-row.random .avg-bar-fill { background: #dd6688; }
+  .avg-trial-count {
+    text-align: center;
+    font-size: 0.65em;
+    color: #445;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #1a1a2a;
+  }
+  .avg-trial-count span { color: #667; font-weight: bold; }
+  #resetAvgBtn {
+    display: block;
+    width: 100%;
+    margin-top: 10px;
+    font-size: 0.65em;
+    padding: 6px;
+    background: #1a1a20;
+    border-color: #333;
+    color: #667;
+  }
+  #resetAvgBtn:hover { color: #aab; border-color: #555; }
+
+  /* Algorithm description */
+  .algo-description {
+  }
+  .algo-description h2 {
+    font-size: 0.9em;
+    color: #88ccff;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #1a1a2a;
+  }
+  .algo-description h3 {
+    font-size: 0.8em;
+    color: #44ddaa;
+    margin: 18px 0 8px;
+    letter-spacing: 1px;
+  }
+  .algo-description p,
+  .algo-description li {
+    font-size: 0.75em;
+    color: #889;
+    line-height: 1.7;
+  }
+  .algo-description ul,
+  .algo-description ol {
+    padding-left: 20px;
+    margin: 4px 0;
+  }
+  .algo-description li { margin: 3px 0; }
+  .algo-description .setup-item {
+    color: #667;
+    font-size: 0.7em;
+  }
+  .algo-description .edge-case {
+    margin: 8px 0;
+    padding-left: 12px;
+    border-left: 2px solid #1a1a2a;
+  }
+  .algo-description .edge-case strong {
+    color: #ddaa44;
+    font-size: 0.75em;
+  }
+  .algo-description .edge-case p {
+    margin: 2px 0;
+  }
+</style>
+</head>
+<body>
+
+<h1>EMIC RANDOMIZATION HORSE RACE</h1>
+<div class="subtitle">Heal Algorithm vs Pure Block vs Pure Random — who balances best?</div>
+
+<div class="controls">
+  <div class="control-group">
+    <label>Participants</label>
+    <input type="number" id="numParticipants" value="100" min="12" max="10000">
+  </div>
+  <div class="control-group">
+    <label>Dropout<br>Rate %</label>
+    <input type="number" id="dropoutRate" value="20" min="0" max="95">
+  </div>
+  <div class="control-group">
+    <label>Return Likelihood %</label>
+    <input type="number" id="returnRate" value="5" min="0" max="100">
+  </div>
+  <div class="control-group">
+    <label>Avg Dropout Length</label>
+    <input type="number" id="dropoutLength" value="10" min="1" max="100">
+  </div>
+  <div class="control-group">
+    <label>Speed (ms/step)</label>
+    <input type="number" id="speed" value="0" min="0" max="500">
+  </div>
+  <div class="control-group">
+    <label>Runs</label>
+    <input type="number" id="numRuns" value="1000" min="1" max="10000">
+  </div>
+  <input type="hidden" id="randomizeHeal">
+  <div class="control-group">
+    <label style="color:#aa77ff">Max Heal Passes</label>
+    <input type="number" id="maxHealPasses" value="10" min="1" max="10" style="width:80px;border-color:#aa77ff55">
+  </div>
+  <div class="control-group">
+    <label style="color:#aa77ff">Heal Cap</label>
+    <input type="number" id="simultHealCap" value="1" min="1" max="50" style="width:80px;border-color:#aa77ff55">
+  </div>
+  <div class="control-group" style="max-width:100px;">
+    <label style="color:#aa77ff">Cap Mode</label>
+    <select id="healCapMode" style="background:#151520;border:1px solid #aa77ff55;color:#aa77ff;padding:6px 4px;border-radius:6px;font-family:inherit;font-size:0.75em;width:100px;text-align:center;">
+      <option value="total">Total</option>
+      <option value="per-condition" selected>Per Cond.</option>
+    </select>
+  </div>
+  <div class="control-group">
+    <label>Max Simultaneous</label>
+    <input type="number" id="maxSimultaneous" value="3" min="1" max="50">
+  </div>
+  <div class="control-group">
+    <label>Simult. Likelihood %</label>
+    <input type="number" id="simultaneousLikelihood" value="10" min="0" max="100">
+  </div>
+  <div class="control-group" style="max-width:50px;">
+    <label>Auto</label>
+    <label class="toggle-switch">
+      <input type="checkbox" id="autoCompute" checked>
+      <span class="toggle-slider"></span>
+    </label>
+  </div>
+</div>
+<div style="display:flex;gap:8px;justify-content:center;padding:0 30px 15px;">
+  <button onclick="resetAll()" style="background:#2a1a1a;border-color:#5c2a2a;color:#dd6666;padding:5px 12px;">RESET ALL</button>
+  <button onclick="resetAll();startRace()" style="padding:5px 12px;">RESET &amp; GO</button>
+  <button id="goBtn" onclick="startRace()" style="padding:5px 20px;">GO</button>
+  <button id="stopBtn" onclick="stopRace()" disabled style="padding:5px 20px;">STOP</button>
+  <button onclick="copyStats()" style="background:#1a2a1a;border-color:#2a5c2a;color:#88dd88;padding:5px 12px;">COPY STATS</button>
+</div>
+
+<div class="race-area">
+
+<div class="win-scoreboard">
+  <h2>Wins</h2>
+  <div class="win-row" style="color:#aa77ff">
+    <span class="win-label" style="color:#aa77ff">MaxHeal</span>
+    <span class="win-count" style="color:#aa77ff" id="wins-dheal">0</span>
+  </div>
+  <div class="win-row heal">
+    <span class="win-label">Heal</span>
+    <span class="win-count" id="wins-heal">0</span>
+  </div>
+  <div class="win-row block">
+    <span class="win-label">Block</span>
+    <span class="win-count" id="wins-block">0</span>
+  </div>
+  <div class="win-row random">
+    <span class="win-label">Random</span>
+    <span class="win-count" id="wins-random">0</span>
+  </div>
+  <div class="win-row tie">
+    <span class="win-label">Tie</span>
+    <span class="win-count" id="wins-tie">0</span>
+  </div>
+  <div class="win-total">Total races: <span id="wins-total">0</span></div>
+  <button id="resetWinsBtn" onclick="resetWins()">RESET</button>
+</div>
+
+<div class="race-container">
+  <div class="lane dheal-algo">
+    <div class="lane-header">
+      <div class="lane-name">Max Heal</div>
+      <div class="lane-desc" id="dheal-desc">2 heal passes per block — catches heal-round dropouts</div>
+    </div>
+    <div class="lane-score" id="score-dheal">—</div>
+    <div class="lane-canvas-wrap">
+      <canvas id="chart-dheal"></canvas>
+    </div>
+  </div>
+  <div class="lane heal-algo">
+    <div class="lane-header">
+      <div class="lane-name">Heal Algorithm</div>
+      <div class="lane-desc">Your design — walk + heal + returning backfill</div>
+    </div>
+    <div class="lane-score" id="score-heal">—</div>
+    <div class="lane-canvas-wrap">
+      <canvas id="chart-heal"></canvas>
+    </div>
+  </div>
+  <div class="lane block-algo">
+    <div class="lane-header">
+      <div class="lane-name">Pure Block</div>
+      <div class="lane-desc">Shuffled blocks of 12, no healing, no backfill</div>
+    </div>
+    <div class="lane-score" id="score-block">—</div>
+    <div class="lane-canvas-wrap">
+      <canvas id="chart-block"></canvas>
+    </div>
+  </div>
+  <div class="lane random-algo">
+    <div class="lane-header">
+      <div class="lane-name">Pure Random</div>
+      <div class="lane-desc">Uniform random 1-12, no structure</div>
+    </div>
+    <div class="lane-score" id="score-random">—</div>
+    <div class="lane-canvas-wrap">
+      <canvas id="chart-random"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="avg-panel">
+  <h2>Running Avg</h2>
+  <div class="avg-bar-container">
+    <div class="avg-bar-row" style="color:#aa77ff">
+      <div class="avg-bar-label" style="color:#aa77ff">
+        <span>MaxHeal</span>
+        <span id="avg-dheal-val">—</span>
+      </div>
+      <div class="avg-bar-track">
+        <div class="avg-bar-fill" id="avg-dheal-bar" style="width:0%;background:#aa77ff"></div>
+      </div>
+    </div>
+    <div class="avg-bar-row heal">
+      <div class="avg-bar-label">
+        <span>Heal</span>
+        <span id="avg-heal-val">—</span>
+      </div>
+      <div class="avg-bar-track">
+        <div class="avg-bar-fill" id="avg-heal-bar" style="width:0%"></div>
+      </div>
+    </div>
+    <div class="avg-bar-row block">
+      <div class="avg-bar-label">
+        <span>Block</span>
+        <span id="avg-block-val">—</span>
+      </div>
+      <div class="avg-bar-track">
+        <div class="avg-bar-fill" id="avg-block-bar" style="width:0%"></div>
+      </div>
+    </div>
+    <div class="avg-bar-row random">
+      <div class="avg-bar-label">
+        <span>Random</span>
+        <span id="avg-random-val">—</span>
+      </div>
+      <div class="avg-bar-track">
+        <div class="avg-bar-fill" id="avg-random-bar" style="width:0%"></div>
+      </div>
+    </div>
+  </div>
+  <div class="avg-trial-count">Trials: <span id="avg-count">0</span></div>
+  <button id="resetAvgBtn" onclick="resetAvg()">RESET</button>
+</div>
+
+</div><!-- /race-area -->
+
+<div class="stats-bar">
+  <span>Step: <span class="stat-val" id="stat-step">0</span></span>
+  <span>Completed: <span class="stat-val" id="stat-completed">0</span></span>
+  <span>Dropped: <span class="stat-val" id="stat-dropped">0</span></span>
+  <span>Returned: <span class="stat-val" id="stat-returned">0</span></span>
+</div>
+
+<div class="log-section">
+  <div class="log-header">
+    <h2>Race Log</h2>
+    <div style="display:flex;gap:6px;">
+      <button id="copyLogBtn" onclick="copyLog()">COPY ALL</button>
+      <button id="clearLogBtn" onclick="clearLog()">CLEAR</button>
+    </div>
+  </div>
+  <div class="log-entries" id="logEntries">
+    <div class="log-empty">Run a race to see results here. Click any entry to copy it.</div>
+  </div>
+</div>
+
+<div class="copied-toast" id="copiedToast">Copied to clipboard</div>
+
+<div class="bottom-section">
+
+<div class="algo-description">
+  <h2>EMIC Study Randomization Algorithm</h2>
+
+  <h3>Setup</h3>
+  <ul>
+    <li>12 conditions (3 stretch types &times; 2 dataset orderings, no repeat stretch per participant)</li>
+    <li>Pre-generate 100 blocks of 12, each block containing conditions 1&ndash;12 in shuffled order</li>
+    <li>Total: 1,200 slots</li>
+    <li class="setup-item">Each slot tracks: condition number, state (open/active/completed), participant ID, assignment time</li>
+  </ul>
+
+  <h3>Assignment (Normal Walk)</h3>
+  <ol>
+    <li>Start at block 1, slot 1</li>
+    <li>New participant arrives, gets the next open slot in the current block</li>
+    <li>Slot becomes <em>active</em>, stamped with participant ID and time</li>
+    <li>When participant completes, slot becomes <em>completed</em></li>
+    <li>If slot is already occupied (by a returning participant completion), skip it, move to next open slot</li>
+    <li>Continue until all 12 slots in the block have been assigned or skipped</li>
+  </ol>
+
+  <h3>Heal Round</h3>
+  <ol>
+    <li>Triggered when the last open slot in a block has been assigned (or skipped)</li>
+    <li>Scan the block for any slots that are active but not completed</li>
+    <li>Order them by assignment time, oldest first</li>
+    <li>Next arrivals get these conditions sequentially, oldest incomplete first</li>
+    <li>One pass only. When all incomplete conditions have been reassigned, move to the next block. Do not wait for heal round participants to complete.</li>
+  </ol>
+
+  <h3 style="color: #aa77ff;">Max Heal Passes</h3>
+  <ol style="color: #aa77ff;">
+    <li>After a heal round completes, check whether any of the heal-round participants have already dropped out</li>
+    <li>If outstanding incomplete slots remain, run another heal round on the same block</li>
+    <li>Repeat up to <em>N</em> times (configured by the "Max Heal Passes" control), or until all slots in the block are completed or reassigned</li>
+    <li>This catches the cascading dropout problem: a participant assigned during a heal round may themselves drop out, leaving the block unbalanced again</li>
+    <li>After all passes are exhausted (or no incomplete slots remain), move to the next block</li>
+  </ol>
+
+  <h3>Returning Participant (Previously Counted Out)</h3>
+  <ol>
+    <li>Participant keeps their original condition number forever</li>
+    <li>If they return AND complete, their completion fills an open slot matching their condition number in the current or next available block</li>
+    <li>That slot is now completed and gets skipped during the normal walk</li>
+    <li>If they return and do not complete, nothing happens. No slot assigned. No record. They are ignored by the system.</li>
+  </ol>
+
+  <h3>Completion</h3>
+  <ol>
+    <li>Participant finishes their session</li>
+    <li>Mark their slot as completed</li>
+    <li>No further action needed</li>
+  </ol>
+
+  <h3>Edge Cases</h3>
+
+  <div class="edge-case">
+    <strong>A heal round participant also doesn't complete:</strong>
+    <p>Their condition is not re-healed within the same block. The natural distribution across future blocks provides balance over time.</p>
+  </div>
+
+  <div class="edge-case">
+    <strong>A returning participant completes but their condition is already filled in the current block:</strong>
+    <p>Scan forward block by block until an open matching slot is found.</p>
+  </div>
+
+  <div class="edge-case">
+    <strong>Two original participants with the same condition both get counted out and both return and complete:</strong>
+    <p>Each fills the next available open slot matching their condition in separate future blocks.</p>
+  </div>
+
+  <div class="edge-case">
+    <strong>All 100 blocks exhausted:</strong>
+    <p>Generate more blocks. Same shuffle logic. Append to the sequence.</p>
+  </div>
+
+  <div class="edge-case">
+    <strong>No incompletes at end of a block:</strong>
+    <p>No heal round needed. Advance directly to next block.</p>
+  </div>
+</div>
+
+<h3>Simultaneous Arrivals (Superposition Model)</h3>
+<ol>
+  <li>Each step has a configurable probability of being a batch arrival (Simult. Likelihood %). When triggered, 1–N participants arrive at once (Max Simultaneous).</li>
+  <li><strong>Snapshot:</strong> The system's current state (walking position or heal queue) is frozen at the moment the batch arrives. No state changes during assignment.</li>
+  <li><strong>Walking mode:</strong> Batch members are assigned sequentially to the next available block slots. If the block fills mid-batch, a heal round is triggered — and the walking members who just filled those slots appear as <em>incompletes</em> in the heal queue (they haven't resolved yet).</li>
+  <li><strong>Heal mode:</strong> Batch members cycle round-robin through the snapshotted heal queue. If 6 arrive and there are 2 holes, each hole gets 3 people. Max Heal Passes allows wrapping.</li>
+  <li><strong>Resolve:</strong> After all batch members are assigned, all fates are rolled simultaneously. Some complete, some drop. The system then reconciles: which holes got filled? Which are still open? Are more heal passes needed?</li>
+  <li>This models real-world email blasts where many participants start at once — the system tries to plug holes but multiple people pile onto the same conditions before anyone has finished.</li>
+</ol>
+
+</div><!-- /bottom-section -->
+
+<script>
+const NUM_CONDITIONS = 12;
+const CHART_HISTORY = 600;
+
+// ── Shared participant generation ──
+// We pre-generate the same sequence of participant "fate" so all 3 algorithms
+// face identical dropout/return patterns. Fair horse race.
+
+function generateParticipantFates(n, dropoutPct, returnPct, avgDropLen) {
+  const fates = [];
+  for (let i = 0; i < n; i++) {
+    const willDrop = Math.random() * 100 < dropoutPct;
+    const willReturn = willDrop && (Math.random() * 100 < returnPct);
+    // Poisson-ish dropout length (geometric distribution)
+    const dropLen = willDrop ? Math.max(1, Math.round(-avgDropLen * Math.log(Math.random()))) : 0;
+    fates.push({ willDrop, willReturn, dropLen });
+  }
+  return fates;
+}
+
+// Generate arrival batch schedule — how many participants arrive on each "step"
+// likelihood = % chance each step is a batch (vs single arrival)
+// maxSimult = max batch size when a batch event fires
+function generateArrivalBatches(n, likelihood, maxSimult) {
+  const batches = [];
+  let remaining = n;
+  while (remaining > 0) {
+    let batchSize;
+    if (likelihood > 0 && Math.random() * 100 < likelihood) {
+      batchSize = Math.min(remaining, Math.ceil(Math.random() * maxSimult));
+    } else {
+      batchSize = 1;
+    }
+    batches.push(batchSize);
+    remaining -= batchSize;
+  }
+  return batches;
+}
+
+function shuffleArray(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function generateBlock() {
+  return shuffleArray(Array.from({ length: NUM_CONDITIONS }, (_, i) => i + 1));
+}
+
+// ── Balance metric ──
+// Perfect balance = each condition has exactly completions/12 of the total.
+// Score = 100% - normalized deviation. 100% = perfect.
+function balanceScore(completions) {
+  const total = completions.reduce((a, b) => a + b, 0);
+  if (total === 0) return 100;
+  const expected = total / NUM_CONDITIONS;
+  const maxDeviation = total - expected; // worst case: all in one bucket
+  const deviation = completions.reduce((sum, c) => sum + Math.abs(c - expected), 0);
+  if (maxDeviation === 0) return 100;
+  return Math.max(0, 100 * (1 - deviation / (2 * expected * NUM_CONDITIONS)));
+}
+
+// ── HEAL ALGORITHM ──
+class HealAlgorithm {
+  constructor(randomizeHeal = false, healInterval = NUM_CONDITIONS, maxHealPasses = 1, simultHealCap = Infinity, healCapMode = 'total') {
+    this.randomizeHeal = randomizeHeal;
+    this.healInterval = healInterval;
+    this.nextHealAt = healInterval;
+    this.maxHealPasses = maxHealPasses;
+    this.simultHealCap = simultHealCap;
+    this.healCapMode = healCapMode;
+    this.healPassesLeft = 0;
+    this.blocks = [];
+    this.currentBlock = 0;
+    this.currentSlot = 0;
+    this.phase = 'walking'; // walking | healing
+    this.healQueue = [];
+    this.healIndex = 0;
+    this.completions = new Array(NUM_CONDITIONS).fill(0);
+    // O(1) slot lookup: Map<"block:slot", {completed, assignTime, condition}>
+    this.slotMap = new Map();
+    // Track incomplete slots per block for fast heal round
+    this.blockIncomplete = new Map(); // Map<blockIdx, [{condition, assignTime}]>
+    this.droppedParticipants = []; // sorted by returnStep for efficient processing
+    this.step = 0;
+    for (let i = 0; i < 100; i++) this.blocks.push(generateBlock());
+  }
+
+  ensureBlocks(idx) {
+    while (idx >= this.blocks.length) this.blocks.push(generateBlock());
+  }
+
+  assign(fate, participantId) {
+    this.step++;
+    this.processReturns();
+    if (this.phase === 'healing') {
+      return this.assignHeal(fate, participantId);
+    }
+    return this.assignWalk(fate, participantId);
+  }
+
+  // ── SUPERPOSITION BATCH ASSIGNMENT ──
+  // Three phases, no interleaving:
+  //   1. SNAPSHOT & ASSIGN — read-only against real state, write to pending[]
+  //   2. RESOLVE — roll all fates from pending[]
+  //   3. RECONCILE — write results back, update state, advance if needed
+  assignBatch(fates, startId) {
+    this.step++;
+    this.processReturns();
+
+    if (fates.length === 1) {
+      const c = this.phase === 'healing'
+        ? this.assignHeal(fates[0], startId)
+        : this.assignWalk(fates[0], startId);
+      return [c];
+    }
+
+    // ── PHASE 1: SNAPSHOT & ASSIGN ──
+    // Pure math against snapshotted pointers. No side effects on real state.
+    const pending = []; // [{condition, mode:'walk'|'heal', block, slotKey}]
+
+    let block = this.currentBlock;
+    let slot = this.currentSlot;
+    let nextHeal = this.nextHealAt;
+    let phase = this.phase;
+    let healQueue = this.healQueue;
+    let healIdx = this.healIndex;
+    let healPassesLeft = this.healPassesLeft;
+    let healAssignCount = 0; // total heal assignments in this batch
+    const healConditionCounts = new Map(); // condition → count (for per-condition cap)
+
+    for (let i = 0; i < fates.length; i++) {
+      if (phase === 'walking') {
+        this.ensureBlocks(block);
+        const blk = this.blocks[block];
+
+        // Skip completed slots (only pre-batch completions matter)
+        while (slot < nextHeal) {
+          const key = block * NUM_CONDITIONS + slot;
+          const existing = this.slotMap.get(key);
+          if (existing && existing.completed) { slot++; continue; }
+          break;
+        }
+
+        if (slot >= nextHeal) {
+          // Block segment full → build heal queue
+          // ALL pending walk assignments on this block are in superposition
+          // (unresolved), so they ALL appear as incompletes
+          const incompletes = [];
+          const priorList = this.blockIncomplete.get(block);
+          if (priorList) {
+            for (const item of priorList) {
+              incompletes.push({ condition: item.condition, assignTime: item.assignTime });
+            }
+          }
+          for (const p of pending) {
+            if (p.mode === 'walk' && p.block === block) {
+              incompletes.push({ condition: p.condition, assignTime: this.step });
+            }
+          }
+
+          if (incompletes.length === 0) {
+            if (nextHeal >= NUM_CONDITIONS) {
+              block++;
+              slot = 0;
+              nextHeal = this.healInterval;
+            } else {
+              nextHeal += this.healInterval;
+            }
+            i--; // retry this member on new block
+            continue;
+          }
+
+          if (this.randomizeHeal) {
+            shuffleArray(incompletes);
+          } else {
+            incompletes.sort((a, b) => a.assignTime - b.assignTime);
+          }
+          healQueue = incompletes.map(s => s.condition);
+          healIdx = 0;
+          phase = 'healing';
+          if (healPassesLeft === 0) healPassesLeft = this.maxHealPasses;
+          healPassesLeft--;
+          // Fall through to healing below
+        } else {
+          // Normal walk assignment
+          const condition = blk[slot];
+          const key = block * NUM_CONDITIONS + slot;
+          pending.push({ condition, fate: fates[i], id: startId + i, mode: 'walk', block, slotKey: key });
+          slot++;
+          continue;
+        }
+      }
+
+      // Healing phase
+      if (phase === 'healing') {
+        // Simultaneous heal cap check
+        let capHit = false;
+        if (this.healCapMode === 'total') {
+          // Total mode: cap total heal assignments across entire batch
+          capHit = healAssignCount >= this.simultHealCap;
+        } else {
+          // Per-condition mode: check if the NEXT condition is already at cap
+          const nextCondition = healQueue[healIdx % healQueue.length];
+          capHit = (healConditionCounts.get(nextCondition) || 0) >= this.simultHealCap;
+        }
+
+        if (capHit) {
+          if (this.healCapMode === 'per-condition') {
+            // Skip this condition, try the next one in the queue
+            healIdx++;
+            // If we've exhausted the queue, all conditions are capped — advance
+            if (healIdx >= healQueue.length) {
+              if (nextHeal >= NUM_CONDITIONS) {
+                block++;
+                slot = 0;
+                nextHeal = this.healInterval;
+              } else {
+                nextHeal += this.healInterval;
+              }
+              phase = 'walking';
+              healPassesLeft = 0;
+            }
+            i--; // retry this member
+            continue;
+          } else {
+            // Total mode: spill remaining to next block
+            if (nextHeal >= NUM_CONDITIONS) {
+              block++;
+              slot = 0;
+              nextHeal = this.healInterval;
+            } else {
+              nextHeal += this.healInterval;
+            }
+            phase = 'walking';
+            healPassesLeft = 0;
+            i--; // retry this member in walking mode
+            continue;
+          }
+        }
+
+        if (healIdx >= healQueue.length) {
+          // Queue exhausted — check for more passes
+          // All heal assignments in this batch on this block are in superposition
+          const newIncompletes = [];
+          for (const p of pending) {
+            if (p.mode === 'heal' && p.block === block) {
+              newIncompletes.push({ condition: p.condition, assignTime: this.step });
+            }
+          }
+
+          if (healPassesLeft > 0 && newIncompletes.length > 0) {
+            if (this.randomizeHeal) {
+              shuffleArray(newIncompletes);
+            } else {
+              newIncompletes.sort((a, b) => a.assignTime - b.assignTime);
+            }
+            healQueue = newIncompletes.map(s => s.condition);
+            healIdx = 0;
+            healPassesLeft--;
+          } else {
+            // Done healing — advance to next block/segment, switch to walking
+            if (nextHeal >= NUM_CONDITIONS) {
+              block++;
+              slot = 0;
+              nextHeal = this.healInterval;
+            } else {
+              nextHeal += this.healInterval;
+            }
+            phase = 'walking';
+            healPassesLeft = 0;
+            i--; // retry this member in walking mode
+            continue;
+          }
+        }
+
+        const condition = healQueue[healIdx % healQueue.length];
+        healIdx++;
+        healAssignCount++;
+        healConditionCounts.set(condition, (healConditionCounts.get(condition) || 0) + 1);
+        pending.push({ condition, fate: fates[i], id: startId + i, mode: 'heal', block, slotKey: null });
+      }
+    }
+
+    // ── PHASE 2: RESOLVE ──
+    // Roll all fates simultaneously
+    for (const p of pending) {
+      p.completed = !p.fate.willDrop;
+      p.willReturn = p.fate.willDrop && p.fate.willReturn;
+      p.dropLen = p.fate.dropLen;
+    }
+
+    // ── PHASE 3: RECONCILE ──
+    // Write results to real state in one pass
+    const newIncompletesByBlock = new Map();
+
+    for (const p of pending) {
+      // Walk assignments get slotMap entries
+      if (p.mode === 'walk' && p.slotKey !== null) {
+        this.slotMap.set(p.slotKey, {
+          completed: p.completed, assignTime: this.step, condition: p.condition
+        });
+      }
+
+      if (p.completed) {
+        this.completions[p.condition - 1]++;
+      } else {
+        if (p.willReturn) {
+          this.insertDropped({ condition: p.condition, returnStep: this.step + p.dropLen });
+        }
+        let list = newIncompletesByBlock.get(p.block);
+        if (!list) { list = []; newIncompletesByBlock.set(p.block, list); }
+        list.push({ condition: p.condition, assignTime: this.step });
+      }
+    }
+
+    // Merge resolved incompletes into blockIncomplete
+    // First clear any prior incompletes that were consumed into heal queues during Phase 1
+    // (they were snapshot-copied into healQueue, real state should reflect only new incompletes)
+    for (const [blk, list] of newIncompletesByBlock) {
+      // If this block had its incompletes consumed into a heal queue during phase 1,
+      // the real blockIncomplete may still have them. Replace entirely with resolved results.
+      this.blockIncomplete.set(blk, list);
+    }
+
+    // Update real pointers
+    this.currentBlock = block;
+    this.currentSlot = slot;
+    this.nextHealAt = nextHeal;
+    this.phase = phase;
+    this.healQueue = healQueue;
+    this.healIndex = healIdx;
+    this.healPassesLeft = healPassesLeft;
+
+    // Post-batch state cleanup
+    if (this.phase === 'healing' && this.healIndex >= this.healQueue.length) {
+      this.advanceAfterHeal();
+    }
+    if (this.phase === 'walking' && this.currentSlot >= this.nextHealAt) {
+      this.startHealRound();
+    }
+
+    return pending.map(p => p.condition);
+  }
+
+  assignWalk(fate, participantId) {
+    this.ensureBlocks(this.currentBlock);
+    const block = this.blocks[this.currentBlock];
+
+    // Skip completed slots (O(1) lookup per slot), stop at heal boundary
+    while (this.currentSlot < this.nextHealAt) {
+      const key = this.currentBlock * NUM_CONDITIONS + this.currentSlot;
+      const existing = this.slotMap.get(key);
+      if (existing && existing.completed) {
+        this.currentSlot++;
+        continue;
+      }
+      break;
+    }
+
+    if (this.currentSlot >= this.nextHealAt) {
+      this.startHealRound();
+      if (this.phase === 'healing') {
+        return this.assignHeal(fate, participantId);
+      }
+      return this.assignWalk(fate, participantId);
+    }
+
+    const condition = block[this.currentSlot];
+    const key = this.currentBlock * NUM_CONDITIONS + this.currentSlot;
+    const completed = !fate.willDrop;
+    this.slotMap.set(key, { completed, assignTime: this.step, condition });
+    this.currentSlot++;
+
+    if (fate.willDrop) {
+      if (fate.willReturn) {
+        this.insertDropped({ condition, returnStep: this.step + fate.dropLen });
+      }
+      // Track as incomplete for heal round
+      let list = this.blockIncomplete.get(this.currentBlock);
+      if (!list) { list = []; this.blockIncomplete.set(this.currentBlock, list); }
+      list.push({ condition, assignTime: this.step });
+    } else {
+      this.completions[condition - 1]++;
+    }
+
+    if (this.currentSlot >= this.nextHealAt) {
+      this.startHealRound();
+    }
+
+    return condition;
+  }
+
+  startHealRound() {
+    const incompletes = this.blockIncomplete.get(this.currentBlock);
+    if (!incompletes || incompletes.length === 0) {
+      if (this.nextHealAt >= NUM_CONDITIONS) {
+        this.currentBlock++;
+        this.currentSlot = 0;
+        this.nextHealAt = this.healInterval;
+        this.blockIncomplete.delete(this.currentBlock - 1); // free memory
+      } else {
+        this.nextHealAt += this.healInterval;
+      }
+      this.phase = 'walking';
+      this.healPassesLeft = 0;
+      return;
+    }
+    if (this.randomizeHeal) {
+      shuffleArray(incompletes);
+    } else {
+      incompletes.sort((a, b) => a.assignTime - b.assignTime);
+    }
+    this.healQueue = incompletes.map(s => s.condition);
+    this.healIndex = 0;
+    this.phase = 'healing';
+    this.blockIncomplete.delete(this.currentBlock); // consumed
+    // Set passes counter on first heal round entry (not on subsequent passes)
+    if (this.healPassesLeft === 0) {
+      this.healPassesLeft = this.maxHealPasses;
+    }
+    this.healPassesLeft--;
+  }
+
+  advanceAfterHeal() {
+    // If passes remain and there are new incompletes from this heal round, do another pass
+    if (this.healPassesLeft > 0) {
+      const incompletes = this.blockIncomplete.get(this.currentBlock);
+      if (incompletes && incompletes.length > 0) {
+        this.startHealRound(); // will decrement healPassesLeft
+        return;
+      }
+    }
+
+    if (this.nextHealAt >= NUM_CONDITIONS) {
+      this.currentBlock++;
+      this.currentSlot = 0;
+      this.nextHealAt = this.healInterval;
+    } else {
+      this.nextHealAt += this.healInterval;
+    }
+    this.phase = 'walking';
+    this.healPassesLeft = 0;
+  }
+
+  assignHeal(fate, participantId) {
+    if (this.healIndex >= this.healQueue.length) {
+      this.advanceAfterHeal();
+      if (this.phase === 'healing') {
+        return this.assignHeal(fate, participantId);
+      }
+      return this.assignWalk(fate, participantId);
+    }
+
+    const condition = this.healQueue[this.healIndex];
+    this.healIndex++;
+
+    if (fate.willDrop) {
+      if (fate.willReturn) {
+        this.insertDropped({ condition, returnStep: this.step + fate.dropLen });
+      }
+      // Track as incomplete so subsequent heal passes can pick it up
+      if (this.maxHealPasses > 1) {
+        let list = this.blockIncomplete.get(this.currentBlock);
+        if (!list) { list = []; this.blockIncomplete.set(this.currentBlock, list); }
+        list.push({ condition, assignTime: this.step });
+      }
+    } else {
+      this.completions[condition - 1]++;
+    }
+
+    if (this.healIndex >= this.healQueue.length) {
+      this.advanceAfterHeal();
+    }
+
+    return condition;
+  }
+
+  // Insert into sorted dropped list (by returnStep) for efficient processing
+  insertDropped(entry) {
+    // Binary insert to keep sorted
+    const arr = this.droppedParticipants;
+    let lo = 0, hi = arr.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (arr[mid].returnStep <= entry.returnStep) lo = mid + 1;
+      else hi = mid;
+    }
+    arr.splice(lo, 0, entry);
+  }
+
+  processReturns() {
+    const arr = this.droppedParticipants;
+    // Since sorted, just pop from front while returnStep <= this.step
+    let consumed = 0;
+    while (consumed < arr.length && arr[consumed].returnStep <= this.step) {
+      const p = arr[consumed];
+      this.completions[p.condition - 1]++;
+      this.backfillSlot(p.condition);
+      consumed++;
+    }
+    if (consumed > 0) {
+      this.droppedParticipants = arr.slice(consumed);
+    }
+  }
+
+  backfillSlot(condition) {
+    for (let b = this.currentBlock; ; b++) {
+      this.ensureBlocks(b);
+      const block = this.blocks[b];
+      for (let s = 0; s < NUM_CONDITIONS; s++) {
+        if (block[s] === condition) {
+          const key = b * NUM_CONDITIONS + s;
+          if (!this.slotMap.has(key)) {
+            this.slotMap.set(key, {
+              completed: true, assignTime: this.step, condition
+            });
+            return;
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── PURE BLOCK ALGORITHM ──
+class BlockAlgorithm {
+  constructor() {
+    this.blocks = [];
+    this.currentBlock = 0;
+    this.currentSlot = 0;
+    this.completions = new Array(NUM_CONDITIONS).fill(0);
+    for (let i = 0; i < 100; i++) this.blocks.push(generateBlock());
+  }
+
+  assign(fate) {
+    if (this.currentSlot >= NUM_CONDITIONS) {
+      this.currentBlock++;
+      this.currentSlot = 0;
+      if (this.currentBlock >= this.blocks.length) this.blocks.push(generateBlock());
+    }
+    const condition = this.blocks[this.currentBlock][this.currentSlot];
+    this.currentSlot++;
+    if (!fate.willDrop) {
+      this.completions[condition - 1]++;
+    }
+    return condition;
+  }
+
+  assignBatch(fates) {
+    return fates.map(fate => this.assign(fate));
+  }
+}
+
+// ── PURE RANDOM ALGORITHM ──
+class RandomAlgorithm {
+  constructor() {
+    this.completions = new Array(NUM_CONDITIONS).fill(0);
+  }
+
+  assign(fate) {
+    const condition = Math.floor(Math.random() * NUM_CONDITIONS) + 1;
+    if (!fate.willDrop) {
+      this.completions[condition - 1]++;
+    }
+    return condition;
+  }
+
+  assignBatch(fates) {
+    return fates.map(fate => this.assign(fate));
+  }
+}
+
+// ── CHART RENDERER ──
+class ChartRenderer {
+  constructor(canvasId, color) {
+    this.canvas = document.getElementById(canvasId);
+    this.ctx = this.canvas.getContext('2d');
+    this.color = color;
+    this.history = [];
+    this.resize();
+    window.addEventListener('resize', () => this.resize());
+  }
+
+  resize() {
+    const rect = this.canvas.parentElement.getBoundingClientRect();
+    this.canvas.width = rect.width * devicePixelRatio;
+    this.canvas.height = rect.height * devicePixelRatio;
+    this.w = this.canvas.width;
+    this.h = this.canvas.height;
+  }
+
+  push(value) {
+    this.history.push(value);
+    if (this.history.length > CHART_HISTORY) this.history.shift();
+  }
+
+  draw() {
+    const { ctx, w, h, history, color } = this;
+    ctx.clearRect(0, 0, w, h);
+
+    if (history.length < 2) return;
+
+    // 100% reference line
+    ctx.strokeStyle = '#222233';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(0, 3);
+    ctx.lineTo(w, 3);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Draw balance line
+    const step = w / (CHART_HISTORY - 1);
+    const minVal = Math.min(...history, 50);
+    const maxVal = 100;
+    const range = maxVal - minVal || 1;
+
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2 * devicePixelRatio;
+    ctx.lineJoin = 'round';
+
+    for (let i = 0; i < history.length; i++) {
+      const x = (CHART_HISTORY - history.length + i) * step;
+      const y = h - ((history[i] - minVal) / range) * (h - 6) - 3;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Glow
+    ctx.strokeStyle = color + '40';
+    ctx.lineWidth = 6 * devicePixelRatio;
+    ctx.stroke();
+
+    // Current value label
+    const last = history[history.length - 1];
+    const lastY = h - ((last - minVal) / range) * (h - 6) - 3;
+    ctx.fillStyle = color;
+    ctx.font = `bold ${11 * devicePixelRatio}px monospace`;
+    ctx.textAlign = 'right';
+    ctx.fillText(last.toFixed(1) + '%', w - 4 * devicePixelRatio, Math.max(14 * devicePixelRatio, lastY - 4));
+
+    // Min label
+    ctx.fillStyle = '#445';
+    ctx.font = `${9 * devicePixelRatio}px monospace`;
+    ctx.textAlign = 'left';
+    ctx.fillText(minVal.toFixed(0) + '%', 4 * devicePixelRatio, h - 3);
+  }
+
+  reset() {
+    this.history = [];
+    this.ctx.clearRect(0, 0, this.w, this.h);
+  }
+}
+
+// ── WIN TRACKING ──
+const wins = { dheal: 0, heal: 0, block: 0, random: 0, tie: 0, total: 0 };
+
+function updateWinDisplay() {
+  document.getElementById('wins-dheal').textContent = wins.dheal;
+  document.getElementById('wins-heal').textContent = wins.heal;
+  document.getElementById('wins-block').textContent = wins.block;
+  document.getElementById('wins-random').textContent = wins.random;
+  document.getElementById('wins-tie').textContent = wins.tie;
+  document.getElementById('wins-total').textContent = wins.total;
+}
+
+function recordWin(dhealScore, healScore, blockScore, randomScore) {
+  wins.total++;
+  const d = parseFloat(dhealScore), h = parseFloat(healScore), b = parseFloat(blockScore), r = parseFloat(randomScore);
+  const max = Math.max(d, h, b, r);
+  const winners = [];
+  if (d === max) winners.push('dheal');
+  if (h === max) winners.push('heal');
+  if (b === max) winners.push('block');
+  if (r === max) winners.push('random');
+  if (winners.length > 1) {
+    wins.tie++;
+  } else {
+    wins[winners[0]]++;
+  }
+  updateWinDisplay();
+}
+
+function resetWins() {
+  wins.dheal = 0; wins.heal = 0; wins.block = 0; wins.random = 0; wins.tie = 0; wins.total = 0;
+  updateWinDisplay();
+}
+
+// ── RUNNING AVERAGE ──
+const avgAccum = { dheal: 0, heal: 0, block: 0, random: 0, count: 0 };
+
+function updateAvg(dhealScore, healScore, blockScore, randomScore) {
+  avgAccum.dheal += parseFloat(dhealScore);
+  avgAccum.heal += parseFloat(healScore);
+  avgAccum.block += parseFloat(blockScore);
+  avgAccum.random += parseFloat(randomScore);
+  avgAccum.count++;
+  renderAvg();
+}
+
+function renderAvg() {
+  const { dheal, heal, block, random, count } = avgAccum;
+  if (count === 0) {
+    document.getElementById('avg-dheal-val').textContent = '—';
+    document.getElementById('avg-heal-val').textContent = '—';
+    document.getElementById('avg-block-val').textContent = '—';
+    document.getElementById('avg-random-val').textContent = '—';
+    document.getElementById('avg-dheal-bar').style.width = '0%';
+    document.getElementById('avg-heal-bar').style.width = '0%';
+    document.getElementById('avg-block-bar').style.width = '0%';
+    document.getElementById('avg-random-bar').style.width = '0%';
+    document.getElementById('avg-count').textContent = '0';
+    return;
+  }
+  const avgD = dheal / count;
+  const avgH = heal / count;
+  const avgB = block / count;
+  const avgR = random / count;
+  const minAvg = Math.min(avgD, avgH, avgB, avgR);
+  const floor = Math.max(0, minAvg - 5);
+  const range = 100 - floor || 1;
+
+  document.getElementById('avg-dheal-val').textContent = avgD.toFixed(1) + '%';
+  document.getElementById('avg-heal-val').textContent = avgH.toFixed(1) + '%';
+  document.getElementById('avg-block-val').textContent = avgB.toFixed(1) + '%';
+  document.getElementById('avg-random-val').textContent = avgR.toFixed(1) + '%';
+  document.getElementById('avg-dheal-bar').style.width = ((avgD - floor) / range * 100).toFixed(1) + '%';
+  document.getElementById('avg-heal-bar').style.width = ((avgH - floor) / range * 100).toFixed(1) + '%';
+  document.getElementById('avg-block-bar').style.width = ((avgB - floor) / range * 100).toFixed(1) + '%';
+  document.getElementById('avg-random-bar').style.width = ((avgR - floor) / range * 100).toFixed(1) + '%';
+  document.getElementById('avg-count').textContent = count;
+}
+
+function resetAvg() {
+  avgAccum.dheal = 0; avgAccum.heal = 0; avgAccum.block = 0; avgAccum.random = 0; avgAccum.count = 0;
+  renderAvg();
+}
+
+// ── RACE LOG ──
+let raceCount = 0;
+const logData = [];
+
+function formatLogEntry(entry) {
+  const lines = [
+    `Race #${entry.num}`,
+    `Settings: ${entry.participants} participants, ${entry.dropout}% dropout, ${entry.returnRate}% return, avg dropout length ${entry.dropLen}`,
+    `Results:  MaxHeal ${entry.dheal}%  |  Heal ${entry.heal}%  |  Block ${entry.block}%  |  Random ${entry.random}%`,
+    `Winner:   ${entry.winner}`,
+    `Stats:    ${entry.completed} completed, ${entry.dropped} dropped, ${entry.returned} returned`
+  ];
+  return lines.join('\n');
+}
+
+// Batch flush for churn mode — builds all DOM at once via DocumentFragment
+function flushPendingEntries(entries) {
+  if (entries.length === 0) return;
+  for (const e of entries) logData.push(e);
+
+  const container = document.getElementById('logEntries');
+  const empty = container.querySelector('.log-empty');
+  if (empty) empty.remove();
+
+  const frag = document.createDocumentFragment();
+  // Build in reverse so newest is on top
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    const div = document.createElement('div');
+    div.className = 'log-entry';
+    div.onclick = () => copyText(formatLogEntry(entry));
+    div.innerHTML = `
+      <div>
+        <span class="log-run-num">#${entry.num}</span>
+        <span class="log-settings">${entry.participants}p / ${entry.dropout}% drop / ${entry.returnRate}% return / len ${entry.dropLen}</span>
+      </div>
+      <div class="log-results">
+        <span style="color:#aa77ff">MaxH ${entry.dheal}%</span> &nbsp;
+        <span class="log-heal">Heal ${entry.heal}%</span> &nbsp;
+        <span class="log-block">Block ${entry.block}%</span> &nbsp;
+        <span class="log-random">Random ${entry.random}%</span>
+        <span class="log-winner">${entry.winner}</span>
+      </div>
+      <div class="log-stats">${entry.completed} completed, ${entry.dropped} dropped, ${entry.returned} returned</div>
+    `;
+    frag.appendChild(div);
+  }
+  container.prepend(frag); // Single reflow
+}
+
+function addLogEntry(settings, results) {
+  raceCount++;
+  const scores = { MaxHeal: results.dheal, Heal: results.heal, Block: results.block, Random: results.random };
+  const winner = Object.entries(scores).sort((a, b) => b[1] - a[1])[0][0] + ' Algorithm';
+
+  const entry = {
+    num: raceCount,
+    participants: settings.numP,
+    dropout: settings.dropPct,
+    returnRate: settings.retPct,
+    dropLen: settings.dropLen,
+    dheal: results.dheal,
+    heal: results.heal,
+    block: results.block,
+    random: results.random,
+    winner,
+    completed: results.completed,
+    dropped: results.dropped,
+    returned: results.returned,
+  };
+  logData.push(entry);
+  recordWin(entry.dheal, entry.heal, entry.block, entry.random);
+  updateAvg(entry.dheal, entry.heal, entry.block, entry.random);
+
+  const container = document.getElementById('logEntries');
+  // Remove empty state
+  const empty = container.querySelector('.log-empty');
+  if (empty) empty.remove();
+
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+  div.onclick = () => copyText(formatLogEntry(entry));
+  div.innerHTML = `
+    <div>
+      <span class="log-run-num">#${entry.num}</span>
+      <span class="log-settings">${entry.participants}p / ${entry.dropout}% drop / ${entry.returnRate}% return / len ${entry.dropLen}</span>
+    </div>
+    <div class="log-results">
+      <span style="color:#aa77ff">MaxH ${entry.dheal}%</span> &nbsp;
+      <span class="log-heal">Heal ${entry.heal}%</span> &nbsp;
+      <span class="log-block">Block ${entry.block}%</span> &nbsp;
+      <span class="log-random">Random ${entry.random}%</span>
+      <span class="log-winner">${entry.winner}</span>
+    </div>
+    <div class="log-stats">${entry.completed} completed, ${entry.dropped} dropped, ${entry.returned} returned</div>
+  `;
+  container.prepend(div);
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    const toast = document.getElementById('copiedToast');
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 1500);
+  });
+}
+
+function copyLog() {
+  if (logData.length === 0) return;
+  const text = logData.map(formatLogEntry).join('\n\n');
+  copyText('EMIC Randomization Horse Race — Results\n' + '='.repeat(45) + '\n\n' + text);
+}
+
+function clearLog() {
+  logData.length = 0;
+  raceCount = 0;
+  document.getElementById('logEntries').innerHTML = '<div class="log-empty">Run a race to see results here. Click any entry to copy it.</div>';
+}
+
+function resetAll() {
+  resetWins();
+  resetAvg();
+  clearLog();
+}
+
+function copyStats() {
+  const numP = document.getElementById('numParticipants').value;
+  const dropPct = document.getElementById('dropoutRate').value;
+  const retPct = document.getElementById('returnRate').value;
+  const dropLen = document.getElementById('dropoutLength').value;
+  const maxHP = document.getElementById('maxHealPasses').value;
+  const maxSimult = document.getElementById('maxSimultaneous').value;
+  const simultLikelihood = document.getElementById('simultaneousLikelihood').value;
+  const simultHealCap = document.getElementById('simultHealCap').value;
+  const total = wins.total;
+
+  if (total === 0) {
+    copyText('No races run yet.');
+    return;
+  }
+
+  const pct = (n) => total > 0 ? (n / total * 100).toFixed(1) + '%' : '0%';
+  const avg = (key) => avgAccum.count > 0 ? (avgAccum[key] / avgAccum.count).toFixed(2) + '%' : '—';
+
+  const lines = [
+    'EMIC Randomization Sim — Diagnostic Snapshot',
+    '═'.repeat(48),
+    '',
+    'SETTINGS',
+    `  Participants per race: ${numP}`,
+    `  Dropout rate: ${dropPct}%`,
+    `  Return likelihood: ${retPct}%`,
+    `  Avg dropout length: ${dropLen}`,
+    `  Max heal passes (MaxHeal lane): ${maxHP}`,
+    `  Max simultaneous arrivals: ${maxSimult}`,
+    `  Simultaneous likelihood: ${simultLikelihood}%`,
+    `  Simultaneous heal cap: ${simultHealCap} (${document.getElementById('healCapMode').value})`,
+    '',
+    `RESULTS (${total} total races)`,
+    '',
+    '  Algorithm    Wins   Win%       Avg Balance',
+    '  ─────────────────────────────────────────',
+    `  MaxHeal      ${String(wins.dheal).padStart(4)}   ${pct(wins.dheal).padStart(6)}     ${avg('dheal')}`,
+    `  Heal         ${String(wins.heal).padStart(4)}   ${pct(wins.heal).padStart(6)}     ${avg('heal')}`,
+    `  Block        ${String(wins.block).padStart(4)}   ${pct(wins.block).padStart(6)}     ${avg('block')}`,
+    `  Random       ${String(wins.random).padStart(4)}   ${pct(wins.random).padStart(6)}     ${avg('random')}`,
+    `  Tie          ${String(wins.tie).padStart(4)}   ${pct(wins.tie).padStart(6)}`,
+    '',
+    `  Total races: ${total}`,
+  ];
+
+  copyText(lines.join('\n'));
+}
+
+// ── RACE ENGINE ──
+let raceTimer = null;
+let running = false;
+
+const charts = {
+  dheal: new ChartRenderer('chart-dheal', '#aa77ff'),
+  heal: new ChartRenderer('chart-heal', '#44ddaa'),
+  block: new ChartRenderer('chart-block', '#ddaa44'),
+  random: new ChartRenderer('chart-random', '#dd6688'),
+};
+
+let currentRun = 0;
+let totalRuns = 1;
+
+function startRace() {
+  if (running) stopRace();
+
+  const numP = parseInt(document.getElementById('numParticipants').value) || 500;
+  const dropPct = parseFloat(document.getElementById('dropoutRate').value) || 30;
+  const retPct = parseFloat(document.getElementById('returnRate').value) || 40;
+  const dropLen = parseInt(document.getElementById('dropoutLength').value) || 8;
+  const speedRaw = parseInt(document.getElementById('speed').value);
+  const speed = isNaN(speedRaw) ? 5 : speedRaw;
+  const randomizeHeal = document.getElementById('randomizeHeal').checked;
+  const maxHealPassesRaw = parseInt(document.getElementById('maxHealPasses').value);
+  const maxHealPasses = isNaN(maxHealPassesRaw) ? 2 : Math.max(1, maxHealPassesRaw);
+  const maxSimult = parseInt(document.getElementById('maxSimultaneous').value) || 3;
+  const simultLikelihood = parseFloat(document.getElementById('simultaneousLikelihood').value) || 0;
+  const simultHealCapRaw = parseInt(document.getElementById('simultHealCap').value);
+  const simultHealCap = isNaN(simultHealCapRaw) ? 2 : Math.max(1, simultHealCapRaw);
+  const healCapMode = document.getElementById('healCapMode').value;
+  document.getElementById('dheal-desc').textContent = `${maxHealPasses} heal pass${maxHealPasses > 1 ? 'es' : ''} per block — catches heal-round dropouts`;
+  totalRuns = parseInt(document.getElementById('numRuns').value) || 1;
+  currentRun = 0;
+
+  running = true;
+  document.getElementById('goBtn').disabled = true;
+  document.getElementById('stopBtn').disabled = false;
+
+  // Speed 0 = turbo mode — pure compute, zero DOM during crunch
+  if (speed === 0) {
+    const BATCH_SIZE = 50; // runs per frame yield
+    // Collect all results in memory, flush DOM once at the end
+    const pendingEntries = [];
+
+    function churnBatch() {
+      if (!running || currentRun >= totalRuns) {
+        // ── Flush everything to DOM in one shot ──
+        flushPendingEntries(pendingEntries);
+        updateWinDisplay();
+        renderAvg();
+
+        // Update charts with last run
+        if (pendingEntries.length > 0) {
+          const last = pendingEntries[pendingEntries.length - 1];
+          charts.dheal.reset(); charts.heal.reset(); charts.block.reset(); charts.random.reset();
+          charts.dheal.push(parseFloat(last.dheal)); charts.heal.push(parseFloat(last.heal)); charts.block.push(parseFloat(last.block)); charts.random.push(parseFloat(last.random));
+          charts.dheal.draw(); charts.heal.draw(); charts.block.draw(); charts.random.draw();
+          document.getElementById('score-dheal').textContent = last.dheal + '%';
+          document.getElementById('score-heal').textContent = last.heal + '%';
+          document.getElementById('score-block').textContent = last.block + '%';
+          document.getElementById('score-random').textContent = last.random + '%';
+          document.getElementById('stat-step').textContent = `Done — ${totalRuns} runs × ${numP}p`;
+          document.getElementById('stat-completed').textContent = last.completed;
+          document.getElementById('stat-dropped').textContent = last.dropped;
+          document.getElementById('stat-returned').textContent = last.returned;
+        }
+
+        running = false;
+        document.getElementById('goBtn').disabled = false;
+        document.getElementById('stopBtn').disabled = true;
+        return;
+      }
+
+      const batchEnd = Math.min(currentRun + BATCH_SIZE, totalRuns);
+
+      while (currentRun < batchEnd) {
+        currentRun++;
+        const fates = generateParticipantFates(numP, dropPct, retPct, dropLen);
+        const batches = generateArrivalBatches(numP, simultLikelihood, maxSimult);
+        const dhealAlgo = new HealAlgorithm(randomizeHeal, NUM_CONDITIONS, maxHealPasses, simultHealCap, healCapMode);
+        const healAlgo = new HealAlgorithm(randomizeHeal);
+        const blockAlgo = new BlockAlgorithm();
+        const randomAlgo = new RandomAlgorithm();
+
+        let dropped = 0, returned = 0, completed = 0;
+        let fateIdx = 0;
+
+        for (const batchSize of batches) {
+          const batchFates = fates.slice(fateIdx, fateIdx + batchSize);
+          dhealAlgo.assignBatch(batchFates, fateIdx);
+          healAlgo.assignBatch(batchFates, fateIdx);
+          blockAlgo.assignBatch(batchFates);
+          randomAlgo.assignBatch(batchFates);
+          for (const fate of batchFates) {
+            if (fate.willDrop) {
+              dropped++;
+              if (fate.willReturn) returned++;
+            } else {
+              completed++;
+            }
+          }
+          fateIdx += batchSize;
+        }
+
+        const dh = balanceScore(dhealAlgo.completions).toFixed(1);
+        const h = balanceScore(healAlgo.completions).toFixed(1);
+        const b = balanceScore(blockAlgo.completions).toFixed(1);
+        const r = balanceScore(randomAlgo.completions).toFixed(1);
+
+        // Track win in memory (no DOM update)
+        const dhf = parseFloat(dh), hf = parseFloat(h), bf = parseFloat(b), rf = parseFloat(r);
+        const max = Math.max(dhf, hf, bf, rf);
+        const w = [];
+        if (dhf === max) w.push('dheal');
+        if (hf === max) w.push('heal');
+        if (bf === max) w.push('block');
+        if (rf === max) w.push('random');
+        if (w.length > 1) wins.tie++;
+        else wins[w[0]]++;
+        wins.total++;
+
+        // Accumulate running average (no DOM update yet)
+        avgAccum.dheal += dhf;
+        avgAccum.heal += hf;
+        avgAccum.block += bf;
+        avgAccum.random += rf;
+        avgAccum.count++;
+
+        raceCount++;
+        const scores = { MaxHeal: dh, Heal: h, Block: b, Random: r };
+        const winner = Object.entries(scores).sort((a, c) => c[1] - a[1])[0][0] + ' Algorithm';
+
+        pendingEntries.push({
+          num: raceCount, participants: numP, dropout: dropPct,
+          returnRate: retPct, dropLen, dheal: dh, heal: h, block: b, random: r,
+          winner, completed, dropped, returned
+        });
+      }
+
+      // Update progress counter (cheap, one DOM write)
+      document.getElementById('stat-step').textContent = `Crunching ${currentRun}/${totalRuns}...`;
+
+      // Yield to browser
+      setTimeout(churnBatch, 0);
+    }
+
+    churnBatch();
+    return;
+  }
+
+  // Animated mode (speed > 0)
+  function runOneRace() {
+    if (!running || currentRun >= totalRuns) {
+      running = false;
+      document.getElementById('goBtn').disabled = false;
+      document.getElementById('stopBtn').disabled = true;
+      return;
+    }
+
+    currentRun++;
+    const fates = generateParticipantFates(numP, dropPct, retPct, dropLen);
+    const batches = generateArrivalBatches(numP, simultLikelihood, maxSimult);
+    const dhealAlgo = new HealAlgorithm(randomizeHeal, NUM_CONDITIONS, maxHealPasses, simultHealCap, healCapMode);
+    const healAlgo = new HealAlgorithm(randomizeHeal);
+    const blockAlgo = new BlockAlgorithm();
+    const randomAlgo = new RandomAlgorithm();
+
+    charts.dheal.reset();
+    charts.heal.reset();
+    charts.block.reset();
+    charts.random.reset();
+
+    let batchIdx = 0;
+    let participantsSoFar = 0;
+    let totalDropped = 0;
+    let totalReturned = 0;
+    let totalCompleted = 0;
+
+    function tick() {
+      if (!running || batchIdx >= batches.length) {
+        finishRun();
+        return;
+      }
+
+      const batchSize = batches[batchIdx];
+      const batchFates = fates.slice(participantsSoFar, participantsSoFar + batchSize);
+
+      dhealAlgo.assignBatch(batchFates, participantsSoFar);
+      healAlgo.assignBatch(batchFates, participantsSoFar);
+      blockAlgo.assignBatch(batchFates);
+      randomAlgo.assignBatch(batchFates);
+
+      for (const fate of batchFates) {
+        if (fate.willDrop) {
+          totalDropped++;
+          if (fate.willReturn) totalReturned++;
+        } else {
+          totalCompleted++;
+        }
+      }
+
+      participantsSoFar += batchSize;
+
+      const dhealScore = balanceScore(dhealAlgo.completions);
+      const healScore = balanceScore(healAlgo.completions);
+      const blockScore = balanceScore(blockAlgo.completions);
+      const randomScore = balanceScore(randomAlgo.completions);
+
+      charts.dheal.push(dhealScore);
+      charts.heal.push(healScore);
+      charts.block.push(blockScore);
+      charts.random.push(randomScore);
+
+      charts.dheal.draw();
+      charts.heal.draw();
+      charts.block.draw();
+      charts.random.draw();
+
+      document.getElementById('score-dheal').textContent = dhealScore.toFixed(1) + '%';
+      document.getElementById('score-heal').textContent = healScore.toFixed(1) + '%';
+      document.getElementById('score-block').textContent = blockScore.toFixed(1) + '%';
+      document.getElementById('score-random').textContent = randomScore.toFixed(1) + '%';
+
+      const runLabel = totalRuns > 1 ? `Run ${currentRun}/${totalRuns} — ` : '';
+      const batchLabel = batchSize > 1 ? ` (batch of ${batchSize})` : '';
+      document.getElementById('stat-step').textContent = runLabel + participantsSoFar + batchLabel;
+      document.getElementById('stat-completed').textContent = totalCompleted;
+      document.getElementById('stat-dropped').textContent = totalDropped;
+      document.getElementById('stat-returned').textContent = totalReturned;
+
+      batchIdx++;
+      raceTimer = setTimeout(tick, speed);
+    }
+
+    function finishRun() {
+      const dhealScore = balanceScore(dhealAlgo.completions);
+      const healScore = balanceScore(healAlgo.completions);
+      const blockScore = balanceScore(blockAlgo.completions);
+      const randomScore = balanceScore(randomAlgo.completions);
+
+      addLogEntry(
+        { numP, dropPct, retPct, dropLen },
+        {
+          dheal: dhealScore.toFixed(1),
+          heal: healScore.toFixed(1),
+          block: blockScore.toFixed(1),
+          random: randomScore.toFixed(1),
+          completed: totalCompleted,
+          dropped: totalDropped,
+          returned: totalReturned
+        }
+      );
+
+      setTimeout(runOneRace, Math.max(100, speed * 5));
+    }
+
+    tick();
+  }
+
+  runOneRace();
+}
+
+function stopRace() {
+  running = false;
+  clearTimeout(raceTimer);
+  document.getElementById('goBtn').disabled = false;
+  document.getElementById('stopBtn').disabled = true;
+}
+
+// Handle resize
+window.addEventListener('resize', () => {
+  charts.dheal.draw();
+  charts.heal.draw();
+  charts.block.draw();
+  charts.random.draw();
+});
+
+// ── AUTO-COMPUTE ──
+// When any setting changes and auto is on, reset all + go
+let autoDebounce = null;
+function autoRecompute() {
+  if (!document.getElementById('autoCompute').checked) return;
+  clearTimeout(autoDebounce);
+  autoDebounce = setTimeout(() => {
+    resetAll();
+    startRace();
+  }, 400);
+}
+document.querySelectorAll('.controls input[type="number"]').forEach(input => {
+  input.addEventListener('input', autoRecompute);
+});
+document.querySelectorAll('.controls select').forEach(sel => {
+  sel.addEventListener('change', autoRecompute);
+});
+
+// Auto-run on page load with preset defaults
+if (document.getElementById('autoCompute').checked) {
+  startRace();
+}
+</script>
+</body>
+</html>
