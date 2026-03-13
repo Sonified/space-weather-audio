@@ -740,6 +740,10 @@ async function init() {
         localStorage.removeItem(STUDY_SLUG_KEY);
         currentStepIndex = 0;
         console.log('🧹 Reset mode — cleared session state');
+
+        // Prepend ♻️ to page title and tab
+        document.title = '♻️ ' + document.title;
+        if (titleEl) titleEl.textContent = '♻️ ' + titleEl.textContent;
     }
 
     if (isPreview) {
@@ -765,12 +769,12 @@ async function init() {
         banner.textContent = `🔍 Preview Mode${stepLabel ? ' Step ' + (parseInt(jumpToStep,10)+1) : ''}`;
         document.body.prepend(banner);
 
-        // Update page tab: 🚧 [Preview] Study Name + swap favicon
+        // Update page tab: 👁 [Preview] Study Name + swap favicon
         const studyName = studyConfig.name || studySlug;
         document.title = `[Preview] ${studyName} — spaceweather.now.audio`;
         if (titleEl) titleEl.textContent = `[Preview] ${studyName}`;
         const favicon = document.querySelector('link[rel="icon"]');
-        if (favicon) favicon.href = "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚧</text></svg>";
+        if (favicon) favicon.href = "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👁</text></svg>";
 
         console.log(`📋 Preview mode active — participant: ${previewId}`);
 

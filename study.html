@@ -22,6 +22,13 @@
             if (!window.__STUDY_SLUG) {
                 document.title = 'Study Not Found';
             }
+            // Swap favicon based on mode
+            var mode = params.get('mode');
+            if (mode === 'test' || mode === 'preview') {
+                var emoji = mode === 'test' ? '🧪' : '👁';
+                var link = document.querySelector('link[rel="icon"]');
+                if (link) link.href = 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>' + emoji + '</text></svg>';
+            }
         })();
 
         // Force EMIC_STUDY mode so main.js initializes the right infrastructure
