@@ -1,0 +1,63 @@
+# 🦋 SHIP IT — Coaching Frame for the Home Stretch
+
+**Purpose:** Keep us on track. When context compresses or a new session starts, re-read this file. It's the compass.
+
+## The Goal
+Get the EMIC study tool into collaborators' hands TODAY so they can step through the full interface and give feedback. That's it. Everything serves this or it waits.
+
+## The Trap
+The randomization simulator (`randomization-sim.html`) is a beautiful deep dive. The algorithm is solid. The urge to "just optimize one more thing" is real and it feels productive, but it's polish on polish. The sim is a design tool for US, not something collaborators need to test. If the conversation drifts toward tweaking the heal algorithm, tuning dropout curves, or adding features to the horse race — NAME IT. Say: "That's the sim rabbit hole. Is this needed to ship today?"
+
+## The Frame
+This isn't about saying no to fun. It's about sequencing. The paper is next, and it's going to be exciting and career-building. But we can't shift into that gear while the study tool is still in "almost ready" limbo. Ship the tool → get feedback rolling → start the paper. That's the sequence.
+
+## How to Coach
+- When the user returns, they may want to test "one small change" to the randomization. Gently redirect: "Is this needed for the collaborator link, or is this sim polish?"
+- Help assess what's shippable vs what's infrastructure we build after feedback
+- Stay energetic and collaborative — this is a sprint to the finish line, not a chore
+- Parallel agents for independent tasks. Move fast.
+- Don't generate assessments or plans unprompted. Work WITH the human. They drive.
+
+## Re-read Trigger
+If you ever consolidate memory or start a fresh session on this project, re-read this file before doing anything else. Check: are we shipping, or are we drifting?
+
+## Status
+- [x] Assess together what needs to work for the collaborator share
+- [ ] Decide: full study flow vs "play with the tool, infrastructure coming next"
+- [ ] Do the work
+- [ ] Share the link
+- [ ] Shift gears to the paper 📝
+
+---
+
+## Ship List
+
+### QUICK FIXES (do first, minimal investigation)
+
+- [ ] **Q1.** Hide x-axis bar items (Annotations, FFT, Color Map, Frequency Scale) on all spaceweather.now.audio deployments (#4)
+- [ ] **Q2.** Remove "Audio playback paused" text (#7)
+- [ ] **Q3.** Change "WOWZA" to "Complete" at end of section 2 (#14)
+- [ ] **Q4.** Fix loop button showing as not-clickable (cancel cursor). Change to "Loop: Enabled" / "Loop: Disabled" with color cues (#15)
+- [ ] **Q5.** Make the blue Complete button fade up slower (#17)
+- [ ] **Q6.** Print participant username to console on every load — blue, bold, easy to spot (#18)
+- [ ] **Q7.** Drawing a feature to the canvas edge should clamp at edge, not disappear (#13)
+- [ ] **Q8.** "Proceed" button should only be active when at least one feature exists (disable when all features deleted) (#5)
+
+### CAN INVESTIGATE / FIX WITHOUT MUCH INPUT
+
+- [ ] **I1.** Modal stacking bug — "Yes I'm Done" after analysis causes next modal to appear on same side, both visible. Same bug after second analysis. Post-study questions appear prematurely. (#10, #16)
+- [ ] **I2.** Clicking "Back" on a post-study question sometimes jumps without fade transition (#19)
+- [ ] **I3.** Standardize final question box sizes (#20)
+- [ ] **I4.** Final study page: remove close button OR make it close the actual browser tab (#21)
+- [ ] **I5.** Post-question 1 showing a selected answer when none was clicked — investigate state leak / stale localStorage from previous session (#18)
+- [ ] **I6.** Reduce vibrancy on "Yes" and "Possibly" feature card colors — less gradient, softer (#6)
+- [ ] **I7.** Evaluate when "press Proceed when complete" message displays — should it show more than once? (#8)
+
+### NEEDS COLLABORATION / INPUT
+
+- [ ] **C1.** Loading experience — spinner/loader while page prepares, reveal when interface is ready (#1)
+- [ ] **C2.** Data pre-load optimization — start loading first example during welcome modals, progressive reveal when ready (#2)
+- [ ] **C3.** Background download of second dataset during first example + local cache for reload. Involves reviewing existing browser cache system (#3)
+- [ ] **C4.** Tutorial video integration + Help button placement — currently (i) in upper right, is that ideal? (#9)
+- [ ] **C5.** Feature copy/paste system — copy individual or all text prompts from top bar, hold in memory, paste with options: cancel / replace existing / add to existing (#11)
+- [ ] **C6.** Card duplication feature (low priority) (#12)
