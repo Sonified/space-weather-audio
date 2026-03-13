@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Study Builder — spaceweather.now.audio</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔨</text></svg>">
 <link rel="stylesheet" href="css/modal-shared.css">
 <style>
   :root {
@@ -146,7 +147,7 @@
     min-width: 0;
     overflow: hidden;
     white-space: nowrap;
-    min-height: 22px;
+    height: 22px;
     display: flex;
     align-items: center;
   }
@@ -176,11 +177,40 @@
     opacity: 0.6;
     transition: opacity 0.15s;
     flex-shrink: 0;
+    position: relative;
   }
   .url-action-btn:hover { opacity: 1; }
+  .url-action-btn[data-tip="Open in new tab"] svg { display: block; transform-origin: center; }
+  .url-action-btn[data-tip="Open in new tab"]:hover svg { animation: svgPulse 0.8s ease-in-out infinite; }
+  @keyframes svgPulse {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.3); }
+    100% { transform: scale(1); }
+  }
+  .url-action-btn[data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1c2028;
+    color: #c9d1d9;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.1s;
+    border: 1px solid var(--border);
+  }
+  .url-action-btn[data-tip]:hover::after { opacity: 1; }
+  .url-mode-cycle { opacity: 1; transition: opacity 0.15s, background 0.15s; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; width: 26px; box-sizing: border-box; }
+  .url-mode-cycle:hover { background: rgba(255,255,255,0.08); }
   .url-toggle { opacity: 0.35; transition: filter 0.15s, opacity 0.15s, background 0.15s; }
   .url-toggle:hover { opacity: 0.7; }
   .url-toggle.active { opacity: 1; background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.35); }
+  .url-divider { width: 1px; height: 16px; background: rgba(255,255,255,0.15); flex-shrink: 0; }
   .slug-status.checking { color: var(--orange); }
 
   /* Save indicator */
@@ -201,7 +231,6 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    overflow: hidden;
     transition: border-color 0.15s;
   }
   .step-card[data-type="registration"] { background: color-mix(in srgb, #888888 20%, var(--surface)); }
@@ -312,12 +341,34 @@
     align-items: center;
     justify-content: center;
     font-size: 14px;
+    position: relative;
   }
   .step-action-btn:hover { background: var(--surface2); color: var(--text); }
+  .step-action-btn[data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1c2028;
+    color: #c9d1d9;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.1s;
+    border: 1px solid var(--border);
+    z-index: 10;
+  }
+  .step-action-btn[data-tip]:hover::after { opacity: 1; }
   .step-action-btn.delete { transition: color 150ms, background-color 150ms; }
   .step-action-btn.delete:hover { color: #fff; background: #d03030; }
   .step-action-btn.preview-btn { font-size: 12px; width: auto; padding: 0 6px; }
   .step-action-btn.preview-btn:hover { color: var(--accent); }
+  .step-action-btn.preview-btn[data-tip="Preview in study (new tab)"] svg { display: block; transform-origin: center; }
+  .step-action-btn.preview-btn[data-tip="Preview in study (new tab)"]:hover svg { animation: svgPulse 0.8s ease-in-out infinite; }
 
   /* Inline preview container */
   .step-preview {
@@ -1148,18 +1199,20 @@
     <div class="slug-preview" id="slugPreview" style="margin-top:4px;">
       <span class="slug-label">Live:</span>
       <span class="slug-url">spaceweather.now.audio/study.html?s=<span id="slugValue" style="color:#58a6ff;"></span><span id="studyUrlMods" style="color:#d29922;"></span></span>
-      <button class="url-action-btn" onclick="copyUrl('study')" title="Copy URL">📋</button>
-      <button class="url-action-btn" onclick="openUrl('study')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#79b8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
-      <button class="url-action-btn url-mode-cycle" data-row="study" data-mode="live" onclick="cycleUrlMode(this)" title="Live mode — click to cycle">🟢</button>
-      <button class="url-action-btn url-toggle" data-row="study" data-mod="reset" onclick="toggleUrlMod(this)" title="Reset session">♻️</button>
+      <button class="url-action-btn" onclick="copyUrl('study')" data-tip="Copy URL">📋</button>
+      <button class="url-action-btn" onclick="openUrl('study')" data-tip="Open in new tab"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#79b8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
+      <span class="url-divider"></span>
+      <button class="url-action-btn url-mode-cycle" data-row="study" data-mode="live" onclick="cycleUrlMode(this)" data-tip="Live mode"><svg width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#2ea043"/></svg></button>
+      <button class="url-action-btn url-toggle" data-row="study" data-mod="reset" onclick="toggleUrlMod(this)" data-tip="Clean reload each session">♻️</button>
     </div>
     <div class="slug-preview" id="localUrlPreview" style="margin-top:2px;display:none;">
       <span class="slug-label">Local:</span>
       <span class="slug-url"><span id="localUrl" style="color:var(--text-muted);"></span><span id="localUrlMods" style="color:#d29922;"></span></span>
-      <button class="url-action-btn" onclick="copyUrl('local')" title="Copy URL">📋</button>
-      <button class="url-action-btn" onclick="openUrl('local')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#79b8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
-      <button class="url-action-btn url-mode-cycle" data-row="local" data-mode="live" onclick="cycleUrlMode(this)" title="Live mode — click to cycle">🟢</button>
-      <button class="url-action-btn url-toggle" data-row="local" data-mod="reset" onclick="toggleUrlMod(this)" title="Reset session">♻️</button>
+      <button class="url-action-btn" onclick="copyUrl('local')" data-tip="Copy URL">📋</button>
+      <button class="url-action-btn" onclick="openUrl('local')" data-tip="Open in new tab"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#79b8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
+      <span class="url-divider"></span>
+      <button class="url-action-btn url-mode-cycle" data-row="local" data-mode="live" onclick="cycleUrlMode(this)" data-tip="Live mode"><svg width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#2ea043"/></svg></button>
+      <button class="url-action-btn url-toggle" data-row="local" data-mod="reset" onclick="toggleUrlMod(this)" data-tip="Clean reload each session">♻️</button>
     </div>
     <!-- Row 3: Admin Key -->
     <div class="header-row" style="margin-top:4px;">
@@ -1764,14 +1817,16 @@
 
     // Restore URL toggle states
     if (config.urlMods) {
-      document.querySelectorAll('.url-toggle').forEach(btn => {
-        const row = btn.dataset.row;
-        const mod = btn.dataset.mod;
-        if (config.urlMods[row]?.[mod]) {
-          btn.classList.add('active');
-        } else {
-          btn.classList.remove('active');
-        }
+      ['study', 'local'].forEach(row => {
+        const mods = config.urlMods[row];
+        if (!mods) return;
+        // Restore mode cycler (live/test/preview)
+        if (mods.mode) setUrlMode(row, mods.mode);
+        // Legacy: old format stored { test: true } instead of { mode: 'test' }
+        else if (mods.test) setUrlMode(row, 'test');
+        // Restore reset toggle
+        const resetBtn = document.querySelector(`.url-toggle[data-row="${row}"][data-mod="reset"]`);
+        if (resetBtn) resetBtn.classList.toggle('active', !!mods.reset);
       });
       updateUrlModsDisplay('study');
       updateUrlModsDisplay('local');
@@ -1964,17 +2019,17 @@
   function buildStepActions(type) {
     // Modal steps get inline preview + page preview; analysis gets page preview only
     const previewBtns = (type === 'question' || type === 'info' || type === 'registration')
-      ? `<button class="step-action-btn preview-btn" title="Preview window" onclick="event.stopPropagation(); openPreviewWindow(this)">👁</button>
-         <button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>`
+      ? `<button class="step-action-btn preview-btn" data-tip="Preview on this page" onclick="event.stopPropagation(); openPreviewWindow(this)">👁</button>
+         <button class="step-action-btn preview-btn" data-tip="Preview in study (new tab)" onclick="event.stopPropagation(); previewStepOnPage(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>`
       : (type === 'modal')
-      ? `<button class="step-action-btn preview-btn" title="Toggle inline preview" onclick="event.stopPropagation(); toggleInlinePreview(this)">👁</button>
-         <button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>`
+      ? `<button class="step-action-btn preview-btn" data-tip="Toggle inline preview" onclick="event.stopPropagation(); toggleInlinePreview(this)">👁</button>
+         <button class="step-action-btn preview-btn" data-tip="Preview in study (new tab)" onclick="event.stopPropagation(); previewStepOnPage(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>`
       : type === 'analysis'
-      ? `<button class="step-action-btn preview-btn" title="Preview on page" onclick="event.stopPropagation(); previewStepOnPage(this)">🔗</button>`
+      ? `<button class="step-action-btn preview-btn" data-tip="Preview in study (new tab)" onclick="event.stopPropagation(); previewStepOnPage(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>`
       : '';
     const moveDel = type === 'registration' ? '' : `
-      <button class="step-action-btn delete" title="Delete step" onclick="event.stopPropagation(); confirmDeleteStep(this, event)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>`;
-    const copyBtn = `<button class="step-action-btn" title="Copy step info" onclick="event.stopPropagation(); copyStepInfo(this)">📋</button>`;
+      <button class="step-action-btn delete" data-tip="Delete step" onclick="event.stopPropagation(); confirmDeleteStep(this, event)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>`;
+    const copyBtn = `<button class="step-action-btn" data-tip="Copy step info" onclick="event.stopPropagation(); copyStepInfo(this)">📋</button>`;
     return `<div class="step-actions">
       ${copyBtn}${previewBtns}${moveDel}
     </div>`;
@@ -3265,15 +3320,15 @@
 
   // URL mode cycler — 🟢 Live → 🧪 Test → 👁 Preview → 🟢 Live
   const URL_MODES = ['live', 'test', 'preview'];
-  const URL_MODE_ICONS = { live: '🟢', test: '🧪', preview: '👁' };
-  const URL_MODE_TITLES = { live: 'Live mode — click to cycle', test: 'Test mode — click to cycle', preview: 'Preview mode (no data saved) — click to cycle' };
+  const URL_MODE_ICONS = { live: '<svg width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#2ea043"/></svg>', test: '🧪', preview: '👁' };
+  const URL_MODE_TITLES = { live: 'Live mode', test: 'Test: full data flow', preview: 'Preview: no data saved' };
 
   function cycleUrlMode(btn) {
     const cur = btn.dataset.mode || 'live';
     const next = URL_MODES[(URL_MODES.indexOf(cur) + 1) % URL_MODES.length];
     btn.dataset.mode = next;
-    btn.textContent = URL_MODE_ICONS[next];
-    btn.title = URL_MODE_TITLES[next];
+    btn.innerHTML = URL_MODE_ICONS[next];
+    btn.dataset.tip = URL_MODE_TITLES[next];
     updateUrlModsDisplay(btn.dataset.row);
     autoSave('toggle');
   }
@@ -3282,8 +3337,8 @@
     const btn = document.querySelector(`.url-mode-cycle[data-row="${row}"]`);
     if (!btn) return;
     btn.dataset.mode = mode;
-    btn.textContent = URL_MODE_ICONS[mode] || URL_MODE_ICONS.live;
-    btn.title = URL_MODE_TITLES[mode] || URL_MODE_TITLES.live;
+    btn.innerHTML = URL_MODE_ICONS[mode] || URL_MODE_ICONS.live;
+    btn.dataset.tip = URL_MODE_TITLES[mode] || URL_MODE_TITLES.live;
   }
 
   // ♻️ reset is still an independent toggle
@@ -4325,7 +4380,7 @@
     return { question, dims, index, total, progressPct, showBack };
   }
 
-  // Preview window — renders modal as a popup overlay, emulates the live site flow
+  // Preview on this page — renders modal as a popup overlay, emulates the live site flow
   function readInfoFromCard(card) {
     const title = card.querySelector('.info-title-input')?.value || 'Information';
     const bodyInput = card.querySelector('.body-html-input');
