@@ -1102,7 +1102,7 @@
 <body>
 
 <!-- Admin Gate Overlay (production only) -->
-<div id="adminGate" style="display:none; position:fixed; inset:0; z-index:9999; background:var(--bg); display:flex; align-items:center; justify-content:center;">
+<div id="adminGate" style="display:none; position:fixed; inset:0; z-index:9999; background:var(--bg); align-items:center; justify-content:center;">
   <div style="background:var(--card-bg); border:1px solid var(--border); border-radius:12px; padding:32px; max-width:360px; width:90%; text-align:center;">
     <h2 style="margin:0 0 8px; font-size:20px;">Study Builder</h2>
     <p style="color:var(--text-muted); margin:0 0 20px; font-size:14px;">Enter admin key to continue</p>
@@ -3301,8 +3301,9 @@
 
   function copyUrl(row) {
     const url = buildUrl(row);
+    const btn = window.event?.currentTarget;
     navigator.clipboard.writeText(url).then(() => {
-      const btn = event.currentTarget;
+      if (!btn) return;
       const orig = btn.textContent;
       btn.textContent = '✓';
       setTimeout(() => btn.textContent = orig, 1200);
