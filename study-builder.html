@@ -1150,7 +1150,7 @@
       <span class="slug-url">spaceweather.now.audio/study.html?s=<span id="slugValue" style="color:#58a6ff;"></span><span id="studyUrlMods" style="color:#d29922;"></span></span>
       <button class="url-action-btn" onclick="copyUrl('study')" title="Copy URL">📋</button>
       <button class="url-action-btn" onclick="openUrl('study')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#79b8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
-      <button class="url-action-btn url-toggle" data-row="study" data-mod="test" onclick="toggleUrlMod(this)" title="Test mode">🧪</button>
+      <button class="url-action-btn url-mode-cycle" data-row="study" data-mode="live" onclick="cycleUrlMode(this)" title="Live mode — click to cycle">🟢</button>
       <button class="url-action-btn url-toggle" data-row="study" data-mod="reset" onclick="toggleUrlMod(this)" title="Reset session">♻️</button>
     </div>
     <div class="slug-preview" id="localUrlPreview" style="margin-top:2px;display:none;">
@@ -1158,7 +1158,7 @@
       <span class="slug-url"><span id="localUrl" style="color:var(--text-muted);"></span><span id="localUrlMods" style="color:#d29922;"></span></span>
       <button class="url-action-btn" onclick="copyUrl('local')" title="Copy URL">📋</button>
       <button class="url-action-btn" onclick="openUrl('local')" title="Open in browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#79b8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
-      <button class="url-action-btn url-toggle" data-row="local" data-mod="test" onclick="toggleUrlMod(this)" title="Test mode">🧪</button>
+      <button class="url-action-btn url-mode-cycle" data-row="local" data-mode="live" onclick="cycleUrlMode(this)" title="Live mode — click to cycle">🟢</button>
       <button class="url-action-btn url-toggle" data-row="local" data-mod="reset" onclick="toggleUrlMod(this)" title="Reset session">♻️</button>
     </div>
     <!-- Row 3: Admin Key -->
@@ -3263,7 +3263,30 @@
     }
   }
 
-  // URL modifier toggles — 🧪 and ♻️ modify what 🌐 and 📋 do
+  // URL mode cycler — 🟢 Live → 🧪 Test → 👁 Preview → 🟢 Live
+  const URL_MODES = ['live', 'test', 'preview'];
+  const URL_MODE_ICONS = { live: '🟢', test: '🧪', preview: '👁' };
+  const URL_MODE_TITLES = { live: 'Live mode — click to cycle', test: 'Test mode — click to cycle', preview: 'Preview mode (no data saved) — click to cycle' };
+
+  function cycleUrlMode(btn) {
+    const cur = btn.dataset.mode || 'live';
+    const next = URL_MODES[(URL_MODES.indexOf(cur) + 1) % URL_MODES.length];
+    btn.dataset.mode = next;
+    btn.textContent = URL_MODE_ICONS[next];
+    btn.title = URL_MODE_TITLES[next];
+    updateUrlModsDisplay(btn.dataset.row);
+    autoSave('toggle');
+  }
+
+  function setUrlMode(row, mode) {
+    const btn = document.querySelector(`.url-mode-cycle[data-row="${row}"]`);
+    if (!btn) return;
+    btn.dataset.mode = mode;
+    btn.textContent = URL_MODE_ICONS[mode] || URL_MODE_ICONS.live;
+    btn.title = URL_MODE_TITLES[mode] || URL_MODE_TITLES.live;
+  }
+
+  // ♻️ reset is still an independent toggle
   function toggleUrlMod(btn) {
     btn.classList.toggle('active');
     updateUrlModsDisplay(btn.dataset.row);
@@ -3273,7 +3296,7 @@
   function updateUrlModsDisplay(row) {
     const mods = getRowMods(row);
     let suffix = '';
-    if (mods.test) suffix += '&mode=test';
+    if (mods.mode && mods.mode !== 'live') suffix += `&mode=${mods.mode}`;
     if (mods.reset) suffix += '&reset';
     const el = document.getElementById(row === 'local' ? 'localUrlMods' : 'studyUrlMods');
     if (el) el.textContent = suffix;
@@ -3281,9 +3304,13 @@
   }
 
   function getRowMods(row) {
-    const toggles = document.querySelectorAll(`.url-toggle[data-row="${row}"].active`);
     const mods = {};
-    toggles.forEach(t => mods[t.dataset.mod] = true);
+    // Mode from cycler button
+    const cycleBtn = document.querySelector(`.url-mode-cycle[data-row="${row}"]`);
+    if (cycleBtn) mods.mode = cycleBtn.dataset.mode || 'live';
+    // Reset from toggle
+    const resetBtn = document.querySelector(`.url-toggle[data-row="${row}"][data-mod="reset"]`);
+    if (resetBtn?.classList.contains('active')) mods.reset = true;
     return mods;
   }
 
@@ -3294,7 +3321,7 @@
       : `https://spaceweather.now.audio/study.html?s=${slug}`;
     const mods = getRowMods(row);
     let url = base;
-    if (mods.test) url += '&mode=test';
+    if (mods.mode && mods.mode !== 'live') url += `&mode=${mods.mode}`;
     if (mods.reset) url += '&reset';
     return url;
   }
@@ -5007,13 +5034,17 @@
         btn.textContent = 'Locked';
         setTimeout(() => { btn.disabled = false; btn.textContent = 'Unlock'; }, Math.min(wait * 1000, 30000));
       } else {
-        // Wrong key — log the failed attempt for rate limiting
-        fetch(`${API_BASE}/api/verify-admin-fail`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        }).catch(() => {});
-        errorEl.innerHTML = 'Invalid admin key<br><span style="color:var(--text-muted);font-size:12px;">Contact <a href="mailto:robert@auralab.io" style="color:#58a6ff;">robert@auralab.io</a> for support</span>';
+        // Wrong key — worker already incremented fails + set lockout
+        const wait = data.retry_after;
+        if (wait && wait > 1) {
+          const fmt = wait >= 60 ? `${Math.ceil(wait / 60)} minute${wait >= 120 ? 's' : ''}` : `${wait} seconds`;
+          errorEl.innerHTML = `Invalid admin key — wait ${fmt}<br><span style="color:var(--text-muted);font-size:12px;">Contact <a href="mailto:robert@auralab.io" style="color:#58a6ff;">robert@auralab.io</a> for support</span>`;
+          btn.disabled = true;
+          btn.textContent = 'Locked';
+          setTimeout(() => { btn.disabled = false; btn.textContent = 'Unlock'; }, Math.min(wait * 1000, 30000));
+        } else {
+          errorEl.innerHTML = 'Invalid admin key<br><span style="color:var(--text-muted);font-size:12px;">Contact <a href="mailto:robert@auralab.io" style="color:#58a6ff;">robert@auralab.io</a> for support</span>';
+        }
         input.value = '';
         input.focus();
       }
