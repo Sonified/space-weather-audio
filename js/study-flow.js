@@ -1631,7 +1631,6 @@ async function runAnalysis(step) {
                     }
                 }
 
-                clearInterval(pollInterval);
                 cleanupPrompts();
                 resolve();
             });
