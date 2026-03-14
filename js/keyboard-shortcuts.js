@@ -78,6 +78,14 @@ function handleKeyboardShortcut(event) {
         return; // Let browser handle normally (but not Escape or Ctrl+Z)
     }
 
+    // Don't capture spectrogram/playback shortcuts when a modal is open
+    // (overlay visible = modal showing). Allow Escape so users can still dismiss.
+    const modalOverlay = document.getElementById('permanentOverlay');
+    const isModalOpen = modalOverlay && modalOverlay.style.display !== 'none' && modalOverlay.style.opacity !== '0';
+    if (isModalOpen && !isEscapeKey) {
+        return;
+    }
+
     // Ctrl+Z / Cmd+Z: Undo last standalone feature
     if (isUndoKey) {
         const features = getStandaloneFeatures();
