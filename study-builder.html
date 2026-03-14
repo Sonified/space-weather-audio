@@ -1159,7 +1159,7 @@
     .rich-toolbar input[type="color"].rt-color { width: 24px; height: 24px; padding: 1px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); cursor: pointer; }
     .rich-toolbar .rt-hex { width: 62px; height: 24px; padding: 2px 5px; font-size: 11px; font-family: monospace; background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); border-radius: 4px; outline: none; box-sizing: border-box; }
     .rich-toolbar .rt-hex:focus { border-color: var(--accent); color: var(--text); }
-    .rich-editable { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius); padding: 10px 12px; min-height: 90px; outline: none; font-size: 14px; line-height: 1.5; overflow-y: auto; }
+    .rich-editable { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius); padding: 10px 12px; min-height: 90px; outline: none; font-size: 14px; line-height: 1.5; overflow-y: auto; resize: vertical; }
     .rich-editable:focus { border-color: var(--accent); }
     .rich-editable a { color: var(--accent); }
 
@@ -1762,7 +1762,11 @@
       } else if (step.type === 'info') {
         card.setAttribute('draggable', 'true');
         card.innerHTML = buildInfoCard(num, step);
-        { const ed = card.querySelector('.rich-editable'); if (ed) ed.innerHTML = step.bodyHtml || step.bodyText || ''; }
+        { const ed = card.querySelector('.rich-editable'); if (ed) {
+          ed.innerHTML = step.bodyHtml || step.bodyText || '';
+          if (step.editorHeight) ed.style.height = step.editorHeight;
+          wireEditorResize(ed);
+        }}
         console.log(`%c[LOAD]   Step ${i} (info) DOM verify:`, 'color: #ff6b6b;', {
           title: card.querySelector('.field-input')?.value || '(empty)',
           bodyLen: card.querySelector('.rich-editable')?.innerHTML?.length || 0,
@@ -2150,6 +2154,16 @@
           </div></div>
         </div>
       </div>`;
+  }
+
+  /** Watch a rich-editable for manual resize and persist height to its step card */
+  function wireEditorResize(ed) {
+    const obs = new ResizeObserver(() => {
+      const h = ed.style.height || (ed.offsetHeight + 'px');
+      const card = ed.closest('.step-card');
+      if (card) card.dataset.editorHeight = h;
+    });
+    obs.observe(ed);
   }
 
   function buildInfoCard(num, step) {
@@ -2936,6 +2950,7 @@
         step.title = card.querySelector('.info-title-input')?.value || '';
         const bodyInput = card.querySelector('.body-html-input');
         step.bodyHtml = bodyInput ? bodyInput.innerHTML : '';
+        if (card.dataset.editorHeight) step.editorHeight = card.dataset.editorHeight;
         const dismissInput = card.querySelector('.dismiss-label-input');
         step.dismissLabel = dismissInput?.value || 'OK';
         step.dismissBold = card.querySelector('.dismiss-font-bold')?.classList.contains('active') || false;
@@ -4281,7 +4296,11 @@
     } else if (type === 'info') {
       card.innerHTML = buildInfoCard(num, step);
       const ed = card.querySelector('.rich-editable');
-      if (ed) ed.innerHTML = step.bodyHtml || '';
+      if (ed) {
+        ed.innerHTML = step.bodyHtml || '';
+        if (step.editorHeight) ed.style.height = step.editorHeight;
+        wireEditorResize(ed);
+      }
     } else if (type === 'question') {
       card.dataset.questionId = step.id;
       card.innerHTML = buildQuestionCard(num, step);
