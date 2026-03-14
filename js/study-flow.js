@@ -1544,6 +1544,12 @@ async function runAnalysis(step) {
     // Apply this step's analysis config (spacecraft, dates, display settings)
     applyAnalysisConfig(step);
 
+    // Clear old axis ticks and canvases immediately so stale dates don't linger
+    for (const id of ['minimap-x-axis', 'spectrogram-x-axis']) {
+        const c = document.getElementById(id);
+        if (c) { const ctx = c.getContext('2d'); if (ctx) ctx.clearRect(0, 0, c.width, c.height); }
+    }
+
     // Hide overlay so the player is visible (study modal fades out with it)
     const overlay = document.getElementById('permanentOverlay');
     if (overlay) {
@@ -1624,7 +1630,13 @@ async function runAnalysis(step) {
 
                 // Confirmation modal if configured
                 if (step.confirmCompletion?.enabled) {
-                    const confirmed = await showConfirmationModal(step.confirmCompletion);
+                    // Replace # with styled feature count
+                    const config = { ...step.confirmCompletion };
+                    if (config.message) {
+                        const styledCount = `<span style="font-size:1.4em; font-weight:700; color:#550000;">${features.length}</span>`;
+                        config.message = config.message.replace(/#/g, styledCount);
+                    }
+                    const confirmed = await showConfirmationModal(config);
                     if (!confirmed) {
                         // User went back — wait for another Complete click
                         return;
