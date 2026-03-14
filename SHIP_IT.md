@@ -56,6 +56,11 @@ An
 - [ ] **I6.** Reduce vibrancy on "Yes" and "Possibly" feature card colors — less gradient, softer (#6)
 - [ ] **I7.** Evaluate when "press Proceed when complete" message displays — should it show more than once? (#8)
 
+### AXIS FIXES
+
+- [ ] **A1.** Y-axis numbers on main canvas are too large on first draw (correct after subsequent redraws)
+- [ ] **A2.** Mini-map x-axis ticks flicker and disappear during horizontal window resize (main canvas x-axis ticks are fine)
+
 ### NEEDS COLLABORATION / INPUT
 
 - [ ] **C1.** Loading experience — spinner/loader while page prepares, reveal when interface is ready (#1)
