@@ -173,7 +173,7 @@ export function deleteStandaloneFeature(featureIndex) {
     closeFeaturePopup();
     standaloneFeatures.splice(featureIndex, 1);
     saveStandaloneFeatures();
-
+    notifyFeatureChange();
 }
 
 
@@ -696,23 +696,23 @@ export function hasIdentifiedFeature() {
     return false;
 }
 
-// ── Button State ─────────────────────────────────────────────────────────
+// ── Feature Change Notification ──────────────────────────────────────────
 
 /**
- * Update the complete button — enable/disable based on feature count.
- * Called on feature create and delete. This is the ONLY place that touches disabled state.
+ * Notify listeners that features changed. study-flow.js listens for this
+ * event to enable/disable the Complete button — feature-tracker stays data-only.
  */
-export function updateCompleteButtonState() {
-    const completeBtn = document.getElementById('completeBtn');
-    if (!completeBtn) return;
-    const shouldDisable = !hasIdentifiedFeature();
-    completeBtn.disabled = shouldDisable;
+export function notifyFeatureChange() {
+    document.dispatchEvent(new CustomEvent('featurechange', {
+        detail: { hasFeature: hasIdentifiedFeature(), count: getStandaloneFeatures().length }
+    }));
 }
 
-/** @deprecated Alias for updateCompleteButtonState */
-export function updateCmpltButtonState() {
-    updateCompleteButtonState();
-}
+/** Alias — existing callers use this name */
+export function updateCompleteButtonState() { notifyFeatureChange(); }
+
+/** Alias — existing callers use this name */
+export function updateCmpltButtonState() { notifyFeatureChange(); }
 
 // ── Frequency Selection State Queries ────────────────────────────────────
 

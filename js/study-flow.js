@@ -29,6 +29,59 @@ let studyStartTime = null;
 let flowActive = false;
 let analysisAbort = null;  // AbortController for current analysis step listeners
 
+// ── Complete Button Controller ──────────────────────────────────────────
+// Single owner of all #completeBtn DOM mutations (show, hide, enable, disable, fade).
+let completeBtnActive = false;
+
+function initCompleteButton(step) {
+    const btn = document.getElementById('completeBtn');
+    if (!btn) return;
+    btn.textContent = step.completeBtnText || '✓ Complete';
+    btn.disabled = false;          // never disabled — .ready controls everything
+    btn.classList.remove('ready');
+    btn.style.setProperty('display', 'block', 'important');
+    completeBtnActive = true;
+}
+
+let completeBtnAnim = null;
+
+function updateCompleteButton(detail) {
+    if (!completeBtnActive) return;
+    const btn = document.getElementById('completeBtn');
+    if (!btn) return;
+    const wasReady = btn.classList.contains('ready');
+
+    if (detail.hasFeature && !wasReady) {
+        // Cursor switches to pointer immediately (clickable during fade)
+        btn.style.cursor = 'pointer';
+        // Grey → blue fade
+        if (completeBtnAnim) completeBtnAnim.cancel();
+        completeBtnAnim = btn.animate(
+            [{ filter: 'grayscale(100%)', opacity: 0.7 },
+             { filter: 'grayscale(0%)',   opacity: 1 }],
+            { duration: 1500, easing: 'ease-in-out', fill: 'forwards' }
+        );
+        // Sparkle kicks in after fade completes
+        completeBtnAnim.onfinish = () => btn.classList.add('ready');
+    } else if (!detail.hasFeature && wasReady) {
+        btn.classList.remove('ready');
+        btn.style.cursor = '';
+        // Blue → grey: instant
+        if (completeBtnAnim) completeBtnAnim.cancel();
+        completeBtnAnim = null;
+    }
+}
+
+function hideCompleteButton() {
+    const btn = document.getElementById('completeBtn');
+    if (!btn) return;
+    completeBtnActive = false;
+    btn.style.display = 'none';
+}
+
+// Listen for feature changes from feature-tracker.js
+document.addEventListener('featurechange', (e) => updateCompleteButton(e.detail));
+
 // localStorage keys for progress persistence
 const PROGRESS_KEY = 'study_flow_step';
 const STUDY_SLUG_KEY = 'study_flow_slug';
@@ -1538,18 +1591,17 @@ async function runAnalysis(step) {
     // Execute config-driven prompts
     const cleanupPrompts = executePrompts(step.prompts);
 
-    // Show and wire the Complete button
+    // Show and wire the Complete button (single owner — see controller at top of file)
+    initCompleteButton(step);
     const completeBtn = document.getElementById('completeBtn');
     if (completeBtn) {
-        completeBtn.textContent = step.completeBtnText || '✓ Complete';
-        completeBtn.disabled = true;
-        completeBtn.style.setProperty('display', 'block', 'important');
         const minFeatures = step.minFeatures || 1;
 
         // Wait for Complete click
         await new Promise((resolve) => {
             completeBtn.addEventListener('click', async () => {
                 if (signal.aborted) return;  // stale listener from previous analysis
+                if (!completeBtn.classList.contains('ready') && !completeBtnAnim) return;  // not yet enabled
                 // Close any open feature popup before proceeding
                 try {
                     const { closeFeaturePopup } = await import('./spectrogram-renderer.js');
@@ -1586,6 +1638,7 @@ async function runAnalysis(step) {
         });
     }
 
+    hideCompleteButton();
     advanceStep();
 }
 
