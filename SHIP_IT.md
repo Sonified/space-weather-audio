@@ -52,7 +52,7 @@ An
 - [x] **I2.** Clicking "Back" on a post-study question sometimes jumps without fade transition (#19)
 - [x] **I3.** Standardize final question box sizes (#20)
 - [x] **I4.** Final study page: remove close button OR make it close the actual browser tab (#21)
-- [ ] **I5.** Post-question 1 showing a selected answer when none was clicked — investigate state leak / stale localStorage from previous session (#18)
+- [x] **I5.** Post-question 1 showing a selected answer when none was clicked — investigate state leak / stale localStorage from previous session (#18)
 - [ ] **I6.** Reduce vibrancy on "Yes" and "Possibly" feature card colors — less gradient, softer (#6)
 - [ ] **I7.** Evaluate when "press Proceed when complete" message displays — should it show more than once? (#8)
 
