@@ -1,85 +1,37 @@
 /**
- * master-modes.js
- * App mode detection — determines which page context we're running in.
- * Each page loads its own study config; this module just identifies the context.
- */
-
-import { log, logGroup, logGroupEnd } from './logger.js';
-
-/**
- * Application Modes — one per entry point
+ * master-modes.js — App context: Study vs Space Weather Portal
  *
- * SOLAR_PORTAL: General-purpose sonification portal (index.html)
- * EMIC_STUDY: EMIC wave research interface (emic_study.html)
+ * study.html sets window.__STUDY_MODE = true before loading modules.
+ * index.html sets nothing — defaults to portal mode.
  */
-export const AppMode = {
-    SOLAR_PORTAL: 'solar_portal',
-    EMIC_STUDY: 'emic_study'
-};
 
-/**
- * Detect if running locally vs production
- */
+export const isStudyPage = typeof window !== 'undefined' && window.__STUDY_MODE === true;
+
+export function isStudyMode() {
+    return isStudyPage;
+}
+
 export function isLocalEnvironment() {
     if (typeof window === 'undefined') return false;
-    const hostname = window.location.hostname;
-    const protocol = window.location.protocol;
-    return hostname === 'localhost' ||
-           hostname === '127.0.0.1' ||
-           hostname === '' ||
-           protocol === 'file:';
+    const h = window.location.hostname;
+    return h === 'localhost' || h === '127.0.0.1' || h === '' || window.location.protocol === 'file:';
 }
 
-// Detect mode from page context
-const isEmicStudyPage = typeof window !== 'undefined' &&
-    (window.location.pathname.includes('emic_study') || window.__EMIC_STUDY_MODE === true || window.__STUDY_MODE === true);
+// Legacy exports — callers still reference AppMode.EMIC_STUDY / SOLAR_PORTAL in switch statements.
+// TODO: migrate these callers to isStudyMode() checks, then delete.
+export const AppMode = { SPACE_WEATHER_PORTAL: 'space_weather_portal', EMIC_STUDY: 'emic_study', SOLAR_PORTAL: 'space_weather_portal' };
+export const CURRENT_MODE = isStudyPage ? AppMode.EMIC_STUDY : AppMode.SPACE_WEATHER_PORTAL;
 
-export const CURRENT_MODE = isEmicStudyPage ? AppMode.EMIC_STUDY : AppMode.SOLAR_PORTAL;
-
-/**
- * Mode Configuration
- */
-const MODE_CONFIG = {
-    [AppMode.SOLAR_PORTAL]: {
-        name: 'Solar Portal',
-        description: 'General-purpose space weather sonification portal',
-        welcomeMode: 'user'
-    },
-
-    [AppMode.EMIC_STUDY]: {
-        name: 'EMIC Study',
-        description: 'Lauren Blum EMIC wave research interface',
-        welcomeMode: 'participant'
-    }
-};
-
-/**
- * Get current mode configuration
- */
 export function getCurrentModeConfig() {
-    return MODE_CONFIG[CURRENT_MODE];
+    return {
+        name: isStudyPage ? 'Study' : 'Space Weather Portal',
+        welcomeMode: isStudyPage ? 'participant' : 'user'
+    };
 }
 
-/**
- * Mode Check Helpers
- */
-export function isStudyMode() {
-    return CURRENT_MODE === AppMode.EMIC_STUDY;
-}
-
-
-/**
- * Initialize mode and log configuration
- */
 export function initializeMasterMode() {
-    const config = MODE_CONFIG[CURRENT_MODE];
-    const isLocal = isLocalEnvironment();
-
-    if (!isStudyMode()) {
-        const env = isLocal ? '🔧 LOCAL' : '🌍 PRODUCTION';
-        if (logGroup('init', `${config.name.toUpperCase()} (${env})`)) {
-            console.log(`🎯 ${config.name}: ${config.description}`);
-            logGroupEnd();
-        }
+    // Startup log for portal mode
+    if (!isStudyPage && isLocalEnvironment()) {
+        console.log('🌍 Space Weather Portal (LOCAL)');
     }
 }
