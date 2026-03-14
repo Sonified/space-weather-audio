@@ -297,7 +297,7 @@ export function initializeAdvancedControls() {
         // Sync checkbox
         if (advancedCheckbox) advancedCheckbox.checked = isAdvanced;
 
-        // Gears, hamburger, questionnaires: advanced only (EMIC only — Solar Portal controls via CSS)
+        // Gears, hamburger, questionnaires: advanced only (EMIC only — Space Weather Portal controls via CSS)
         const gearContainers = document.querySelectorAll('.panel-gear');
         gearContainers.forEach(g => g.style.display = isAdvanced ? 'block' : 'none');
         if (isStudyMode()) {
@@ -314,7 +314,7 @@ export function initializeAdvancedControls() {
         const detrendContainer = document.getElementById('detrendContainer');
         if (detrendContainer) detrendContainer.style.display = isAdvanced ? '' : 'none';
 
-        // Spectrogram controls (FFT, colormap, freq scale): advanced-only in EMIC, always visible in Solar Portal
+        // Spectrogram controls (FFT, colormap, freq scale): advanced-only in EMIC, always visible in Space Weather Portal
         const spectrogramControls = document.querySelector('.spectrogram-controls');
         if (spectrogramControls && isStudyMode()) {
             spectrogramControls.style.visibility = isAdvanced ? 'visible' : 'hidden';

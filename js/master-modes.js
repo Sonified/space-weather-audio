@@ -19,7 +19,7 @@ export function isLocalEnvironment() {
 
 // Legacy exports — callers still reference AppMode.EMIC_STUDY / SOLAR_PORTAL in switch statements.
 // TODO: migrate these callers to isStudyMode() checks, then delete.
-export const AppMode = { SPACE_WEATHER_PORTAL: 'space_weather_portal', EMIC_STUDY: 'emic_study', SOLAR_PORTAL: 'space_weather_portal' };
+export const AppMode = { SPACE_WEATHER_PORTAL: 'space_weather_portal', EMIC_STUDY: 'emic_study' };
 export const CURRENT_MODE = isStudyPage ? AppMode.EMIC_STUDY : AppMode.SPACE_WEATHER_PORTAL;
 
 export function getCurrentModeConfig() {

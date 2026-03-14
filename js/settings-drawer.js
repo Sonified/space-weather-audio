@@ -2,7 +2,7 @@
 
 /**
  * SHARED ADVANCED CONTROLS: Gear popovers, settings drawer, localStorage persistence.
- * Called from both EMIC Study and Solar Portal modes.
+ * Called from both EMIC Study and Space Weather Portal modes.
  */
 export function injectSettingsDrawer() {
     // Skip if already injected

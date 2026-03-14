@@ -90,7 +90,7 @@ export async function uploadEntry(entryOrIndex, entries) {
 }
 
 /**
- * Upload the default PSP dataset (the Solar Portal default view)
+ * Upload the default PSP dataset (the Space Weather Portal default view)
  * PSP_FLD_L2_MAG_RTN, 2021-04-29 07:40 - 08:20
  */
 export async function uploadDefaultPSP() {

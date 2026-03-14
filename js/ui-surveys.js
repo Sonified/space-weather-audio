@@ -30,10 +30,10 @@ export function submitParticipantSetup() {
     statusEl.className = 'status success';
     statusEl.textContent = `✅ User Name Recorded`;
 
-    // In Solar Portal mode, animate follow-up instruction after a brief delay
+    // In Space Weather Portal mode, animate follow-up instruction after a brief delay
     // (Skip for shared sessions - they already have data loaded)
     const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
-    if (CURRENT_MODE === AppMode.SOLAR_PORTAL && !isSharedSession) {
+    if (CURRENT_MODE === AppMode.SPACE_WEATHER_PORTAL && !isSharedSession) {
         setTimeout(async () => {
             const { typeText } = await import('./status-text.js');
             statusEl.className = 'status info';

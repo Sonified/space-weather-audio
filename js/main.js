@@ -97,7 +97,7 @@ async function initializeMainApp() {
             advancedCheckboxEarly.checked = false;
         }
     }
-    if (CURRENT_MODE === AppMode.EMIC_STUDY || CURRENT_MODE === AppMode.SOLAR_PORTAL) {
+    if (CURRENT_MODE === AppMode.EMIC_STUDY || CURRENT_MODE === AppMode.SPACE_WEATHER_PORTAL) {
         initializeAdvancedControls();
     }
 
@@ -105,13 +105,13 @@ async function initializeMainApp() {
         document.querySelectorAll('.dev-control').forEach(el => { el.style.display = 'none'; });
     }
 
-    // Hide simulate panel in Study Mode and Solar Portal mode
-    if (isStudyMode() || CURRENT_MODE === AppMode.SOLAR_PORTAL) {
+    // Hide simulate panel in Study Mode and Space Weather Portal mode
+    if (isStudyMode() || CURRENT_MODE === AppMode.SPACE_WEATHER_PORTAL) {
         const simulatePanel = document.querySelector('.panel-simulate');
         if (simulatePanel) {
             simulatePanel.style.display = 'none';
-            if (CURRENT_MODE === AppMode.SOLAR_PORTAL) {
-                if (window.pm?.init) console.log('☀️ Solar Portal Mode: Simulate panel hidden');
+            if (CURRENT_MODE === AppMode.SPACE_WEATHER_PORTAL) {
+                if (window.pm?.init) console.log('☀️ Space Weather Portal Mode: Simulate panel hidden');
             } else {
                 if (window.pm?.init) console.log('🎓 Production Mode: Simulate panel hidden (surveys controlled by workflow)');
             }

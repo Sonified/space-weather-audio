@@ -643,7 +643,7 @@ export async function closeParticipantModal(keepOverlay = null) {
     // Auto-detect if overlay should be kept (if keepOverlay not explicitly provided)
     if (keepOverlay === null) {
         // Study mode: keep overlay (welcome modal follows participant modal)
-        // Solar Portal: dismiss overlay (no follow-up modal)
+        // Space Weather Portal: dismiss overlay (no follow-up modal)
         keepOverlay = isStudyMode();
     }
 

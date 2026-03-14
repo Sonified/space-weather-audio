@@ -1,4 +1,4 @@
-// mode-initializers.js -- Mode-specific initialization (EMIC Study, Solar Portal)
+// mode-initializers.js -- Mode-specific initialization (EMIC Study, Space Weather Portal)
 
 import * as State from './audio-state.js';
 import { getParticipantId, generateParticipantId, storeParticipantId, getActiveId } from './participant-id.js';
@@ -148,7 +148,7 @@ export async function initializeSolarPortalMode() {
         }
     }
 
-    console.log('✅ Solar Portal mode ready');
+    console.log('✅ Space Weather Portal mode ready');
 }
 
 /**
@@ -163,7 +163,7 @@ export async function initializeApp() {
     if (window.pm?.study_flow) console.log(`🚀 Initializing app in ${CURRENT_MODE} mode`);
 
     switch (CURRENT_MODE) {
-        case AppMode.SOLAR_PORTAL:
+        case AppMode.SPACE_WEATHER_PORTAL:
             await initializeSolarPortalMode();
             break;
 
@@ -175,7 +175,7 @@ export async function initializeApp() {
             break;
 
         default:
-            console.error(`❌ Unknown mode: ${CURRENT_MODE}, falling back to Solar Portal`);
+            console.error(`❌ Unknown mode: ${CURRENT_MODE}, falling back to Space Weather Portal`);
             await initializeSolarPortalMode();
     }
 
