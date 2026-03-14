@@ -2615,6 +2615,9 @@
           <span style="transition:transform 0.2s; display:inline-block;" class="prompts-chevron">▶</span>
           <span style="font-weight:600; color:#ccc;">💬 Text Prompts</span>
           <span style="color:#aab; font-size:12px;" class="prompts-count">(${(prompts||[]).length})</span>
+          <span style="flex:1;"></span>
+          <button type="button" onclick="event.stopPropagation(); copyPrompts(this);" style="background:none; border:1px solid #555; color:#aaa; padding:2px 8px; border-radius:4px; cursor:pointer; font-size:11px;" title="Copy all prompts">📋 Copy</button>
+          <button type="button" onclick="event.stopPropagation(); pastePrompts(this);" style="background:none; border:1px solid #555; color:#aaa; padding:2px 8px; border-radius:4px; cursor:pointer; font-size:11px;" title="Paste prompts">📥 Paste</button>
         </div>
         <div class="prompts-body" style="display:none; padding-left:4px;">
           <div class="prompts-list">${items}</div>
@@ -2709,6 +2712,47 @@
     const count = section.querySelectorAll('.prompt-entry').length;
     const countEl = section.querySelector('.prompts-count');
     if (countEl) countEl.textContent = `(${count})`;
+  }
+
+  function collectPromptsFromSection(section) {
+    const prompts = [];
+    section.querySelectorAll('.prompt-entry').forEach(entry => {
+      const trigger = entry.querySelector('.prompt-trigger')?.value || 'onLoad';
+      const delay = parseInt(entry.querySelector('.prompt-delay')?.value || '0', 10);
+      const text = entry.querySelector('.prompt-text')?.value || '';
+      const effect = entry.querySelector('.prompt-effect')?.value || 'typed';
+      const speed = entry.querySelector('.prompt-speed')?.value || 'medium';
+      if (text.trim()) prompts.push({ trigger, delay, text, effect, speed });
+    });
+    return prompts;
+  }
+
+  function copyPrompts(btn) {
+    const section = btn.closest('.prompts-section');
+    const prompts = collectPromptsFromSection(section);
+    if (!prompts.length) { btn.textContent = '(empty)'; setTimeout(() => btn.textContent = '📋 Copy', 1500); return; }
+    navigator.clipboard.writeText(JSON.stringify(prompts, null, 2)).then(() => {
+      btn.textContent = '✓ Copied';
+      setTimeout(() => btn.textContent = '📋 Copy', 1500);
+    });
+  }
+
+  function pastePrompts(btn) {
+    const section = btn.closest('.prompts-section');
+    navigator.clipboard.readText().then(text => {
+      let prompts;
+      try { prompts = JSON.parse(text); } catch { btn.textContent = '✕ Invalid'; setTimeout(() => btn.textContent = '📥 Paste', 1500); return; }
+      if (!Array.isArray(prompts)) { btn.textContent = '✕ Not a list'; setTimeout(() => btn.textContent = '📥 Paste', 1500); return; }
+      const list = section.querySelector('.prompts-list');
+      prompts.forEach((p, i) => {
+        const div = document.createElement('div');
+        div.innerHTML = buildPromptEntry(p, list.children.length + i);
+        list.appendChild(div.firstElementChild);
+      });
+      updatePromptCount(btn);
+      btn.textContent = '✓ Pasted';
+      setTimeout(() => btn.textContent = '📥 Paste', 1500);
+    });
   }
 
   function escapeAttr(s) { return (s||'').replace(/"/g, '&quot;'); }
