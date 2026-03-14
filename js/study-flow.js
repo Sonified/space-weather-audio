@@ -1078,11 +1078,21 @@ function openStudyModalIfNeeded() {
         console.log('📋 openStudyModal: already open, skipping');
         return;
     }
-    // Force modal visible instantly — inner crossfade (setStudyModalContent) handles animation
+    // Show modal — fade in on first appearance, instant on subsequent
     if (studyModalEl) {
-        studyModalEl.style.transition = 'none';
-        studyModalEl.style.opacity = '1';
-        studyModalEl.style.display = 'flex';
+        const isFirstShow = !studyModalEl.dataset.hasShown;
+        if (isFirstShow) {
+            studyModalEl.style.opacity = '0';
+            studyModalEl.style.display = 'flex';
+            studyModalEl.style.transition = 'opacity 0.6s ease';
+            void studyModalEl.offsetHeight;
+            studyModalEl.style.opacity = '1';
+            studyModalEl.dataset.hasShown = '1';
+        } else {
+            studyModalEl.style.transition = 'none';
+            studyModalEl.style.opacity = '1';
+            studyModalEl.style.display = 'flex';
+        }
         studyModalEl.classList.add('modal-visible');
     }
     modalManager.currentModal = 'studyModal';

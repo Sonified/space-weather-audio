@@ -2705,23 +2705,28 @@
     const entry = btn.closest('.prompt-entry');
 
     // Toggle: if dialog already open for this entry, close it
-    const existing = entry.querySelector('.prompt-delete-dialog');
-    if (existing) { existing.remove(); return; }
+    if (entry._deleteDialog) { entry._deleteDialog.remove(); entry._deleteDialog = null; return; }
 
     const text = entry.querySelector('.prompt-text')?.value?.trim() || 'this prompt';
     const preview = text.length > 30 ? text.slice(0, 30) + '…' : text;
 
     const dialog = document.createElement('div');
     dialog.className = 'prompt-delete-dialog';
-    const x = evt.clientX, y = evt.clientY;
+    const dw = 336, dh = 90, pad = 8;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    let left = Math.min(evt.clientX + 20, vw - dw - pad);
+    let top = Math.min(evt.clientY - dh / 2, vh - dh - pad);
+    if (left < pad) left = pad;
+    if (top < pad) top = pad;
     dialog.style.cssText = `
-      position: fixed; left: ${x + 20}px; top: ${y}px; transform: translateY(-50%);
+      position: fixed; left: ${left}px; top: ${top}px;
       z-index: 100000; background: #1e1e2e; color: #e0e0e0;
       border: 1px solid rgba(102, 126, 234, 0.4); border-radius: 8px;
       padding: 20px 28px; box-shadow: 0 8px 32px rgba(0,0,0,0.6);
       font-family: inherit; font-size: 14px; text-align: center;
-      min-width: 240px;
+      width: 280px;
     `;
+    entry._deleteDialog = dialog;
     const msg = document.createElement('div');
     msg.textContent = `Delete "${preview}"?`;
     msg.style.marginBottom = '16px';
@@ -2739,6 +2744,7 @@
     const cleanup = (confirmed) => {
       document.removeEventListener('keydown', onKey);
       dialog.remove();
+      entry._deleteDialog = null;
       if (confirmed) {
         entry.remove();
         updatePromptCount(btn);
@@ -2756,7 +2762,7 @@
     btnRow.appendChild(okBtn);
     dialog.appendChild(msg);
     dialog.appendChild(btnRow);
-    entry.appendChild(dialog);
+    document.body.appendChild(dialog);
     okBtn.focus();
   }
 
