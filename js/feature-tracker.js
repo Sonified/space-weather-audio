@@ -21,9 +21,6 @@ import { logGroup, logGroupEnd } from './logger.js';
 // Each feature: { lowFreq, highFreq, startTime, endTime, notes, confidence, speedFactor }
 let standaloneFeatures = [];
 
-// Cached EMIC flags module (avoids dynamic import microtask on every call)
-let _emicFlagsModule = null;
-
 // localStorage key prefix for feature persistence
 const STORAGE_KEY_PREFIX = 'solar_audio_regions_';
 
@@ -148,7 +145,7 @@ function loadStandaloneFeatures() {
             if (data && Array.isArray(data.features)) {
                 standaloneFeatures = data.features;
                 if (window.pm?.features) console.log(`Loaded ${standaloneFeatures.length} standalone feature(s)`);
-                updateStandaloneFeatureCount();
+            
                 return;
             }
         }
@@ -164,7 +161,7 @@ function loadStandaloneFeatures() {
 function addStandaloneFeature(featureData) {
     standaloneFeatures.push(featureData);
     saveStandaloneFeatures();
-    updateStandaloneFeatureCount();
+
     return standaloneFeatures.length - 1;
 }
 
@@ -176,22 +173,9 @@ export function deleteStandaloneFeature(featureIndex) {
     closeFeaturePopup();
     standaloneFeatures.splice(featureIndex, 1);
     saveStandaloneFeatures();
-    updateStandaloneFeatureCount();
+
 }
 
-/** Update EMIC active feature count from standalone features */
-function updateStandaloneFeatureCount() {
-    try {
-        if (_emicFlagsModule) {
-            _emicFlagsModule.updateActiveFeatureCount(standaloneFeatures.length);
-        } else {
-            import('./emic-study-flags.js').then(mod => {
-                _emicFlagsModule = mod;
-                mod.updateActiveFeatureCount(standaloneFeatures.length);
-            }).catch(() => {});
-        }
-    } catch {}
-}
 
 // ── Feature Number Utility ───────────────────────────────────────────────
 

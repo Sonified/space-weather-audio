@@ -829,18 +829,6 @@ export async function closeWelcomeModal(keepOverlay = null) {
 
     console.log(`👋 Welcome modal closed (keepOverlay: ${keepOverlay})`);
 
-    // Set EMIC welcome-closed flag + sync to server
-    if (isEmicStudyMode()) {
-        import('./emic-study-flags.js').then(({ EMIC_FLAGS, setEmicFlag }) => {
-            setEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME);
-        });
-        import('./data-uploader.js').then(({ syncEmicProgress }) => {
-            import('./participant-id.js').then(({ getActiveId }) => {
-                const pid = getActiveId();
-                if (pid !== 'anonymous') syncEmicProgress(pid, 'welcome_closed');
-            });
-        });
-    }
 }
 
 // ── Questionnaire modal wiring ──────────────────────────────────────────────
@@ -948,13 +936,6 @@ export function wireQuestionnaireModals(modalMgr) {
             }
             console.log(`📋 ${q.logLabel}:`, value || '(skipped)');
 
-            if (isEmicStudyMode()) {
-                const { EMIC_FLAGS, setEmicFlag } = await import('./emic-study-flags.js');
-                setEmicFlag(EMIC_FLAGS[q.flag]);
-                const { syncEmicProgress } = await import('./data-uploader.js');
-                const { getActiveId } = await import('./participant-id.js');
-                syncEmicProgress(getActiveId(), q.milestone);
-            }
             modalMgr.closeModal(q.modalId);
         });
     }

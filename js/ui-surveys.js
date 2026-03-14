@@ -16,17 +16,6 @@ export function submitParticipantSetup() {
         storeParticipantId(participantId);
         storeRealUsername(participantId);
         console.log('💾 Saved participant ID:', participantId);
-        // Set EMIC registration flag + sync to server
-        import('./master-modes.js').then(({ isEmicStudyMode }) => {
-            if (isEmicStudyMode()) {
-                import('./emic-study-flags.js').then(({ EMIC_FLAGS, setEmicFlag }) => {
-                    setEmicFlag(EMIC_FLAGS.HAS_REGISTERED);
-                });
-                import('./data-uploader.js').then(({ syncEmicProgress }) => {
-                    syncEmicProgress(participantId, 'registered');
-                });
-            }
-        });
     } else {
         // If empty, remove from localStorage
         localStorage.removeItem('participantId');

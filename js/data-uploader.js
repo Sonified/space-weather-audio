@@ -59,8 +59,6 @@ export async function syncEmicProgress(participantId, milestone) {
     if (!participantId) return;
     try {
         const { getStandaloneFeatures } = await import('./feature-tracker.js');
-        const { EMIC_FLAGS, getEmicFlag, getEmicFlagNumber } = await import('./emic-study-flags.js');
-
         const standalone = getStandaloneFeatures();
         const features = standalone.map((feat, i) => ({
             index: i,
@@ -71,24 +69,11 @@ export async function syncEmicProgress(participantId, milestone) {
             drawnAt: feat.createdAt || ''
         }));
 
-        const flags = {
-            registered: getEmicFlag(EMIC_FLAGS.HAS_REGISTERED),
-            closedWelcome: getEmicFlag(EMIC_FLAGS.HAS_CLOSED_WELCOME),
-            featureCount: getEmicFlagNumber(EMIC_FLAGS.ACTIVE_FEATURE_COUNT),
-            completedAnalysis: getEmicFlag(EMIC_FLAGS.HAS_COMPLETED_ANALYSIS),
-            answered1Background: getEmicFlag(EMIC_FLAGS.ANSWERED_1_BACKGROUND),
-            answered2DataAnalysis: getEmicFlag(EMIC_FLAGS.ANSWERED_2_DATA_ANALYSIS),
-            answered3Musical: getEmicFlag(EMIC_FLAGS.ANSWERED_3_MUSICAL),
-            answered4Feedback: getEmicFlag(EMIC_FLAGS.ANSWERED_4_FEEDBACK),
-            answered5Learned: getEmicFlag(EMIC_FLAGS.ANSWERED_5_LEARNED),
-        };
-
         await uploadEmicSubmission(participantId, {
             participantId,
             milestone,
             features,
             featureCount: features.length,
-            flags,
             syncedAt: new Date().toISOString(),
             isProgressSync: true,
         });

@@ -2,7 +2,6 @@
 
 import * as State from './audio-state.js';
 import { getParticipantId, generateParticipantId, storeParticipantId, getActiveId } from './participant-id.js';
-import { getEmicFlag, EMIC_FLAGS } from './emic-study-flags.js';
 import { openParticipantModal } from './ui-controls.js';
 import {
     isStudyMode,
@@ -73,19 +72,13 @@ export async function initializeEmicStudyMode() {
 
     // Advanced controls already initialized early in initializeMainApp()
 
-    // Login/welcome modals are handled entirely by simulate flow (emic-study-flow.js)
-    // Hide overlay unless actively resuming a simulation in participant mode
-    const isSimulating = getEmicFlag(EMIC_FLAGS.IS_SIMULATING);
-    const isAdvanced = document.getElementById('advancedMode')?.checked;
-    if (!isSimulating || isAdvanced) {
-        const overlay = document.getElementById('permanentOverlay');
-        if (overlay) { overlay.style.display = 'none'; overlay.style.opacity = '0'; }
-    }
+    // Hide overlay (no simulate flow to manage it)
+    const overlay = document.getElementById('permanentOverlay');
+    if (overlay) { overlay.style.display = 'none'; overlay.style.opacity = '0'; }
 
     // Show startup prompt
-    // Skip if mid-simulation — the simulate flow handles its own status text on resume
     const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
-    if (!isSharedSession && (!isSimulating || isAdvanced)) {
+    if (!isSharedSession) {
         setTimeout(async () => {
             const { typeText } = await import('./status-text.js');
             const statusEl = document.getElementById('status');

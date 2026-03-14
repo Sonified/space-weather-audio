@@ -21,7 +21,6 @@ import { initDataViewer, fetchUsers } from './data-viewer.js';
 import { zoomState } from './zoom-state.js';
 import { isStudyMode, isEmicStudyMode, isLocalEnvironment } from './master-modes.js';
 import { isAdminUnlocked } from './admin-unlock.js';
-import { getEmicFlag, EMIC_FLAGS } from './emic-study-flags.js';
 import { getRealUsernameStored, getActiveId } from './participant-id.js';
 import { pm } from './logger.js';
 import { upgradeAllSelects } from './custom-select.js';
@@ -344,8 +343,7 @@ export function initializeAdvancedControls() {
             pidValue.textContent = activeId !== 'anonymous' ? activeId : '--';
         }
         if (pidLabel && !isStudyPage) {
-            const simulating = getEmicFlag(EMIC_FLAGS.IS_SIMULATING);
-            pidLabel.textContent = (!isAdvanced && simulating) ? 'Participant ID' : 'User ID';
+            pidLabel.textContent = 'User ID';
         }
 
         // EMIC controls panel (Fetch Data) is always hidden on study pages via CSS
