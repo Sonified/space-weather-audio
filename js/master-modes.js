@@ -67,10 +67,6 @@ export function isStudyMode() {
     return CURRENT_MODE === AppMode.EMIC_STUDY;
 }
 
-// Legacy aliases — kept so existing imports don't break (volcano code)
-export const isEmicStudyMode = isStudyMode;
-export function isPersonalMode() { return false; }
-export function isDevMode() { return false; }
 
 /**
  * Initialize mode and log configuration
