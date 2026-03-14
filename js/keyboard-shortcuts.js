@@ -272,18 +272,7 @@ function handleKeyboardShortcut(event) {
             return;
         }
 
-        // Priority 1: Check if "Begin Analysis" button is visible and enabled
-        const completeBtn = document.getElementById('completeBtn');
-        if (completeBtn &&
-            completeBtn.textContent === 'Begin Analysis' &&
-            !completeBtn.disabled &&
-            completeBtn.style.display !== 'none' &&
-            window.getComputedStyle(completeBtn).display !== 'none') {
-            event.preventDefault();
-            console.log('⌨️ Enter key pressed - triggering Begin Analysis button');
-            completeBtn.click();
-            return;
-        }
+
 
         // Priority 2: Trigger fetch data if fetch button is enabled (only on first load)
         if (!getHasPerformedFirstFetch()) {
