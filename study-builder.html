@@ -315,7 +315,6 @@
     text-align: center;
     flex-shrink: 0;
     white-space: nowrap;
-    margin-right: 5%;
   }
   .badge-registration { background: rgba(107,114,128,0.15); color: #d1d5db; font-size: 9px; letter-spacing: 0; padding-top: 5px; padding-bottom: 5px; }
   .badge-modal { background: rgba(124,58,237,0.15); color: #A78BFA; }
@@ -332,6 +331,8 @@
     flex-shrink: 0;
   }
   .step-card:hover .step-actions { opacity: 1; }
+  .dup-btn-inline { opacity: 0; transition: opacity 0.15s; margin-left: -8px; }
+  .step-card:hover .dup-btn-inline { opacity: 1; }
   .step-action-btn {
     width: 28px;
     height: 28px;
@@ -2043,11 +2044,10 @@
       : '';
     const moveDel = type === 'registration' ? '' : `
       <button class="step-action-btn delete" data-tip="Delete step" onclick="event.stopPropagation(); confirmDeleteStep(this, event)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>`;
-    const dupBtn = `<button class="step-action-btn preview-btn" data-tip="Duplicate card" onclick="event.stopPropagation(); duplicateStep(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>`;
     const copyBtn = `<button class="step-action-btn preview-btn" data-tip="Copy step info" onclick="event.stopPropagation(); copyStepInfo(this)">📋</button>`;
     const divider = `<span style="width:1px;height:16px;background:var(--border);margin:0 2px;flex-shrink:0;"></span>`;
     return `<div class="step-actions">
-      ${dupBtn}${copyBtn}${divider}${previewBtns}${moveDel}
+      ${copyBtn}${divider}${previewBtns}${moveDel}
     </div>`;
   }
 
@@ -2059,7 +2059,7 @@
         <span class="lock-icon">🔒</span><span class="chevron">▶</span>
         <div class="step-number registration">${num}</div>
         <div class="step-title">Participant Registration</div>
-        <span class="step-type-badge badge-registration">Registration</span>
+        <span class="step-type-badge badge-registration">Registration</span><button class="step-action-btn preview-btn dup-btn-inline" data-tip="Duplicate card" onclick="event.stopPropagation(); duplicateStep(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
         ${buildStepActions('registration')}
       </div>
       <div class="step-detail">
@@ -2158,7 +2158,7 @@
         <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
         <div class="step-number info">${num}</div>
         <div class="step-title">${escapeHtml(step.title || 'Information')}</div>
-        <span class="step-type-badge badge-info">Info</span>
+        <span class="step-type-badge badge-info">Info</span><button class="step-action-btn preview-btn dup-btn-inline" data-tip="Duplicate card" onclick="event.stopPropagation(); duplicateStep(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
         ${buildStepActions('info')}
       </div>
       <div class="step-detail">
@@ -2347,7 +2347,7 @@
         <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
         <div class="step-number question">${num}</div>
         <div class="step-title">${escapeHtml(step.title || step.text || 'New Question')}</div>
-        <span class="step-type-badge badge-question">Question</span>
+        <span class="step-type-badge badge-question">Question</span><button class="step-action-btn preview-btn dup-btn-inline" data-tip="Duplicate card" onclick="event.stopPropagation(); duplicateStep(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
         ${buildStepActions('question')}
       </div>
       <div class="step-detail">
@@ -2496,7 +2496,7 @@
         <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
         <div class="step-number analysis">${num}</div>
         <div class="step-title">${escapeHtml(step.title || 'Analysis')}</div>
-        <span class="step-type-badge badge-analysis">Analysis</span>
+        <span class="step-type-badge badge-analysis">Analysis</span><button class="step-action-btn preview-btn dup-btn-inline" data-tip="Duplicate card" onclick="event.stopPropagation(); duplicateStep(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
         ${buildStepActions('analysis')}
       </div>
       <div class="step-detail">
@@ -4323,9 +4323,11 @@
     const header = `Step ${idx + 1}: ${step.type} — "${step.title || step.regTitle || ''}"`;
     const text = header + '\n' + JSON.stringify(step, null, 2);
     navigator.clipboard.writeText(text).then(() => {
-      const orig = btn.textContent;
+      const orig = btn.innerHTML;
+      const w = btn.offsetWidth;
+      btn.style.width = w + 'px';
       btn.textContent = '✓';
-      setTimeout(() => { btn.textContent = orig; }, 1500);
+      setTimeout(() => { btn.innerHTML = orig; btn.style.width = ''; }, 1500);
     });
   }
 
