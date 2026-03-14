@@ -256,7 +256,18 @@ async function initializeMainApp() {
         await initializeApp();
         const pid = getParticipantId();
         if (pid) {
-            console.log('%c Participant: ' + pid + ' ', 'color: #fff; background: #1565C0; font-size: 16px; font-weight: bold; padding: 4px 12px; border-radius: 4px;');
+            let label, style;
+            if (window.__PREVIEW_MODE) {
+                label = 'Preview: ' + pid;
+                style = 'color: #1a1a00; background: #E6B800; font-size: 13px; font-weight: bold; padding: 3px 10px; border-radius: 4px;';
+            } else if (window.__TEST_MODE) {
+                label = 'Test: ' + pid;
+                style = 'color: #fff; background: #1565C0; font-size: 13px; font-weight: bold; padding: 3px 10px; border-radius: 4px;';
+            } else {
+                label = 'Participant: ' + pid;
+                style = 'color: #fff; background: #2E7D32; font-size: 13px; font-weight: bold; padding: 3px 10px; border-radius: 4px;';
+            }
+            console.log('%c' + label, style);
         }
         if (logGroup('init', 'v2.0 App Ready')) {
             console.log('📌 v2.0 (2026-02-12) Three.js GPU-accelerated rendering');
