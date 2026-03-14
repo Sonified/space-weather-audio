@@ -1,7 +1,7 @@
 // Modal HTML templates as ES6 template literals (shared + EMIC)
 // Volcano study templates moved to volcano-modal-templates.js
 
-import { isEmicStudyMode } from './master-modes.js';
+import { isStudyMode } from './master-modes.js';
 
 // 🔥 FIX: Track if modals have been initialized to prevent duplicate initialization
 let modalsInitialized = false;
@@ -414,7 +414,7 @@ export async function initializeModals() {
     overlay.appendChild(createParticipantInfoModal());
 
     // EMIC study modals
-    if (isEmicStudyMode()) {
+    if (isStudyMode()) {
         overlay.appendChild(createEmicAboutModal());
         overlay.appendChild(createBackgroundQuestionModal());
         overlay.appendChild(createDataAnalysisQuestionModal());
@@ -461,7 +461,7 @@ export async function initializeModals() {
     
     modalsInitialized = true;
     // Only log in dev/personal modes, not study mode
-    if (!isEmicStudyMode()) {
+    if (!isStudyMode()) {
         console.log('📋 Modals initialized and injected into DOM');
     }
 }

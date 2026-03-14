@@ -20,7 +20,7 @@ import { initSilentErrorReporter } from './silent-error-reporter.js';
 import { drawFrequencyAxis, setMinFreqMultiplier } from './spectrogram-axis-renderer.js';
 import { updateCompleteButtonState, updateCmpltButtonState } from './feature-tracker.js';
 import { initKeyboardShortcuts } from './keyboard-shortcuts.js';
-import { isEmicStudyMode, isLocalEnvironment } from './master-modes.js';
+import { isStudyMode, isLocalEnvironment } from './master-modes.js';
 import { initShareModal, openShareModal, checkAndLoadSharedSession, applySharedSession } from './share-modal.js';
 import { logGroup, logGroupEnd } from './logger.js';
 import { initializeAdvancedControls } from './advanced-controls.js';
@@ -351,7 +351,7 @@ async function initializeMainApp() {
             });
             // Also save on input for immediate feedback
             el.addEventListener('input', () => saveDateTime());
-        } else if (!isEmicStudyMode()) {
+        } else if (!isStudyMode()) {
             console.warn(`⚠️ Could not find element: ${id}`);
         }
     });
@@ -485,8 +485,8 @@ async function initializeMainApp() {
             cancelTyping();
             saveRecentSearch(); // Save search before fetching (no-op now, handled by cache)
             // EMIC mode: use config defined in emic_study.html
-            const { isEmicStudyMode } = await import('./master-modes.js');
-            if (isEmicStudyMode()) {
+            const { isStudyMode } = await import('./master-modes.js');
+            if (isStudyMode()) {
                 await startStreaming(e, window.__STUDY_CONFIG || window.__EMIC_CONFIG);
             } else {
                 await startStreaming(e);

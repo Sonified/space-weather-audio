@@ -19,7 +19,7 @@ import { drawMinimapXAxis } from './minimap-x-axis-renderer.js';
 import { drawDayMarkers } from './day-markers.js';
 import { initDataViewer, fetchUsers } from './data-viewer.js';
 import { zoomState } from './zoom-state.js';
-import { isStudyMode, isEmicStudyMode, isLocalEnvironment } from './master-modes.js';
+import { isStudyMode, isLocalEnvironment } from './master-modes.js';
 import { isAdminUnlocked } from './admin-unlock.js';
 import { getRealUsernameStored, getActiveId } from './participant-id.js';
 import { pm } from './logger.js';
@@ -144,7 +144,7 @@ export function initializeAdvancedControls() {
     if (autoPlayEl) {
         const apKey = (isStudyMode() ? 'emic_' : 'main_') + 'auto_play';
         if (localStorage.getItem(apKey) === null) {
-            autoPlayEl.checked = !isEmicStudyMode();
+            autoPlayEl.checked = !isStudyMode();
         }
     }
 
@@ -300,7 +300,7 @@ export function initializeAdvancedControls() {
         // Gears, hamburger, questionnaires: advanced only (EMIC only — Solar Portal controls via CSS)
         const gearContainers = document.querySelectorAll('.panel-gear');
         gearContainers.forEach(g => g.style.display = isAdvanced ? 'block' : 'none');
-        if (isEmicStudyMode()) {
+        if (isStudyMode()) {
             const hBtn = document.getElementById('hamburgerBtn');
             if (hBtn) hBtn.style.display = isAdvanced ? 'block' : 'none';
         }
@@ -316,7 +316,7 @@ export function initializeAdvancedControls() {
 
         // Spectrogram controls (FFT, colormap, freq scale): advanced-only in EMIC, always visible in Solar Portal
         const spectrogramControls = document.querySelector('.spectrogram-controls');
-        if (spectrogramControls && isEmicStudyMode()) {
+        if (spectrogramControls && isStudyMode()) {
             spectrogramControls.style.visibility = isAdvanced ? 'visible' : 'hidden';
             spectrogramControls.style.pointerEvents = isAdvanced ? '' : 'none';
         }

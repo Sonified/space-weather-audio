@@ -1,6 +1,6 @@
 // recent-searches.js — Recent search history dropdown management
 
-import { isEmicStudyMode } from './master-modes.js';
+import { isStudyMode } from './master-modes.js';
 import { updateDatasetOptions, saveDateTime } from './ui-controls.js';
 import { startMemoryMonitoring } from './main-window-renderer.js';
 
@@ -10,7 +10,7 @@ import { startMemoryMonitoring } from './main-window-renderer.js';
  * Load recent searches from IndexedDB cache and populate dropdown
  */
 export async function loadRecentSearches() {
-    if (isEmicStudyMode()) return; // EMIC uses fixed dataset, no recent searches
+    if (isStudyMode()) return; // EMIC uses fixed dataset, no recent searches
     const dropdown = document.getElementById('recentSearches');
     if (!dropdown) return;
 

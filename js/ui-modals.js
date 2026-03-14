@@ -7,7 +7,7 @@
 
 import * as State from './audio-state.js';
 import { getParticipantId, storeParticipantId, getParticipantIdFromURL, storeRealUsername } from './participant-id.js';
-import { isStudyMode, isLocalEnvironment, isEmicStudyMode } from './master-modes.js';
+import { isStudyMode, isLocalEnvironment } from './master-modes.js';
 import { checkUsernameAvailable, registerUsername } from './share-api.js';
 
 
@@ -372,7 +372,7 @@ function wireParticipantModal() {
             // Register the username (claim it) - skip for local environment
             // Exception: EMIC study always registers (even localhost) so heartbeats + syncs work
             // Fire-and-forget: don't block modal close on network round-trip
-            const { isEmicStudyMode: isEmic } = await import('./master-modes.js');
+            const { isStudyMode: isEmic } = await import('./master-modes.js');
             if (username && isUsernameAvailable && (!isLocalEnvironment() || isEmic())) {
                 registerUsername(username)
                     .then(() => console.log('✅ Username registered:', username))

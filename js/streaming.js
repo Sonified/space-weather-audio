@@ -13,7 +13,7 @@ import { zoomState } from './zoom-state.js';
 import { updateShareButtonState } from './share-modal.js';
 import { drawDayMarkers } from './day-markers.js';
 import { initScrollZoom } from './scroll-zoom.js';
-import { isStudyMode, isEmicStudyMode } from './master-modes.js';
+import { isStudyMode } from './master-modes.js';
 import { initAudioWorklet } from './audio-worklet-init.js';
 
 // ===== FIRST FETCH TRACKING =====
@@ -205,7 +205,7 @@ export async function startStreaming(event, config = null) {
         const userHasClickedWaveformOnce = localStorage.getItem('userHasClickedWaveformOnce') === 'true';
         const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
         // Don't overwrite study flow status text (it manages its own instructions)
-        if (statusDiv && !isEmicStudyMode()) {
+        if (statusDiv && !isStudyMode()) {
             if (isSharedSession) {
                 statusDiv.textContent = '🎧 Ready! Click PLAY or press the SPACE BAR to start playback.';
                 statusDiv.className = 'status';
