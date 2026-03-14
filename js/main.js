@@ -561,8 +561,30 @@ async function initializeMainApp() {
         aboutInfoBtn.addEventListener('click', async (e) => {
             e.preventDefault();
             e.stopPropagation();
+            // In study mode, pause audio, close feature popups, and pause prompt timers
+            if (window.__STUDY_MODE || window.__EMIC_STUDY_MODE) {
+                try {
+                    const { pausePlayback } = await import('./audio-player.js');
+                    pausePlayback();
+                } catch (e) { /* not critical */ }
+                try {
+                    const { closeFeaturePopup } = await import('./spectrogram-renderer.js');
+                    closeFeaturePopup();
+                } catch (e) { /* not critical */ }
+                try {
+                    const { pausePrompts } = await import('./study-flow.js');
+                    pausePrompts();
+                } catch (e) { /* not critical */ }
+            }
             const modalId = (window.__EMIC_STUDY_MODE || window.__STUDY_MODE) ? 'emicAboutModal' : 'aboutModal';
             await modalManager.openModal(modalId);
+            // Resume prompts when about modal closes (openModal resolves on close)
+            if (window.__STUDY_MODE || window.__EMIC_STUDY_MODE) {
+                try {
+                    const { resumePrompts } = await import('./study-flow.js');
+                    resumePrompts();
+                } catch (e) { /* not critical */ }
+            }
         });
 
         // Wire up close button inside the about modal
@@ -583,6 +605,18 @@ async function initializeMainApp() {
             if (emicAboutCloseBtn) {
                 emicAboutCloseBtn.addEventListener('click', () => {
                     modalManager.closeModal('emicAboutModal');
+                });
+            }
+        }
+
+        // Click outside about modals to close them
+        for (const modal of [aboutModal, emicAboutModal]) {
+            if (modal) {
+                modal.addEventListener('click', (e) => {
+                    // Only close if clicking the overlay backdrop, not the modal content
+                    if (e.target === modal) {
+                        modalManager.closeModal(modal.id);
+                    }
                 });
             }
         }

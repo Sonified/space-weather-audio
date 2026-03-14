@@ -63,7 +63,7 @@ An
 
 ### NEEDS COLLABORATION / INPUT
 
-- [ ] **C1.** Loading experience — spinner/loader while page prepares, reveal when interface is ready (#1)
+- [x] **C1.** Loading experience — title + controls fade in cleanly, no spinner needed (#1)
 - [ ] **C2.** Data pre-load optimization — start loading first example during welcome modals, progressive reveal when ready (#2)
 - [ ] **C3.** Background download of second dataset during first example + local cache for reload. Involves reviewing existing browser cache system (#3)
 - [ ] **C4.** Tutorial video integration + Help button placement — currently (i) in upper right, is that ideal? (#9)

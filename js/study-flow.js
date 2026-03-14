@@ -585,13 +585,19 @@ const preloadTriggered = {};
  * start button to begin downloading data in the background.
  */
 function triggerPreloadForStep(stepIndex) {
-    if (preloadTriggered[stepIndex]) return;
+    if (preloadTriggered[stepIndex]) {
+        if (window.pm?.data) console.log(`📦 [PRELOAD] Step ${stepIndex} already triggered, skipping`);
+        return;
+    }
     preloadTriggered[stepIndex] = true;
 
     const step = studyConfig.steps[stepIndex];
-    if (!step || step.type !== 'analysis') return;
+    if (!step || step.type !== 'analysis') {
+        if (window.pm?.data) console.log(`📦 [PRELOAD] Step ${stepIndex} is not an analysis step, skipping`);
+        return;
+    }
 
-    console.log(`📋 Preloading data for analysis step ${stepIndex} ("${step.title || 'Analysis'}")`);
+    if (window.pm?.data) console.log(`📦 [PRELOAD] Triggering preload for step ${stepIndex} ("${step.title || 'Analysis'}") — spacecraft: ${step.spacecraft}, dataset: ${step.dataset}, range: ${step.startTime || step.startDate || '?'} → ${step.endTime || step.endDate || '?'}`);
 
     // Apply the analysis config so main.js knows what to fetch
     applyAnalysisConfig(step);
@@ -605,11 +611,11 @@ function triggerPreloadForStep(stepIndex) {
     const startBtn = document.getElementById('startBtn');
     if (startBtn && !startBtn.disabled) {
         startBtn.click();
-        console.log(`📋 Preload triggered for step ${stepIndex}`);
+        if (window.pm?.data) console.log(`📦 [PRELOAD] startBtn.click() fired for step ${stepIndex} — data fetch should begin`);
     } else {
         // Mark as preloaded so analysis step knows data is already loading
         window.__DATA_PRELOADED = stepIndex;
-        console.log(`📋 Preload: startBtn not ready, marked for step ${stepIndex}`);
+        if (window.pm?.data) console.log(`📦 [PRELOAD] startBtn not ready — marked __DATA_PRELOADED=${stepIndex} for deferred fetch`);
     }
 }
 
@@ -619,17 +625,21 @@ function triggerPreloadForStep(stepIndex) {
 function initDataPreload(config) {
     if (!config.steps) return;
 
+    if (window.pm?.data) console.log(`📦 [PRELOAD-INIT] Scanning ${config.steps.length} steps for dataPreload configs...`);
+
+    let preloadCount = 0;
     config.steps.forEach((step, stepIndex) => {
         if (step.type !== 'analysis' || !step.dataPreload) return;
 
         if (step.dataPreload === 'pageLoad') {
             // Skip preloading steps we've already passed (e.g. resuming at step 5, don't preload step 3)
             if (stepIndex <= currentStepIndex) {
-                console.log(`📋 dataPreload: skipping step ${stepIndex} (already at/past step ${currentStepIndex})`);
+                if (window.pm?.data) console.log(`📦 [PRELOAD-INIT] Step ${stepIndex} has dataPreload=pageLoad but already at/past step ${currentStepIndex}, skipping`);
                 return;
             }
-            console.log(`📋 dataPreload: pageLoad for step ${stepIndex}`);
+            if (window.pm?.data) console.log(`📦 [PRELOAD-INIT] Step ${stepIndex} has dataPreload=pageLoad — triggering now`);
             triggerPreloadForStep(stepIndex);
+            preloadCount++;
         } else if (step.dataPreload.startsWith('step:')) {
             // Trigger when the specified step begins rendering
             const triggerAtStep = parseInt(step.dataPreload.split(':')[1], 10);
@@ -637,11 +647,14 @@ function initDataPreload(config) {
                 // Store the mapping so runCurrentStep can check it
                 if (!window.__PRELOAD_TRIGGERS) window.__PRELOAD_TRIGGERS = {};
                 window.__PRELOAD_TRIGGERS[triggerAtStep] = stepIndex;
-                console.log(`📋 dataPreload: will preload step ${stepIndex} when step ${triggerAtStep} starts`);
+                if (window.pm?.data) console.log(`📦 [PRELOAD-INIT] Step ${stepIndex} has dataPreload=step:${triggerAtStep} — will preload when step ${triggerAtStep} starts`);
+                preloadCount++;
             }
         }
         // 'onEnter' or missing = default behavior (no preload setup needed)
     });
+
+    if (window.pm?.data) console.log(`📦 [PRELOAD-INIT] Done — ${preloadCount} preload triggers configured, __PRELOAD_TRIGGERS:`, window.__PRELOAD_TRIGGERS || 'none');
 }
 
 async function init() {
@@ -1226,6 +1239,7 @@ async function runCurrentStep() {
     // Check if entering this step should trigger a preload for another step
     if (window.__PRELOAD_TRIGGERS && window.__PRELOAD_TRIGGERS[currentStepIndex] !== undefined) {
         const analysisStepIndex = window.__PRELOAD_TRIGGERS[currentStepIndex];
+        if (window.pm?.data) console.log(`📦 [PRELOAD] Step ${currentStepIndex} is a preload trigger → starting preload for analysis step ${analysisStepIndex}`);
         triggerPreloadForStep(analysisStepIndex);
     }
 
@@ -1467,6 +1481,10 @@ const PROMPT_SPEED_MAP = { slow: 45, medium: 30, fast: 15 };
  * Execute prompts array from an analysis step config.
  * Returns a cleanup function that removes all listeners.
  */
+let _promptsPaused = false;
+export function pausePrompts() { _promptsPaused = true; cancelTyping(); }
+export function resumePrompts() { _promptsPaused = false; }
+
 function executePrompts(prompts) {
     if (!prompts || !prompts.length) return () => {};
 
@@ -1479,7 +1497,13 @@ function executePrompts(prompts) {
     function showPrompt(prompt) {
         return new Promise((resolve) => {
             const delayMs = (prompt.delay || 0) * 1000;
-            const tid = setTimeout(() => {
+            const tryShow = () => {
+                if (_promptsPaused) {
+                    // Check again in 200ms
+                    const retryId = setTimeout(tryShow, 200);
+                    cleanups.push(() => clearTimeout(retryId));
+                    return;
+                }
                 cancelTyping();
                 if (prompt.effect === 'instant') {
                     statusDiv.textContent = prompt.text;
@@ -1494,7 +1518,8 @@ function executePrompts(prompts) {
                     const estimatedMs = chars * baseDelay + 500;
                     setTimeout(resolve, estimatedMs);
                 }
-            }, delayMs);
+            };
+            const tid = setTimeout(tryShow, delayMs);
             cleanups.push(() => clearTimeout(tid));
         });
     }
@@ -1595,14 +1620,16 @@ async function runAnalysis(step) {
     // Trigger data fetch/render
     if (typeof window.triggerDataRender === 'function') {
         // Data was preloaded — just trigger the render
+        if (window.pm?.data) console.log(`📦 [ANALYSIS] Data was preloaded — calling triggerDataRender() (no new fetch needed)`);
         window.triggerDataRender();
-        console.log(`📋 Triggered data render via triggerDataRender()`);
     } else {
         // No preload — kick off the fetch ourselves
         const startBtn = document.getElementById('startBtn');
         if (startBtn && !startBtn.disabled) {
+            if (window.pm?.data) console.log(`📦 [ANALYSIS] No preload — triggering fresh data fetch via startBtn`);
             startBtn.click();
-            console.log(`📋 Analysis: triggered data fetch via startBtn`);
+        } else {
+            if (window.pm?.data) console.log(`📦 [ANALYSIS] No preload and startBtn not available — data fetch NOT triggered`);
         }
     }
     // Switch to progressive rendering mode
@@ -1658,7 +1685,8 @@ async function runAnalysis(step) {
                     }
                     const confirmed = await showConfirmationModal(config);
                     if (!confirmed) {
-                        // User went back — wait for another Complete click
+                        // User went back — show (i) button again and wait for another Complete click
+                        if (aboutBtn) aboutBtn.style.display = '';
                         return;
                     }
                 }
