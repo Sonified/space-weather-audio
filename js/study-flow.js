@@ -1516,10 +1516,12 @@ function executePrompts(prompts) {
 
         } else if (trigger === 'onFeatureDraw') {
             const handler = () => {
+                // Interrupt any in-progress prompt — assert immediately
+                cancelTyping();
                 const p = showPrompt(prompt);
                 previousPromptDone = p;
             };
-            window.addEventListener('featureCreated', handler, { once: true });
+            window.addEventListener('featureCreated', handler);
             cleanups.push(() => window.removeEventListener('featureCreated', handler));
 
         } else if (trigger === 'afterPrevious') {

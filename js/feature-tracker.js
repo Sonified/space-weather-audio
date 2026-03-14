@@ -702,10 +702,17 @@ export function hasIdentifiedFeature() {
  * Notify listeners that features changed. study-flow.js listens for this
  * event to enable/disable the Complete button — feature-tracker stays data-only.
  */
+let _lastFeatureCount = 0;
 export function notifyFeatureChange() {
+    const count = getStandaloneFeatures().length;
     document.dispatchEvent(new CustomEvent('featurechange', {
-        detail: { hasFeature: hasIdentifiedFeature(), count: getStandaloneFeatures().length }
+        detail: { hasFeature: hasIdentifiedFeature(), count }
     }));
+    // Fire featureCreated when a new feature is added (count increased)
+    if (count > _lastFeatureCount) {
+        window.dispatchEvent(new CustomEvent('featureCreated', { detail: { count } }));
+    }
+    _lastFeatureCount = count;
 }
 
 /** Alias — existing callers use this name */

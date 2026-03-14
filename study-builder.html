@@ -2611,7 +2611,7 @@
     const items = (prompts || []).map((p, i) => buildPromptEntry(p, i)).join('');
     return `
       <div class="prompts-section" style="margin-top: 16px;">
-        <div class="prompts-header" onclick="this.parentElement.classList.toggle('open')" style="cursor:pointer; display:flex; align-items:center; gap:8px; padding:8px 0; border-top:1px solid #333; user-select:none;">
+        <div class="prompts-header" onclick="this.parentElement.classList.toggle('open'); saveExpandedState()" style="cursor:pointer; display:flex; align-items:center; gap:8px; padding:8px 0; border-top:1px solid #333; user-select:none;">
           <span style="transition:transform 0.2s; display:inline-block;" class="prompts-chevron">▶</span>
           <span style="font-weight:600; color:#ccc;">💬 Text Prompts</span>
           <span style="color:#aab; font-size:12px;" class="prompts-count">(${(prompts||[]).length})</span>
@@ -2633,40 +2633,34 @@
     const showDelay = p.trigger === 'afterPrevious' ? '' : 'display:none;';
     const showSpeed = p.effect === 'typed' ? '' : 'display:none;';
     return `
-      <div class="prompt-entry" style="background:#1e1e1e; border:1px solid #333; border-radius:8px; padding:10px; margin-bottom:8px; position:relative;">
-        <button type="button" onclick="this.parentElement.remove(); updatePromptCount(this);" style="position:absolute; top:6px; right:8px; background:none; border:none; color:#666; cursor:pointer; font-size:16px; line-height:1;" title="Delete prompt">✕</button>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
-          <div class="field-group" style="margin:0;">
-            <div class="field-label" style="font-size:11px;">Trigger</div>
-            <select class="field-input prompt-trigger" onchange="onPromptTriggerChange(this)">
-              ${triggers.map(t => `<option value="${t}" ${t===p.trigger?'selected':''}>${triggerLabels[t]}</option>`).join('')}
-            </select>
-          </div>
-          <div class="field-group prompt-delay-group" style="margin:0; ${showDelay}">
-            <div class="field-label" style="font-size:11px;">Delay (seconds)</div>
-            <input class="field-input prompt-delay" type="number" min="0" value="${p.delay || 0}" style="width:80px;" />
-          </div>
+      <div class="prompt-entry" style="background:rgba(0,0,0,0.25); border:1px solid var(--border); border-radius:8px; padding:10px; margin-bottom:8px; position:relative;">
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+          <span style="font-size:11px; color:#ccd; white-space:nowrap; width:44px; text-align:right; flex-shrink:0;">Text</span>
+          <input class="field-input prompt-text" type="text" value="${escapeAttr(p.text || '')}" placeholder="Enter prompt text..." style="flex:1;" />
+          <button type="button" onclick="confirmDeletePrompt(this, event)" style="background:none; border:1px solid #444; color:#888; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:13px; flex-shrink:0; transition: background 0.15s, color 0.15s, border-color 0.15s;" onmouseover="this.style.background='#c0392b'; this.style.color='#fff'; this.style.borderColor='#c0392b';" onmouseout="this.style.background='none'; this.style.color='#888'; this.style.borderColor='#444';" title="Delete prompt">🗑</button>
         </div>
-        <div class="field-group" style="margin:0 0 8px 0;">
-          <div class="field-label" style="font-size:11px;">Text</div>
-          <input class="field-input prompt-text" type="text" value="${escapeAttr(p.text || '')}" placeholder="Enter prompt text..." />
-        </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-          <div class="field-group" style="margin:0;">
-            <div class="field-label" style="font-size:11px;">Effect</div>
-            <select class="field-input prompt-effect" onchange="onPromptEffectChange(this)">
-              <option value="instant" ${p.effect==='instant'?'selected':''}>Instant</option>
-              <option value="typed" ${p.effect==='typed'?'selected':''}>Typed</option>
-            </select>
-          </div>
-          <div class="field-group prompt-speed-group" style="margin:0; ${showSpeed}">
-            <div class="field-label" style="font-size:11px;">Speed</div>
-            <select class="field-input prompt-speed">
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <span style="font-size:11px; color:#ccd; white-space:nowrap; width:44px; text-align:right; flex-shrink:0;">Trigger</span>
+          <select class="field-input prompt-trigger" onchange="onPromptTriggerChange(this)" style="width:auto;">
+            ${triggers.map(t => `<option value="${t}" ${t===p.trigger?'selected':''}>${triggerLabels[t]}</option>`).join('')}
+          </select>
+          <span class="prompt-delay-group" style="display:${p.trigger === 'afterPrevious' ? 'contents' : 'none'};">
+            <span style="font-size:11px; color:#ccd; white-space:nowrap;">Delay</span>
+            <input class="field-input prompt-delay" type="number" min="0" value="${p.delay || 0}" style="width:60px;" />
+          </span>
+          <span style="font-size:11px; color:#ccd; white-space:nowrap; margin-left:12px;">Effect</span>
+          <select class="field-input prompt-effect" onchange="onPromptEffectChange(this)" style="width:auto;">
+            <option value="instant" ${p.effect==='instant'?'selected':''}>Instant</option>
+            <option value="typed" ${p.effect==='typed'?'selected':''}>Typed</option>
+          </select>
+          <span class="prompt-speed-group" style="display:${p.effect === 'typed' ? 'contents' : 'none'};">
+            <span style="font-size:11px; color:#ccd; white-space:nowrap; margin-left:12px;">Speed</span>
+            <select class="field-input prompt-speed" style="width:auto;">
               <option value="slow" ${p.speed==='slow'?'selected':''}>Slow</option>
               <option value="medium" ${p.speed==='medium'?'selected':''}>Medium</option>
               <option value="fast" ${p.speed==='fast'?'selected':''}>Fast</option>
             </select>
-          </div>
+          </span>
         </div>
       </div>`;
   }
@@ -2697,13 +2691,73 @@
   function onPromptTriggerChange(sel) {
     const entry = sel.closest('.prompt-entry');
     const delayGroup = entry.querySelector('.prompt-delay-group');
-    delayGroup.style.display = sel.value === 'afterPrevious' ? '' : 'none';
+    delayGroup.style.display = sel.value === 'afterPrevious' ? 'contents' : 'none';
   }
 
   function onPromptEffectChange(sel) {
     const entry = sel.closest('.prompt-entry');
     const speedGroup = entry.querySelector('.prompt-speed-group');
-    speedGroup.style.display = sel.value === 'typed' ? '' : 'none';
+    speedGroup.style.display = sel.value === 'typed' ? 'contents' : 'none';
+  }
+
+  function confirmDeletePrompt(btn, evt) {
+    evt.stopPropagation();
+    const entry = btn.closest('.prompt-entry');
+
+    // Toggle: if dialog already open for this entry, close it
+    const existing = entry.querySelector('.prompt-delete-dialog');
+    if (existing) { existing.remove(); return; }
+
+    const text = entry.querySelector('.prompt-text')?.value?.trim() || 'this prompt';
+    const preview = text.length > 30 ? text.slice(0, 30) + '…' : text;
+
+    const dialog = document.createElement('div');
+    dialog.className = 'prompt-delete-dialog';
+    const x = evt.clientX, y = evt.clientY;
+    dialog.style.cssText = `
+      position: fixed; left: ${x + 20}px; top: ${y}px; transform: translateY(-50%);
+      z-index: 100000; background: #1e1e2e; color: #e0e0e0;
+      border: 1px solid rgba(102, 126, 234, 0.4); border-radius: 8px;
+      padding: 20px 28px; box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      font-family: inherit; font-size: 14px; text-align: center;
+      min-width: 240px;
+    `;
+    const msg = document.createElement('div');
+    msg.textContent = `Delete "${preview}"?`;
+    msg.style.marginBottom = '16px';
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display: flex; gap: 10px; justify-content: center;';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = 'padding: 6px 20px; font-size: 13px; font-weight: 600; border: none; border-radius: 4px; cursor: pointer; background: rgba(100, 100, 120, 0.6); color: #ccc;';
+    const okBtn = document.createElement('button');
+    okBtn.textContent = 'OK ↵';
+    okBtn.style.cssText = 'padding: 6px 20px; font-size: 13px; font-weight: 600; border: none; border-radius: 4px; cursor: pointer; background: rgba(70, 120, 230, 0.9); color: #fff;';
+
+    const cleanup = (confirmed) => {
+      document.removeEventListener('keydown', onKey);
+      dialog.remove();
+      if (confirmed) {
+        entry.remove();
+        updatePromptCount(btn);
+      }
+    };
+    const onKey = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); cleanup(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); cleanup(false); }
+    };
+    okBtn.addEventListener('click', () => cleanup(true));
+    cancelBtn.addEventListener('click', () => cleanup(false));
+    document.addEventListener('keydown', onKey);
+
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(okBtn);
+    dialog.appendChild(msg);
+    dialog.appendChild(btnRow);
+    entry.appendChild(dialog);
+    okBtn.focus();
   }
 
   function updatePromptCount(el) {
@@ -3699,14 +3753,17 @@
     const openCards = [];
     const openSettings = [];
     const openPreviews = [];
+    const openPrompts = [];
     cards.forEach((c, i) => {
       if (c.classList.contains('active')) openCards.push(i);
       if (c.querySelector('.card-settings.open')) openSettings.push(i);
       if (c.querySelector('.step-preview')) openPreviews.push(i);
+      if (c.querySelector('.prompts-section.open')) openPrompts.push(i);
     });
     localStorage.setItem('sb_expandedCards', JSON.stringify(openCards));
     localStorage.setItem('sb_expandedSettings', JSON.stringify(openSettings));
     localStorage.setItem('sb_expandedPreviews', JSON.stringify(openPreviews));
+    localStorage.setItem('sb_expandedPrompts', JSON.stringify(openPrompts));
   }
 
   function restoreExpandedState() {
@@ -3714,7 +3771,8 @@
       const raw = [
         localStorage.getItem('sb_expandedCards'),
         localStorage.getItem('sb_expandedSettings'),
-        localStorage.getItem('sb_expandedPreviews')
+        localStorage.getItem('sb_expandedPreviews'),
+        localStorage.getItem('sb_expandedPrompts')
       ];
       // If nothing saved, let caller use default behavior
       if (raw.every(r => !r)) return false;
@@ -3722,6 +3780,7 @@
       const openCards = Array.isArray(JSON.parse(raw[0])) ? JSON.parse(raw[0]) : [];
       const openSettings = Array.isArray(JSON.parse(raw[1])) ? JSON.parse(raw[1]) : [];
       const openPreviews = Array.isArray(JSON.parse(raw[2])) ? JSON.parse(raw[2]) : [];
+      const openPrompts = Array.isArray(JSON.parse(raw[3])) ? JSON.parse(raw[3]) : [];
       const cards = document.querySelectorAll('#stepList .step-card');
       const n = cards.length;
       if (!n) return false;
@@ -3737,6 +3796,13 @@
         if (i < 0 || i >= n) return;
         const drawer = cards[i]?.querySelector('.card-settings');
         if (drawer) drawer.classList.add('open');
+      });
+
+      // Open prompts sections
+      openPrompts.forEach(i => {
+        if (i < 0 || i >= n) return;
+        const section = cards[i]?.querySelector('.prompts-section');
+        if (section) section.classList.add('open');
       });
 
       // Re-open previews in background (async — don't block page load)
