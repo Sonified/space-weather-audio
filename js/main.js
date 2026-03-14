@@ -11,7 +11,7 @@ import { initWaveformWorker, setupWaveformInteraction } from './minimap-window-r
 import { startStreaming, updateSpacecraftDropdownLabels } from './streaming.js';
 import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, setupSpectrogramSelection } from './spectrogram-renderer.js';
 import { loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, openWelcomeModal, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, openParticipantInfoModal, wireQuestionnaireModals } from './ui-controls.js';
-import { getParticipantIdFromURL, storeParticipantId, storeRealUsername } from './participant-id.js';
+import { getParticipantIdFromURL, getParticipantId, storeParticipantId, storeRealUsername } from './participant-id.js';
 import { initAdminMode, toggleAdminMode } from './admin-mode.js';
 import { initializeModals } from './modal-templates.js';
 import { modalManager } from './modal-manager.js';
@@ -254,6 +254,10 @@ async function initializeMainApp() {
     // Small delay to let page settle before starting workflows
     setTimeout(async () => {
         await initializeApp();
+        const pid = getParticipantId();
+        if (pid) {
+            console.log('%c Participant: ' + pid + ' ', 'color: #fff; background: #1565C0; font-size: 16px; font-weight: bold; padding: 4px 12px; border-radius: 4px;');
+        }
         if (logGroup('init', 'v2.0 App Ready')) {
             console.log('📌 v2.0 (2026-02-12) Three.js GPU-accelerated rendering');
             console.log('✅ App ready');
