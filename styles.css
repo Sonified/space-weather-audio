@@ -4666,8 +4666,9 @@ select.csel-native {
 
 /* Admin-only buttons: hidden unless admin unlocked (data-admin set by early script) */
 .admin-only { display: none; }
-html[data-admin] .admin-only { display: flex; }
+html[data-admin] .admin-only { display: flex; animation: adminFadeIn 0.6s ease; }
 html[data-admin] button.admin-only { display: inline-block; }
+@keyframes adminFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 /* Study pages: Fetch Data panel is never shown (dev-only, use Solar Portal) */
 .emic-page #emicControlsPanel,
@@ -4688,8 +4689,9 @@ html:not([data-advanced]) .study-page .panel-gear,
 html:not([data-advanced]) .study-page #hamburgerBtn,
 html:not([data-advanced]) .study-page #questionnairesPanel,
 html:not([data-advanced]) .study-page #componentSelectorContainer,
-html:not([data-advanced]) .study-page #detrendContainer {
-    display: none;
+html:not([data-advanced]) .study-page #detrendContainer,
+html:not([data-advanced]) .study-page .dev-control {
+    display: none !important;
 }
 html:not([data-advanced]) .emic-page .spectrogram-controls,
 html:not([data-advanced]) .study-page .spectrogram-controls {

@@ -654,9 +654,7 @@ async function init() {
     // Set study ID for d1-sync.js
     setStudyId(studySlug);
 
-    // Show loading state
     const titleEl = document.getElementById('studyTitle');
-    if (titleEl) titleEl.textContent = 'Loading Study…';
 
     // Fetch config from D1
     studyConfig = await fetchStudyConfig(studySlug);
@@ -682,8 +680,12 @@ async function init() {
     // Generate per-step flag keys
     stepFlagKeys = generateStepFlagKeys(studyConfig, studySlug);
 
-    // Update page title
-    if (titleEl) titleEl.textContent = studyConfig.name || studySlug;
+    // Update page title — fade in to match modal entrance
+    if (titleEl) {
+        titleEl.textContent = studyConfig.name || studySlug;
+        void titleEl.offsetHeight;
+        titleEl.style.opacity = '0.88';
+    }
     document.title = (studyConfig.name || studySlug) + ' — spaceweather.now.audio';
 
     // Apply analysis step config to window.__STUDY_CONFIG so main.js uses it
@@ -1169,7 +1171,7 @@ function initStepNav() {
 
     const nav = document.createElement('div');
     nav.id = 'floatingStepNav';
-    nav.style.cssText = 'display:flex;align-items:center;gap:4px;font-family:system-ui;font-size:11px;max-width:320px;';
+    nav.style.cssText = 'display:flex;align-items:center;gap:4px;font-family:system-ui;font-size:11px;max-width:320px;animation:adminFadeIn 0.6s ease;';
 
     const btnStyle = 'background:rgba(33,150,243,0.7);color:#fff;border:none;border-radius:4px;padding:2px 7px;font-size:11px;cursor:pointer;backdrop-filter:blur(4px);flex-shrink:0;';
     nav.innerHTML = `
@@ -1562,6 +1564,10 @@ async function runAnalysis(step) {
         if (c) { const ctx = c.getContext('2d'); if (ctx) ctx.clearRect(0, 0, c.width, c.height); }
     }
 
+    // Show the (i) info button during analysis
+    const aboutBtn = document.getElementById('aboutInfoBtn');
+    if (aboutBtn) aboutBtn.style.display = '';
+
     // Hide overlay so the player is visible (study modal fades out with it)
     const overlay = document.getElementById('permanentOverlay');
     if (overlay) {
@@ -1626,6 +1632,8 @@ async function runAnalysis(step) {
                     closeFeaturePopup();
                 } catch (e) { /* not critical */ }
                 pausePlayback();
+                // Hide (i) button when leaving analysis
+                if (aboutBtn) aboutBtn.style.display = 'none';
 
                 // Save features to D1
                 const features = getStandaloneFeatures();

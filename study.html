@@ -97,9 +97,9 @@
         <!-- Study Header — title is updated dynamically from config -->
         <div class="top-header-bar" style="display: flex; align-items: flex-end; margin-bottom: 6px; margin-top: 0px; position: relative; z-index: 1001; min-height: 2.2em;">
             <div style="flex: 1;"></div>
-            <h1 id="studyTitle" style="margin: 0 0 0 0; flex: 0 0 auto; font-size: 1.5em; opacity: 0.88; color: #fff;">Loading Study…</h1>
+            <h1 id="studyTitle" style="margin: 0 0 0 0; flex: 0 0 auto; font-size: 1.5em; opacity: 0; color: #fff; transition: opacity 0.6s ease;"></h1>
             <div style="flex: 1; display: flex; justify-content: flex-end; align-items: flex-end; gap: 8px;">
-                <button id="aboutInfoBtn" type="button" class="header-info-btn" title="About this study">i</button>
+                <button id="aboutInfoBtn" type="button" class="header-info-btn" title="About this study" style="display:none;">i</button>
                 <div id="participantIdDisplay" style="margin-bottom: 0;">
                     <span id="participantIdText" title="Click to view your participant info">
                         <span id="participantIdLabel">User ID</span>: <span id="participantIdValue" style="font-weight: 600; color: #bbb;">--</span>
