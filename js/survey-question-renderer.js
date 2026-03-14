@@ -5,9 +5,14 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export function buildDimensionStyle(step, defaultMaxWidth) {
-    const maxW = step.modalWidth || defaultMaxWidth;
-    let s = `width: 90% !important; max-width: ${maxW} !important;`;
-    if (step.modalHeight) s += ` height: ${step.modalHeight} !important;`;
+    const rawW = String(step.modalWidth || defaultMaxWidth);
+    const maxW = /^\d+$/.test(rawW) ? rawW + 'px' : rawW;
+    let s = `box-sizing: border-box !important; width: 90% !important; max-width: ${maxW} !important;`;
+    if (step.modalHeight) {
+        const h = String(step.modalHeight);
+        const hVal = /^\d+$/.test(h) ? h + 'px' : h;
+        s += ` height: ${hVal} !important; max-height: ${hVal} !important;`;
+    }
     return s;
 }
 

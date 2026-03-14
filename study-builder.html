@@ -2127,7 +2127,7 @@
               <span></span><span class="dim-label">W</span><span></span><span class="dim-label">H</span>
               <span class="toggle-label">Size:</span>
               <div class="dim-input-wrap">
-                <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '480px')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+                <input class="field-input modal-width-input" value="${escapeAttr(normalizeDimValue(step.modalWidth || '480px'))}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
                 <div class="dim-arrows">
                   <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
                   <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
@@ -2135,7 +2135,7 @@
               </div>
               <span style="opacity:0.4;">×</span>
               <div class="dim-input-wrap">
-                <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+                <input class="field-input modal-height-input" value="${escapeAttr(normalizeDimValue(step.modalHeight || 'auto'))}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
                 <div class="dim-arrows">
                   <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
                   <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
@@ -2203,7 +2203,7 @@
               <span></span><span class="dim-label">W</span><span></span><span class="dim-label">H</span>
               <span class="toggle-label">Size:</span>
               <div class="dim-input-wrap">
-                <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '460px')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+                <input class="field-input modal-width-input" value="${escapeAttr(normalizeDimValue(step.modalWidth || '460px'))}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
                 <div class="dim-arrows">
                   <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
                   <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
@@ -2211,7 +2211,7 @@
               </div>
               <span style="opacity:0.4;">×</span>
               <div class="dim-input-wrap">
-                <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+                <input class="field-input modal-height-input" value="${escapeAttr(normalizeDimValue(step.modalHeight || 'auto'))}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
                 <div class="dim-arrows">
                   <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
                   <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
@@ -2308,7 +2308,7 @@
             <span></span><span class="dim-label">W</span><span></span><span class="dim-label">H</span><span></span><span></span>
             <span class="toggle-label">Size:</span>
             <div class="dim-input-wrap">
-              <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '480px')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+              <input class="field-input modal-width-input" value="${escapeAttr(normalizeDimValue(step.modalWidth || '480px'))}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
               <div class="dim-arrows">
                 <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
                 <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
@@ -2316,7 +2316,7 @@
             </div>
             <span style="opacity:0.4;">×</span>
             <div class="dim-input-wrap">
-              <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+              <input class="field-input modal-height-input" value="${escapeAttr(normalizeDimValue(step.modalHeight || 'auto'))}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
               <div class="dim-arrows">
                 <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
                 <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
@@ -2797,8 +2797,8 @@
         const regBody = card.querySelector('.reg-body-html-input');
         if (regBody) step.regBodyHtml = regBody.innerHTML || '';
         step.regButtonLabel = card.querySelector('.reg-button-label-input')?.value || '';
-        const mw = card.querySelector('.modal-width-input')?.value?.trim();
-        const mh = card.querySelector('.modal-height-input')?.value?.trim();
+        const mw = normalizeDimValue(card.querySelector('.modal-width-input')?.value || '');
+        const mh = normalizeDimValue(card.querySelector('.modal-height-input')?.value || '');
         if (mw) step.modalWidth = mw;
         if (mh) step.modalHeight = mh;
         collectFontStyleSettings(card, step, 'title');
@@ -2828,8 +2828,8 @@
         step.closable = card.querySelector('.toggle-closable')?.classList.contains('on') || false;
         step.skippable = card.querySelector('.toggle-skippable')?.classList.contains('on') || false;
         step.enterConfirms = card.querySelector('.toggle-enter-confirms')?.classList.contains('on') ?? true;
-        const mw = card.querySelector('.modal-width-input')?.value?.trim();
-        const mh = card.querySelector('.modal-height-input')?.value?.trim();
+        const mw = normalizeDimValue(card.querySelector('.modal-width-input')?.value || '');
+        const mh = normalizeDimValue(card.querySelector('.modal-height-input')?.value || '');
         if (mw) step.modalWidth = mw;
         if (mh) step.modalHeight = mh;
         collectFontStyleSettings(card, step, 'title');
@@ -2873,8 +2873,8 @@
         step.required = reqToggle?.classList.contains('on') || false;
         const goBackToggle = card.querySelector('.toggle-can-go-back');
         step.canGoBack = goBackToggle?.classList.contains('on') ?? true;
-        const mw = card.querySelector('.modal-width-input')?.value?.trim();
-        const mh = card.querySelector('.modal-height-input')?.value?.trim();
+        const mw = normalizeDimValue(card.querySelector('.modal-width-input')?.value || '');
+        const mh = normalizeDimValue(card.querySelector('.modal-height-input')?.value || '');
         if (mw) step.modalWidth = mw;
         if (mh) step.modalHeight = mh;
         const mt = card.querySelector('.modal-title-input')?.value?.trim();
@@ -4384,8 +4384,8 @@
       options, labelMode, placeholder, inputName: qid, id: qid
     };
     const dims = {};
-    if (w) dims.modalWidth = w;
-    if (h) dims.modalHeight = h;
+    if (w) dims.modalWidth = normalizeDimValue(w);
+    if (h) dims.modalHeight = normalizeDimValue(h);
     const allQuestionCards = Array.from(document.querySelectorAll('.step-card[data-type="question"]'));
     const index = allQuestionCards.indexOf(card);
     const total = allQuestionCards.length;
@@ -4940,6 +4940,24 @@
       if (card) setTimeout(() => refreshInlinePreview(card), 10);
     }
   });
+
+  // Auto-append 'px' when user leaves a dimension input with just a number
+  stepListEl.addEventListener('blur', (e) => {
+    if (e.target.matches('.modal-width-input, .modal-height-input')) {
+      const normalized = normalizeDimValue(e.target.value);
+      if (normalized !== e.target.value) {
+        e.target.value = normalized;
+        updatePreviewDimensions(e.target);
+      }
+    }
+  }, true);
+
+  function normalizeDimValue(val) {
+    val = val.trim();
+    if (val === 'auto' || val === '') return val;
+    if (/^\d+$/.test(val)) return val + 'px';
+    return val;
+  }
 
   function nudgeDimension(btn, delta) {
     const wrap = btn.closest('.dim-input-wrap');

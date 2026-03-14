@@ -2917,6 +2917,7 @@ input[type="range"]:disabled {
 
 /* Complete Button — JS animate() handles grey↔blue, CSS just defines states */
 #completeBtn {
+    margin-left: auto;
     background: #0056b3 !important;
     border-color: #0056b3 !important;
     filter: grayscale(100%);
