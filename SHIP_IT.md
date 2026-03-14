@@ -1,5 +1,7 @@
 # 🦋 SHIP IT — Coaching Frame for the Home Stretch
 
+> **Note:** `emic_study.html` is a relic and is no longer actively updated. `study.html` is the canonical study page — all fixes go there.
+
 **Purpose:** Keep us on track. When context compresses or a new session starts, re-read this file. It's the compass.
 
 ## The Goal
@@ -34,19 +36,20 @@ If you ever consolidate memory or start a fresh session on this project, re-read
 
 ### QUICK FIXES (do first, minimal investigation)
 
-- [ ] **Q1.** Hide x-axis bar items (Annotations, FFT, Color Map, Frequency Scale) on all spaceweather.now.audio deployments (#4)
-- [ ] **Q2.** Remove "Audio playback paused" text (#7)
-- [ ] **Q3.** Change "WOWZA" to "Complete" at end of section 2 (#14)
-- [ ] **Q4.** Fix loop button showing as not-clickable (cancel cursor). Change to "Loop: Enabled" / "Loop: Disabled" with color cues (#15)
+- [x] **Q1.** Hide x-axis bar items (Annotations, FFT, Color Map, Frequency Scale) on all spaceweather.now.audio deployments (#4)
+- [x] **Q2.** Remove "Audio playback paused" text (#7)
+- [x] **Q3.** Change "WOWZA" to "Complete" at end of section 2 (#14)
+- [x] **Q4.** Fix loop button showing as not-clickable (cancel cursor). Change to "Loop: Enabled" / "Loop: Disabled" with color cues (#15)
 - [ ] **Q5.** Make the blue Complete button fade up slower (#17)
 - [ ] **Q6.** Print participant username to console on every load — blue, bold, easy to spot (#18)
-- [ ] **Q7.** Drawing a feature to the canvas edge should clamp at edge, not disappear (#13)
+- [x] **Q7.** Drawing a feature to the canvas edge should clamp at edge, not disappear (#13)
+  - *Fixed:* Mouse leaving canvas during draw now clamps to edges instead of canceling. Document-level listeners track mouse outside canvas with X/Y clamped to bounds. Bottom clamp set 5px above canvas edge. Removed 5-second safety timeout that was auto-canceling draws.
 - [ ] **Q8.** "Proceed" button should only be active when at least one feature exists (disable when all features deleted) (#5)
 
-### CAN INVESTIGATE / FIX WITHOUT MUCH INPUT
+An
 
-- [ ] **I1.** Modal stacking bug — "Yes I'm Done" after analysis causes next modal to appear on same side, both visible. Same bug after second analysis. Post-study questions appear prematurely. (#10, #16)
-- [ ] **I2.** Clicking "Back" on a post-study question sometimes jumps without fade transition (#19)
+- [x] **I1.** Modal stacking bug — "Yes I'm Done" after analysis causes next modal to appear on same side, both visible. Same bug after second analysis. Post-study questions appear prematurely. (#10, #16)
+- [x] **I2.** Clicking "Back" on a post-study question sometimes jumps without fade transition (#19)
 - [ ] **I3.** Standardize final question box sizes (#20)
 - [ ] **I4.** Final study page: remove close button OR make it close the actual browser tab (#21)
 - [ ] **I5.** Post-question 1 showing a selected answer when none was clicked — investigate state leak / stale localStorage from previous session (#18)
