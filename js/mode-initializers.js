@@ -69,9 +69,7 @@ export async function initializeEmicStudyMode() {
     const simulatePanel = document.querySelector('.panel-simulate');
     if (simulatePanel) simulatePanel.style.display = 'none';
 
-    // Enable all features immediately
-    const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
-    enableAllTutorialRestrictedFeatures();
+    // No tutorial restrictions to lift — controls are enabled by default
 
     // Advanced controls already initialized early in initializeMainApp()
 
@@ -89,7 +87,7 @@ export async function initializeEmicStudyMode() {
     const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
     if (!isSharedSession && (!isSimulating || isAdvanced)) {
         setTimeout(async () => {
-            const { typeText } = await import('./tutorial-effects.js');
+            const { typeText } = await import('./status-text.js');
             const statusEl = document.getElementById('status');
             if (statusEl) {
                 statusEl.className = 'status info';
@@ -127,9 +125,7 @@ export async function initializeSolarPortalMode() {
         // console.log('✅ Simulate panel hidden');
     }
 
-    // Enable all features immediately
-    const { enableAllTutorialRestrictedFeatures } = await import('./tutorial-effects.js');
-    enableAllTutorialRestrictedFeatures();
+    // No tutorial restrictions to lift — controls are enabled by default
 
     // Check if user has a username set - if not, show participant setup
     const { getParticipantId } = await import('./participant-id.js');
@@ -148,7 +144,7 @@ export async function initializeSolarPortalMode() {
         const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
         if (!isSharedSession) {
             setTimeout(async () => {
-                const { typeText } = await import('./tutorial-effects.js');
+                const { typeText } = await import('./status-text.js');
                 const statusEl = document.getElementById('status');
                 if (statusEl) {
                     statusEl.className = 'status info';

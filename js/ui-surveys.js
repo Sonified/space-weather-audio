@@ -46,7 +46,7 @@ export function submitParticipantSetup() {
     const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
     if (CURRENT_MODE === AppMode.SOLAR_PORTAL && !isSharedSession) {
         setTimeout(async () => {
-            const { typeText } = await import('./tutorial-effects.js');
+            const { typeText } = await import('./status-text.js');
             statusEl.className = 'status info';
             const msg = State.isMobileScreen() ? 'Click Fetch Data to begin' : '👈 click Fetch Data to begin';
             typeText(statusEl, msg, 15, 5);

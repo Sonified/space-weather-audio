@@ -462,7 +462,7 @@ async function initializeMainApp() {
         startBtn.addEventListener('click', async (e) => {
             if (window.pm?.interaction) console.log('🔵 Fetch Data button clicked!');
             // Cancel any typing animation immediately
-            const { cancelTyping } = await import('./tutorial-effects.js');
+            const { cancelTyping } = await import('./status-text.js');
             cancelTyping();
             saveRecentSearch(); // Save search before fetching (no-op now, handled by cache)
             // EMIC mode: use config defined in emic_study.html

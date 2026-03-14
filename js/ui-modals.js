@@ -429,7 +429,7 @@ function wireWelcomeModal() {
                     setTimeout(async () => {
                         const statusEl = document.getElementById('status');
                         if (statusEl) {
-                            const { typeText } = await import('./tutorial-effects.js');
+                            const { typeText } = await import('./status-text.js');
                             statusEl.className = 'status info';
                             const msg = State.isMobileScreen()
                                 ? 'Press PLAY to begin playback (or use the space bar).'
@@ -441,7 +441,7 @@ function wireWelcomeModal() {
                             if (playBtn) {
                                 playBtn.addEventListener('click', () => {
                                     setTimeout(async () => {
-                                        const { typeText: typeText2 } = await import('./tutorial-effects.js');
+                                        const { typeText: typeText2 } = await import('./status-text.js');
                                         const statusEl2 = document.getElementById('status');
                                         if (statusEl2) {
                                             statusEl2.className = 'status info';

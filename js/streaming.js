@@ -162,7 +162,7 @@ export async function startStreaming(event, config = null) {
         let loadingInterval = null;
         if (statusDiv && !silentDownload) {
             // Cancel any active typing/pulse animations that could fight with our interval
-            import('./tutorial-effects.js').then(m => m.cancelTyping && m.cancelTyping()).catch(() => {});
+            import('./status-text.js').then(m => m.cancelTyping && m.cancelTyping()).catch(() => {});
             statusDiv.textContent = baseMessage + '...';
             statusDiv.className = 'status loading';
             loadingInterval = setInterval(() => {

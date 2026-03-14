@@ -1500,7 +1500,7 @@ export function setupWaveformInteraction() {
                 const statusDiv = document.getElementById('status');
                 if (statusDiv) {
                     statusDiv.className = 'status info';
-                    const { typeText } = await import('./tutorial-effects.js');
+                    const { typeText } = await import('./status-text.js');
                     typeText(statusDiv, 'Now click and drag to create a new region.', 30, 10);
                 }
             }, 2000);

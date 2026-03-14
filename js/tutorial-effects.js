@@ -1,3 +1,5 @@
+// ⚠️ RELIC — Only imported by volcano/ legacy code. Active code uses status-text.js instead.
+// Prime candidate for deletion once volcano code is fully removed.
 // ═══ VOLCANO STUDY (shared utilities: typeText, enableAllTutorialRestrictedFeatures) ═══
 /**
  * tutorial-effects.js

@@ -9,7 +9,7 @@ import { PlaybackState } from './audio-state.js';
 import { updatePlaybackSpeed, primeStretchProcessors, cancelAllRAFLoops } from './audio-player.js';
 import { drawWaveformWithSelection, startPlaybackIndicator } from './minimap-window-renderer.js';
 import { isStudyMode } from './master-modes.js';
-import { setStatusText } from './tutorial-effects.js';
+import { setStatusText } from './status-text.js';
 
 // Helper functions
 function formatDuration(seconds) {

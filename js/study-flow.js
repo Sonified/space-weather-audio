@@ -15,7 +15,7 @@ import { getStandaloneFeatures } from './feature-tracker.js';
 import { getParticipantId, storeParticipantId, generateParticipantId } from './participant-id.js';
 import { styleBodyHtml } from './study-builder/utils.js';
 import { pausePlayback } from './audio-player.js';
-import { typeText, cancelTyping } from './tutorial-effects.js';
+import { typeText, cancelTyping } from './status-text.js';
 import { buildDimensionStyle, buildTitleFontStyle, buildHeaderUnderlineStyle, renderInfoModal, renderRegistrationModal, renderQuestionModal } from './survey-question-renderer.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
