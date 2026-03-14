@@ -50,9 +50,10 @@ class ModalManager {
             } else if (this.currentModal === '__overlay_active__' && keepOverlay) {
                 // Overlay is already up from a previous keepOverlay close — just show the new modal
                 if (window.pm?.interaction) console.log(`🔧 openModal: OVERLAY ACTIVE, showing ${modalId} directly (no swap delay)`);
-                // Instant show — no fade between sequential modals
-                modal.style.transition = 'none';
+                // Show with fade transition
+                modal.style.transition = '';  // Restore CSS transition
                 modal.style.display = 'flex';
+                modal.offsetHeight;  // Reflow so opacity transition plays
                 modal.classList.add('modal-visible');
                 this.currentModal = modalId;
                 if (onOpen) onOpen();
@@ -193,6 +194,7 @@ class ModalManager {
             oldModal.style.display = 'none';
         }
 
+        newModal.style.transition = '';  // Restore CSS transition (may have been set to 'none' by closeModal)
         newModal.style.display = 'flex';
         newModal.offsetHeight; // reflow
         newModal.classList.add('modal-visible');

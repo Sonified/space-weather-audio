@@ -1025,14 +1025,16 @@ function openStudyModalIfNeeded() {
         console.log('📋 openStudyModal: already open, skipping');
         return;
     }
-    // Force modal visible directly — bypass modalManager transition race
+    // Force modal visible instantly — inner crossfade (setStudyModalContent) handles animation
     if (studyModalEl) {
+        studyModalEl.style.transition = 'none';
+        studyModalEl.style.opacity = '1';
         studyModalEl.style.display = 'flex';
         studyModalEl.classList.add('modal-visible');
     }
     modalManager.currentModal = 'studyModal';
     modalManager.disableBackgroundScroll();
-    console.log('📋 openStudyModal: forced visible, set currentModal=studyModal');
+    console.log('📋 openStudyModal: forced visible with fade, set currentModal=studyModal');
 }
 
 /**
@@ -1539,28 +1541,10 @@ async function runAnalysis(step) {
     // Show and wire the Complete button
     const completeBtn = document.getElementById('completeBtn');
     if (completeBtn) {
-        completeBtn.style.display = 'none';
-        completeBtn.disabled = false;
         completeBtn.textContent = step.completeBtnText || '✓ Complete';
-
-        // Poll for features, show Complete when user draws at least minFeatures
+        completeBtn.disabled = true;
+        completeBtn.style.setProperty('display', 'block', 'important');
         const minFeatures = step.minFeatures || 1;
-        const showComplete = () => { completeBtn.style.setProperty('display', 'block', 'important'); };
-        const pollInterval = setInterval(() => {
-            const count = getStandaloneFeatures().length;
-            if (count >= minFeatures) {
-                showComplete();
-                clearInterval(pollInterval);
-            }
-        }, 500);
-
-        // If features not required, show immediately
-        if (step.requireMinFeatures === false) {
-            setTimeout(() => {
-                showComplete();
-                clearInterval(pollInterval);
-            }, 2000);
-        }
 
         // Wait for Complete click
         await new Promise((resolve) => {
@@ -1635,12 +1619,24 @@ function showConfirmationModal(config) {
         modalManager.openModal('studyConfirmModal', { keepOverlay: true });
 
         requestAnimationFrame(() => {
-            document.getElementById('studyConfirmYes')?.addEventListener('click', () => {
-                modalManager.closeModal('studyConfirmModal', { keepOverlay: true }).then(() => modal.remove());
+            document.getElementById('studyConfirmYes')?.addEventListener('click', async () => {
+                await modalManager.closeModal('studyConfirmModal', { keepOverlay: true });
+                modal.remove();
+                modalManager.currentModal = null;
+                // Seed studyModalInner with placeholder so setStudyModalContent
+                // takes the crossfade path (fade out → swap → fade in)
+                ensureStudyModal();
+                if (studyModalInner) {
+                    studyModalInner.innerHTML = '<div>&nbsp;</div>';
+                    studyModalInner.style.opacity = '1';
+                }
+                // Show studyModal instantly — the inner crossfade handles animation
+                openStudyModalIfNeeded();
                 resolve(true);
             });
-            document.getElementById('studyConfirmNo')?.addEventListener('click', () => {
-                modalManager.closeModal('studyConfirmModal').then(() => modal.remove());
+            document.getElementById('studyConfirmNo')?.addEventListener('click', async () => {
+                await modalManager.closeModal('studyConfirmModal');
+                modal.remove();
                 if (overlay) { overlay.style.display = 'none'; }
                 resolve(false);
             });
