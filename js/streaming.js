@@ -178,13 +178,18 @@ export async function startStreaming(event, config = null) {
         }
 
         // Fetch and load data from selected source
+        if (window.pm?.data) console.log(`📦 [STREAMING] Data source: ${dataSource} — starting fetch for ${spacecraft}/${dataset} (${startTimeISO} → ${endTimeISO})`);
         try {
         if (dataSource === 'cloudflare') {
+            if (window.pm?.data) console.log(`📦 [STREAMING] Importing goes-cloudflare-fetcher.js...`);
             const { fetchAndLoadCloudflareData } = await import('./goes-cloudflare-fetcher.js');
             await fetchAndLoadCloudflareData(spacecraft, dataset, startTimeISO, endTimeISO);
+            if (window.pm?.data) console.log(`📦 [STREAMING] Cloudflare fetch complete`);
         } else {
+            if (window.pm?.data) console.log(`📦 [STREAMING] Importing data-fetcher.js...`);
             const { fetchAndLoadCDAWebData } = await import('./data-fetcher.js');
             await fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, endTimeISO);
+            if (window.pm?.data) console.log(`📦 [STREAMING] CDAWeb fetch complete`);
         }
         } finally {
             if (loadingInterval) clearInterval(loadingInterval);
@@ -235,6 +240,7 @@ export async function startStreaming(event, config = null) {
         // Initialize scroll-to-zoom (EMIC mode, gated by checkbox)
         initScrollZoom();
 
+
         if (window.pm?.init) console.log(`🎉 ${logTime()} Complete!`);
         if (window.pm?.gpu) {
             console.log('════════════════════');
@@ -243,6 +249,7 @@ export async function startStreaming(event, config = null) {
         }
 
     } catch (error) {
+
         console.error('❌ Error in startStreaming:', error);
         const statusDiv = document.getElementById('status');
         if (statusDiv) {

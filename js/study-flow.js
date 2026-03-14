@@ -580,9 +580,51 @@ function initAdminMode(config) {
 const preloadTriggered = {};
 
 /**
+ * Sequential preload queue. Each entry is a step index.
+ * processPreloadQueue() drains this one at a time, awaiting each fetch.
+ */
+const preloadQueue = [];
+let preloadQueueRunning = false;
+
+async function processPreloadQueue() {
+    if (preloadQueueRunning) return;
+    preloadQueueRunning = true;
+
+    while (preloadQueue.length > 0) {
+        const stepIndex = preloadQueue.shift();
+        const step = studyConfig.steps[stepIndex];
+        if (!step || step.type !== 'analysis') continue;
+
+        if (window.pm?.data) console.log(`📦 [PRELOAD] Starting fetch for step ${stepIndex} ("${step.title || 'Analysis'}") — spacecraft: ${step.spacecraft}, dataset: ${step.dataset}, range: ${step.startTime || step.startDate || '?'} → ${step.endTime || step.endDate || '?'}`);
+
+        // Apply the analysis config so streaming knows what to fetch
+        applyAnalysisConfig(step);
+
+        // Apply silent data loading setting from config
+        const silentCb = document.getElementById('silentDownload');
+        if (silentCb) silentCb.checked = !!step.silentDataLoading;
+
+        // Call startStreaming directly with the config — no button clicking needed
+        try {
+            const { startStreaming } = await import('./streaming.js');
+            await startStreaming(null, window.__STUDY_CONFIG);
+            if (window.pm?.data) console.log(`📦 [PRELOAD] Fetch complete for step ${stepIndex}`);
+        } catch (err) {
+            if (window.pm?.data) console.log(`📦 [PRELOAD] Fetch failed for step ${stepIndex}:`, err.message);
+        }
+
+        if (preloadQueue.length > 0) {
+            if (window.pm?.data) console.log(`📦 [PRELOAD] ${preloadQueue.length} more in queue, starting next...`);
+        }
+    }
+
+    preloadQueueRunning = false;
+    if (window.pm?.data) console.log(`📦 [PRELOAD] Queue drained — all preloads complete`);
+}
+
+/**
  * Trigger data preload for an analysis step.
- * Applies the analysis config (spacecraft/dataset/dates) and clicks the
- * start button to begin downloading data in the background.
+ * Queues the step for sequential background fetching.
  */
 function triggerPreloadForStep(stepIndex) {
     if (preloadTriggered[stepIndex]) {
@@ -597,26 +639,9 @@ function triggerPreloadForStep(stepIndex) {
         return;
     }
 
-    if (window.pm?.data) console.log(`📦 [PRELOAD] Triggering preload for step ${stepIndex} ("${step.title || 'Analysis'}") — spacecraft: ${step.spacecraft}, dataset: ${step.dataset}, range: ${step.startTime || step.startDate || '?'} → ${step.endTime || step.endDate || '?'}`);
-
-    // Apply the analysis config so main.js knows what to fetch
-    applyAnalysisConfig(step);
-
-    // Apply silent data loading setting from config
-    const silentCb = document.getElementById('silentDownload');
-    if (silentCb) silentCb.checked = !!step.silentDataLoading;
-
-    // Trigger the data fetch via the start button
-    // This is the same mechanism runAnalysis() uses
-    const startBtn = document.getElementById('startBtn');
-    if (startBtn && !startBtn.disabled) {
-        startBtn.click();
-        if (window.pm?.data) console.log(`📦 [PRELOAD] startBtn.click() fired for step ${stepIndex} — data fetch should begin`);
-    } else {
-        // Mark as preloaded so analysis step knows data is already loading
-        window.__DATA_PRELOADED = stepIndex;
-        if (window.pm?.data) console.log(`📦 [PRELOAD] startBtn not ready — marked __DATA_PRELOADED=${stepIndex} for deferred fetch`);
-    }
+    if (window.pm?.data) console.log(`📦 [PRELOAD] Queuing preload for step ${stepIndex} ("${step.title || 'Analysis'}") — queue position: ${preloadQueue.length + 1}`);
+    preloadQueue.push(stepIndex);
+    processPreloadQueue();
 }
 
 /**

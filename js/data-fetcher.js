@@ -207,6 +207,8 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
         }
     }
     
+    if (window.pm?.data) console.log(`📦 [CACHE] Cache miss — no cached data for ${spacecraft}/${dataset}, will fetch from network`);
+
     // Try Cloudflare audio cache for the default PSP dataset before hitting CDAWeb
     if (isDefaultPSPDataset(spacecraft, dataset, startTime, endTime)) {
         console.log('🌐 Default PSP dataset — trying Cloudflare audio cache...');
