@@ -2299,9 +2299,11 @@
       </div></div>`;
     } else if (!isRadio) {
       contentHtml += `
+      <div class="freetext-fields">
       <div class="field-group">
         <div class="field-label">Placeholder Text:</div>
         <input class="field-input question-placeholder-input" value="${escapeAttr(step.placeholder || '')}" placeholder="Type your response here..." />
+      </div>
       </div>`;
     }
     const lm = step.labelMode || (step.labelPrefixes === false ? 'hidden' : (step.boldLabelPrefixes === false ? 'visible' : 'bold'));
