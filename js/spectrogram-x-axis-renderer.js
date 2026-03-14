@@ -139,7 +139,7 @@ export function drawSpectrogramXAxis() {
     if (!isFinite(actualTimeSpanSeconds) || actualTimeSpanSeconds <= 0) return;
 
     // Get CSS variables for styling
-    const rootStyles = getComputedStyle(document.documentElement);
+    const rootStyles = getComputedStyle(document.body);
     const fontSize = rootStyles.getPropertyValue('--axis-label-font-size').trim() || '16px';
     const labelColor = rootStyles.getPropertyValue('--axis-label-color').trim() || '#ddd';
     const tickColor = rootStyles.getPropertyValue('--axis-tick-color').trim() || '#888';
@@ -441,13 +441,7 @@ export function positionSpectrogramXAxisCanvas() {
 
     const leftEdge = spectrogramRect.left - panelRect.left;
     const topEdge = spectrogramRect.bottom - panelRect.top;
-
-    // Sync canvas internal resolution to display size so text doesn't scale up/down
     const displayWidth = Math.round(spectrogramRect.width);
-    if (xAxisCanvas.width !== displayWidth || xAxisCanvas.height !== 40) {
-        xAxisCanvas.width = displayWidth;
-        xAxisCanvas.height = 40;
-    }
 
     xAxisCanvas.style.cssText = `
         position: absolute;

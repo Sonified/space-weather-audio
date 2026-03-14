@@ -36,7 +36,7 @@ export function drawMinimapAxis() {
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     
     // Get CSS variables for styling
-    const rootStyles = getComputedStyle(document.documentElement);
+    const rootStyles = getComputedStyle(document.body);
     const fontSize = rootStyles.getPropertyValue('--axis-label-font-size').trim() || '16px';
     const labelColor = rootStyles.getPropertyValue('--axis-label-color').trim() || '#ddd';
     const tickColor = rootStyles.getPropertyValue('--axis-tick-color').trim() || '#888';

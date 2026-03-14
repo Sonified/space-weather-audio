@@ -121,7 +121,7 @@ export function drawMinimapXAxis() {
     // if (DEBUG_AXIS) console.log(`🕐 X-axis: Drawing with time span=${actualTimeSpanSeconds.toFixed(1)}s (${(actualTimeSpanSeconds/3600).toFixed(1)}h), canvas width=${canvasWidth}px`);
     
     // Get CSS variables for styling
-    const rootStyles = getComputedStyle(document.documentElement);
+    const rootStyles = getComputedStyle(document.body);
     const fontSize = rootStyles.getPropertyValue('--axis-label-font-size').trim() || '16px';
     const labelColor = rootStyles.getPropertyValue('--axis-label-color').trim() || '#ddd';
     const tickColor = rootStyles.getPropertyValue('--axis-tick-color').trim() || '#888';
@@ -303,7 +303,7 @@ export function drawMinimapDate() {
     const dateLabel = `${month}/${day}`;
     
     // Get CSS variables for styling
-    const rootStyles = getComputedStyle(document.documentElement);
+    const rootStyles = getComputedStyle(document.body);
     const fontSize = rootStyles.getPropertyValue('--axis-label-font-size').trim() || '16px';
     const labelColor = rootStyles.getPropertyValue('--axis-label-color').trim() || '#ddd';
     
@@ -1258,13 +1258,7 @@ export function positionMinimapXAxisCanvas() {
     // Position below waveform, aligned with left edge
     const leftEdge = waveformRect.left - panelRect.left;
     const topEdge = waveformRect.bottom - panelRect.top;
-    
-    // Sync canvas internal resolution to display size so text doesn't scale during resize
     const displayWidth = Math.round(waveformRect.width);
-    if (xAxisCanvas.width !== displayWidth || xAxisCanvas.height !== 40) {
-        xAxisCanvas.width = displayWidth;
-        xAxisCanvas.height = 40;
-    }
 
     xAxisCanvas.style.cssText = `
         position: absolute;
