@@ -101,6 +101,10 @@ async function initializeMainApp() {
         initializeAdvancedControls();
     }
 
+    if (!isLocalEnvironment()) {
+        document.querySelectorAll('.dev-control').forEach(el => { el.style.display = 'none'; });
+    }
+
     // Hide simulate panel in Study Mode and Solar Portal mode
     if (isStudyMode() || CURRENT_MODE === AppMode.SOLAR_PORTAL) {
         const simulatePanel = document.querySelector('.panel-simulate');
