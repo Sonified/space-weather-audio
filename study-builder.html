@@ -223,7 +223,7 @@
 
   /* Step list */
   .steps-container {
-    max-width: 720px;
+    max-width: 792px;
     margin: 0 auto;
   }
 
@@ -274,6 +274,8 @@
     cursor: pointer;
     gap: 12px;
     user-select: none;
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 8px 8px 0 0;
   }
 
   .step-number {
@@ -313,6 +315,7 @@
     text-align: center;
     flex-shrink: 0;
     white-space: nowrap;
+    margin-right: 5%;
   }
   .badge-registration { background: rgba(107,114,128,0.15); color: #d1d5db; font-size: 9px; letter-spacing: 0; padding-top: 5px; padding-bottom: 5px; }
   .badge-modal { background: rgba(124,58,237,0.15); color: #A78BFA; }
@@ -378,7 +381,7 @@
     padding: 24px;
     box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     position: relative;
-    max-width: 720px;
+    max-width: 792px;
   }
   .step-preview.info-preview { max-width: 460px; margin-left: auto; margin-right: auto; }
   .step-preview .preview-close {
@@ -1093,7 +1096,7 @@
 
   /* Preview bar */
   .preview-bar {
-    max-width: 720px;
+    max-width: 792px;
     margin: 32px auto 0;
     padding: 16px;
     background: var(--surface);
@@ -1184,12 +1187,12 @@
 </div>
 
 <!-- Log out (production only) -->
-<div id="logoutBar" style="display:none; max-width:720px; margin:8px auto 0; text-align:right;">
+<div id="logoutBar" style="display:none; max-width:792px; margin:8px auto 0; text-align:right;">
   <button onclick="adminLogout()" style="background:none; border:none; color:var(--text-muted); font-size:13px; cursor:pointer; padding:4px 8px;">Log out</button>
 </div>
 
 <!-- Header -->
-<div class="header" style="max-width: 720px; margin: 0 auto 24px;">
+<div class="header" style="max-width: 792px; margin: 0 auto 24px;">
   <!-- Row 1: Title -->
   <div style="display:flex;align-items:center;">
     <h1 style="flex:1;">Study Builder</h1>
@@ -1259,7 +1262,7 @@
 <div class="steps-container" id="stepList"></div>
 
 <!-- Add Step Button -->
-<div class="add-step-area" style="max-width: 720px; margin: 12px auto 0;">
+<div class="add-step-area" style="max-width: 792px; margin: 12px auto 0;">
   <button class="add-step-btn" onclick="toggleDropdown(this)">
     + Add Step
   </button>
@@ -2040,9 +2043,11 @@
       : '';
     const moveDel = type === 'registration' ? '' : `
       <button class="step-action-btn delete" data-tip="Delete step" onclick="event.stopPropagation(); confirmDeleteStep(this, event)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>`;
-    const copyBtn = `<button class="step-action-btn" data-tip="Copy step info" onclick="event.stopPropagation(); copyStepInfo(this)">📋</button>`;
+    const dupBtn = `<button class="step-action-btn preview-btn" data-tip="Duplicate card" onclick="event.stopPropagation(); duplicateStep(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>`;
+    const copyBtn = `<button class="step-action-btn preview-btn" data-tip="Copy step info" onclick="event.stopPropagation(); copyStepInfo(this)">📋</button>`;
+    const divider = `<span style="width:1px;height:16px;background:var(--border);margin:0 2px;flex-shrink:0;"></span>`;
     return `<div class="step-actions">
-      ${copyBtn}${previewBtns}${moveDel}
+      ${dupBtn}${copyBtn}${divider}${previewBtns}${moveDel}
     </div>`;
   }
 
@@ -4226,6 +4231,73 @@
     container.appendChild(card);
 
     document.getElementById('addStepDropdown').classList.remove('show');
+    updatePreview();
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  // Duplicate step — creates a copy below the current card
+  function duplicateStep(btn) {
+    const srcCard = btn.closest('.step-card');
+    if (!srcCard) return;
+    const type = srcCard.dataset.type;
+    if (type === 'settings' || type === 'stream') return;
+
+    // Collect step data from the source card
+    const config = collectStudyConfig();
+    const allCards = Array.from(document.querySelectorAll('.step-card')).filter(c => c.dataset.type !== 'settings' && c.dataset.type !== 'stream');
+    const srcIndex = allCards.indexOf(srcCard);
+    if (srcIndex < 0) return;
+    const step = JSON.parse(JSON.stringify(config.steps[srcIndex]));
+
+    // Determine title field and prepend [COPY] / [COPY 2] etc.
+    const titleKey = type === 'question' ? 'title' : type === 'registration' ? 'regTitle' : 'title';
+    const origTitle = step[titleKey] || '';
+    const copyMatch = origTitle.match(/^\[COPY(?:\s+(\d+))?\]\s*/);
+    if (copyMatch) {
+      const n = copyMatch[1] ? parseInt(copyMatch[1]) + 1 : 2;
+      step[titleKey] = origTitle.replace(/^\[COPY(?:\s+\d+)?\]\s*/, `[COPY ${n}] `);
+    } else {
+      step[titleKey] = `[COPY] ${origTitle}`;
+    }
+
+    // For questions, generate a new unique ID
+    if (type === 'question') {
+      step.id = generateQuestionSlug();
+      step.inputName = step.id;
+    }
+
+    // Build new card
+    const container = document.getElementById('stepList');
+    const num = allCards.length + 1;
+    const card = document.createElement('div');
+    card.className = 'step-card';
+    card.dataset.type = type;
+    card.setAttribute('draggable', 'true');
+
+    if (type === 'registration') {
+      card.innerHTML = buildRegistrationCard(num, step);
+      const ed = card.querySelector('.reg-body-html-input');
+      if (ed) ed.innerHTML = step.regBodyHtml || '';
+    } else if (type === 'info') {
+      card.innerHTML = buildInfoCard(num, step);
+      const ed = card.querySelector('.rich-editable');
+      if (ed) ed.innerHTML = step.bodyHtml || '';
+    } else if (type === 'question') {
+      card.dataset.questionId = step.id;
+      card.innerHTML = buildQuestionCard(num, step);
+    } else if (type === 'analysis') {
+      card.innerHTML = buildAnalysisCard(num, step);
+    }
+
+    // Insert connector + card after source card
+    const conn = document.createElement('div');
+    conn.className = 'step-connector';
+    conn.innerHTML = '<button class="connector-insert" title="Insert step here" onclick="event.stopPropagation(); showConnectorMenu(this)">+</button>';
+    const nextSibling = srcCard.nextSibling;
+    container.insertBefore(conn, nextSibling);
+    container.insertBefore(card, conn.nextSibling);
+
+    renumberSteps();
     updatePreview();
     card.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
