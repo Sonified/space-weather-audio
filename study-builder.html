@@ -1051,6 +1051,17 @@
   .settings-size-row .dim-input-wrap { width: 90px; }
   .settings-size-row .field-input { text-align: center; padding: 5px 4px; font-size: 13px; }
 
+  .settings-section-label + .dim-grid { margin-top: -12px; }
+  .dim-grid {
+    display: inline-grid;
+    grid-template-columns: auto 90px auto 90px;
+    align-items: center;
+    column-gap: 6px;
+    row-gap: 2px;
+  }
+  .dim-grid .dim-label { text-align: center; font-size: 11px; opacity: 0.8; padding-right: 24px; }
+  .dim-grid .dim-input-wrap .field-input { text-align: center; padding: 5px 4px; font-size: 13px; }
+
   /* Preview bar */
   .preview-bar-footer {
     margin-top: 0;
@@ -2111,19 +2122,20 @@
               </div>
             </div>
             <div class="settings-divider"></div>
-            <div class="settings-section-label">Layout</div>
-            <div class="settings-row">
+            <div class="settings-section-label" style="margin-bottom:-4px;">Layout</div>
+            <div class="dim-grid">
+              <span></span><span class="dim-label">W</span><span></span><span class="dim-label">H</span>
               <span class="toggle-label">Size:</span>
-              <div class="dim-input-wrap" style="width:90px;">
-                <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '480px')}" style="text-align:center; padding:5px 4px; font-size:13px;" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+              <div class="dim-input-wrap">
+                <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '480px')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
                 <div class="dim-arrows">
                   <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
                   <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
                 </div>
               </div>
               <span style="opacity:0.4;">×</span>
-              <div class="dim-input-wrap" style="width:90px;">
-                <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" style="text-align:center; padding:5px 4px; font-size:13px;" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+              <div class="dim-input-wrap">
+                <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
                 <div class="dim-arrows">
                   <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
                   <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
@@ -2186,19 +2198,20 @@
               </div>
             </div>
             <div class="settings-divider"></div>
-            <div class="settings-section-label">Layout</div>
-            <div class="settings-row">
+            <div class="settings-section-label" style="margin-bottom:-4px;">Layout</div>
+            <div class="dim-grid">
+              <span></span><span class="dim-label">W</span><span></span><span class="dim-label">H</span>
               <span class="toggle-label">Size:</span>
-              <div class="dim-input-wrap" style="width:90px;">
-                <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '460px')}" style="text-align:center; padding:5px 4px; font-size:13px;" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+              <div class="dim-input-wrap">
+                <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '460px')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
                 <div class="dim-arrows">
                   <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
                   <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
                 </div>
               </div>
               <span style="opacity:0.4;">×</span>
-              <div class="dim-input-wrap" style="width:90px;">
-                <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" style="text-align:center; padding:5px 4px; font-size:13px;" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+              <div class="dim-input-wrap">
+                <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
                 <div class="dim-arrows">
                   <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
                   <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
@@ -2217,6 +2230,10 @@
 
     const qid = step.id || generateQuestionSlug();
     contentHtml += `
+      <div class="field-group">
+        <div class="field-label">Modal Title</div>
+        <input class="field-input modal-title-input" value="${escapeAttr(step.modalTitle || '📋 Questionnaire')}" style="flex: 1; min-width: 120px; font-size: 13px; padding: 4px 8px;" />
+      </div>
       <div class="field-group">
         <div class="field-label">Question Text</div>
         <input class="field-input question-text-input" value="${escapeAttr(step.title || step.text || '')}" placeholder="Enter question text..." />
@@ -2286,34 +2303,31 @@
             </div>
           </div>
           <div class="settings-divider"></div>
-          <div class="settings-section-label">Layout</div>
-          <div class="settings-row">
-            <span class="toggle-label">Title</span>
-            <input class="field-input modal-title-input" value="${escapeAttr(step.modalTitle || '📋 Questionnaire')}" style="flex: 1; min-width: 120px; font-size: 13px; padding: 4px 8px;" />
-          </div>
-          <div class="settings-row" style="flex-wrap: wrap;">
-            <span class="toggle-label label-mode-row" style="display:${isRadio ? 'inline' : 'none'};">Labels</span>
-            <select class="field-input label-mode-select label-mode-row" style="display:${isRadio ? 'inline-block' : 'none'}; width:auto;" onchange="onLabelModeChange(this)">
-              <option value="hidden"${lm === 'hidden' ? ' selected' : ''}>Hidden</option>
-              <option value="visible"${lm === 'visible' ? ' selected' : ''}>Visible</option>
-              <option value="bold"${lm === 'bold' ? ' selected' : ''}>Bold</option>
-            </select>
+          <div class="settings-section-label" style="margin-bottom:-4px;">Layout</div>
+          <div class="dim-grid" style="grid-template-columns: auto 90px auto 90px auto auto;">
+            <span></span><span class="dim-label">W</span><span></span><span class="dim-label">H</span><span></span><span></span>
             <span class="toggle-label">Size:</span>
-            <div class="dim-input-wrap" style="width:90px;">
-              <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '480px')}" style="text-align:center; padding:5px 4px; font-size:13px;" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+            <div class="dim-input-wrap">
+              <input class="field-input modal-width-input" value="${escapeAttr(step.modalWidth || '480px')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
               <div class="dim-arrows">
                 <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
                 <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
               </div>
             </div>
             <span style="opacity:0.4;">×</span>
-            <div class="dim-input-wrap" style="width:90px;">
-              <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" style="text-align:center; padding:5px 4px; font-size:13px;" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
+            <div class="dim-input-wrap">
+              <input class="field-input modal-height-input" value="${escapeAttr(step.modalHeight || 'auto')}" oninput="updatePreviewDimensions(this)" onclick="event.stopPropagation()" />
               <div class="dim-arrows">
                 <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 50)">▲</button>
                 <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
               </div>
             </div>
+            <span class="toggle-label label-mode-row" style="display:${isRadio ? 'inline' : 'none'}; margin-left:16px;">Labels</span>
+            <select class="field-input label-mode-select label-mode-row" style="display:${isRadio ? 'inline-block' : 'none'}; width:auto;" onchange="onLabelModeChange(this)">
+              <option value="hidden"${lm === 'hidden' ? ' selected' : ''}>Hidden</option>
+              <option value="visible"${lm === 'visible' ? ' selected' : ''}>Visible</option>
+              <option value="bold"${lm === 'bold' ? ' selected' : ''}>Bold</option>
+            </select>
           </div>
         </div></div>
       </div>

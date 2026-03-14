@@ -40,11 +40,11 @@ If you ever consolidate memory or start a fresh session on this project, re-read
 - [x] **Q2.** Remove "Audio playback paused" text (#7)
 - [x] **Q3.** Change "WOWZA" to "Complete" at end of section 2 (#14)
 - [x] **Q4.** Fix loop button showing as not-clickable (cancel cursor). Change to "Loop: Enabled" / "Loop: Disabled" with color cues (#15)
-- [ ] **Q5.** Make the blue Complete button fade up slower (#17)
-- [ ] **Q6.** Print participant username to console on every load — blue, bold, easy to spot (#18)
+- [x] **Q5.** Make the blue Complete button fade up slower (#17)
+- [x] **Q6.** Print participant username to console on every load — blue, bold, easy to spot (#18)
 - [x] **Q7.** Drawing a feature to the canvas edge should clamp at edge, not disappear (#13)
   - *Fixed:* Mouse leaving canvas during draw now clamps to edges instead of canceling. Document-level listeners track mouse outside canvas with X/Y clamped to bounds. Bottom clamp set 5px above canvas edge. Removed 5-second safety timeout that was auto-canceling draws.
-- [ ] **Q8.** "Proceed" button should only be active when at least one feature exists (disable when all features deleted) (#5)
+- [x] **Q8.** "Proceed" button should only be active when at least one feature exists (disable when all features deleted) (#5)
 
 An
 
@@ -58,8 +58,8 @@ An
 
 ### AXIS FIXES
 
-- [ ] **A1.** Y-axis numbers on main canvas are too large on first draw (correct after subsequent redraws)
-- [ ] **A2.** Mini-map x-axis ticks flicker and disappear during horizontal window resize (main canvas x-axis ticks are fine)
+- [x] **A1.** Y-axis numbers on main canvas are too large on first draw (correct after subsequent redraws)
+- [x] **A2.** Mini-map x-axis ticks flicker and disappear during horizontal window resize (main canvas x-axis ticks are fine)
 
 ### NEEDS COLLABORATION / INPUT
 
