@@ -2455,18 +2455,6 @@ export function setupSpectrogramSelection() {
         spectrogramWasDrag = false;  // Reset - will be set when drag exceeds threshold
         spectrogramSelectionActive = true;
 
-        // 🔥 FIX: Safety timeout - if mouseup never fires, auto-cancel after 5 seconds
-        // This prevents stuck state when browser loses focus mid-drag
-        if (spectrogramSelectionTimeout) {
-            clearTimeout(spectrogramSelectionTimeout);
-        }
-        spectrogramSelectionTimeout = setTimeout(() => {
-            if (spectrogramSelectionActive) {
-                console.warn('⚠️ [SAFETY TIMEOUT] Mouseup never fired - auto-canceling selection');
-                cancelSpectrogramSelection();
-            }
-        }, 5000); // 5 second safety timeout
-
         // 🔥 FIX: Don't create the box immediately - wait for drag to start
         // This prevents boxes from being created on every click when mouseup never fired
     });
@@ -2518,9 +2506,9 @@ export function setupSpectrogramSelection() {
         const currentX = e.clientX - canvasRect.left;
         const currentY = e.clientY - canvasRect.top;
 
-        // ✅ PURE CANVAS: Update state
+        // ✅ PURE CANVAS: Update state (clamp bottom to 5px above canvas edge)
         spectrogramCurrentX = currentX;
-        spectrogramCurrentY = currentY;
+        spectrogramCurrentY = Math.min(currentY, canvasRect.height - 5);
 
         // Detect drag threshold crossing
         if (!spectrogramWasDrag && spectrogramStartX !== null) {
@@ -2552,21 +2540,90 @@ export function setupSpectrogramSelection() {
         drawSpectrogramSelectionBox(spectrogramOverlayCtx, width, height);
     });
     
-    // 🔥 FIX: Add mouseleave handler to cancel selection when mouse leaves canvas
-    // This prevents stuck state when mouseup never fires (e.g., mouse leaves window)
+    // --- Edge clamping: when drawing extends beyond canvas, clamp X at edge, keep Y alive ---
+    let _docMoveHandler = null;
+    let _docUpHandler = null;
+
+    function _attachDocumentDrawListeners() {
+        if (_docMoveHandler) return; // already attached
+
+        _docMoveHandler = (e) => {
+            if (!spectrogramSelectionActive || !spectrogramOverlayCtx) return;
+
+            const canvasRect = canvas.getBoundingClientRect();
+            const rawX = e.clientX - canvasRect.left;
+            const rawY = e.clientY - canvasRect.top;
+
+            // Clamp both axes to canvas bounds
+            spectrogramCurrentX = Math.max(0, Math.min(rawX, canvasRect.width));
+            spectrogramCurrentY = Math.max(0, Math.min(rawY, canvasRect.height - 5));
+
+            // Detect drag threshold
+            if (!spectrogramWasDrag && spectrogramStartX !== null) {
+                const dx = Math.abs(spectrogramCurrentX - spectrogramStartX);
+                const dy = Math.abs(spectrogramCurrentY - spectrogramStartY);
+                if (Math.max(dx, dy) >= 5) {
+                    spectrogramWasDrag = true;
+                }
+            }
+
+            // Redraw overlay
+            const mainDragMode = document.getElementById('mainWindowDrag');
+            if (mainDragMode && mainDragMode.value === 'drawFeature') {
+                const width = spectrogramOverlayCanvas.width;
+                const height = spectrogramOverlayCanvas.height;
+                spectrogramOverlayCtx.clearRect(0, 0, width, height);
+                for (const box of completedSelectionBoxes) {
+                    drawSavedBox(spectrogramOverlayCtx, box);
+                }
+                drawSpectrogramSelectionBox(spectrogramOverlayCtx, width, height);
+            }
+        };
+
+        _docUpHandler = (e) => {
+            if (!spectrogramSelectionActive) return;
+            // Clamp final coordinates before forwarding to the canvas mouseup handler
+            const canvasRect = canvas.getBoundingClientRect();
+            const rawX = e.clientX - canvasRect.left;
+            spectrogramCurrentX = Math.max(0, Math.min(rawX, canvasRect.width));
+            spectrogramCurrentY = Math.max(0, Math.min(e.clientY - canvasRect.top, canvasRect.height - 5));
+            // Fire the same handler as canvas mouseup
+            spectrogramMouseUpHandler(e);
+        };
+
+        document.addEventListener('mousemove', _docMoveHandler);
+        document.addEventListener('mouseup', _docUpHandler);
+    }
+
+    function _detachDocumentDrawListeners() {
+        if (_docMoveHandler) {
+            document.removeEventListener('mousemove', _docMoveHandler);
+            _docMoveHandler = null;
+        }
+        if (_docUpHandler) {
+            document.removeEventListener('mouseup', _docUpHandler);
+            _docUpHandler = null;
+        }
+    }
+
+    // Expose detach so cancelSpectrogramSelection can clean up
+    window._detachSpectrogramDocListeners = _detachDocumentDrawListeners;
+
     canvas.addEventListener('mouseleave', () => {
         cancelBoxDrag();
         updateHoveredBox(null, null);
         if (spectrogramSelectionActive) {
-            cancelSpectrogramSelection();
+            // Don't cancel — attach document listeners so drawing continues with edge clamping
+            _attachDocumentDrawListeners();
         }
     });
-    
-    // 🔥 SLEEP FIX: Reset mouse tracking state when mouse enters canvas after wake
-    // This ensures mouse events work properly after computer sleep
+
     canvas.addEventListener('mouseenter', () => {
-        // If we have stale state (coordinates but not active), reset everything
-        // This handles the case where sleep broke mouse tracking
+        if (spectrogramSelectionActive) {
+            // Back on canvas — remove document listeners, canvas handlers take over
+            _detachDocumentDrawListeners();
+        }
+        // Sleep recovery: reset stale state
         if (!spectrogramSelectionActive && (spectrogramStartX !== null || spectrogramCurrentX !== null)) {
             console.log('🖱️ Mouse entered spectrogram canvas - resetting stale mouse state after sleep');
             spectrogramStartX = null;
@@ -2654,6 +2711,7 @@ export function setupSpectrogramSelection() {
 
         // Stop accepting new mouse moves first
         spectrogramSelectionActive = false;
+        _detachDocumentDrawListeners();
 
         // Call the handler (this creates the data for the feature and returns region/feature indices)
         const result = await handleSpectrogramSelection(
@@ -2711,12 +2769,17 @@ export function setupSpectrogramSelection() {
  * NOTE: Does NOT clear completed boxes - only cancels the current drag!
  */
 export function cancelSpectrogramSelection() {
+    // Clean up document-level edge-clamping listeners
+    if (window._detachSpectrogramDocListeners) {
+        window._detachSpectrogramDocListeners();
+    }
+
     // 🔥 FIX: Clear safety timeout when canceling
     if (spectrogramSelectionTimeout) {
         clearTimeout(spectrogramSelectionTimeout);
         spectrogramSelectionTimeout = null;
     }
-    
+
     // ✅ PURE CANVAS: Just reset state
     spectrogramSelectionActive = false;
     spectrogramStartX = null;
