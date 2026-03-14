@@ -126,7 +126,7 @@ export async function startPlayback() {
             const statusDiv = document.getElementById('status');
             if (statusDiv) {
                 statusDiv.className = 'status';
-                const { typeText } = await import('./tutorial-effects.js');
+                const { typeText } = await import('./status-text.js');
                 typeText(statusDiv, 'Press the region # on your keyboard or click the 🔍 to ZOOM IN', 30, 10);
             }
         }, 2000);
@@ -166,11 +166,6 @@ export function pausePlayback() {
     btn.textContent = '▶️ Resume';
     btn.classList.remove('pause-active', 'pulse-play');
     btn.classList.add('play-active', 'pulse-resume');
-    
-    // Update status
-    import('./tutorial-effects.js').then(({ setStatusText }) => {
-        setStatusText('Audio playback paused', 'status');
-    });
     
 }
 
@@ -267,11 +262,11 @@ export function toggleLoop() {
     if (State.isLooping) {
         btn.classList.remove('secondary');
         btn.classList.add('loop-active');
-        btn.textContent = '🔁 Loop ON';
+        btn.textContent = 'Loop: Enabled';
         console.log('🔁 Looping enabled');
     } else {
         btn.classList.remove('loop-active');
-        btn.textContent = '🔁 Loop';
+        btn.textContent = 'Loop: Disabled';
         console.log('🔁 Looping disabled');
     }
     
