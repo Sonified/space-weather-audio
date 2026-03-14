@@ -62,9 +62,6 @@ export async function updateParticipantIdDisplay() {
  * EMIC STUDY MODE: Clean research interface, no modals, no tutorial
  */
 export async function initializeEmicStudyMode() {
-    // Hide unnecessary UI elements
-    const completeBtn = document.getElementById('completeBtn');
-    if (completeBtn) completeBtn.style.display = 'none';
     const simulatePanel = document.querySelector('.panel-simulate');
     if (simulatePanel) simulatePanel.style.display = 'none';
 
@@ -104,12 +101,7 @@ export async function initializeSolarPortalMode() {
 
     // Admin-only button visibility handled by CSS (.admin-only + data-admin attribute)
 
-    // Hide Begin Analysis button permanently
-    const completeBtn = document.getElementById('completeBtn');
-    if (completeBtn) {
-        completeBtn.style.display = 'none';
-        // console.log('✅ Begin Analysis button hidden');
-    }
+
 
     // Hide simulate panel
     const simulatePanel = document.querySelector('.panel-simulate');
