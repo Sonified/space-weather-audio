@@ -715,40 +715,17 @@ export function hasIdentifiedFeature() {
 // ── Button State ─────────────────────────────────────────────────────────
 
 /**
- * Update the complete button state - SINGLE SOURCE OF TRUTH
- * On emic_study.html the button starts as "Begin Analysis" (enabled when data loads).
- * On study.html the button starts as "✓ Complete" (enabled when a feature is drawn).
+ * Update the complete button — enable/disable based on feature count.
+ * Called on feature create and delete. This is the ONLY place that touches disabled state.
  */
-export async function updateCompleteButtonState() {
+export function updateCompleteButtonState() {
     const completeBtn = document.getElementById('completeBtn');
     if (!completeBtn) return;
-
-    const { CURRENT_MODE, AppMode } = await import('./master-modes.js');
-    if (CURRENT_MODE === AppMode.SOLAR_PORTAL) {
-        completeBtn.style.display = 'none';
-        return;
-    }
-
-    completeBtn.style.display = 'flex';
-    completeBtn.style.alignItems = 'center';
-    completeBtn.style.justifyContent = 'center';
-
-    // "Begin Analysis" mode (emic_study.html): enable when data is loaded
-    // "Complete" mode (study.html): enable when a feature is drawn
-    const isBeginAnalysisMode = completeBtn.textContent === 'Begin Analysis';
-    const shouldDisable = isBeginAnalysisMode
-        ? !(State.completeSamplesArray && State.completeSamplesArray.length > 0)
-        : !hasIdentifiedFeature();
-
+    const shouldDisable = !hasIdentifiedFeature();
     completeBtn.disabled = shouldDisable;
-    completeBtn.style.opacity = shouldDisable ? '0.5' : '1';
-    completeBtn.style.cursor = shouldDisable ? 'not-allowed' : 'pointer';
 }
 
-/**
- * @deprecated Use updateCompleteButtonState() instead - it handles both modes
- * Keeping for backward compatibility
- */
+/** @deprecated Alias for updateCompleteButtonState */
 export function updateCmpltButtonState() {
     updateCompleteButtonState();
 }
