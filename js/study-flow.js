@@ -28,6 +28,8 @@ let studySlug = null;       // e.g. "emic-pilot"
 let studyStartTime = null;
 let flowActive = false;
 let analysisAbort = null;  // AbortController for current analysis step listeners
+let isReturningParticipant = false;  // True when resuming from a saved step
+let assignedCondition = null;  // Participant's assigned experimental condition
 
 // ── Complete Button Controller ──────────────────────────────────────────
 // Single owner of all #completeBtn DOM mutations (show, hide, enable, disable, fade).
@@ -85,6 +87,7 @@ document.addEventListener('featurechange', (e) => updateCompleteButton(e.detail)
 // localStorage keys for progress persistence
 const PROGRESS_KEY = 'study_flow_step';
 const STUDY_SLUG_KEY = 'study_flow_slug';
+const CONDITION_KEY_PREFIX = 'study_condition_';  // + slug
 
 // Per-step flag keys — auto-generated from config
 let stepFlagKeys = [];  // ['study_flag_emic-pilot_0_registration', ...]
@@ -145,6 +148,131 @@ function clearAllStepFlags() {
         localStorage.removeItem(stepFlagKeys[i]);
     }
     window.dispatchEvent(new CustomEvent('study-flag-change', { detail: { key: '*', value: null } }));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONDITION ASSIGNMENT & STEP REORDERING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Processing algorithm mapping: builder values → audio-state values */
+const PROCESSING_MAP = { resample: 'resample', paulStretch: 'paul', wavelet: 'wavelet' };
+
+/**
+ * Load a previously assigned condition from localStorage.
+ * Returns the condition object or null if none exists.
+ */
+function loadSavedCondition(slug) {
+    try {
+        const raw = localStorage.getItem(CONDITION_KEY_PREFIX + slug);
+        return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+}
+
+/**
+ * Assign a participant to an experimental condition.
+ * If already assigned, returns the existing condition.
+ * Called after registration completes.
+ */
+function assignCondition() {
+    const conditions = studyConfig.experimentalDesign?.conditions;
+    if (!conditions || conditions.length === 0) return null;
+
+    // Check for existing assignment
+    const existing = loadSavedCondition(studySlug);
+    if (existing) {
+        if (window.pm?.study_flow) console.log(`🧪 Condition already assigned: #${existing.conditionIndex + 1}`, existing);
+        return existing;
+    }
+
+    // Random assignment (healing block algorithm replaces this later)
+    const idx = Math.floor(Math.random() * conditions.length);
+    const picked = conditions[idx];
+    const condition = {
+        conditionIndex: idx,
+        order: picked.order,
+        task1Processing: picked.task1Processing,
+        task2Processing: picked.task2Processing
+    };
+
+    // Persist locally
+    localStorage.setItem(CONDITION_KEY_PREFIX + studySlug, JSON.stringify(condition));
+    if (window.pm?.study_flow) console.log(`🧪 Assigned to condition #${idx + 1}:`, condition);
+
+    // Sync to D1 (fire-and-forget)
+    import('./d1-sync.js').then(({ syncCondition }) => {
+        if (syncCondition) syncCondition(condition);
+    }).catch(() => {});
+
+    return condition;
+}
+
+/**
+ * Reorder analysis steps and assign processing algorithms based on condition.
+ * Mutates studyConfig.steps in place — deterministic from the condition,
+ * so returning participants always get the same order.
+ */
+function applyConditionOrder(condition) {
+    if (!condition || !studyConfig) return;
+
+    // Find all analysis step indices
+    const analysisIndices = [];
+    studyConfig.steps.forEach((step, i) => {
+        if (step.type === 'analysis') analysisIndices.push(i);
+    });
+
+    if (analysisIndices.length < 2) return;
+
+    // condition.order is [0,1] or [1,0] — indices into the analysis steps
+    const [first, second] = condition.order;
+
+    // Swap if needed (order [1,0] means second analysis step should come first)
+    if (first === 1 && second === 0) {
+        const idx0 = analysisIndices[0];
+        const idx1 = analysisIndices[1];
+        const temp = studyConfig.steps[idx0];
+        studyConfig.steps[idx0] = studyConfig.steps[idx1];
+        studyConfig.steps[idx1] = temp;
+        if (window.pm?.study_flow) console.log(`🧪 Swapped analysis steps: step ${idx0} ↔ step ${idx1}`);
+    }
+
+    // Assign processing to each analysis step (1st gets task1Processing, 2nd gets task2Processing)
+    const step1 = studyConfig.steps[analysisIndices[0]];
+    const step2 = studyConfig.steps[analysisIndices[1]];
+    step1._assignedProcessing = condition.task1Processing;
+    step2._assignedProcessing = condition.task2Processing;
+    if (window.pm?.study_flow) console.log(`🧪 Processing: step ${analysisIndices[0]} → ${condition.task1Processing}, step ${analysisIndices[1]} → ${condition.task2Processing}`);
+}
+
+/**
+ * Show a welcome-back modal before resuming an analysis step.
+ * Reuses the existing info modal rendering pipeline.
+ */
+async function showWelcomeBackModal({ title, bodyHtml, buttonLabel }) {
+    return new Promise(async (resolve) => {
+        const fakeStep = {
+            title: title || 'Welcome Back',
+            bodyHtml: bodyHtml || '',
+            dismissLabel: buttonLabel || 'Continue',
+            hideButton: false,
+            closable: false
+        };
+        const html = renderInfoModal({ step: fakeStep, bodyHtml: fakeStep.bodyHtml });
+        await setStudyModalContent(html);
+        openStudyModalIfNeeded();
+
+        const dismiss = () => {
+            document.removeEventListener('keydown', enterHandler);
+            resolve();
+        };
+
+        const btn = studyModalInner.querySelector('.modal-dismiss');
+        if (btn) btn.addEventListener('click', dismiss, { once: true });
+
+        const enterHandler = (e) => {
+            if (e.key === 'Enter') dismiss();
+        };
+        document.addEventListener('keydown', enterHandler);
+    });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -715,6 +843,7 @@ async function init() {
     const titleEl = document.getElementById('studyTitle');
 
     // Fetch config from D1
+    if (window.pm?.study_flow) console.log(`%c[INIT] ① Fetching study config: ${studySlug}`, 'color: #58a6ff; font-weight: bold;');
     studyConfig = await fetchStudyConfig(studySlug);
 
     if (!studyConfig) {
@@ -940,6 +1069,7 @@ async function init() {
     // Skip normal progress restore if we jumped, or are in preview/test mode
     if (jumpToStep === null && !isPreview && !isTestMode) {
     // Restore progress: local first, then reconcile with D1
+    if (window.pm?.study_flow) console.log(`%c[INIT] ② Detecting returning participant...`, 'color: #58a6ff; font-weight: bold;');
     const savedSlug = localStorage.getItem(STUDY_SLUG_KEY);
     const localStep = parseInt(localStorage.getItem(PROGRESS_KEY) || '0', 10);
     let bestStep = (savedSlug === studySlug && localStep > 0 && localStep < studyConfig.steps.length)
@@ -960,10 +1090,62 @@ async function init() {
     currentStepIndex = bestStep;
     localStorage.setItem(STUDY_SLUG_KEY, studySlug);
     if (bestStep > 0) {
-        console.log(`📋 Resuming study at step ${currentStepIndex}`);
+        isReturningParticipant = true;
+        if (window.pm?.study_flow) console.log(`%c[INIT] ② Returning participant → bestStep=${bestStep}`, 'color: #58a6ff; font-weight: bold;');
         localStorage.setItem(PROGRESS_KEY, String(currentStepIndex));
+
+        // Check if config says to restart from beginning
+        const rpConfig = studyConfig.experimentalDesign?.returningParticipant;
+        if (rpConfig?.defaultBehavior === 'beginning') {
+            currentStepIndex = 0;
+            isReturningParticipant = false;
+            console.log(`🔄 Default behavior: returning to beginning`);
+        }
+    }
+    if (bestStep === 0) {
+        if (window.pm?.study_flow) console.log(`%c[INIT] ② New participant (bestStep=0)`, 'color: #58a6ff; font-weight: bold;');
     }
     } // end jumpToStep === null / !isPreview
+
+    // ── Early registration + condition assignment (auto-skip path) ──
+    // For auto-skip registration, generate the participant ID and assign condition
+    // NOW so that step reordering happens BEFORE preload queue is built.
+    // When runRegistration() is reached later, it sees the existing ID and skips.
+    if (window.pm?.study_flow) console.log(`%c[INIT] ③ Early registration check (auto-skip path)`, 'color: #58a6ff; font-weight: bold;');
+    if (!getParticipantId() && !isPreview && !isTestMode) {
+        const regStep = studyConfig.steps.find(s => s.type === 'registration');
+        const isAuto = regStep && (regStep.idMethod === 'auto' || regStep.idMethod === 'auto_generate');
+        if (isAuto && regStep.skipLogin) {
+            const pid = generateParticipantId(regStep.idPrefix);
+            storeParticipantId(pid);
+            initParticipant(pid, studySlug);
+            if (window.pm?.study_flow) console.log(`%c[INIT] ③ Early auto-registration: ${pid}`, 'color: #58a6ff; font-weight: bold;');
+        } else {
+            if (window.pm?.study_flow) console.log(`%c[INIT] ③ Not auto-skip — deferring registration to step flow`, 'color: #58a6ff;');
+        }
+    } else {
+        if (window.pm?.study_flow) console.log(`%c[INIT] ③ Participant already exists: ${getParticipantId() || '(preview/test)'}`, 'color: #58a6ff;');
+    }
+
+    // Load saved condition OR assign new one — must happen before preload
+    if (window.pm?.study_flow) console.log(`%c[INIT] ④ Condition assignment`, 'color: #58a6ff; font-weight: bold;');
+    assignedCondition = loadSavedCondition(studySlug);
+    if (assignedCondition) {
+        if (window.pm?.study_flow) console.log(`%c[INIT] ④ Loaded saved condition #${assignedCondition.conditionIndex + 1}: order=[${assignedCondition.order}] task1=${assignedCondition.task1Processing} task2=${assignedCondition.task2Processing}`, 'color: #58a6ff;');
+    } else if (getParticipantId()) {
+        // Participant exists but no condition yet — assign now
+        assignedCondition = assignCondition();
+        if (assignedCondition) {
+            if (window.pm?.study_flow) console.log(`%c[INIT] ④ Assigned NEW condition #${assignedCondition.conditionIndex + 1}`, 'color: #58a6ff; font-weight: bold;');
+        } else {
+            if (window.pm?.study_flow) console.log(`%c[INIT] ④ No conditions configured — skipping`, 'color: #58a6ff;');
+        }
+    } else {
+        if (window.pm?.study_flow) console.log(`%c[INIT] ④ No participant yet — deferring condition assignment`, 'color: #58a6ff;');
+    }
+    if (assignedCondition) {
+        applyConditionOrder(assignedCondition);
+    }
 
     // Init debug flags panel
     initStudyFlagsPanel();
@@ -980,10 +1162,12 @@ async function init() {
         }
     }
 
-    // Set up data preloading AFTER currentStepIndex is known (skips past steps)
+    // Set up data preloading AFTER condition order is applied (correct step order)
+    if (window.pm?.study_flow) console.log(`%c[INIT] ⑤ Initializing data preload (condition order applied)`, 'color: #58a6ff; font-weight: bold;');
     initDataPreload(studyConfig);
 
     // Start the flow
+    if (window.pm?.study_flow) console.log(`%c[INIT] ⑥ Starting flow → runCurrentStep(${currentStepIndex})`, 'color: #58a6ff; font-weight: bold;');
     flowActive = true;
     studyStartTime = new Date().toISOString();
     runCurrentStep();
@@ -1281,6 +1465,11 @@ async function runCurrentStep() {
     const step = studyConfig.steps[currentStepIndex];
     console.log(`📋 Step ${currentStepIndex}: ${step.type}${step.contentType ? ' (' + step.contentType + ')' : ''}`);
 
+    // Clear returning flag for non-analysis steps (welcome-back only applies to analysis)
+    if (isReturningParticipant && step.type !== 'analysis') {
+        isReturningParticipant = false;
+    }
+
     // Check if entering this step should trigger a preload for another step
     if (window.__PRELOAD_TRIGGERS && window.__PRELOAD_TRIGGERS[currentStepIndex] !== undefined) {
         const analysisStepIndex = window.__PRELOAD_TRIGGERS[currentStepIndex];
@@ -1306,6 +1495,20 @@ async function runCurrentStep() {
             await runQuestionnaire(step);
             break;
         case 'analysis':
+            // Show welcome-back modal for returning participants
+            if (isReturningParticipant) {
+                const rpConfig = studyConfig.experimentalDesign?.returningParticipant;
+                if (rpConfig) {
+                    const priorAnalysisCount = studyConfig.steps
+                        .slice(0, currentStepIndex)
+                        .filter(s => s.type === 'analysis').length;
+                    const modalConfig = priorAnalysisCount === 0 ? rpConfig.analysis1 : rpConfig.analysis2;
+                    if (modalConfig?.bodyHtml) {
+                        await showWelcomeBackModal(modalConfig);
+                    }
+                }
+                isReturningParticipant = false;
+            }
             await runAnalysis(step);
             break;
         default:
@@ -1339,12 +1542,18 @@ async function runRegistration(step) {
 
     if (isAuto && step.skipLogin) {
         // Auto-generate and skip login screen entirely
+        // (For auto+skipLogin, early registration in init() already handled this.
+        //  This path is a fallback for edge cases like preview/test mode.)
         const pid = generateParticipantId(step.idPrefix);
         storeParticipantId(pid);
         if (step.showIdCorner !== false) updateParticipantDisplay(pid);
         else hideParticipantDisplay();
         initParticipant(pid, studySlug);
         console.log(`📋 Auto-registered (skip login): ${pid}`);
+        if (!assignedCondition) {
+            assignedCondition = assignCondition();
+            if (assignedCondition) applyConditionOrder(assignedCondition);
+        }
         advanceStep();
     } else {
         // Show login modal — auto-generate pre-fills the ID, manual lets user type
@@ -1409,6 +1618,11 @@ function showLoginModal(step) {
             else hideParticipantDisplay();
             initParticipant(pid, studySlug);
             console.log(`📋 Registered: ${pid}`);
+            // Assign condition after manual registration
+            if (!assignedCondition) {
+                assignedCondition = assignCondition();
+                if (assignedCondition) applyConditionOrder(assignedCondition);
+            }
             resolve();
             advanceStep();
         };
@@ -1627,6 +1841,16 @@ async function runAnalysis(step) {
 
     // Apply this step's analysis config (spacecraft, dates, display settings)
     applyAnalysisConfig(step);
+
+    // Apply condition-assigned processing algorithm (stretch)
+    if (step._assignedProcessing) {
+        const mapped = PROCESSING_MAP[step._assignedProcessing];
+        if (mapped) {
+            const { switchStretchAlgorithm } = await import('./audio-player.js');
+            switchStretchAlgorithm(mapped);
+            if (window.pm?.study_flow) console.log(`🧪 Applied processing: ${step._assignedProcessing} → ${mapped}`);
+        }
+    }
 
     // Clear old axis ticks and canvases immediately so stale dates don't linger
     for (const id of ['minimap-x-axis', 'spectrogram-x-axis']) {

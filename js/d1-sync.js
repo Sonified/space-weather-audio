@@ -269,6 +269,15 @@ export function syncStep(step) {
         .then(r => r && log('✅', `synced step ${step}`));
 }
 
+export function syncCondition(conditionData) {
+    const pid = getParticipantId();
+    const sid = getStudyId();
+    if (!pid) { log('⚠️', 'no participantId — skipping condition sync'); return; }
+
+    d1Put(`/api/study/${sid}/participants/${encodeURIComponent(pid)}/condition`, conditionData)
+        .then(r => r && log('✅', `synced condition #${conditionData.conditionIndex + 1}`));
+}
+
 /**
  * Fetch participant progress from D1.
  * Returns { current_step, responses, flags, completed_at } or null.
