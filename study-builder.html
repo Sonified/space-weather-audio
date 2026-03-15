@@ -3216,7 +3216,22 @@
         task2Processing: row.querySelector('.cond-task2').value,
       });
     });
-    return { conditions };
+    // Returning participant behavior
+    const returningParticipant = {
+      defaultBehavior: document.getElementById('rpb_defaultBehavior')?.value || 'same_step',
+      analysis1: {
+        title: document.getElementById('rpb_analysis1Title')?.value || 'Welcome Back',
+        bodyHtml: document.getElementById('rpb_analysis1Body')?.innerHTML || '',
+        buttonLabel: document.getElementById('rpb_analysis1Button')?.value || 'Continue'
+      },
+      analysis2: {
+        title: document.getElementById('rpb_analysis2Title')?.value || 'Welcome Back',
+        bodyHtml: document.getElementById('rpb_analysis2Body')?.innerHTML || '',
+        buttonLabel: document.getElementById('rpb_analysis2Button')?.value || 'Continue'
+      }
+    };
+
+    return { conditions, returningParticipant };
   }
 
   function loadExperimentalDesign(design) {
@@ -3232,6 +3247,23 @@
     renumberConditions();
     checkConditionDuplicates();
     updateConditionCount();
+
+    // Returning participant behavior
+    if (design.returningParticipant) {
+      const rp = design.returningParticipant;
+      const el = id => document.getElementById(id);
+      if (el('rpb_defaultBehavior')) el('rpb_defaultBehavior').value = rp.defaultBehavior || 'same_step';
+      if (rp.analysis1) {
+        if (el('rpb_analysis1Title')) el('rpb_analysis1Title').value = rp.analysis1.title || 'Welcome Back';
+        if (el('rpb_analysis1Body')) el('rpb_analysis1Body').innerHTML = rp.analysis1.bodyHtml || '';
+        if (el('rpb_analysis1Button')) el('rpb_analysis1Button').value = rp.analysis1.buttonLabel || 'Continue';
+      }
+      if (rp.analysis2) {
+        if (el('rpb_analysis2Title')) el('rpb_analysis2Title').value = rp.analysis2.title || 'Welcome Back';
+        if (el('rpb_analysis2Body')) el('rpb_analysis2Body').innerHTML = rp.analysis2.bodyHtml || '';
+        if (el('rpb_analysis2Button')) el('rpb_analysis2Button').value = rp.analysis2.buttonLabel || 'Continue';
+      }
+    }
   }
 
   function refreshConditionOrderDropdowns() {

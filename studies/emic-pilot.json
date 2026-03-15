@@ -3,8 +3,6 @@
   "slug": "emic-pilot",
   "version": 1,
   "createdAt": "2026-03-06T00:00:00Z",
-  "author": "Lucy Williams",
-  "contactEmail": "lewilliams@smith.edu",
   "adminKey": "emic2026",
   "appSettings": {
     "session": {
