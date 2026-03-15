@@ -941,6 +941,22 @@ async function init() {
         modalManagerCurrent: modalManager.currentModal,
     });
 
+    // ── Reset Mode ───────────────────────────────────────────
+    // &reset in URL clears ALL session state so everything runs fresh.
+    // Must run BEFORE test mode so test mode sees a clean slate.
+    if (urlParams.has('reset')) {
+        localStorage.removeItem('participantId');
+        localStorage.removeItem(PROGRESS_KEY);
+        localStorage.removeItem(STUDY_SLUG_KEY);
+        localStorage.removeItem(CONDITION_KEY_PREFIX + studySlug);
+        currentStepIndex = 0;
+        console.log('🧹 Reset mode — cleared session state (including condition)');
+
+        // Prepend ♻️ to page title and tab
+        document.title = '♻️ ' + document.title;
+        if (titleEl) titleEl.textContent = '♻️ ' + titleEl.textContent;
+    }
+
     // ── Test Mode ────────────────────────────────────────────
     // Like live mode (data IS saved), but participant ID is prefixed TEST_ so it can be filtered out later.
     // Session persists across refreshes — only clears on first entry or with &reset.
@@ -972,20 +988,6 @@ async function init() {
         const studyName2 = studyConfig.name || studySlug;
         document.title = `[Test] ${studyName2} — spaceweather.now.audio`;
         if (titleEl) titleEl.textContent = `[Test] ${studyName2}`;
-    }
-
-    // ── Reset Mode ───────────────────────────────────────────
-    // &reset in URL clears all session state so registration runs fresh
-    if (urlParams.has('reset')) {
-        localStorage.removeItem('participantId');
-        localStorage.removeItem(PROGRESS_KEY);
-        localStorage.removeItem(STUDY_SLUG_KEY);
-        currentStepIndex = 0;
-        console.log('🧹 Reset mode — cleared session state');
-
-        // Prepend ♻️ to page title and tab
-        document.title = '♻️ ' + document.title;
-        if (titleEl) titleEl.textContent = '♻️ ' + titleEl.textContent;
     }
 
     if (isPreview) {
@@ -1067,7 +1069,7 @@ async function init() {
     }
 
     // Skip normal progress restore if we jumped, or are in preview/test mode
-    if (jumpToStep === null && !isPreview && !isTestMode) {
+    if (jumpToStep === null && !isPreview) {
     // Restore progress: local first, then reconcile with D1
     if (window.pm?.study_flow) console.log(`%c[INIT] ② Detecting returning participant...`, 'color: #58a6ff; font-weight: bold;');
     const savedSlug = localStorage.getItem(STUDY_SLUG_KEY);
@@ -1081,10 +1083,10 @@ async function init() {
         const progress = await fetchProgress();
         if (progress && progress.current_step > bestStep && progress.current_step < studyConfig.steps.length) {
             bestStep = progress.current_step;
-            console.log(`📡 D1 progress ahead of local: step ${bestStep}`);
+            if (window.pm?.study_flow) console.log(`%c[INIT] D1 progress ahead of local: bestStep=${bestStep}`, 'color: #58a6ff; font-weight: bold;');
         }
     } catch (e) {
-        console.warn('📡 D1 progress fetch failed, using local:', e.message);
+        if (window.pm?.study_flow) console.warn('%c[INIT] D1 progress fetch failed, using local: ' + e.message, 'color: #ff9e64;');
     }
 
     currentStepIndex = bestStep;
@@ -1112,11 +1114,12 @@ async function init() {
     // NOW so that step reordering happens BEFORE preload queue is built.
     // When runRegistration() is reached later, it sees the existing ID and skips.
     if (window.pm?.study_flow) console.log(`%c[INIT] ③ Early registration check (auto-skip path)`, 'color: #58a6ff; font-weight: bold;');
-    if (!getParticipantId() && !isPreview && !isTestMode) {
+    if (!getParticipantId() && !isPreview) {
         const regStep = studyConfig.steps.find(s => s.type === 'registration');
         const isAuto = regStep && (regStep.idMethod === 'auto' || regStep.idMethod === 'auto_generate');
         if (isAuto && regStep.skipLogin) {
-            const pid = generateParticipantId(regStep.idPrefix);
+            // In test mode, use the TEST_ ID that was already generated
+            const pid = window.__TEST_PARTICIPANT_ID || generateParticipantId(regStep.idPrefix);
             storeParticipantId(pid);
             initParticipant(pid, studySlug);
             if (window.pm?.study_flow) console.log(`%c[INIT] ③ Early auto-registration: ${pid}`, 'color: #58a6ff; font-weight: bold;');
