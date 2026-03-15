@@ -1003,12 +1003,103 @@
     transition: max-height 0.3s ease;
   }
   .card-settings.open .card-settings-drawer {
-    max-height: 600px;
+    max-height: 2000px;
   }
   .card-settings .settings-body {
     padding: 16px 20px;
     background: rgba(0,0,0,0.25);
     border-top: 1px solid var(--border);
+  }
+  /* Condition rows */
+  .condition-header-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #5a7a9a;
+    font-weight: 700;
+    margin-bottom: 6px;
+    padding: 0 4px;
+  }
+  .condition-header-row .ch-num { width: 28px; text-align: center; }
+  .condition-header-row .ch-order { flex: 1; }
+  .condition-header-row .ch-proc { flex: 1; }
+  .condition-header-row .ch-del { width: 28px; }
+  .condition-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 4px;
+    border-radius: 6px;
+    transition: background 0.15s;
+  }
+  .condition-row:hover { background: rgba(255,255,255,0.03); }
+  .condition-row .cond-num {
+    width: 28px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-muted);
+  }
+  .condition-row select {
+    flex: 0 1 auto;
+    font-size: 12px;
+    padding: 6px 8px;
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    width: auto;
+  }
+  .condition-row .cond-delete {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: background 0.15s, color 0.15s;
+    flex-shrink: 0;
+  }
+  .condition-row .cond-delete:hover { background: rgba(220,50,50,0.2); color: #f44; }
+  .condition-row .cond-warn {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #f59e0b;
+    flex-shrink: 0;
+    display: none;
+  }
+  .condition-row.duplicate .cond-warn { display: block; }
+  .condition-add-btn, .condition-generate-btn {
+    font-size: 12px;
+    padding: 6px 14px;
+    border-radius: 5px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    transition: background 0.15s, color 0.15s;
+  }
+  .condition-add-btn {
+    background: rgba(139,92,246,0.15);
+    color: #a78bfa;
+  }
+  .condition-add-btn:hover { background: rgba(139,92,246,0.3); }
+  .condition-generate-btn {
+    background: rgba(16,185,129,0.15);
+    color: #34d399;
+  }
+  .condition-generate-btn:hover { background: rgba(16,185,129,0.3); }
+  .condition-count {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-muted);
   }
   .info-button-group.button-hidden {
     opacity: 0.4;
@@ -1292,6 +1383,122 @@
   </div>
 </div>
 
+<!-- Experimental Design -->
+<div class="steps-container" style="margin-top:12px;">
+  <div class="step-card" id="experimentalDesignCard" data-type="experimental-design">
+    <div class="step-header" onclick="toggleStep(this)">
+      <span class="lock-icon">🔒</span><span class="chevron">▶</span>
+      <div class="step-number" style="background:#8b5cf6;color:#fff;">🧪</div>
+      <div class="step-title">Experimental Design</div>
+      <span class="step-type-badge" style="background:rgba(139,92,246,0.15);color:#8b5cf6;">DESIGN</span>
+    </div>
+    <div class="step-detail" id="experimentalDesignDetail">
+
+      <!-- Conditions -->
+      <div class="card-settings" id="conditionsSettings" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open'); saveExpandedState()}">
+        <button class="card-settings-trigger" type="button">🔬 Conditions <span class="settings-chevron">&#9660;</span></button>
+        <div class="card-settings-drawer"><div class="settings-body" id="conditionsBody">
+          <div class="condition-header-row">
+            <span class="ch-num">#</span>
+            <span class="ch-order">Presentation Order</span>
+            <span class="ch-proc">Task 1 Processing</span>
+            <span class="ch-proc">Task 2 Processing</span>
+            <span class="ch-del"></span>
+          </div>
+          <div id="conditionsList"></div>
+          <div style="display:flex; gap:8px; margin-top:10px; align-items:center;">
+            <button type="button" class="condition-add-btn" onclick="addConditionRow()">+ Add Condition</button>
+            <button type="button" class="condition-generate-btn" onclick="generateAllConditions()">Generate All 12</button>
+            <span class="condition-count" id="conditionCount">0 conditions</span>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- Returning Participant Behavior -->
+      <div class="card-settings" id="returningParticipantSettings" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open'); saveExpandedState()}">
+        <button class="card-settings-trigger" type="button">🔄 Returning Participant Behavior <span class="settings-chevron">&#9660;</span></button>
+        <div class="card-settings-drawer"><div class="settings-body">
+
+          <!-- Default behavior -->
+          <div class="field-group">
+            <div class="field-label">Default Behavior</div>
+            <select class="field-input" id="rpb_defaultBehavior" style="width:auto;">
+              <option value="same_step" selected>Return to same step</option>
+              <option value="beginning">Return to beginning of study</option>
+            </select>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">What happens when a participant reloads or returns to the study URL.</div>
+          </div>
+
+          <!-- Analysis-specific welcome back modals -->
+          <div style="margin-top:20px; border-top:1px solid var(--border); padding-top:16px;">
+            <div class="field-label" style="margin-bottom:12px;">Welcome Back Modals <span style="font-weight:400; color:var(--text-muted); font-size:11px;">— shown when a returning participant resumes an analysis section</span></div>
+
+            <!-- 1st Analysis Section -->
+            <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; margin-bottom:10px;">
+              <div style="font-size:13px; font-weight:600; color:#58a6ff; margin-bottom:8px;">1st Analysis Section</div>
+              <div style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">The first analysis the participant encounters (varies by condition if randomized).</div>
+              <div class="field-group" style="margin-top:0;">
+                <div class="field-label" style="font-size:11px;">Modal Title</div>
+                <input class="field-input" id="rpb_analysis1Title" value="Welcome Back" placeholder="Modal title..." />
+              </div>
+              <div class="field-group">
+                <div class="field-label" style="font-size:11px;">Modal Body</div>
+                <div class="rich-editor-wrap">
+                  <div class="rich-editable rpb-body-html" id="rpb_analysis1Body" contenteditable="true" style="min-height:60px;"></div>
+                </div>
+              </div>
+              <div class="field-group">
+                <div class="field-label" style="font-size:11px;">Button Label</div>
+                <input class="field-input" id="rpb_analysis1Button" value="Continue" placeholder="Button text..." style="width:160px;" />
+              </div>
+            </div>
+
+            <!-- 2nd Analysis Section -->
+            <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px;">
+              <div style="font-size:13px; font-weight:600; color:#d29922; margin-bottom:8px;">2nd Analysis Section</div>
+              <div style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">The second analysis the participant encounters (varies by condition if randomized).</div>
+              <div class="field-group" style="margin-top:0;">
+                <div class="field-label" style="font-size:11px;">Modal Title</div>
+                <input class="field-input" id="rpb_analysis2Title" value="Welcome Back" placeholder="Modal title..." />
+              </div>
+              <div class="field-group">
+                <div class="field-label" style="font-size:11px;">Modal Body</div>
+                <div class="rich-editor-wrap">
+                  <div class="rich-editable rpb-body-html" id="rpb_analysis2Body" contenteditable="true" style="min-height:60px;"></div>
+                </div>
+              </div>
+              <div class="field-group">
+                <div class="field-label" style="font-size:11px;">Button Label</div>
+                <input class="field-input" id="rpb_analysis2Button" value="Continue" placeholder="Button text..." style="width:160px;" />
+              </div>
+            </div>
+          </div>
+
+        </div></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Data Stream -->
+<div class="steps-container" style="margin-top:12px;">
+  <div class="step-card" id="dataStreamCard" data-type="stream">
+    <div class="step-header" onclick="toggleStep(this)">
+      <span class="lock-icon">🔒</span><span class="chevron">▶</span>
+      <div class="step-number" style="background:#10b981;color:#fff;">📡</div>
+      <div class="step-title">Data Stream</div>
+      <span class="step-type-badge" style="background:rgba(16,185,129,0.15);color:#10b981;">LIVE</span>
+      <span id="streamCount" style="margin-left:auto; font-size:11px; color:#666;">0 events</span>
+    </div>
+    <div class="step-detail" id="dataStreamDetail">
+      <div id="dataStreamLog" style="max-height:300px; overflow-y:auto; font-family:monospace; font-size:11px; line-height:1.6; color:#aaa; padding:8px 0;">
+        <div style="color:#555; font-style:italic;">Waiting for activity...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- App Settings -->
 <div class="steps-container" style="margin-top:12px;">
   <div class="step-card" id="appSettingsCard" data-type="settings">
@@ -1487,24 +1694,6 @@
   </div>
 </div>
 
-<!-- Data Stream -->
-<div class="steps-container" style="margin-top:12px;">
-  <div class="step-card" id="dataStreamCard" data-type="stream">
-    <div class="step-header" onclick="toggleStep(this)">
-      <span class="chevron">▶</span>
-      <div class="step-number" style="background:#10b981;color:#fff;">📡</div>
-      <div class="step-title">Data Stream</div>
-      <span class="step-type-badge" style="background:rgba(16,185,129,0.15);color:#10b981;">LIVE</span>
-      <span id="streamCount" style="margin-left:auto; font-size:11px; color:#666;">0 events</span>
-    </div>
-    <div class="step-detail" id="dataStreamDetail">
-      <div id="dataStreamLog" style="max-height:300px; overflow-y:auto; font-family:monospace; font-size:11px; line-height:1.6; color:#aaa; padding:8px 0;">
-        <div style="color:#555; font-style:italic;">Waiting for activity...</div>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- Preview bar -->
 <div class="preview-bar">
   <span class="preview-label">Participant Flow</span>
@@ -1664,7 +1853,7 @@
     });
 
     // Preserve metadata that builder doesn't edit
-    const { steps, name, slug, ...meta } = config;
+    const { steps, name, slug, author, contactEmail, ...meta } = config;
     _loadedMeta = meta;
 
     // Set name and slug
@@ -1832,6 +2021,11 @@
     // Load app settings
     if (config.appSettings) {
       loadAppSettingsIntoBuilder(config.appSettings);
+    }
+
+    // Load experimental design (conditions, etc.)
+    if (config.experimentalDesign) {
+      loadExperimentalDesign(config.experimentalDesign);
     }
 
     // Restore URL toggle states
@@ -2908,12 +3102,154 @@
     }
   }
 
+  // ── Experimental Design: Conditions ──────────────────────────────────────
+  const PROCESSING_OPTIONS = ['resample', 'paulStretch', 'wavelet'];
+  const PROCESSING_LABELS = { resample: 'Resample', paulStretch: 'Paul Stretch', wavelet: 'Wavelet' };
+
+  function getAnalysisStepTitles() {
+    const titles = [];
+    document.querySelectorAll('#stepList .step-card[data-type="analysis"]').forEach(card => {
+      const title = card.querySelector('.analysis-title-input')?.value || 'Untitled Analysis';
+      titles.push(title);
+    });
+    return titles.length ? titles : ['Analysis 1', 'Analysis 2'];
+  }
+
+  function buildOrderOptions() {
+    const titles = getAnalysisStepTitles();
+    if (titles.length < 2) return '<option value="0,1">' + titles[0] + ' first</option>';
+    return `<option value="0,1">${titles[0]} → ${titles[1]}</option>` +
+           `<option value="1,0">${titles[1]} → ${titles[0]}</option>`;
+  }
+
+  function buildProcessingOptions(selected) {
+    return PROCESSING_OPTIONS.map(v =>
+      `<option value="${v}"${v === selected ? ' selected' : ''}>${PROCESSING_LABELS[v]}</option>`
+    ).join('');
+  }
+
+  function addConditionRow(order, task1, task2, silent) {
+    const list = document.getElementById('conditionsList');
+    const row = document.createElement('div');
+    row.className = 'condition-row';
+    const num = list.children.length + 1;
+    row.innerHTML = `
+      <span class="cond-num">${num}</span>
+      <select class="cond-order" onchange="autoSave('input')">${buildOrderOptions()}</select>
+      <select class="cond-task1" onchange="checkConditionDuplicates(); autoSave('input')">${buildProcessingOptions(task1 || 'resample')}</select>
+      <select class="cond-task2" onchange="checkConditionDuplicates(); autoSave('input')">${buildProcessingOptions(task2 || 'paulStretch')}</select>
+      <span class="cond-warn" title="Duplicate condition"></span>
+      <button type="button" class="cond-delete" onclick="deleteConditionRow(this)" title="Remove">×</button>
+    `;
+    if (order) row.querySelector('.cond-order').value = order;
+    list.appendChild(row);
+    if (!silent) {
+      renumberConditions();
+      checkConditionDuplicates();
+      updateConditionCount();
+    }
+  }
+
+  function deleteConditionRow(btn) {
+    btn.closest('.condition-row').remove();
+    renumberConditions();
+    checkConditionDuplicates();
+    updateConditionCount();
+    autoSave('input');
+  }
+
+  function renumberConditions() {
+    document.querySelectorAll('#conditionsList .condition-row').forEach((row, i) => {
+      row.querySelector('.cond-num').textContent = i + 1;
+    });
+  }
+
+  function updateConditionCount() {
+    const count = document.querySelectorAll('#conditionsList .condition-row').length;
+    const el = document.getElementById('conditionCount');
+    if (el) el.textContent = count + ' condition' + (count !== 1 ? 's' : '');
+  }
+
+  function checkConditionDuplicates() {
+    const rows = document.querySelectorAll('#conditionsList .condition-row');
+    const seen = new Set();
+    rows.forEach(row => {
+      const key = row.querySelector('.cond-order').value + '|' +
+                  row.querySelector('.cond-task1').value + '|' +
+                  row.querySelector('.cond-task2').value;
+      if (seen.has(key)) {
+        row.classList.add('duplicate');
+      } else {
+        row.classList.remove('duplicate');
+      }
+      seen.add(key);
+    });
+  }
+
+  function generateAllConditions() {
+    const list = document.getElementById('conditionsList');
+    list.innerHTML = '';
+    const titles = getAnalysisStepTitles();
+    const orders = titles.length >= 2 ? ['0,1', '1,0'] : ['0,1'];
+    for (const order of orders) {
+      for (let i = 0; i < PROCESSING_OPTIONS.length; i++) {
+        for (let j = 0; j < PROCESSING_OPTIONS.length; j++) {
+          if (i === j) continue;
+          addConditionRow(order, PROCESSING_OPTIONS[i], PROCESSING_OPTIONS[j], true);
+        }
+      }
+    }
+    renumberConditions();
+    checkConditionDuplicates();
+    updateConditionCount();
+    autoSave('input');
+  }
+
+  function collectExperimentalDesign() {
+    const conditions = [];
+    document.querySelectorAll('#conditionsList .condition-row').forEach(row => {
+      const orderVal = row.querySelector('.cond-order').value;
+      const order = orderVal.split(',').map(Number);
+      conditions.push({
+        order,
+        task1Processing: row.querySelector('.cond-task1').value,
+        task2Processing: row.querySelector('.cond-task2').value,
+      });
+    });
+    return { conditions };
+  }
+
+  function loadExperimentalDesign(design) {
+    const list = document.getElementById('conditionsList');
+    if (!list) return;
+    list.innerHTML = '';
+    if (design.conditions && Array.isArray(design.conditions)) {
+      design.conditions.forEach(c => {
+        const orderStr = Array.isArray(c.order) ? c.order.join(',') : '0,1';
+        addConditionRow(orderStr, c.task1Processing, c.task2Processing, true);
+      });
+    }
+    renumberConditions();
+    checkConditionDuplicates();
+    updateConditionCount();
+  }
+
+  function refreshConditionOrderDropdowns() {
+    const newOptions = buildOrderOptions();
+    document.querySelectorAll('#conditionsList .cond-order').forEach(sel => {
+      const prev = sel.value;
+      sel.innerHTML = newOptions;
+      sel.value = prev;
+    });
+  }
+  // ── End Experimental Design ──────────────────────────────────────────────
+
   function collectStudyConfig() {
     console.log('%c[COLLECT] collectStudyConfig START', 'color: #58a6ff; font-weight: bold;');
     const steps = [];
     document.querySelectorAll('.step-card').forEach((card, i) => {
       const type = card.dataset.type;
-      if (type === 'settings' || type === 'stream') return; // skip non-step cards
+      if (type === 'settings' || type === 'stream' || type === 'experimental-design') return; // skip non-step cards
       const step = { type };
 
       if (type === 'registration') {
@@ -3104,6 +3440,7 @@
       slug: document.getElementById('slugValue').textContent.trim(),
       adminKey,
       appSettings,
+      experimentalDesign: collectExperimentalDesign(),
       steps,
       urlMods: {
         study: getRowMods('study'),
@@ -3768,7 +4105,8 @@
     } else {
       // Opening: add class for padding, then animate height
       card.classList.add('active');
-      const targetHeight = detail.scrollHeight;
+      detail.offsetHeight; // force reflow so padding is applied before measuring
+      const targetHeight = detail.scrollHeight + 32; // +32 for padding transition (16px top + 16px bottom)
       detail.style.maxHeight = '0';
       detail.offsetHeight; // force reflow
       detail.style.maxHeight = targetHeight + 'px';
@@ -3800,6 +4138,20 @@
     localStorage.setItem('sb_expandedSettings', JSON.stringify(openSettings));
     localStorage.setItem('sb_expandedPreviews', JSON.stringify(openPreviews));
     localStorage.setItem('sb_expandedPrompts', JSON.stringify(openPrompts));
+
+    // Fixed panels (outside #stepList)
+    const fixedPanels = {};
+    ['experimentalDesignCard', 'appSettingsCard', 'dataStreamCard'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) fixedPanels[id] = el.classList.contains('active');
+    });
+    // Sub-panels within Experimental Design
+    const expSubPanels = {};
+    document.querySelectorAll('#experimentalDesignDetail .card-settings').forEach(sp => {
+      if (sp.id) expSubPanels[sp.id] = sp.classList.contains('open');
+    });
+    fixedPanels._subPanels = expSubPanels;
+    localStorage.setItem('sb_fixedPanels', JSON.stringify(fixedPanels));
   }
 
   function restoreExpandedState() {
@@ -3855,6 +4207,47 @@
           }
         })();
       }
+
+      // Restore fixed panels (Experimental Design, App Settings, Data Stream)
+      try {
+        const fp = JSON.parse(localStorage.getItem('sb_fixedPanels') || '{}');
+        ['experimentalDesignCard', 'appSettingsCard', 'dataStreamCard'].forEach(id => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          const detail = el.querySelector('.step-detail');
+          if (fp[id]) {
+            // Skip transition on restore — instant open
+            if (detail) detail.style.transition = 'none';
+            el.classList.add('active');
+            if (detail) detail.style.maxHeight = 'none';
+          } else {
+            el.classList.remove('active');
+          }
+        });
+        // Restore sub-panels within Experimental Design — kill transitions so they open instantly
+        if (fp._subPanels) {
+          Object.entries(fp._subPanels).forEach(([spId, isOpen]) => {
+            const sp = document.getElementById(spId);
+            if (!sp || !isOpen) return;
+            const drawer = sp.querySelector('.card-settings-drawer');
+            if (drawer) drawer.style.transition = 'none';
+            sp.classList.add('open');
+          });
+        }
+        // Re-enable all transitions after layout settles
+        requestAnimationFrame(() => {
+          ['experimentalDesignCard', 'appSettingsCard', 'dataStreamCard'].forEach(id => {
+            const detail = document.getElementById(id)?.querySelector('.step-detail');
+            if (detail) detail.style.transition = '';
+          });
+          if (fp._subPanels) {
+            Object.keys(fp._subPanels).forEach(spId => {
+              const drawer = document.getElementById(spId)?.querySelector('.card-settings-drawer');
+              if (drawer) drawer.style.transition = '';
+            });
+          }
+        });
+      } catch (e2) { /* ignore */ }
 
       return true;
     } catch (e) {
