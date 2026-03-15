@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data Explorer — spaceweather.now.audio</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔍</text></svg>">
+<style>
+  :root {
+    --bg: #141a22;
+    --surface: #2a3444;
+    --surface2: #455570;
+    --border: #506078;
+    --border-hover: #6a7a92;
+    --text: #e6edf3;
+    --text-muted: #aab4c0;
+    --accent: #4DA8FF;
+    --accent-hover: #6BBFFF;
+    --green: #22C55E;
+    --orange: #F59E0B;
+    --red: #EF4444;
+    --purple: #A78BFA;
+    --emerald: #10B981;
+    --radius: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  /* Header */
+  .header {
+    max-width: 960px;
+    margin: 0 auto 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .header-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .header h1 {
+    font-size: 16px;
+    font-weight: 500;
+    color: #8a94a0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .header h1 span { font-size: 14px; }
+  .back-link {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 13px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    transition: all 0.15s;
+  }
+  .back-link:hover { border-color: var(--border-hover); color: var(--text); background: var(--surface); }
+
+  /* Study selector */
+  .study-selector {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .study-selector label {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .study-input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 14px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    padding: 6px 10px;
+    border-radius: var(--radius);
+    outline: none;
+    min-width: 200px;
+  }
+  .study-input:focus { border-color: var(--accent); }
+  .btn {
+    padding: 6px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn:hover { border-color: var(--border-hover); background: var(--surface2); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 600; }
+  .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+  /* Filter tabs */
+  .toolbar {
+    max-width: 960px;
+    margin: 0 auto 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .filter-tabs {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .filter-tab {
+    padding: 6px 14px;
+    font-size: 12px;
+    cursor: pointer;
+    background: var(--surface);
+    color: var(--text-muted);
+    border: none;
+    border-right: 1px solid var(--border);
+    transition: all 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .filter-tab:last-child { border-right: none; }
+  .filter-tab:hover { color: var(--text); background: var(--surface2); }
+  .filter-tab.active { background: var(--accent); color: #000; font-weight: 600; }
+
+  .participant-count {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-left: auto;
+  }
+  .refresh-btn {
+    padding: 4px 10px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .refresh-btn:hover { border-color: var(--border-hover); color: var(--text); }
+
+  /* Table */
+  .table-container {
+    max-width: 960px;
+    margin: 0 auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  thead th {
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+  thead th:hover { color: var(--text); }
+  thead th .sort-arrow { font-size: 9px; margin-left: 3px; opacity: 0.5; }
+  thead th.sorted .sort-arrow { opacity: 1; color: var(--accent); }
+
+  tbody tr {
+    border-bottom: 1px solid rgba(80, 96, 120, 0.3);
+    transition: background 0.1s;
+  }
+  tbody tr:hover { background: rgba(77, 168, 255, 0.05); }
+  tbody tr:last-child { border-bottom: none; }
+  tbody td {
+    padding: 10px 14px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  /* Status badges */
+  .status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .status-active { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+  .status-completed { background: rgba(77, 168, 255, 0.15); color: var(--accent); }
+  .status-inactive { background: rgba(170, 180, 192, 0.1); color: var(--text-muted); }
+  .status-test { background: rgba(167, 139, 250, 0.15); color: var(--purple); }
+
+  .pid-cell {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    cursor: pointer;
+  }
+  .pid-cell:hover { text-decoration: underline; }
+
+  .condition-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--orange);
+  }
+
+  .feature-count {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+  }
+  .feature-count.zero { color: var(--text-muted); opacity: 0.4; }
+
+  .time-cell {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .time-cell .date { color: var(--text); }
+  .time-cell .relative { font-size: 11px; color: var(--text-muted); opacity: 0.7; }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+  }
+  .empty-state .icon { font-size: 32px; margin-bottom: 12px; opacity: 0.4; }
+  .empty-state .message { font-size: 14px; }
+  .empty-state .hint { font-size: 12px; margin-top: 6px; opacity: 0.6; }
+
+  /* Loading */
+  .loading {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+  .loading .spinner {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Detail panel (expandable row) */
+  .detail-row td {
+    padding: 0;
+    background: rgba(0, 0, 0, 0.15);
+  }
+  .detail-panel {
+    padding: 16px 20px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    font-size: 12px;
+  }
+  .detail-section h4 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  .detail-kv {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 3px;
+  }
+  .detail-kv .k { color: var(--text-muted); min-width: 100px; }
+  .detail-kv .v { color: var(--text); font-family: 'SF Mono', 'Fira Code', monospace; }
+
+  /* Summary bar */
+  .summary-bar {
+    max-width: 960px;
+    margin: 0 auto 12px;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .summary-stat {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .summary-stat .value {
+    font-size: 20px;
+    font-weight: 600;
+  }
+  .summary-stat .label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .summary-stat.active .value { color: var(--green); }
+  .summary-stat.completed .value { color: var(--accent); }
+  .summary-stat.total .value { color: var(--text); }
+  .summary-stat.features .value { color: var(--orange); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-top">
+    <h1><span>🔍</span> Data Explorer</h1>
+    <a href="study-builder.html" class="back-link">← Study Builder</a>
+  </div>
+  <div class="study-selector">
+    <label>Study</label>
+    <select class="study-input" id="studySelect" onchange="onStudySelect()" style="min-width:260px; cursor:pointer;">
+      <option value="">Loading studies...</option>
+    </select>
+    <button class="btn" onclick="loadParticipants()" title="Refresh participant list">↻</button>
+  </div>
+</div>
+
+<div class="summary-bar" id="summaryBar" style="display:none;">
+  <div class="summary-stat total">
+    <span class="value" id="sumTotal">0</span>
+    <span class="label">Total</span>
+  </div>
+  <div class="summary-stat active">
+    <span class="value" id="sumActive">0</span>
+    <span class="label">Active</span>
+  </div>
+  <div class="summary-stat completed">
+    <span class="value" id="sumCompleted">0</span>
+    <span class="label">Completed</span>
+  </div>
+  <div class="summary-stat features">
+    <span class="value" id="sumFeatures">0</span>
+    <span class="label">Features</span>
+  </div>
+</div>
+
+<div class="toolbar" id="toolbar" style="display:none;">
+  <div class="filter-tabs">
+    <button class="filter-tab active" data-filter="all" onclick="setFilter('all')">All</button>
+    <button class="filter-tab" data-filter="live" onclick="setFilter('live')">Participants</button>
+    <button class="filter-tab" data-filter="test" onclick="setFilter('test')">Test</button>
+  </div>
+  <span class="participant-count" id="participantCount"></span>
+  <button class="refresh-btn" onclick="loadParticipants()">↻ Refresh</button>
+</div>
+
+<div class="table-container" id="tableContainer" style="display:none;">
+  <table>
+    <thead>
+      <tr>
+        <th onclick="sortBy('status')">Status <span class="sort-arrow">▾</span></th>
+        <th onclick="sortBy('participant_id')">Participant <span class="sort-arrow">▾</span></th>
+        <th onclick="sortBy('registered_at')" class="sorted">Started <span class="sort-arrow">▾</span></th>
+        <th onclick="sortBy('current_step')">Step <span class="sort-arrow">▾</span></th>
+        <th onclick="sortBy('assigned_condition')">Condition <span class="sort-arrow">▾</span></th>
+        <th onclick="sortBy('feature_count')">Features <span class="sort-arrow">▾</span></th>
+        <th onclick="sortBy('last_heartbeat')">Last Seen <span class="sort-arrow">▾</span></th>
+      </tr>
+    </thead>
+    <tbody id="participantBody">
+    </tbody>
+  </table>
+</div>
+
+<div id="emptyState" style="display:none;" class="table-container">
+  <div class="empty-state">
+    <div class="icon">📭</div>
+    <div class="message">No participants found</div>
+    <div class="hint">Enter a study slug above and click Load</div>
+  </div>
+</div>
+
+<div id="loadingState" style="display:none;" class="table-container">
+  <div class="loading">
+    <span class="spinner"></span> Loading participants...
+  </div>
+</div>
+
+<script>
+  let allParticipants = [];
+  let currentFilter = 'all';
+  let currentSort = { key: 'registered_at', dir: 'desc' };
+  let expandedPid = null;
+
+  // Fetch studies list and populate dropdown
+  const urlSlug = new URLSearchParams(window.location.search).get('study');
+
+  async function fetchStudies() {
+    const select = document.getElementById('studySelect');
+    try {
+      const baseUrl = detectApiBase();
+      const res = await fetch(`${baseUrl}/api/studies`);
+      const data = await res.json();
+      if (!data.success || !data.studies?.length) {
+        select.innerHTML = '<option value="">No studies found</option>';
+        return;
+      }
+
+      // Determine which slug to pre-select
+      let preselect = urlSlug || '';
+      if (!preselect) {
+        try {
+          const draft = localStorage.getItem('sb_currentDraft');
+          if (draft) preselect = JSON.parse(draft).slug || '';
+        } catch {}
+      }
+
+      select.innerHTML = '<option value="">Select a study...</option>' +
+        data.studies.map(s => {
+          const label = s.name || s.id;
+          const count = s.participant_count || 0;
+          const sel = s.id === preselect ? ' selected' : '';
+          return `<option value="${escHtml(s.id)}"${sel}>${escHtml(label)} (${count} participants)</option>`;
+        }).join('');
+
+      // Auto-load if we have a preselection
+      if (select.value) loadParticipants();
+    } catch (err) {
+      console.error('Failed to fetch studies:', err);
+      select.innerHTML = '<option value="">Error loading studies</option>';
+    }
+  }
+
+  function onStudySelect() {
+    const slug = document.getElementById('studySelect').value;
+    if (slug) {
+      const newUrl = new URL(window.location);
+      newUrl.searchParams.set('study', slug);
+      history.replaceState(null, '', newUrl);
+      loadParticipants();
+    }
+  }
+
+  fetchStudies();
+
+  let pollTimer = null;
+  let isPolling = false;
+
+  // Start 1-second auto-poll when a study is selected
+  function startPoll() {
+    stopPoll();
+    pollTimer = setInterval(() => silentRefresh(), 1000);
+  }
+  function stopPoll() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  // Initial load — shows spinner, resets UI
+  async function loadParticipants() {
+    const slug = document.getElementById('studySelect').value;
+    if (!slug) { stopPoll(); return; }
+
+    document.getElementById('loadingState').style.display = '';
+    document.getElementById('tableContainer').style.display = 'none';
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('summaryBar').style.display = 'none';
+    document.getElementById('toolbar').style.display = 'none';
+
+    try {
+      const data = await fetchParticipantData(slug);
+      allParticipants = data.participants || [];
+      document.getElementById('loadingState').style.display = 'none';
+
+      if (allParticipants.length === 0) {
+        document.getElementById('emptyState').style.display = '';
+        document.getElementById('toolbar').style.display = 'flex';
+      } else {
+        updateSummary();
+        renderTable();
+        document.getElementById('summaryBar').style.display = 'flex';
+        document.getElementById('toolbar').style.display = 'flex';
+        document.getElementById('tableContainer').style.display = '';
+      }
+
+      startPoll();
+    } catch (err) {
+      console.error('Load failed:', err);
+      document.getElementById('loadingState').style.display = 'none';
+      document.getElementById('emptyState').style.display = '';
+      document.querySelector('#emptyState .message').textContent = 'Error loading data';
+      document.querySelector('#emptyState .hint').textContent = err.message;
+      startPoll(); // keep trying
+    }
+  }
+
+  // Silent refresh — no spinner, updates in-place
+  async function silentRefresh() {
+    const slug = document.getElementById('studySelect').value;
+    if (!slug || isPolling) return;
+    isPolling = true;
+
+    try {
+      const data = await fetchParticipantData(slug);
+      const newList = data.participants || [];
+
+      // Only re-render if data actually changed
+      if (JSON.stringify(newList) !== JSON.stringify(allParticipants)) {
+        allParticipants = newList;
+
+        if (allParticipants.length === 0) {
+          document.getElementById('tableContainer').style.display = 'none';
+          document.getElementById('emptyState').style.display = '';
+          document.getElementById('summaryBar').style.display = 'none';
+        } else {
+          document.getElementById('emptyState').style.display = 'none';
+          updateSummary();
+          renderTable();
+          document.getElementById('summaryBar').style.display = 'flex';
+          document.getElementById('toolbar').style.display = 'flex';
+          document.getElementById('tableContainer').style.display = '';
+        }
+      }
+    } catch {
+      // Silent fail — next poll will retry
+    } finally {
+      isPolling = false;
+    }
+  }
+
+  async function fetchParticipantData(slug) {
+    const baseUrl = detectApiBase();
+    const res = await fetch(`${baseUrl}/api/study/${encodeURIComponent(slug)}/participants?filter=${currentFilter}&timeout=10`);
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Failed to load');
+    return data;
+  }
+
+  function detectApiBase() {
+    // If on spaceweather.now.audio, use same origin. Otherwise use the production worker URL.
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+      return 'https://spaceweather.now.audio';
+    }
+    return location.origin;
+  }
+
+  function updateSummary() {
+    const total = allParticipants.length;
+    const active = allParticipants.filter(p => p.is_active).length;
+    const completed = allParticipants.filter(p => p.completed_at).length;
+    const features = allParticipants.reduce((sum, p) => sum + (p.feature_count || 0), 0);
+
+    document.getElementById('sumTotal').textContent = total;
+    document.getElementById('sumActive').textContent = active;
+    document.getElementById('sumCompleted').textContent = completed;
+    document.getElementById('sumFeatures').textContent = features;
+  }
+
+  function setFilter(filter) {
+    currentFilter = filter;
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.toggle('active', t.dataset.filter === filter));
+    loadParticipants();
+  }
+
+  function sortBy(key) {
+    if (currentSort.key === key) {
+      currentSort.dir = currentSort.dir === 'desc' ? 'asc' : 'desc';
+    } else {
+      currentSort.key = key;
+      currentSort.dir = 'desc';
+    }
+
+    // Update header styles
+    document.querySelectorAll('thead th').forEach(th => th.classList.remove('sorted'));
+    const idx = ['status', 'participant_id', 'registered_at', 'current_step', 'assigned_condition', 'feature_count', 'last_heartbeat'].indexOf(key);
+    if (idx >= 0) document.querySelectorAll('thead th')[idx]?.classList.add('sorted');
+
+    renderTable();
+  }
+
+  function getStatus(p) {
+    if (p.completed_at) return 'completed';
+    if (p.is_active) return 'active';
+    return 'inactive';
+  }
+
+  function isTestParticipant(p) {
+    return p.participant_id?.startsWith('test_') || p.participant_id?.startsWith('preview_');
+  }
+
+  function sortParticipants(list) {
+    const { key, dir } = currentSort;
+    const mult = dir === 'asc' ? 1 : -1;
+
+    return [...list].sort((a, b) => {
+      let av, bv;
+      if (key === 'status') {
+        const order = { active: 0, completed: 1, inactive: 2 };
+        av = order[getStatus(a)] ?? 3;
+        bv = order[getStatus(b)] ?? 3;
+      } else if (key === 'feature_count' || key === 'current_step' || key === 'assigned_condition') {
+        av = a[key] ?? -1;
+        bv = b[key] ?? -1;
+      } else {
+        av = a[key] ?? '';
+        bv = b[key] ?? '';
+      }
+
+      if (av < bv) return -1 * mult;
+      if (av > bv) return 1 * mult;
+      return 0;
+    });
+  }
+
+  function renderTable() {
+    const sorted = sortParticipants(allParticipants);
+    const body = document.getElementById('participantBody');
+    const count = document.getElementById('participantCount');
+    count.textContent = `${sorted.length} participant${sorted.length !== 1 ? 's' : ''}`;
+
+    body.innerHTML = sorted.map(p => {
+      const status = getStatus(p);
+      const isTest = isTestParticipant(p);
+      const statusLabel = isTest ? 'test' : status;
+      const statusClass = isTest ? 'status-test' : `status-${status}`;
+
+      return `<tr onclick="toggleDetail('${escHtml(p.participant_id)}')" style="cursor:pointer;">
+        <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
+        <td class="pid-cell">${escHtml(p.participant_id)}</td>
+        <td class="time-cell">${formatTime(p.registered_at)}</td>
+        <td style="font-family:'SF Mono','Fira Code',monospace; font-size:12px;">${p.current_step ?? '—'}</td>
+        <td>${p.assigned_condition != null ? `<span class="condition-badge">C${p.assigned_condition}</span>` : '<span style="opacity:0.3;">—</span>'}</td>
+        <td><span class="feature-count ${p.feature_count === 0 ? 'zero' : ''}">${p.feature_count || 0}</span></td>
+        <td class="time-cell">${formatTime(p.last_heartbeat)}</td>
+      </tr>
+      ${expandedPid === p.participant_id ? renderDetailRow(p) : ''}`;
+    }).join('');
+  }
+
+  function renderDetailRow(p) {
+    let responses = {};
+    try { responses = typeof p.responses === 'string' ? JSON.parse(p.responses) : (p.responses || {}); } catch {}
+    const responseKeys = Object.keys(responses);
+
+    return `<tr class="detail-row"><td colspan="7">
+      <div class="detail-panel">
+        <div class="detail-section">
+          <h4>Session</h4>
+          <div class="detail-kv"><span class="k">Registered</span><span class="v">${p.registered_at || '—'}</span></div>
+          <div class="detail-kv"><span class="k">Last heartbeat</span><span class="v">${p.last_heartbeat || '—'}</span></div>
+          <div class="detail-kv"><span class="k">Completed</span><span class="v">${p.completed_at || '—'}</span></div>
+          <div class="detail-kv"><span class="k">Current step</span><span class="v">${p.current_step ?? '—'}</span></div>
+          <div class="detail-kv"><span class="k">Assignment</span><span class="v">${p.assignment_mode || '—'} → C${p.assigned_condition ?? '?'}</span></div>
+          <div class="detail-kv"><span class="k">Assigned at</span><span class="v">${p.assigned_at || '—'}</span></div>
+          <div class="detail-kv"><span class="k">Features</span><span class="v">${p.feature_count || 0}</span></div>
+        </div>
+        <div class="detail-section">
+          <h4>Responses (${responseKeys.length})</h4>
+          ${responseKeys.length === 0
+            ? '<div style="color:var(--text-muted); opacity:0.5; font-size:12px;">No responses yet</div>'
+            : responseKeys.map(k => `<div class="detail-kv"><span class="k">${escHtml(k)}</span><span class="v">${escHtml(truncate(JSON.stringify(responses[k]), 80))}</span></div>`).join('')
+          }
+        </div>
+      </div>
+    </td></tr>`;
+  }
+
+  function toggleDetail(pid) {
+    expandedPid = expandedPid === pid ? null : pid;
+    renderTable();
+  }
+
+  function formatTime(isoStr) {
+    if (!isoStr) return '<span style="opacity:0.3;">—</span>';
+    try {
+      // D1 stores as 'YYYY-MM-DD HH:MM:SS' (no T, no Z) — treat as UTC
+      const normalized = isoStr.includes('T') ? isoStr : isoStr.replace(' ', 'T') + 'Z';
+      const d = new Date(normalized);
+      if (isNaN(d.getTime())) return escHtml(isoStr);
+
+      const now = new Date();
+      const diffMs = now - d;
+      const diffMin = Math.floor(diffMs / 60000);
+      const diffHr = Math.floor(diffMs / 3600000);
+      const diffDay = Math.floor(diffMs / 86400000);
+
+      let relative;
+      if (diffMin < 1) relative = 'just now';
+      else if (diffMin < 60) relative = `${diffMin}m ago`;
+      else if (diffHr < 24) relative = `${diffHr}h ago`;
+      else relative = `${diffDay}d ago`;
+
+      const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+      return `<span class="date">${dateStr} ${timeStr}</span> <span class="relative">${relative}</span>`;
+    } catch {
+      return escHtml(isoStr);
+    }
+  }
+
+  function escHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function truncate(str, max) {
+    if (!str || str.length <= max) return str;
+    return str.slice(0, max) + '…';
+  }
+</script>
+</body>
+</html>

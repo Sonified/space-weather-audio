@@ -1574,6 +1574,17 @@
                 </div>
               </div>
 
+              <!-- Block Generation (visible for block or healingBlock) -->
+              <div id="blockGenerationSettings" style="display:none; margin-top:16px; padding:14px 16px; border:1px solid rgba(139,92,246,0.15); border-radius:var(--radius); background:rgba(139,92,246,0.03);">
+                <div style="display:flex; align-items:center; gap:12px;">
+                  <div class="field-group" style="margin-top:0; flex:0 0 auto;">
+                    <div class="field-label" style="color:#aa77ff;" title="Number of blocks to pre-generate. Each block contains one slot per condition in shuffled order. If participants exceed the table, it wraps around.">Pre-generate Blocks</div>
+                    <input class="field-input" type="number" id="rand_numBlocks" value="100" min="10" max="500" style="width:80px; color:#aa77ff; border-color:rgba(139,92,246,0.3);" oninput="updateBlockSlotCount()" />
+                  </div>
+                  <span style="font-size:11px; color:var(--text-muted); margin-top:18px;">= <span id="blockSlotCount">1200</span> participant slots</span>
+                </div>
+              </div>
+
             </div>
           </div>
         </div>
@@ -1740,9 +1751,16 @@
                 </div>
               </div>
               <div>
-                <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); display:block; margin-bottom:4px;">Timeout</label>
+                <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); display:block; margin-bottom:4px;" title="Minutes of no heartbeat before a participant is shown as inactive on the dashboard.">Inactive Timeout</label>
                 <div style="display:flex; align-items:center; gap:6px;">
                   <input type="number" id="heartbeatTimeout" value="10" min="1" max="120" style="width:60px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:var(--radius); padding:6px 8px; font-size:var(--input-font-size);">
+                  <span style="font-size:12px; color:var(--text-muted);">min</span>
+                </div>
+              </div>
+              <div>
+                <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); display:block; margin-bottom:4px;" title="Minutes of inactivity before a participant is considered a dropout. Dropouts become eligible for condition reassignment in the healing block algorithm.">Dropout Timeout</label>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <input type="number" id="dropoutTimeout" value="120" min="10" max="1440" style="width:60px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:var(--radius); padding:6px 8px; font-size:var(--input-font-size);">
                   <span style="font-size:12px; color:var(--text-muted);">min</span>
                 </div>
               </div>
@@ -1767,6 +1785,9 @@
       <span id="streamCount" style="margin-left:auto; font-size:11px; color:#666;">0 events</span>
     </div>
     <div class="step-detail" id="dataStreamDetail">
+      <div style="display:flex; align-items:center; gap:8px; padding:8px 0 4px;">
+        <button class="btn" onclick="openDataExplorer()" style="font-size:11px; padding:4px 10px;" title="Open full participant data explorer in a new tab">🔍 Data Explorer</button>
+      </div>
       <div id="dataStreamLog" style="max-height:300px; overflow-y:auto; font-family:monospace; font-size:11px; line-height:1.6; color:#aaa; padding:8px 0;">
         <div style="color:#555; font-style:italic;">Waiting for activity...</div>
       </div>
@@ -3525,6 +3546,9 @@
     // Randomization
     const method = document.getElementById('rand_method')?.value || 'random';
     const randomization = { method };
+    if (method === 'block' || method === 'healingBlock') {
+      randomization.numBlocks = parseInt(document.getElementById('rand_numBlocks')?.value) || 100;
+    }
     if (method === 'healingBlock') {
       randomization.healPriority = document.getElementById('rand_healPriority')?.value || 'fifo';
       randomization.maxHealPasses = parseInt(document.getElementById('rand_maxHealPasses')?.value) || 10;
@@ -3571,6 +3595,7 @@
       const r = design.randomization;
       const el = id => document.getElementById(id);
       if (el('rand_method')) el('rand_method').value = r.method || 'random';
+      if (r.numBlocks && el('rand_numBlocks')) el('rand_numBlocks').value = r.numBlocks;
       if (r.method === 'healingBlock') {
         if (el('rand_healPriority')) el('rand_healPriority').value = r.healPriority || 'fifo';
         if (el('rand_maxHealPasses')) el('rand_maxHealPasses').value = r.maxHealPasses ?? 10;
@@ -3586,6 +3611,16 @@
     const method = document.getElementById('rand_method')?.value;
     const panel = document.getElementById('healingBlockSettings');
     if (panel) panel.style.display = method === 'healingBlock' ? 'block' : 'none';
+    const blockGen = document.getElementById('blockGenerationSettings');
+    if (blockGen) blockGen.style.display = (method === 'block' || method === 'healingBlock') ? 'block' : 'none';
+    updateBlockSlotCount();
+  }
+
+  function updateBlockSlotCount() {
+    const numBlocks = parseInt(document.getElementById('rand_numBlocks')?.value) || 100;
+    const numConditions = document.querySelectorAll('#conditionsList .condition-row').length || 12;
+    const el = document.getElementById('blockSlotCount');
+    if (el) el.textContent = (numBlocks * numConditions).toLocaleString();
   }
 
   // ── Launch Settings collect/load ──────────────────────────────
@@ -3625,6 +3660,7 @@
     return {
       heartbeatInterval: parseInt(document.getElementById('heartbeatInterval')?.value) || 1,
       heartbeatTimeout: parseInt(document.getElementById('heartbeatTimeout')?.value) || 10,
+      dropoutTimeout: parseInt(document.getElementById('dropoutTimeout')?.value) || 120,
     };
   }
 
@@ -3633,6 +3669,7 @@
     const el = id => document.getElementById(id);
     if (el('heartbeatInterval') && tracking.heartbeatInterval != null) el('heartbeatInterval').value = tracking.heartbeatInterval;
     if (el('heartbeatTimeout') && tracking.heartbeatTimeout != null) el('heartbeatTimeout').value = tracking.heartbeatTimeout;
+    if (el('dropoutTimeout') && tracking.dropoutTimeout != null) el('dropoutTimeout').value = tracking.dropoutTimeout;
   }
 
   function refreshConditionOrderDropdowns() {
@@ -6212,6 +6249,14 @@
       refreshStudyPicker();
     });
   })();
+  // ── Data Explorer launcher ──
+  function openDataExplorer() {
+    const slugEl = document.getElementById('slugEditable');
+    const slug = slugEl ? slugEl.textContent.trim() : '';
+    const url = slug ? `data-explorer.html?study=${encodeURIComponent(slug)}` : 'data-explorer.html';
+    window.open(url, '_blank');
+  }
+
   // ── Data Stream polling ──
   (function() {
     const LOG_EL = 'dataStreamLog';
@@ -6349,6 +6394,7 @@
   // ── Test Mode ───────────────────────────────────────────────────
   let testModeActive = false;
   let heartbeatInterval = null;
+  let testStartTime = null; // ISO timestamp when test was started
 
   function launchStudy() {
     // TODO: wire to go-live system — for now, placeholder
@@ -6372,7 +6418,86 @@
     });
   }
 
-  function toggleTestMode() {
+  // ── Block Table Generation ──────────────────────────────────
+  function generateBlockTable(numConditions, numBlocks) {
+    const blocks = [];
+    for (let i = 0; i < numBlocks; i++) {
+      const block = Array.from({ length: numConditions }, (_, j) => j);
+      // Fisher-Yates shuffle
+      for (let k = block.length - 1; k > 0; k--) {
+        const r = Math.floor(Math.random() * (k + 1));
+        [block[k], block[r]] = [block[r], block[k]];
+      }
+      blocks.push(block);
+    }
+    return blocks;
+  }
+
+  let activeSessionId = null; // Track current session ID
+
+  async function generateAndUploadAssignmentState() {
+    const slug = document.getElementById('slugValue')?.textContent?.trim();
+    if (!slug) return;
+
+    const method = document.getElementById('rand_method')?.value || 'random';
+    if (method !== 'block' && method !== 'healingBlock') return;
+
+    const numConditions = document.querySelectorAll('#conditionsList .condition-row').length;
+    if (numConditions === 0) return;
+
+    const numBlocks = parseInt(document.getElementById('rand_numBlocks')?.value) || 100;
+    const blocks = generateBlockTable(numConditions, numBlocks);
+
+    const state = {
+      blocks,
+      currentBlock: 0,
+      currentSlot: 0,
+      phase: 'walking',
+      nextHealAt: numConditions,
+      healQueue: [],
+      healIndex: 0,
+      healPassesLeft: 0,
+      blockIncomplete: {},
+      completions: new Array(numConditions).fill(0),
+      step: 0,
+      numConditions,
+      // Heal config (only used for healingBlock, but stored regardless)
+      healPriority: document.getElementById('rand_healPriority')?.value || 'fifo',
+      maxHealPasses: parseInt(document.getElementById('rand_maxHealPasses')?.value) || 10,
+      simultHealCap: parseInt(document.getElementById('rand_healCap')?.value) || 1,
+      healCapMode: document.getElementById('rand_capMode')?.value || 'per-condition',
+      simultResumeMode: document.getElementById('rand_capResume')?.value || 'walk',
+      dropoutTimeoutMin: parseInt(document.getElementById('dropoutTimeout')?.value) || 120,
+    };
+
+    console.log(`[RANDOMIZATION] Generating block table: ${numBlocks} blocks × ${numConditions} conditions = ${numBlocks * numConditions} slots`);
+    console.log(`[RANDOMIZATION] Algorithm config:`, {
+      method, healPriority: state.healPriority, maxHealPasses: state.maxHealPasses,
+      simultHealCap: state.simultHealCap, healCapMode: state.healCapMode,
+      simultResumeMode: state.simultResumeMode, dropoutTimeoutMin: state.dropoutTimeoutMin,
+    });
+    console.log(`[RANDOMIZATION] First 3 blocks:`, blocks.slice(0, 3).map((b, i) => `Block ${i}: [${b.join(',')}]`));
+
+    try {
+      // Use session/start endpoint — creates a new session (auto-ends any active one)
+      const resp = await fetch(`${API_BASE}/api/study/${slug}/session/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state }),
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        activeSessionId = data.sessionId;
+        console.log(`[RANDOMIZATION] ✅ Session started: ${activeSessionId}`, data);
+      } else {
+        console.warn('[RANDOMIZATION] ⚠️ Session start failed:', data);
+      }
+    } catch (e) {
+      console.warn('[RANDOMIZATION] ⚠️ Session start error:', e);
+    }
+  }
+
+  async function toggleTestMode() {
     testModeActive = !testModeActive;
     const btn = document.getElementById('testModeBtn');
     const label = document.getElementById('testModeLabel');
@@ -6402,8 +6527,15 @@
       }
       saveExpandedState();
       dot.classList.add('alive');
-      hbLabel.textContent = 'Heartbeat: polling every 60s (10 min timeout)';
+      hbLabel.textContent = 'Heartbeat: uploading block table...';
       if (statusEl) { statusEl.textContent = 'Test active'; statusEl.style.color = 'var(--green)'; }
+
+      // Record test start time for filtering
+      testStartTime = new Date().toISOString();
+      console.log(`[TEST] Started at ${testStartTime}`);
+
+      // Generate block table + upload assignment state (await before polling)
+      await generateAndUploadAssignmentState();
 
       // Reset metrics
       updateTestDashboard({
@@ -6418,7 +6550,7 @@
       // Start heartbeat polling (read interval from input)
       const hbMinutes = Math.max(1, parseInt(document.getElementById('heartbeatInterval').value) || 1);
       heartbeatInterval = setInterval(pollTestHeartbeat, hbMinutes * 60000);
-      // Immediate first poll
+      // First poll — block table is confirmed uploaded
       pollTestHeartbeat();
 
       // Re-measure panel height for smooth animation
@@ -6438,6 +6570,18 @@
       if (heartbeatInterval) {
         clearInterval(heartbeatInterval);
         heartbeatInterval = null;
+      }
+
+      // End the active session on the server
+      const slug = document.getElementById('slugValue')?.textContent?.trim();
+      if (slug && activeSessionId) {
+        fetch(`${API_BASE}/api/study/${slug}/session/end`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        }).then(r => r.json()).then(data => {
+          console.log(`[TEST] Session ${activeSessionId} ended:`, data);
+          activeSessionId = null;
+        }).catch(e => console.warn('[TEST] Session end error:', e));
       }
     }
   }
@@ -6470,17 +6614,20 @@
       : 'https://spaceweather.now.audio';
 
     try {
-      const resp = await fetch(`${apiBase}/api/study/${slug}/dashboard?timeout=${toMin}`);
+      const sinceParam = testStartTime ? `&since=${encodeURIComponent(testStartTime)}` : '';
+      const resp = await fetch(`${apiBase}/api/study/${slug}/dashboard?timeout=${toMin}${sinceParam}`);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
 
+      const alg = data.algorithmState;
+      console.log(`[DASHBOARD] Poll: ${data.totalStarted} started, ${data.activeParticipants} active, ${data.totalAssigned} assigned, ${data.completedCount} completed`, alg ? `| Block ${alg.currentBlock + 1}, ${alg.phase}, step ${alg.step}` : '| no algorithm state');
       updateTestDashboard({
         totalStarted: data.totalStarted || 0,
         activeParticipants: data.activeParticipants || 0,
         totalAssigned: data.totalAssigned || 0,
-        nextAssignment: '—',
-        currentBlock: '—',
-        currentStage: '—'
+        nextAssignment: alg?.nextAssignment != null ? `#${alg.nextAssignment + 1}` : '—',
+        currentBlock: alg?.currentBlock != null ? alg.currentBlock + 1 : '—',
+        currentStage: alg?.phase ? (alg.phase === 'walking' ? 'Walking' : 'Healing') : '—'
       });
 
       dot.classList.add('alive');

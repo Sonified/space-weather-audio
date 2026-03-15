@@ -122,6 +122,204 @@ function escapeHtml(text) {
 }
 
 // =============================================================================
+// Randomization Algorithm (ported from randomization-sim.html)
+// =============================================================================
+
+/**
+ * Shuffle array in place (Fisher-Yates).
+ */
+function shuffleArray(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/**
+ * Sort heal queue according to healPriority mode.
+ * Mutates the array in place.
+ */
+function sortHealQueue(incompletes, healPriority) {
+  const useHeight = healPriority === 'fifo-height' || healPriority === 'random-height';
+  const useRandom = healPriority === 'random' || healPriority === 'random-height';
+
+  if (useHeight) {
+    const counts = new Map();
+    for (const item of incompletes) {
+      counts.set(item.condition, (counts.get(item.condition) || 0) + 1);
+    }
+    if (useRandom) {
+      const groups = new Map();
+      for (const item of incompletes) {
+        if (!groups.has(item.condition)) groups.set(item.condition, []);
+        groups.get(item.condition).push(item);
+      }
+      const sorted = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+      incompletes.length = 0;
+      for (const [, group] of sorted) {
+        shuffleArray(group);
+        incompletes.push(...group);
+      }
+    } else {
+      incompletes.sort((a, b) => {
+        const countDiff = counts.get(b.condition) - counts.get(a.condition);
+        if (countDiff !== 0) return countDiff;
+        return a.assignTime - b.assignTime;
+      });
+    }
+  } else if (useRandom) {
+    shuffleArray(incompletes);
+  } else {
+    // FIFO
+    incompletes.sort((a, b) => a.assignTime - b.assignTime);
+  }
+}
+
+/**
+ * Plain block assignment — no healing. Just walk through blocks sequentially.
+ * Returns the condition index (0-based). Mutates state in place.
+ */
+function blockAssign(state) {
+  const { blocks, numConditions } = state;
+  // Wrap around if we exceed block count
+  if (state.currentBlock >= blocks.length) state.currentBlock = 0;
+  const block = blocks[state.currentBlock];
+  const condition = block[state.currentSlot];
+  state.currentSlot++;
+  if (state.currentSlot >= numConditions) {
+    state.currentBlock++;
+    state.currentSlot = 0;
+    if (state.currentBlock >= blocks.length) state.currentBlock = 0;
+  }
+  return condition;
+}
+
+/**
+ * Healing block assignment — one step of the algorithm.
+ * Returns { condition (0-based index), mode ('walk' or 'heal') }.
+ * Mutates state in place.
+ */
+function healingBlockAssign(state) {
+  const { blocks, numConditions } = state;
+
+  // Ensure blockIncomplete is an object (may come from JSON as {})
+  if (!state.blockIncomplete) state.blockIncomplete = {};
+
+  if (state.phase === 'healing') {
+    return doHealAssign(state);
+  }
+  return doWalkAssign(state);
+}
+
+function doWalkAssign(state) {
+  const { blocks, numConditions } = state;
+  // Wrap block index
+  if (state.currentBlock >= blocks.length) state.currentBlock = 0;
+
+  // Check if we've hit the heal boundary
+  if (state.currentSlot >= state.nextHealAt) {
+    startHealRound(state);
+    if (state.phase === 'healing') {
+      return doHealAssign(state);
+    }
+    return doWalkAssign(state);
+  }
+
+  const block = blocks[state.currentBlock];
+  const condition = block[state.currentSlot];
+  state.currentSlot++;
+
+  // Check if we've hit heal boundary after advancing
+  if (state.currentSlot >= state.nextHealAt) {
+    startHealRound(state);
+  }
+
+  return { condition, mode: 'walk' };
+}
+
+function startHealRound(state) {
+  const { numConditions } = state;
+  const blockKey = String(state.currentBlock);
+  const incompletes = state.blockIncomplete[blockKey];
+
+  if (!incompletes || incompletes.length === 0) {
+    // No incompletes — advance to next block/segment
+    if (state.nextHealAt >= numConditions) {
+      state.currentBlock++;
+      state.currentSlot = 0;
+      state.nextHealAt = numConditions; // healInterval = numConditions
+      if (state.currentBlock >= state.blocks.length) state.currentBlock = 0;
+    } else {
+      state.nextHealAt += numConditions;
+    }
+    state.phase = 'walking';
+    state.healPassesLeft = 0;
+    return;
+  }
+
+  sortHealQueue(incompletes, state.healPriority || 'fifo');
+  state.healQueue = incompletes.map(s => s.condition);
+  state.healIndex = 0;
+  state.phase = 'healing';
+  delete state.blockIncomplete[blockKey]; // consumed
+
+  if (state.healPassesLeft === 0) {
+    state.healPassesLeft = state.maxHealPasses || 1;
+  }
+  state.healPassesLeft--;
+}
+
+function advanceAfterHeal(state) {
+  const { numConditions } = state;
+
+  // Check for more passes
+  if (state.healPassesLeft > 0) {
+    const blockKey = String(state.currentBlock);
+    const incompletes = state.blockIncomplete[blockKey];
+    if (incompletes && incompletes.length > 0) {
+      startHealRound(state);
+      return;
+    }
+  }
+
+  if (state.nextHealAt >= numConditions) {
+    state.currentBlock++;
+    state.currentSlot = 0;
+    state.nextHealAt = numConditions;
+    if (state.currentBlock >= state.blocks.length) state.currentBlock = 0;
+  } else {
+    state.nextHealAt += numConditions;
+  }
+  state.phase = 'walking';
+  state.healPassesLeft = 0;
+}
+
+function doHealAssign(state) {
+  if (state.healIndex >= state.healQueue.length) {
+    advanceAfterHeal(state);
+    if (state.phase === 'healing') {
+      return doHealAssign(state);
+    }
+    return doWalkAssign(state);
+  }
+
+  // Heal cap check
+  const { simultHealCap = Infinity, healCapMode = 'total' } = state;
+  // Note: in single-participant-at-a-time mode, cap is mostly irrelevant
+  // but we keep the structure for consistency with the sim
+
+  const condition = state.healQueue[state.healIndex];
+  state.healIndex++;
+
+  if (state.healIndex >= state.healQueue.length) {
+    advanceAfterHeal(state);
+  }
+
+  return { condition, mode: 'heal' };
+}
+
+// =============================================================================
 // Route Handler
 // =============================================================================
 
@@ -406,6 +604,21 @@ export default {
       }
 
       // =======================================================================
+      // GET /api/studies — list all studies (id, name, participant count)
+      // =======================================================================
+      if (path === '/api/studies' && request.method === 'GET') {
+        const { results } = await env.DB.prepare(
+          `SELECT s.id, s.name, s.updated_at,
+                  COUNT(p.participant_id) as participant_count
+           FROM studies s
+           LEFT JOIN participants p ON p.study_id = s.id
+           GROUP BY s.id
+           ORDER BY s.updated_at DESC`
+        ).all();
+        return json({ success: true, studies: results || [] });
+      }
+
+      // =======================================================================
       // D1 Study Routes: /api/study/:studyId/*
       // =======================================================================
       const studyConfigMatch = path.match(/^\/api\/study\/([^/]+)\/config$/);
@@ -553,6 +766,171 @@ export default {
         return json({ success: true, current_step: step });
       }
 
+      // ═══════════════════════════════════════════════════════════════════
+      // SESSION-BASED ASSIGNMENT + SERVER-SIDE RANDOMIZATION
+      // ═══════════════════════════════════════════════════════════════════
+
+      // POST /api/study/:studyId/session/start — create a new assignment session
+      const sessionStartMatch = path.match(/^\/api\/study\/([^/]+)\/session\/start$/);
+      if (sessionStartMatch && request.method === 'POST') {
+        const studyId = sessionStartMatch[1];
+        const body = await request.json();
+        if (!body.state) return json({ error: 'Missing state' }, 400);
+
+        // End any currently active session
+        await env.DB.prepare(
+          `UPDATE assignment_sessions SET ended_at = datetime('now') WHERE study_id = ? AND ended_at IS NULL`
+        ).bind(studyId).run();
+
+        // Create new session
+        const sessionId = body.sessionId || new Date().toISOString().replace(/[:.]/g, '-');
+        await env.DB.prepare(
+          `INSERT INTO assignment_sessions (session_id, study_id, assignment_state, assignment_version)
+           VALUES (?, ?, ?, 0)`
+        ).bind(sessionId, studyId, JSON.stringify(body.state)).run();
+
+        const s = body.state;
+        return json({
+          success: true,
+          sessionId,
+          numBlocks: s.blocks?.length || 0,
+          numConditions: s.numConditions || 0,
+          totalSlots: (s.blocks?.length || 0) * (s.numConditions || 0),
+          method: s.healPriority ? 'healingBlock' : 'block',
+        });
+      }
+
+      // POST /api/study/:studyId/session/end — end the active session
+      const sessionEndMatch = path.match(/^\/api\/study\/([^/]+)\/session\/end$/);
+      if (sessionEndMatch && request.method === 'POST') {
+        const studyId = sessionEndMatch[1];
+        await env.DB.prepare(
+          `UPDATE assignment_sessions SET ended_at = datetime('now') WHERE study_id = ? AND ended_at IS NULL`
+        ).bind(studyId).run();
+        return json({ success: true });
+      }
+
+      // GET /api/study/:studyId/sessions — list all sessions for this study
+      const sessionsListMatch = path.match(/^\/api\/study\/([^/]+)\/sessions$/);
+      if (sessionsListMatch && request.method === 'GET') {
+        const studyId = sessionsListMatch[1];
+        const { results } = await env.DB.prepare(
+          `SELECT session_id, started_at, ended_at FROM assignment_sessions
+           WHERE study_id = ? ORDER BY started_at DESC LIMIT 50`
+        ).bind(studyId).all();
+        return json({ success: true, sessions: results || [] });
+      }
+
+      // POST /api/study/:studyId/assign — assign next condition to a participant
+      const assignMatch = path.match(/^\/api\/study\/([^/]+)\/assign$/);
+      if (assignMatch && request.method === 'POST') {
+        const studyId = assignMatch[1];
+        const body = await request.json();
+        const pid = body.participant_id;
+        if (!pid) return json({ error: 'Missing participant_id' }, 400);
+
+        // Get study config for condition details
+        const studyRow = await env.DB.prepare(
+          'SELECT config FROM studies WHERE id = ?'
+        ).bind(studyId).first();
+        const config = studyRow?.config ? JSON.parse(studyRow.config) : {};
+        const conditions = config.experimentalDesign?.conditions || [];
+        const method = config.experimentalDesign?.randomization?.method || 'random';
+
+        // Retry loop for optimistic concurrency
+        for (let attempt = 0; attempt < 5; attempt++) {
+          // Find active session
+          const session = await env.DB.prepare(
+            `SELECT session_id, assignment_state, assignment_version FROM assignment_sessions
+             WHERE study_id = ? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1`
+          ).bind(studyId).first();
+          if (!session || !session.assignment_state) {
+            return json({ error: 'No active session — start test first' }, 400);
+          }
+
+          const sessionId = session.session_id;
+          const state = JSON.parse(session.assignment_state);
+          const version = session.assignment_version || 0;
+
+          // Check for dropouts (>dropout timeout, no completion) and add to heal queue
+          if (method === 'healingBlock') {
+            const dropoutMin = state.dropoutTimeoutMin || 120;
+            const { results: dropouts } = await env.DB.prepare(
+              `SELECT assigned_condition, assignment_mode FROM participants
+               WHERE study_id = ? AND session_id = ? AND completed_at IS NULL AND assigned_condition IS NOT NULL
+               AND last_heartbeat < datetime('now', '-' || ? || ' minutes')`
+            ).bind(studyId, sessionId, dropoutMin).all();
+
+            if (dropouts && dropouts.length > 0) {
+              if (!state.blockIncomplete) state.blockIncomplete = {};
+              for (const d of dropouts) {
+                const blockIdx = state.currentBlock;
+                if (!state.blockIncomplete[blockIdx]) state.blockIncomplete[blockIdx] = [];
+                const already = state.blockIncomplete[blockIdx].some(
+                  item => item.condition === d.assigned_condition && item.source === 'dropout'
+                );
+                if (!already) {
+                  state.blockIncomplete[blockIdx].push({
+                    condition: d.assigned_condition,
+                    assignTime: state.step,
+                    source: 'dropout'
+                  });
+                }
+              }
+            }
+          }
+
+          // Run one assignment step
+          state.step++;
+          let assignedCondition;
+          let assignmentMode;
+
+          if (method === 'healingBlock') {
+            const result = healingBlockAssign(state);
+            assignedCondition = result.condition;
+            assignmentMode = result.mode;
+          } else {
+            assignedCondition = blockAssign(state);
+            assignmentMode = 'walk';
+          }
+
+          // Optimistic concurrency write to session
+          const writeResult = await env.DB.prepare(
+            `UPDATE assignment_sessions SET assignment_state = ?, assignment_version = ?
+             WHERE session_id = ? AND assignment_version = ?`
+          ).bind(JSON.stringify(state), version + 1, sessionId, version).run();
+
+          if (writeResult.meta?.changes === 0) {
+            continue; // retry
+          }
+
+          // Write assignment to participant row (include session_id)
+          await env.DB.prepare(
+            `UPDATE participants SET assigned_condition = ?, assignment_mode = ?, assigned_at = datetime('now'),
+             session_id = ?, updated_at = datetime('now') WHERE participant_id = ? AND study_id = ?`
+          ).bind(assignedCondition, assignmentMode, sessionId, pid, studyId).run();
+
+          const conditionDetails = conditions[assignedCondition] || {};
+          return json({
+            success: true,
+            conditionIndex: assignedCondition,
+            order: conditionDetails.order,
+            task1Processing: conditionDetails.task1Processing,
+            task2Processing: conditionDetails.task2Processing,
+            assignmentMode,
+            sessionId,
+            block: state.currentBlock,
+            phase: state.phase,
+            step: state.step,
+            slot: state.currentSlot,
+            completions: state.completions,
+            version: version + 1,
+          });
+        }
+
+        return json({ error: 'Assignment failed after retries — high concurrency' }, 503);
+      }
+
       // PUT /api/study/:studyId/participants/:pid/condition — store assigned condition
       const conditionMatch = path.match(/^\/api\/study\/([^/]+)\/participants\/([^/]+)\/condition$/);
       if (conditionMatch && request.method === 'PUT') {
@@ -626,6 +1004,33 @@ export default {
         return json({ success: true, mode });
       }
 
+      // GET /api/study/:studyId/participants — list all participants with feature counts
+      const listParticipantsMatch = path.match(/^\/api\/study\/([^/]+)\/participants$/);
+      if (listParticipantsMatch && request.method === 'GET') {
+        const studyId = listParticipantsMatch[1];
+        const filter = url.searchParams.get('filter') || 'all'; // all | test | live
+        const timeoutMin = parseInt(url.searchParams.get('timeout') || '10', 10);
+
+        let whereClause = 'p.study_id = ?';
+        if (filter === 'test') whereClause += " AND (p.participant_id LIKE 'test_%' OR p.participant_id LIKE 'preview_%')";
+        else if (filter === 'live') whereClause += " AND p.participant_id NOT LIKE 'test_%' AND p.participant_id NOT LIKE 'preview_%'";
+
+        const { results } = await env.DB.prepare(
+          `SELECT p.participant_id, p.current_step, p.registered_at, p.completed_at,
+                  p.assigned_condition, p.assignment_mode, p.assigned_at,
+                  p.last_heartbeat, p.updated_at, p.responses, p.flags,
+                  COUNT(f.id) as feature_count,
+                  CASE WHEN p.last_heartbeat > datetime('now', '-' || ? || ' minutes') THEN 1 ELSE 0 END as is_active
+           FROM participants p
+           LEFT JOIN features f ON f.participant_id = p.participant_id AND f.study_id = p.study_id
+           WHERE ${whereClause}
+           GROUP BY p.participant_id, p.study_id
+           ORDER BY p.registered_at DESC`
+        ).bind(timeoutMin, studyId).all();
+
+        return json({ success: true, participants: results || [] });
+      }
+
       // GET /api/study/:studyId/participants/:pid/features — fetch all features
       const featuresMatch = path.match(/^\/api\/study\/([^/]+)\/participants\/([^/]+)\/features$/);
       if (featuresMatch && request.method === 'GET') {
@@ -674,28 +1079,54 @@ export default {
       if (dashboardMatch && request.method === 'GET') {
         const studyId = dashboardMatch[1];
         const timeoutMin = parseInt(url.searchParams.get('timeout') || '10', 10);
+        // Session-based filtering: use active session's session_id
+        const activeSession = await env.DB.prepare(
+          `SELECT session_id, assignment_state FROM assignment_sessions
+           WHERE study_id = ? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1`
+        ).bind(studyId).first();
+        const sessionId = activeSession?.session_id;
+        const sessionFilter = sessionId ? ' AND session_id = ?' : '';
+        const sessionBinds = sessionId ? [sessionId] : [];
 
         const [totalRow, activeRow, assignedRow, completedRow, participantRows] = await Promise.all([
-          env.DB.prepare('SELECT COUNT(*) as count FROM participants WHERE study_id = ?').bind(studyId).first(),
+          env.DB.prepare(`SELECT COUNT(*) as count FROM participants WHERE study_id = ?${sessionFilter}`).bind(studyId, ...sessionBinds).first(),
           env.DB.prepare(
-            `SELECT COUNT(*) as count FROM participants WHERE study_id = ? AND last_heartbeat > datetime('now', '-' || ? || ' minutes')`
-          ).bind(studyId, timeoutMin).first(),
-          env.DB.prepare('SELECT COUNT(*) as count FROM participants WHERE study_id = ? AND current_step > 0').bind(studyId).first(),
-          env.DB.prepare('SELECT COUNT(*) as count FROM participants WHERE study_id = ? AND completed_at IS NOT NULL').bind(studyId).first(),
+            `SELECT COUNT(*) as count FROM participants WHERE study_id = ? AND last_heartbeat > datetime('now', '-' || ? || ' minutes')${sessionFilter}`
+          ).bind(studyId, timeoutMin, ...sessionBinds).first(),
+          env.DB.prepare(`SELECT COUNT(*) as count FROM participants WHERE study_id = ? AND assigned_condition IS NOT NULL${sessionFilter}`).bind(studyId, ...sessionBinds).first(),
+          env.DB.prepare(`SELECT COUNT(*) as count FROM participants WHERE study_id = ? AND completed_at IS NOT NULL${sessionFilter}`).bind(studyId, ...sessionBinds).first(),
           env.DB.prepare(
-            `SELECT participant_id, current_step, last_heartbeat, registered_at, completed_at,
+            `SELECT participant_id, current_step, last_heartbeat, registered_at, completed_at, assigned_condition, assignment_mode,
                     CASE WHEN last_heartbeat > datetime('now', '-' || ? || ' minutes') THEN 1 ELSE 0 END as is_active
-             FROM participants WHERE study_id = ? ORDER BY updated_at DESC LIMIT 100`
-          ).bind(timeoutMin, studyId).all(),
+             FROM participants WHERE study_id = ?${sessionFilter} ORDER BY updated_at DESC LIMIT 100`
+          ).bind(timeoutMin, studyId, ...sessionBinds).all(),
         ]);
+
+        // Extract algorithm state from active session
+        let algorithmState = null;
+        if (activeSession?.assignment_state) {
+          try {
+            const s = JSON.parse(activeSession.assignment_state);
+            const nextBlock = s.blocks?.[s.currentBlock];
+            algorithmState = {
+              currentBlock: s.currentBlock,
+              phase: s.phase,
+              nextAssignment: nextBlock ? nextBlock[s.currentSlot] : null,
+              completions: s.completions,
+              step: s.step,
+            };
+          } catch {}
+        }
 
         return json({
           success: true,
+          sessionId: sessionId || null,
           totalStarted: totalRow?.count || 0,
           activeParticipants: activeRow?.count || 0,
           totalAssigned: assignedRow?.count || 0,
           completedCount: completedRow?.count || 0,
           participants: participantRows?.results || [],
+          algorithmState,
         });
       }
 
