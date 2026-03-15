@@ -201,7 +201,7 @@ async function assignCondition() {
     // Check for existing assignment
     const existing = loadSavedCondition(studySlug);
     if (existing) {
-        if (window.pm?.study_flow) console.log(`🧪 Condition already assigned: #${existing.conditionIndex + 1}`, existing);
+        if (window.pm?.study_flow) console.log(`🧪 Condition already assigned: #${existing.conditionIndex}`, existing);
         return existing;
     }
 
@@ -223,14 +223,14 @@ async function assignCondition() {
                 if (data.success && data.conditionIndex != null) {
                     const condition = {
                         conditionIndex: data.conditionIndex,
-                        order: conditions[data.conditionIndex]?.order,
-                        task1Processing: conditions[data.conditionIndex]?.task1Processing,
-                        task2Processing: conditions[data.conditionIndex]?.task2Processing,
+                        order: data.order,
+                        task1Processing: data.task1Processing,
+                        task2Processing: data.task2Processing,
                         assignmentMode: data.assignmentMode,
                         block: data.block,
                     };
                     saveCondition(studySlug, condition);
-                    if (window.pm?.study_flow) console.log(`%c[ASSIGN] ✅ Condition #${data.conditionIndex + 1} (${data.assignmentMode} | block ${data.block + 1} | ${data.phase} | step ${data.step})`, 'color: #aa77ff; font-weight: bold;');
+                    if (window.pm?.study_flow) console.log(`%c[ASSIGN] ✅ Condition #${data.conditionIndex} (${data.assignmentMode} | block ${data.block} | ${data.phase} | step ${data.step})`, 'color: #aa77ff; font-weight: bold;');
                     return condition;
                 }
                 console.error(`[ASSIGN] ❌ Attempt ${attempt}/${maxRetries} failed:`, data.error || 'no condition returned');
@@ -251,7 +251,7 @@ async function assignCondition() {
     const idx = Math.floor(Math.random() * conditions.length);
     const picked = conditions[idx];
     const condition = {
-        conditionIndex: idx,
+        conditionIndex: idx + 1,
         order: picked.order,
         task1Processing: picked.task1Processing,
         task2Processing: picked.task2Processing
@@ -1048,9 +1048,7 @@ async function init() {
             console.log(`🧪 Test mode — resuming session: ${existingId}`);
         } else {
             // First entry into test mode — generate new test ID and clear old session
-            const testChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-            const testSuffix = Array.from({ length: 5 }, () => testChars[Math.floor(Math.random() * 26)]).join('');
-            const testId = `TEST_${testSuffix}`;
+            const testId = generateParticipantId('TEST');
             window.__TEST_PARTICIPANT_ID = testId;
             clearParticipantId();
             localStorage.removeItem(PROGRESS_KEY);
@@ -1223,12 +1221,12 @@ async function init() {
     if (window.pm?.study_flow) console.log(`%c[INIT] ④ Condition assignment`, 'color: #58a6ff; font-weight: bold;');
     assignedCondition = loadSavedCondition(studySlug);
     if (assignedCondition) {
-        if (window.pm?.study_flow) console.log(`%c[INIT] ④ Loaded saved condition #${assignedCondition.conditionIndex + 1}: order=[${assignedCondition.order}] task1=${assignedCondition.task1Processing} task2=${assignedCondition.task2Processing}`, 'color: #58a6ff;');
+        if (window.pm?.study_flow) console.log(`%c[INIT] ④ Loaded saved condition #${assignedCondition.conditionIndex}: order=[${assignedCondition.order}] task1=${assignedCondition.task1Processing} task2=${assignedCondition.task2Processing}`, 'color: #58a6ff;');
     } else if (getParticipantId()) {
         // Participant exists but no condition yet — assign now
         assignedCondition = await assignCondition();
         if (assignedCondition) {
-            if (window.pm?.study_flow) console.log(`%c[INIT] ④ Assigned NEW condition #${assignedCondition.conditionIndex + 1}`, 'color: #58a6ff; font-weight: bold;');
+            if (window.pm?.study_flow) console.log(`%c[INIT] ④ Assigned NEW condition #${assignedCondition.conditionIndex}`, 'color: #58a6ff; font-weight: bold;');
         } else {
             if (window.pm?.study_flow) console.log(`%c[INIT] ④ No conditions configured — skipping`, 'color: #58a6ff;');
         }

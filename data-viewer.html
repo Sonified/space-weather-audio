@@ -21,7 +21,8 @@
     --red: #EF4444;
     --purple: #A78BFA;
     --emerald: #10B981;
-    --radius: 8px;
+    --font-bump: 2px;
+    --radius: 4px;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -36,11 +37,11 @@
 
   /* Header */
   .header {
-    max-width: 960px;
-    margin: 0 auto 20px;
+    max-width: 1100px;
+    margin: 0 auto 10px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 6px;
   }
   .header-top {
     display: flex;
@@ -85,7 +86,8 @@
     border: 1px solid var(--border);
     color: var(--text);
     font-size: 14px;
-    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-family: inherit;
+    font-weight: 600;
     padding: 6px 10px;
     border-radius: var(--radius);
     outline: none;
@@ -103,12 +105,16 @@
     transition: all 0.15s;
   }
   .btn:hover { border-color: var(--border-hover); background: var(--surface2); }
+  .refresh-icon { padding: 6px 8px; line-height: 0; display: inline-flex; align-items: center; }
+  .refresh-icon:hover svg { transform: rotate(45deg); }
+  .refresh-icon svg { transition: transform 0.2s ease; opacity: 0.5; }
+  .refresh-icon:hover svg { opacity: 1; }
   .btn-primary { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 600; }
   .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 
   /* Filter tabs */
   .toolbar {
-    max-width: 960px;
+    max-width: 1100px;
     margin: 0 auto 12px;
     display: flex;
     align-items: center;
@@ -135,7 +141,7 @@
   }
   .filter-tab:last-child { border-right: none; }
   .filter-tab:hover { color: var(--text); background: var(--surface2); }
-  .filter-tab.active { background: #2196f3; color: #fff; font-weight: 600; }
+  .filter-tab.active { background: rgba(33, 150, 243, 0.5); color: #fff; font-weight: 600; }
 
   .participant-count {
     font-size: 12px;
@@ -156,7 +162,7 @@
 
   /* Table */
   .table-container {
-    max-width: 960px;
+    max-width: 1100px;
     margin: 0 auto;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -169,18 +175,19 @@
     table-layout: fixed;
   }
   /* Fixed column widths — prevent layout shift on detail expand */
-  col.col-status    { width: 80px; }
+  col.col-status    { width: 64px; }
+  col.col-copy      { width: 20px; }
   col.col-pid       { width: 22%; }
-  col.col-started   { width: 18%; }
+  col.col-started   { width: 20%; }
   col.col-block     { width: 56px; }
   col.col-condition { width: 72px; }
   col.col-step      { width: 52px; }
   col.col-features  { width: 64px; }
-  col.col-lastseen  { width: auto; }
+  col.col-lastseen  { width: 16%; }
   thead th {
     text-align: left;
     padding: 10px 14px;
-    font-size: 11px;
+    font-size: calc(11px + var(--font-bump));
     font-weight: 600;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -200,11 +207,12 @@
     border-bottom: 1px solid rgba(80, 96, 120, 0.3);
     transition: background 0.1s;
   }
+  tbody tr.row-dark { background: rgba(0, 0, 0, 0.12); }
   tbody tr:hover { background: rgba(77, 168, 255, 0.05); }
   tbody tr:last-child { border-bottom: none; }
   tbody td {
     padding: 10px 14px;
-    font-size: 13px;
+    font-size: calc(13px + var(--font-bump));
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -215,44 +223,75 @@
     display: inline-block;
     padding: 2px 8px;
     border-radius: 10px;
-    font-size: 11px;
+    font-size: calc(13px + var(--font-bump));
     font-weight: 500;
   }
   .status-active { background: rgba(33, 150, 243, 0.15); color: #2196f3; }
   .status-completed { background: rgba(34, 197, 94, 0.15); color: var(--green); }
   .status-inactive { background: rgba(170, 180, 192, 0.1); color: var(--text-muted); }
-  .status-test { background: rgba(167, 139, 250, 0.15); color: var(--purple); }
+  .status-test { background: rgba(100, 110, 125, 0.25); color: #99a3ad; }
 
   .pid-cell {
     font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 12px;
+    font-size: calc(12px + var(--font-bump));
     color: var(--accent);
     cursor: pointer;
   }
   .pid-cell:hover { text-decoration: underline; }
+  .pid-cell.test-pid { color: #8f99a4; }
+  .copy-pid {
+    visibility: hidden;
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 13px;
+    cursor: pointer;
+    opacity: 0.7;
+    position: relative;
+  }
+  .copy-pid:hover { opacity: 1; }
+  .copy-pid[data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: -80px;
+    background: #1c2028;
+    color: #c9d1d9;
+    font-size: 13px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.1s;
+    z-index: 100;
+    border: 1px solid var(--border);
+  }
+  .copy-pid[data-tip]:hover::after { opacity: 1; }
+  tr:hover .copy-pid { visibility: visible; }
 
   .condition-badge {
     display: inline-block;
     padding: 1px 6px;
     border-radius: 4px;
-    font-size: 11px;
+    font-size: calc(13px + var(--font-bump));
     font-family: 'SF Mono', 'Fira Code', monospace;
-    background: rgba(245, 158, 11, 0.15);
-    color: var(--orange);
+    background: rgba(77, 168, 255, 0.15);
+    color: var(--accent);
   }
 
   .feature-count {
     font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 12px;
+    font-size: calc(12px + var(--font-bump));
   }
   .feature-count.zero { color: var(--text-muted); opacity: 0.4; }
 
   .time-cell {
-    font-size: 12px;
+    font-size: calc(12px + var(--font-bump));
     color: var(--text-muted);
   }
   .time-cell .date { color: var(--text); }
-  .time-cell .relative { font-size: 11px; color: var(--text-muted); opacity: 0.7; }
+  .time-cell .relative { font-size: calc(11px + var(--font-bump)); color: var(--text-muted); opacity: 0.7; }
 
   /* Empty state */
   .empty-state {
@@ -284,20 +323,39 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* Session separator row */
+  .session-separator td {
+    padding: 6px 14px;
+    background: rgba(122, 133, 148, 0.08);
+    border-top: 1px solid rgba(122, 133, 148, 0.25);
+    border-bottom: 1px solid rgba(122, 133, 148, 0.25);
+  }
+  .session-label {
+    font-size: calc(11px + var(--font-bump));
+    font-weight: 600;
+    color: #7a8594;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+  }
+
   /* Detail panel (expandable row) */
   .detail-row td {
     padding: 0;
     background: rgba(0, 0, 0, 0.15);
+  }
+  .detail-wrapper {
+    overflow: hidden;
+    transition: height 0.35s cubic-bezier(0.22, 0.1, 0.05, 1.0);
   }
   .detail-panel {
     padding: 16px 20px;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 12px;
-    font-size: 12px;
+    font-size: calc(12px + var(--font-bump));
   }
   .detail-section h4 {
-    font-size: 11px;
+    font-size: calc(11px + var(--font-bump));
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--text-muted);
@@ -311,33 +369,32 @@
   .detail-kv .k { color: var(--text-muted); min-width: 100px; }
   .detail-kv .v { color: var(--text); font-family: 'SF Mono', 'Fira Code', monospace; }
 
-  /* Summary bar */
-  .summary-bar {
-    max-width: 960px;
-    margin: 0 auto 12px;
-    display: flex;
-    gap: 16px;
-    flex-wrap: wrap;
+  /* Summary stats — inline with study selector */
+  .summary-inline {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
   }
-  .summary-stat {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
+  .summary-div {
+    margin: 0 8px;
+    opacity: 0.25;
+    font-size: 14px;
   }
   .summary-stat .value {
-    font-size: 20px;
     font-weight: 600;
+    font-size: 15px;
   }
   .summary-stat .label {
-    font-size: 11px;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
+    font-weight: 400;
+    font-size: 15px;
+    opacity: 0.6;
+    margin-left: 4px;
   }
-  .summary-stat.active .value { color: #2196f3; }
-  .summary-stat.completed .value { color: var(--green); }
   .summary-stat.total .value { color: var(--text); }
-  .summary-stat.features .value { color: var(--orange); }
+  .summary-stat.active .value { color: var(--text); }
+  .summary-stat.completed .value { color: #6ec477; }
+  .summary-stat.features .value { color: #bfc3eb; }
 </style>
 </head>
 <body>
@@ -345,50 +402,30 @@
 <div class="header">
   <div class="header-top">
     <h1><span>🔍</span> Data Viewer</h1>
-    <a href="study-builder.html" class="back-link">← Study Builder</a>
   </div>
-  <div class="study-selector">
-    <label>Study</label>
-    <select class="study-input" id="studySelect" onchange="onStudySelect()" style="min-width:260px; cursor:pointer;">
-      <option value="">Loading studies...</option>
-    </select>
-    <button class="btn" onclick="loadParticipants()" title="Refresh participant list">↻</button>
-  </div>
+
 </div>
 
-<div class="summary-bar" id="summaryBar" style="display:none;">
-  <div class="summary-stat total">
-    <span class="value" id="sumTotal">0</span>
-    <span class="label">Total</span>
-  </div>
-  <div class="summary-stat active">
-    <span class="value" id="sumActive">0</span>
-    <span class="label">Active</span>
-  </div>
-  <div class="summary-stat completed">
-    <span class="value" id="sumCompleted">0</span>
-    <span class="label">Completed</span>
-  </div>
-  <div class="summary-stat features">
-    <span class="value" id="sumFeatures">0</span>
-    <span class="label">Features</span>
-  </div>
-</div>
-
-<div class="toolbar" id="toolbar" style="display:none;">
+<div class="toolbar" id="toolbar">
+  <select class="study-input" id="studySelect" onchange="onStudySelect()" style="min-width:260px; cursor:pointer;">
+    <option value="">Loading studies...</option>
+  </select>
+  <button class="btn refresh-icon" onclick="loadParticipants()" title="Refresh participant list"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>
+  <div style="flex:1;"></div>
+  <span class="summary-inline" id="summaryBar" style="display:none;"><span class="summary-stat total"><span class="value" id="sumTotal">0</span> <span class="label">total</span></span><span class="summary-div">·</span><span class="summary-stat active"><span class="value" id="sumActive">0</span> <span class="label">active</span></span><span class="summary-div">·</span><span class="summary-stat completed"><span class="value" id="sumCompleted">0</span> <span class="label">completed</span></span><span class="summary-div">·</span><span class="summary-stat features"><span class="value" id="sumFeatures">0</span> <span class="label">features</span></span></span>
+  <div style="flex:1;"></div>
   <div class="filter-tabs">
     <button class="filter-tab active" data-filter="all" onclick="setFilter('all')">All</button>
     <button class="filter-tab" data-filter="live" onclick="setFilter('live')">Participants</button>
     <button class="filter-tab" data-filter="test" onclick="setFilter('test')">Test</button>
   </div>
-  <span class="participant-count" id="participantCount"></span>
-  <button class="refresh-btn" onclick="loadParticipants()">↻ Refresh</button>
 </div>
 
 <div class="table-container" id="tableContainer" style="display:none;">
   <table>
     <colgroup>
       <col class="col-status">
+      <col class="col-copy">
       <col class="col-pid">
       <col class="col-started">
       <col class="col-block">
@@ -400,6 +437,7 @@
     <thead>
       <tr>
         <th onclick="sortBy('status')">Status <span class="sort-arrow">▾</span></th>
+        <th></th>
         <th onclick="sortBy('participant_id')">Participant <span class="sort-arrow">▾</span></th>
         <th onclick="sortBy('registered_at')" class="sorted">Started <span class="sort-arrow">▾</span></th>
         <th onclick="sortBy('assigned_block')">Block <span class="sort-arrow">▾</span></th>
@@ -436,6 +474,21 @@
 
   // Fetch studies list and populate dropdown
   const urlSlug = new URLSearchParams(window.location.search).get('study');
+
+  // Synchronous cache restore — render instantly before any network call
+  function cacheKey(slug) { return `dv_cache_${slug}`; }
+  (function instantCacheRestore() {
+    const slug = urlSlug;
+    if (!slug) return;
+    try {
+      const cached = localStorage.getItem(cacheKey(slug));
+      if (!cached) return;
+      allParticipants = JSON.parse(cached);
+      if (allParticipants.length > 0) {
+        showData();
+      }
+    } catch { /* bad cache, ignore */ }
+  })();
 
   async function fetchStudies() {
     const select = document.getElementById('studySelect');
@@ -498,40 +551,51 @@
   }
 
   // Initial load — shows spinner, resets UI
+  function showData() {
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('emptyState').style.display = 'none';
+    if (allParticipants.length === 0) {
+      document.getElementById('emptyState').style.display = '';
+
+      document.getElementById('tableContainer').style.display = 'none';
+      document.getElementById('summaryBar').style.display = 'none';
+    } else {
+      updateSummary();
+      renderTable();
+      document.getElementById('summaryBar').style.display = 'inline-flex';
+
+      document.getElementById('tableContainer').style.display = '';
+    }
+  }
+
   async function loadParticipants() {
     const slug = document.getElementById('studySelect').value;
     if (!slug) { stopPoll(); return; }
 
-    document.getElementById('loadingState').style.display = '';
-    document.getElementById('tableContainer').style.display = 'none';
-    document.getElementById('emptyState').style.display = 'none';
-    document.getElementById('summaryBar').style.display = 'none';
-    document.getElementById('toolbar').style.display = 'none';
+    // Show loading only if we have no cached data on screen
+    if (allParticipants.length === 0) {
+      document.getElementById('loadingState').style.display = '';
+      document.getElementById('tableContainer').style.display = 'none';
+      document.getElementById('emptyState').style.display = 'none';
+      document.getElementById('summaryBar').style.display = 'none';
+    }
 
+    // Fetch fresh data — silently updates if cache was already showing
     try {
       const data = await fetchParticipantData(slug);
       allParticipants = data.participants || [];
-      document.getElementById('loadingState').style.display = 'none';
-
-      if (allParticipants.length === 0) {
-        document.getElementById('emptyState').style.display = '';
-        document.getElementById('toolbar').style.display = 'flex';
-      } else {
-        updateSummary();
-        renderTable();
-        document.getElementById('summaryBar').style.display = 'flex';
-        document.getElementById('toolbar').style.display = 'flex';
-        document.getElementById('tableContainer').style.display = '';
-      }
-
+      localStorage.setItem(cacheKey(slug), JSON.stringify(allParticipants));
+      showData();
       startPoll();
     } catch (err) {
       console.error('Load failed:', err);
-      document.getElementById('loadingState').style.display = 'none';
-      document.getElementById('emptyState').style.display = '';
-      document.querySelector('#emptyState .message').textContent = 'Error loading data';
-      document.querySelector('#emptyState .hint').textContent = err.message;
-      startPoll(); // keep trying
+      if (allParticipants.length === 0) {
+        document.getElementById('loadingState').style.display = 'none';
+        document.getElementById('emptyState').style.display = '';
+        document.querySelector('#emptyState .message').textContent = 'Error loading data';
+        document.querySelector('#emptyState .hint').textContent = err.message;
+      }
+      startPoll();
     }
   }
 
@@ -557,8 +621,8 @@
           document.getElementById('emptyState').style.display = 'none';
           updateSummary();
           renderTable();
-          document.getElementById('summaryBar').style.display = 'flex';
-          document.getElementById('toolbar').style.display = 'flex';
+          document.getElementById('summaryBar').style.display = 'inline-flex';
+    
           document.getElementById('tableContainer').style.display = '';
         }
       }
@@ -626,7 +690,8 @@
   }
 
   function isTestParticipant(p) {
-    return p.participant_id?.startsWith('test_') || p.participant_id?.startsWith('preview_');
+    const id = p.participant_id?.toLowerCase() || '';
+    return id.startsWith('test_') || id.startsWith('preview_');
   }
 
   function sortParticipants(list) {
@@ -656,27 +721,43 @@
   function renderTable() {
     const sorted = sortParticipants(allParticipants);
     const body = document.getElementById('participantBody');
-    const count = document.getElementById('participantCount');
-    count.textContent = `${sorted.length} participant${sorted.length !== 1 ? 's' : ''}`;
 
-    body.innerHTML = sorted.map(p => {
+    let lastSessionId = null;
+    const rows = [];
+    let rowIdx = 0;
+    for (const p of sorted) {
+      // Insert session separator when session_id changes
+      if (p.session_id && p.session_id !== lastSessionId) {
+        if (lastSessionId !== null) {
+          // session_id format: 2026-03-15T07-04-57-620Z → parse to readable time
+          const sid = p.session_id;
+          const m = sid.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})/);
+          const sessionLabel = m ? formatTime(`${m[1]} ${m[2]}:${m[3]}:${m[4]}`) : sid;
+          rows.push(`<tr class="session-separator"><td colspan="9"><span class="session-label">Test started ${sessionLabel}</span></td></tr>`);
+        }
+        lastSessionId = p.session_id;
+      }
       const status = getStatus(p);
       const isTest = isTestParticipant(p);
       const statusLabel = isTest ? 'test' : status;
       const statusClass = isTest ? 'status-test' : `status-${status}`;
 
-      return `<tr onclick="toggleDetail('${escHtml(p.participant_id)}')" style="cursor:pointer;">
+      const stripe = rowIdx % 2 === 0 ? 'row-dark' : '';
+      rowIdx++;
+      rows.push(`<tr class="${stripe}" onclick="toggleDetail('${escHtml(p.participant_id)}')" style="cursor:pointer;">
         <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
-        <td class="pid-cell">${escHtml(p.participant_id)}</td>
+        <td style="padding:0; text-align:center; overflow:visible; position:relative; z-index:10;"><button class="copy-pid" onclick="event.stopPropagation(); copyParticipant('${escHtml(p.participant_id)}', this)" data-tip="Copy all participant data as JSON">📋</button></td>
+        <td class="pid-cell${isTest ? ' test-pid' : ''}">${escHtml(p.participant_id)}</td>
         <td class="time-cell">${formatTime(p.registered_at)}</td>
-        <td style="font-family:'SF Mono','Fira Code',monospace; font-size:12px;">${p.assigned_block != null ? p.assigned_block + 1 : '<span style="opacity:0.3;">—</span>'}</td>
+        <td style="font-family:'SF Mono','Fira Code',monospace; font-size:12px;">${p.assigned_block != null ? p.assigned_block : '<span style="opacity:0.3;">—</span>'}</td>
         <td>${p.assigned_condition != null ? `<span class="condition-badge">C${p.assigned_condition}</span>` : '<span style="opacity:0.3;">—</span>'}</td>
         <td style="font-family:'SF Mono','Fira Code',monospace; font-size:12px;">${p.current_step ?? '—'}</td>
         <td><span class="feature-count ${p.feature_count === 0 ? 'zero' : ''}">${p.feature_count || 0}</span></td>
         <td class="time-cell">${formatTime(p.updated_at)}</td>
       </tr>
-      ${expandedPid === p.participant_id ? renderDetailRow(p) : ''}`;
-    }).join('');
+      ${expandedPid === p.participant_id ? renderDetailRow(p) : ''}`);
+    }
+    body.innerHTML = rows.join('');
   }
 
   function renderDetailRow(p) {
@@ -684,18 +765,19 @@
     try { responses = typeof p.responses === 'string' ? JSON.parse(p.responses) : (p.responses || {}); } catch {}
     const responseKeys = Object.keys(responses);
 
-    return `<tr class="detail-row"><td colspan="8">
+    return `<tr class="detail-row" id="detail-${escHtml(p.participant_id)}"><td colspan="9">
+      <div class="detail-wrapper">
       <div class="detail-panel">
         <div class="detail-section">
           <h4>Session</h4>
-          <div class="detail-kv"><span class="k">Registered</span><span class="v">${p.registered_at || '—'}</span></div>
-          <div class="detail-kv"><span class="k">Last action</span><span class="v">${p.updated_at || '—'}</span></div>
-          <div class="detail-kv"><span class="k">Completed</span><span class="v">${p.completed_at || '—'}</span></div>
+          <div class="detail-kv"><span class="k">Registered</span><span class="v">${formatTimeFull(p.registered_at)}</span></div>
+          <div class="detail-kv"><span class="k">Last action</span><span class="v">${formatTimeFull(p.updated_at)}</span></div>
+          <div class="detail-kv"><span class="k">Completed</span><span class="v">${formatTimeFull(p.completed_at)}</span></div>
           <div class="detail-kv"><span class="k">Current step</span><span class="v">${p.current_step ?? '—'}</span></div>
-          <div class="detail-kv"><span class="k">Block</span><span class="v">${p.assigned_block != null ? p.assigned_block + 1 : '—'}</span></div>
-          <div class="detail-kv"><span class="k">Condition</span><span class="v">${p.assigned_condition != null ? p.assigned_condition + 1 : '—'}</span></div>
+          <div class="detail-kv"><span class="k">Block</span><span class="v">${p.assigned_block != null ? p.assigned_block : '—'}</span></div>
+          <div class="detail-kv"><span class="k">Condition</span><span class="v">${p.assigned_condition != null ? p.assigned_condition : '—'}</span></div>
           <div class="detail-kv"><span class="k">Assignment</span><span class="v">${p.assignment_mode || '—'}</span></div>
-          <div class="detail-kv"><span class="k">Assigned at</span><span class="v">${p.assigned_at || '—'}</span></div>
+          <div class="detail-kv"><span class="k">Assigned at</span><span class="v">${formatTimeFull(p.assigned_at)}</span></div>
           <div class="detail-kv"><span class="k">Features</span><span class="v">${p.feature_count || 0}</span></div>
         </div>
         <div class="detail-section">
@@ -706,12 +788,57 @@
           }
         </div>
       </div>
+      </div>
     </td></tr>`;
   }
 
   function toggleDetail(pid) {
-    expandedPid = expandedPid === pid ? null : pid;
-    renderTable();
+    if (expandedPid === pid) {
+      // Close: animate out, then remove
+      const wrapper = document.querySelector(`#detail-${CSS.escape(pid)} .detail-wrapper`);
+      if (wrapper) {
+        wrapper.style.height = wrapper.scrollHeight + 'px';
+        requestAnimationFrame(() => {
+          wrapper.style.height = '0px';
+          wrapper.addEventListener('transitionend', () => {
+            expandedPid = null;
+            const detailRow = document.getElementById(`detail-${CSS.escape(pid)}`);
+            if (detailRow) detailRow.remove();
+          }, { once: true });
+        });
+      } else {
+        expandedPid = null;
+        renderTable();
+      }
+    } else {
+      // Close any existing detail row first
+      if (expandedPid) {
+        const oldDetail = document.getElementById(`detail-${CSS.escape(expandedPid)}`);
+        if (oldDetail) oldDetail.remove();
+      }
+      expandedPid = pid;
+      // Insert detail row directly after clicked row — no full re-render
+      const clickedRow = document.querySelector(`tr[onclick*="'${CSS.escape(pid)}'"]`);
+      if (clickedRow) {
+        const p = allParticipants.find(x => x.participant_id === pid);
+        if (p) {
+          const temp = document.createElement('tbody');
+          temp.innerHTML = renderDetailRow(p);
+          const detailRow = temp.firstElementChild;
+          clickedRow.after(detailRow);
+          const wrapper = detailRow.querySelector('.detail-wrapper');
+          if (wrapper) {
+            wrapper.style.height = '0px';
+            requestAnimationFrame(() => {
+              wrapper.style.height = wrapper.scrollHeight + 'px';
+              wrapper.addEventListener('transitionend', () => {
+                wrapper.style.height = 'auto';
+              }, { once: true });
+            });
+          }
+        }
+      }
+    }
   }
 
   function formatTime(isoStr) {
@@ -735,12 +862,41 @@
       else relative = `${diffDay}d ago`;
 
       const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
 
       return `<span class="date">${dateStr} ${timeStr}</span> <span class="relative">${relative}</span>`;
     } catch {
       return escHtml(isoStr);
     }
+  }
+
+  function formatTimeFull(isoStr) {
+    if (!isoStr) return '—';
+    try {
+      const normalized = isoStr.includes('T') ? isoStr : isoStr.replace(' ', 'T') + 'Z';
+      const d = new Date(normalized);
+      if (isNaN(d.getTime())) return escHtml(isoStr);
+      const cs = String(Math.floor(d.getMilliseconds() / 10)).padStart(2, '0');
+      const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+      // Insert centiseconds before AM/PM: "2:28:07 AM" → "2:28:07.46 AM"
+      const timeWithCs = time.replace(/(\d{2})\s*(AM|PM)/i, `$1.${cs} $2`);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' + timeWithCs;
+    } catch {
+      return escHtml(isoStr);
+    }
+  }
+
+  function copyParticipant(pid, btn) {
+    const p = allParticipants.find(x => x.participant_id === pid);
+    const text = p ? JSON.stringify(p, null, 2) : pid;
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = '✓';
+      btn.style.opacity = '1';
+      btn.style.visibility = 'visible';
+      btn.style.color = 'var(--green, #4ade80)';
+      setTimeout(() => { btn.textContent = orig; btn.style.opacity = ''; btn.style.visibility = ''; btn.style.color = ''; }, 1200);
+    });
   }
 
   function escHtml(str) {

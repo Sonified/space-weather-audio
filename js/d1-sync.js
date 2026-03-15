@@ -288,7 +288,7 @@ export function syncCondition(conditionData) {
     if (!pid) { log('⚠️', 'no participantId — skipping condition sync'); return; }
 
     d1Put(`/api/study/${sid}/participants/${encodeURIComponent(pid)}/condition`, conditionData)
-        .then(r => r && log('✅', `synced condition #${conditionData.conditionIndex + 1}`));
+        .then(r => r && log('✅', `synced condition #${conditionData.conditionIndex}`));
 }
 
 /**

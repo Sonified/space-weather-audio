@@ -7,6 +7,9 @@
  *   shares/{share_id}.json
  */
 
+/** ISO timestamp with milliseconds (D1's datetime('now') only has second precision) */
+function nowISO() { return new Date().toISOString(); }
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -643,15 +646,17 @@ export default {
           const configStr = JSON.stringify(config);
           const name = body.name || studyId;
           if (adminKey) {
+            const now = nowISO();
             await env.DB.prepare(
-              `INSERT INTO studies (id, name, config, admin_key, updated_at) VALUES (?, ?, ?, ?, datetime('now'))
-               ON CONFLICT(id) DO UPDATE SET name = excluded.name, config = excluded.config, admin_key = excluded.admin_key, updated_at = datetime('now')`
-            ).bind(studyId, name, configStr, adminKey).run();
+              `INSERT INTO studies (id, name, config, admin_key, updated_at) VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET name = excluded.name, config = excluded.config, admin_key = excluded.admin_key, updated_at = ?`
+            ).bind(studyId, name, configStr, adminKey, now, now).run();
           } else {
+            const now = nowISO();
             await env.DB.prepare(
-              `INSERT INTO studies (id, name, config, updated_at) VALUES (?, ?, ?, datetime('now'))
-               ON CONFLICT(id) DO UPDATE SET name = excluded.name, config = excluded.config, updated_at = datetime('now')`
-            ).bind(studyId, name, configStr).run();
+              `INSERT INTO studies (id, name, config, updated_at) VALUES (?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET name = excluded.name, config = excluded.config, updated_at = ?`
+            ).bind(studyId, name, configStr, now, now).run();
           }
           return json({ success: true });
         }
@@ -720,10 +725,11 @@ export default {
         if (!pid) return json({ error: 'Missing participant id' }, 400);
         const mode = detectMode(pid);
         const regEvent = JSON.stringify({ type: 'registration' });
+        const now = nowISO();
         await env.DB.prepare(
-          `INSERT INTO participants (participant_id, study_id, updated_at, last_event) VALUES (?, ?, datetime('now'), ?)
-           ON CONFLICT(participant_id, study_id) DO UPDATE SET updated_at = datetime('now'), last_event = ?`
-        ).bind(pid, studyId, regEvent, regEvent).run();
+          `INSERT INTO participants (participant_id, study_id, updated_at, last_event, registered_at) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(participant_id, study_id) DO UPDATE SET updated_at = ?, last_event = ?`
+        ).bind(pid, studyId, now, regEvent, now, now, regEvent).run();
         return json({ success: true, participant_id: pid, mode });
       }
 
@@ -759,10 +765,10 @@ export default {
           `UPDATE participants
            SET current_step = ?,
                step_history = json_insert(step_history, '$[#]', json(?)),
-               updated_at = datetime('now'),
+               updated_at = ?,
                last_event = ?
            WHERE participant_id = ? AND study_id = ?`
-        ).bind(step, entry, stepEvent, decodedPid, studyId).run();
+        ).bind(step, entry, nowISO(), stepEvent, decodedPid, studyId).run();
         return json({ success: true, current_step: step });
       }
 
@@ -779,8 +785,8 @@ export default {
 
         // End any currently active session
         await env.DB.prepare(
-          `UPDATE assignment_sessions SET ended_at = datetime('now') WHERE study_id = ? AND ended_at IS NULL`
-        ).bind(studyId).run();
+          `UPDATE assignment_sessions SET ended_at = ? WHERE study_id = ? AND ended_at IS NULL`
+        ).bind(nowISO(), studyId).run();
 
         // Create new session
         const sessionId = body.sessionId || new Date().toISOString().replace(/[:.]/g, '-');
@@ -805,8 +811,8 @@ export default {
       if (sessionEndMatch && request.method === 'POST') {
         const studyId = sessionEndMatch[1];
         await env.DB.prepare(
-          `UPDATE assignment_sessions SET ended_at = datetime('now') WHERE study_id = ? AND ended_at IS NULL`
-        ).bind(studyId).run();
+          `UPDATE assignment_sessions SET ended_at = ? WHERE study_id = ? AND ended_at IS NULL`
+        ).bind(nowISO(), studyId).run();
         return json({ success: true });
       }
 
@@ -858,7 +864,7 @@ export default {
             const { results: dropouts } = await env.DB.prepare(
               `SELECT assigned_condition, assignment_mode FROM participants
                WHERE study_id = ? AND session_id = ? AND completed_at IS NULL AND assigned_condition IS NOT NULL
-               AND updated_at < datetime('now', '-' || ? || ' minutes')`
+               AND REPLACE(REPLACE(updated_at, 'T', ' '), 'Z', '') < datetime('now', '-' || ? || ' minutes')`
             ).bind(studyId, sessionId, dropoutMin).all();
 
             if (dropouts && dropouts.length > 0) {
@@ -905,13 +911,14 @@ export default {
           }
 
           // Write assignment to participant row (include session_id + block)
-          const assignedBlock = state.currentBlock ?? null;
+          const assignedBlock = state.currentBlock != null ? state.currentBlock + 1 : null;
+          const now = nowISO();
           await env.DB.prepare(
-            `UPDATE participants SET assigned_condition = ?, assignment_mode = ?, assigned_block = ?, assigned_at = datetime('now'),
-             session_id = ?, updated_at = datetime('now') WHERE participant_id = ? AND study_id = ?`
-          ).bind(assignedCondition, assignmentMode, assignedBlock, sessionId, pid, studyId).run();
+            `UPDATE participants SET assigned_condition = ?, assignment_mode = ?, assigned_block = ?, assigned_at = ?,
+             session_id = ?, updated_at = ? WHERE participant_id = ? AND study_id = ?`
+          ).bind(assignedCondition, assignmentMode, assignedBlock, now, sessionId, now, pid, studyId).run();
 
-          const conditionDetails = conditions[assignedCondition] || {};
+          const conditionDetails = conditions[assignedCondition - 1] || {};
           return json({
             success: true,
             conditionIndex: assignedCondition,
@@ -920,7 +927,7 @@ export default {
             task2Processing: conditionDetails.task2Processing,
             assignmentMode,
             sessionId,
-            block: state.currentBlock,
+            block: state.currentBlock + 1,
             phase: state.phase,
             step: state.step,
             slot: state.currentSlot,
@@ -944,10 +951,10 @@ export default {
         await env.DB.prepare(
           `UPDATE participants
            SET flags = json_set(flags, '$.condition', json(?)),
-               updated_at = datetime('now'),
+               updated_at = ?,
                last_event = ?
            WHERE participant_id = ? AND study_id = ?`
-        ).bind(conditionJson, conditionEvent, decodedPid, studyId).run();
+        ).bind(conditionJson, nowISO(), conditionEvent, decodedPid, studyId).run();
         return json({ success: true, conditionIndex: body.conditionIndex });
       }
 
@@ -957,9 +964,9 @@ export default {
         const [, studyId, pid] = heartbeatStudyMatch;
         const decodedPid = decodeURIComponent(pid);
         await env.DB.prepare(
-          `UPDATE participants SET last_heartbeat = datetime('now')
+          `UPDATE participants SET last_heartbeat = ?
            WHERE participant_id = ? AND study_id = ?`
-        ).bind(decodedPid, studyId).run();
+        ).bind(nowISO(), decodedPid, studyId).run();
         return json({ success: true });
       }
 
@@ -982,21 +989,22 @@ export default {
           const analysisSession = d.analysisSession || null;
           await env.DB.prepare(
             `INSERT OR REPLACE INTO features (id, participant_id, study_id, start_time, end_time, low_freq, high_freq, confidence, notes, speed_factor, created_at, analysis_session)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM features WHERE id = ?), ?, datetime('now')), ?)`
-          ).bind(id, pid, studyId, d.startTime || null, d.endTime || null, d.lowFreq || null, d.highFreq || null, d.confidence || 'confirmed', d.notes || '', d.speedFactor || null, id, clientCreatedAt, analysisSession).run();
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM features WHERE id = ?), ?, ?), ?)`
+          ).bind(id, pid, studyId, d.startTime || null, d.endTime || null, d.lowFreq || null, d.highFreq || null, d.confidence || 'confirmed', d.notes || '', d.speedFactor || null, id, clientCreatedAt, nowISO(), analysisSession).run();
           // Bump updated_at on participant (real action, not just keepalive)
           await env.DB.prepare(
-            `UPDATE participants SET updated_at = datetime('now') WHERE participant_id = ? AND study_id = ?`
-          ).bind(pid, studyId).run();
+            `UPDATE participants SET updated_at = ? WHERE participant_id = ? AND study_id = ?`
+          ).bind(nowISO(), pid, studyId).run();
           return json({ success: true, feature_id: id, mode });
         }
 
         if (type === 'milestone' && body.data?.event === 'completed') {
           // Mark participant as complete
           const milestoneEvent = JSON.stringify({ type: 'milestone', event: 'completed' });
+          const now = nowISO();
           await env.DB.prepare(
-            `UPDATE participants SET completed_at = datetime('now'), updated_at = datetime('now'), last_event = ? WHERE participant_id = ? AND study_id = ?`
-          ).bind(milestoneEvent, pid, studyId).run();
+            `UPDATE participants SET completed_at = ?, updated_at = ?, last_event = ? WHERE participant_id = ? AND study_id = ?`
+          ).bind(now, now, milestoneEvent, pid, studyId).run();
           return json({ success: true, mode });
         }
 
@@ -1007,8 +1015,8 @@ export default {
         const responseKey = qid ? `$.${qid}` : `$.${type}`;
         const respEvent = JSON.stringify({ type: 'response', key: responseKey, data });
         await env.DB.prepare(
-          `UPDATE participants SET responses = json_set(responses, ?, json(?)), updated_at = datetime('now'), last_event = ? WHERE participant_id = ? AND study_id = ?`
-        ).bind(responseKey, dataStr, respEvent, pid, studyId).run();
+          `UPDATE participants SET responses = json_set(responses, ?, json(?)), updated_at = ?, last_event = ? WHERE participant_id = ? AND study_id = ?`
+        ).bind(responseKey, dataStr, nowISO(), respEvent, pid, studyId).run();
         return json({ success: true, mode });
       }
 
@@ -1034,9 +1042,9 @@ export default {
         const { results } = await env.DB.prepare(
           `SELECT p.participant_id, p.current_step, p.registered_at, p.completed_at,
                   p.assigned_condition, p.assignment_mode, p.assigned_block, p.assigned_at,
-                  p.updated_at, p.responses, p.flags,
+                  p.updated_at, p.responses, p.flags, p.session_id,
                   COUNT(f.id) as feature_count,
-                  CASE WHEN p.updated_at > datetime('now', '-' || ? || ' minutes') THEN 1 ELSE 0 END as is_active
+                  CASE WHEN REPLACE(REPLACE(p.updated_at, 'T', ' '), 'Z', '') > datetime('now', '-' || ? || ' minutes') THEN 1 ELSE 0 END as is_active
            FROM participants p
            LEFT JOIN features f ON f.participant_id = p.participant_id AND f.study_id = p.study_id
            WHERE ${whereClause}
@@ -1107,13 +1115,13 @@ export default {
         const [totalRow, activeRow, assignedRow, completedRow, participantRows] = await Promise.all([
           env.DB.prepare(`SELECT COUNT(*) as count FROM participants WHERE study_id = ?${sessionFilter}`).bind(studyId, ...sessionBinds).first(),
           env.DB.prepare(
-            `SELECT COUNT(*) as count FROM participants WHERE study_id = ? AND updated_at > datetime('now', '-' || ? || ' minutes')${sessionFilter}`
+            `SELECT COUNT(*) as count FROM participants WHERE study_id = ? AND REPLACE(REPLACE(updated_at, 'T', ' '), 'Z', '') > datetime('now', '-' || ? || ' minutes')${sessionFilter}`
           ).bind(studyId, timeoutMin, ...sessionBinds).first(),
           env.DB.prepare(`SELECT COUNT(*) as count FROM participants WHERE study_id = ? AND assigned_condition IS NOT NULL${sessionFilter}`).bind(studyId, ...sessionBinds).first(),
           env.DB.prepare(`SELECT COUNT(*) as count FROM participants WHERE study_id = ? AND completed_at IS NOT NULL${sessionFilter}`).bind(studyId, ...sessionBinds).first(),
           env.DB.prepare(
             `SELECT participant_id, current_step, updated_at, registered_at, completed_at, assigned_condition, assignment_mode, assigned_block,
-                    CASE WHEN updated_at > datetime('now', '-' || ? || ' minutes') THEN 1 ELSE 0 END as is_active
+                    CASE WHEN REPLACE(REPLACE(updated_at, 'T', ' '), 'Z', '') > datetime('now', '-' || ? || ' minutes') THEN 1 ELSE 0 END as is_active
              FROM participants WHERE study_id = ?${sessionFilter} ORDER BY updated_at DESC LIMIT 100`
           ).bind(timeoutMin, studyId, ...sessionBinds).all(),
         ]);

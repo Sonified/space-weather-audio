@@ -6431,7 +6431,7 @@
   function generateBlockTable(numConditions, numBlocks) {
     const blocks = [];
     for (let i = 0; i < numBlocks; i++) {
-      const block = Array.from({ length: numConditions }, (_, j) => j);
+      const block = Array.from({ length: numConditions }, (_, j) => j + 1);
       // Fisher-Yates shuffle
       for (let k = block.length - 1; k > 0; k--) {
         const r = Math.floor(Math.random() * (k + 1));
@@ -6637,7 +6637,7 @@
         totalStarted: data.totalStarted || 0,
         activeParticipants: data.activeParticipants || 0,
         totalAssigned: data.totalAssigned || 0,
-        nextAssignment: alg?.nextAssignment != null ? `#${alg.nextAssignment + 1}` : '—',
+        nextAssignment: alg?.nextAssignment != null ? `#${alg.nextAssignment}` : '—',
         currentBlock: alg?.currentBlock != null ? alg.currentBlock + 1 : '—',
         currentStage: alg?.phase ? (alg.phase === 'walking' ? 'Walking' : 'Healing') : '—'
       });
