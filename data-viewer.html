@@ -106,9 +106,10 @@
   }
   .btn:hover { border-color: var(--border-hover); background: var(--surface2); }
   .refresh-icon { padding: 6px 8px; line-height: 0; display: inline-flex; align-items: center; }
-  .refresh-icon:hover svg { transform: rotate(45deg); }
-  .refresh-icon svg { transition: transform 0.2s ease; opacity: 0.5; }
   .refresh-icon:hover svg { opacity: 1; }
+  .refresh-icon svg { opacity: 0.5; }
+  .refresh-icon.spinning svg { animation: refresh-spin 0.5s ease; opacity: 1; }
+  @keyframes refresh-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   .btn-primary { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 600; }
   .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 
@@ -399,22 +400,102 @@
   .summary-stat.active .value { color: var(--text); }
   .summary-stat.completed .value { color: #6ec477; }
   .summary-stat.features .value { color: #bfc3eb; }
+  /* Admin gate overlay */
+  .admin-gate {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: var(--bg);
+    align-items: center;
+    justify-content: center;
+  }
+  .admin-gate .gate-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px;
+    max-width: 360px;
+    width: 90%;
+    text-align: center;
+  }
+  .admin-gate input {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 15px;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-sizing: border-box;
+    text-align: center;
+    letter-spacing: 2px;
+  }
+  .admin-gate .gate-btn {
+    margin-top: 12px;
+    width: 100%;
+    padding: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    background: #58a6ff;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .admin-gate .gate-btn:disabled { opacity: 0.3; cursor: default; }
+  .admin-gate .gate-btn:not(:disabled):hover { opacity: 0.85; }
+  .logout-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+  .logout-btn:hover { color: var(--text); }
+
+  /* Production mode: static study label replaces dropdown */
+  .study-label-static {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .study-label-static .count {
+    font-weight: 400;
+    color: var(--text-muted);
+    margin-left: 4px;
+  }
 </style>
 </head>
 <body>
 
+<!-- Admin Gate Overlay (production only) -->
+<div class="admin-gate" id="adminGate">
+  <div class="gate-box">
+    <h2 style="margin:0 0 8px; font-size:20px;">Data Viewer</h2>
+    <p style="color:var(--text-muted); margin:0 0 20px; font-size:14px;">Enter admin key to continue</p>
+    <input type="password" id="adminKeyGate" placeholder="Admin key" autocomplete="off"
+      oninput="document.getElementById('adminGateBtn').disabled = !this.value.trim()" />
+    <div id="adminGateError" style="color:#f85149; font-size:13px; margin-top:8px; min-height:20px;"></div>
+    <button class="gate-btn" id="adminGateBtn" onclick="verifyAdminKey()" disabled>Unlock</button>
+  </div>
+</div>
+
 <div class="header">
   <div class="header-top">
     <h1><span>🔍</span> Data Viewer</h1>
+    <div style="flex:1;"></div>
+    <button class="logout-btn" id="logoutBtn" style="display:none;" onclick="adminLogout()">Log out</button>
   </div>
-
 </div>
 
 <div class="toolbar" id="toolbar">
   <select class="study-input" id="studySelect" onchange="onStudySelect()" style="min-width:260px; cursor:pointer;">
     <option value="">Loading studies...</option>
   </select>
-  <button class="btn refresh-icon" onclick="loadParticipants()" title="Refresh participant list"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>
+  <button class="btn refresh-icon" onclick="spinRefreshIcon(); loadParticipants()" title="Refresh participant list"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>
   <div style="flex:1;"></div>
   <span class="summary-inline" id="summaryBar" style="display:none;"><span class="summary-stat total"><span class="value" id="sumTotal">0</span> <span class="label">total</span></span><span class="summary-div">·</span><span class="summary-stat active"><span class="value" id="sumActive">0</span> <span class="label">active</span></span><span class="summary-div">·</span><span class="summary-stat completed"><span class="value" id="sumCompleted">0</span> <span class="label">completed</span></span><span class="summary-div">·</span><span class="summary-stat features"><span class="value" id="sumFeatures">0</span> <span class="label">features</span></span></span>
   <div style="flex:1;"></div>
@@ -490,43 +571,50 @@
       allParticipants = JSON.parse(cached);
       if (allParticipants.length > 0) {
         showData();
+        requestAnimationFrame(() => spinRefreshIcon());
       }
     } catch { /* bad cache, ignore */ }
   })();
 
-  async function fetchStudies() {
+  function populateStudySelect(studies) {
     const select = document.getElementById('studySelect');
+    let preselect = urlSlug || '';
+    if (!preselect) {
+      try {
+        const draft = localStorage.getItem('sb_currentDraft');
+        if (draft) preselect = JSON.parse(draft).slug || '';
+      } catch {}
+    }
+
+    select.innerHTML = '<option value="">Select a study...</option>' +
+      studies.map(s => {
+        const label = s.name || s.id;
+        const count = s.participant_count || 0;
+        const sel = s.id === preselect ? ' selected' : '';
+        return `<option value="${escHtml(s.id)}"${sel}>${escHtml(label)} (${count} participants)</option>`;
+      }).join('');
+  }
+
+  async function fetchStudies() {
     try {
       const baseUrl = detectApiBase();
       const res = await fetch(`${baseUrl}/api/studies`);
       const data = await res.json();
       if (!data.success || !data.studies?.length) {
-        select.innerHTML = '<option value="">No studies found</option>';
+        document.getElementById('studySelect').innerHTML = '<option value="">No studies found</option>';
         return;
       }
 
-      // Determine which slug to pre-select
-      let preselect = urlSlug || '';
-      if (!preselect) {
-        try {
-          const draft = localStorage.getItem('sb_currentDraft');
-          if (draft) preselect = JSON.parse(draft).slug || '';
-        } catch {}
-      }
+      localStorage.setItem(STUDIES_CACHE_KEY, JSON.stringify(data.studies));
+      populateStudySelect(data.studies);
 
-      select.innerHTML = '<option value="">Select a study...</option>' +
-        data.studies.map(s => {
-          const label = s.name || s.id;
-          const count = s.participant_count || 0;
-          const sel = s.id === preselect ? ' selected' : '';
-          return `<option value="${escHtml(s.id)}"${sel}>${escHtml(label)} (${count} participants)</option>`;
-        }).join('');
-
-      // Auto-load if we have a preselection
-      if (select.value) loadParticipants();
+      // Auto-load if we have a preselection (skip if cache already triggered it)
+      if (document.getElementById('studySelect').value && !pollTimer) loadParticipants();
     } catch (err) {
       console.error('Failed to fetch studies:', err);
-      select.innerHTML = '<option value="">Error loading studies</option>';
+      // Only show error if no cached data is displayed
+      const select = document.getElementById('studySelect');
+      if (select.options.length <= 1) select.innerHTML = '<option value="">Error loading studies</option>';
     }
   }
 
@@ -540,6 +628,14 @@
     }
   }
 
+  // Instantly restore dropdown from cached studies list
+  const STUDIES_CACHE_KEY = 'dv_studies_cache';
+  (function restoreStudiesCache() {
+    try {
+      const cached = JSON.parse(localStorage.getItem(STUDIES_CACHE_KEY));
+      if (cached?.length) populateStudySelect(cached);
+    } catch {}
+  })();
   fetchStudies();
 
   let pollTimer = null;
@@ -601,6 +697,17 @@
       }
       startPoll();
     }
+  }
+
+  function spinRefreshIcon() {
+    const btn = document.querySelector('.refresh-icon');
+    if (!btn) return;
+    btn.classList.remove('spinning');
+    void btn.offsetWidth;
+    btn.classList.add('spinning');
+    btn.querySelector('svg').addEventListener('animationend', () => {
+      btn.classList.remove('spinning');
+    }, { once: true });
   }
 
   // Silent refresh — no spinner, updates in-place
@@ -911,6 +1018,155 @@
   function truncate(str, max) {
     if (!str || str.length <= max) return str;
     return str.slice(0, max) + '…';
+  }
+
+  // ── Admin Gate (production only) ──────────────────────────────
+  const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  const adminGate = document.getElementById('adminGate');
+
+  if (!isLocal) {
+    // Hide page content, show gate
+    adminGate.style.display = 'flex';
+    document.querySelector('.header').style.visibility = 'hidden';
+    document.getElementById('toolbar').style.visibility = 'hidden';
+    document.getElementById('tableContainer').style.visibility = 'hidden';
+
+    // Check sessionStorage for prior auth
+    if (sessionStorage.getItem('dv_admin_authed') === 'true') {
+      dismissAdminGate();
+    } else {
+      document.getElementById('adminKeyGate')?.addEventListener('keydown', e => {
+        if (e.key === 'Enter') verifyAdminKey();
+      });
+    }
+
+    // Production mode: replace dropdown with static label
+    function setProductionToolbar() {
+      const select = document.getElementById('studySelect');
+      const refreshBtn = document.querySelector('.refresh-icon');
+      if (select) select.style.display = 'none';
+      if (refreshBtn) refreshBtn.style.display = 'none';
+
+      // Add static label if not already there
+      if (!document.getElementById('studyLabelStatic')) {
+        const label = document.createElement('span');
+        label.id = 'studyLabelStatic';
+        label.className = 'study-label-static';
+        const toolbar = document.getElementById('toolbar');
+        toolbar.insertBefore(label, toolbar.firstChild);
+      }
+    }
+
+    function updateStaticLabel() {
+      const el = document.getElementById('studyLabelStatic');
+      if (!el) return;
+      const select = document.getElementById('studySelect');
+      const opt = select?.selectedOptions[0];
+      if (opt && opt.value) {
+        el.innerHTML = `${escHtml(opt.textContent)}`;
+      }
+    }
+
+    // Patch populateStudySelect to also update static label
+    const _origPopulate = populateStudySelect;
+    populateStudySelect = function(studies) {
+      _origPopulate(studies);
+      updateStaticLabel();
+    };
+
+    setProductionToolbar();
+  }
+
+  async function verifyAdminKey() {
+    const input = document.getElementById('adminKeyGate');
+    const errorEl = document.getElementById('adminGateError');
+    const btn = document.getElementById('adminGateBtn');
+    const key = input.value.trim();
+    if (!key) { errorEl.textContent = 'Please enter a key'; return; }
+
+    btn.disabled = true;
+    btn.textContent = 'Checking...';
+    errorEl.textContent = '';
+
+    try {
+      const resp = await fetch(`${detectApiBase()}/api/verify-admin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+      });
+      const data = await resp.json();
+
+      if (data.success && data.study) {
+        sessionStorage.setItem('dv_admin_authed', 'true');
+        // Set the study from the key
+        const slug = data.study.id;
+        const select = document.getElementById('studySelect');
+
+        // Ensure study is in dropdown
+        let found = false;
+        for (const opt of select.options) {
+          if (opt.value === slug) { opt.selected = true; found = true; break; }
+        }
+        if (!found) {
+          select.innerHTML += `<option value="${escHtml(slug)}" selected>${escHtml(data.study.name || slug)}</option>`;
+        }
+
+        // Update URL
+        const newUrl = new URL(window.location);
+        newUrl.searchParams.set('study', slug);
+        history.replaceState(null, '', newUrl);
+
+        if (typeof updateStaticLabel === 'function') updateStaticLabel();
+        dismissAdminGate();
+        loadParticipants();
+      } else if (resp.status === 429) {
+        const wait = data.retry_after;
+        const fmt = wait >= 60 ? `${Math.ceil(wait / 60)} minute${wait >= 120 ? 's' : ''}` : `${wait} seconds`;
+        errorEl.textContent = `Too many attempts. Try again in ${fmt}.`;
+        btn.disabled = true;
+        btn.textContent = 'Locked';
+        setTimeout(() => { btn.disabled = false; btn.textContent = 'Unlock'; }, Math.min(wait * 1000, 30000));
+      } else {
+        const wait = data.retry_after;
+        if (wait && wait > 1) {
+          const fmt = wait >= 60 ? `${Math.ceil(wait / 60)} minute${wait >= 120 ? 's' : ''}` : `${wait} seconds`;
+          errorEl.innerHTML = `Invalid admin key — wait ${fmt}`;
+          btn.disabled = true;
+          btn.textContent = 'Locked';
+          setTimeout(() => { btn.disabled = false; btn.textContent = 'Unlock'; }, Math.min(wait * 1000, 30000));
+        } else {
+          errorEl.textContent = 'Invalid admin key';
+        }
+        input.value = '';
+        input.focus();
+      }
+    } catch (e) {
+      errorEl.textContent = 'Connection error — try again';
+    }
+    btn.disabled = false;
+    btn.textContent = 'Unlock';
+  }
+
+  function dismissAdminGate() {
+    adminGate.style.display = 'none';
+    document.querySelector('.header').style.visibility = '';
+    document.getElementById('toolbar').style.visibility = '';
+    document.getElementById('tableContainer').style.visibility = '';
+    if (!isLocal) document.getElementById('logoutBtn').style.display = '';
+  }
+
+  function adminLogout() {
+    sessionStorage.removeItem('dv_admin_authed');
+    stopPoll();
+    adminGate.style.display = 'flex';
+    document.querySelector('.header').style.visibility = 'hidden';
+    document.getElementById('toolbar').style.visibility = 'hidden';
+    document.getElementById('tableContainer').style.visibility = 'hidden';
+    document.getElementById('logoutBtn').style.display = 'none';
+    const input = document.getElementById('adminKeyGate');
+    if (input) { input.value = ''; input.focus(); }
+    document.getElementById('adminGateError').textContent = '';
+    document.getElementById('adminGateBtn').disabled = true;
   }
 </script>
 </body>
