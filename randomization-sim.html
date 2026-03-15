@@ -528,6 +528,13 @@
       <option value="per-condition" selected>Per Cond.</option>
     </select>
   </div>
+  <div class="control-group" style="max-width:110px;">
+    <label style="color:#aa77ff">Cap Resume</label>
+    <select id="simultResumeMode" style="background:#151520;border:1px solid #aa77ff55;color:#aa77ff;padding:6px 4px;border-radius:6px;font-family:inherit;font-size:0.75em;width:110px;text-align:center;">
+      <option value="resume" selected>Resume Heal</option>
+      <option value="walk">Walk Away</option>
+    </select>
+  </div>
   <div class="control-group">
     <label>Max Simultaneous</label>
     <input type="number" id="maxSimultaneous" value="3" min="1" max="50">
@@ -853,13 +860,14 @@ function balanceScore(completions) {
 
 // ── HEAL ALGORITHM ──
 class HealAlgorithm {
-  constructor(randomizeHeal = false, healInterval = NUM_CONDITIONS, maxHealPasses = 1, simultHealCap = Infinity, healCapMode = 'total') {
+  constructor(randomizeHeal = false, healInterval = NUM_CONDITIONS, maxHealPasses = 1, simultHealCap = Infinity, healCapMode = 'total', simultResumeMode = 'walk') {
     this.randomizeHeal = randomizeHeal;
     this.healInterval = healInterval;
     this.nextHealAt = healInterval;
     this.maxHealPasses = maxHealPasses;
     this.simultHealCap = simultHealCap;
     this.healCapMode = healCapMode;
+    this.simultResumeMode = simultResumeMode; // 'resume' = snap back to healing after cap-forced walk; 'walk' = current behavior
     this.healPassesLeft = 0;
     this.blocks = [];
     this.currentBlock = 0;
@@ -919,6 +927,8 @@ class HealAlgorithm {
     let healPassesLeft = this.healPassesLeft;
     let healAssignCount = 0; // total heal assignments in this batch
     const healConditionCounts = new Map(); // condition → count (for per-condition cap)
+    let capForcedFromBlock = null; // block we were healing when cap forced us to walk
+    let capForcedHealPassesLeft = 0; // heal passes that were remaining when cap hit
 
     for (let i = 0; i < fates.length; i++) {
       if (phase === 'walking') {
@@ -1002,6 +1012,8 @@ class HealAlgorithm {
             healIdx++;
             // If we've exhausted the queue, all conditions are capped — advance
             if (healIdx >= healQueue.length) {
+              capForcedFromBlock = block;
+              capForcedHealPassesLeft = healPassesLeft;
               if (nextHeal >= NUM_CONDITIONS) {
                 block++;
                 slot = 0;
@@ -1016,6 +1028,8 @@ class HealAlgorithm {
             continue;
           } else {
             // Total mode: spill remaining to next block
+            capForcedFromBlock = block;
+            capForcedHealPassesLeft = healPassesLeft;
             if (nextHeal >= NUM_CONDITIONS) {
               block++;
               slot = 0;
@@ -1112,6 +1126,34 @@ class HealAlgorithm {
       // If this block had its incompletes consumed into a heal queue during phase 1,
       // the real blockIncomplete may still have them. Replace entirely with resolved results.
       this.blockIncomplete.set(blk, list);
+    }
+
+    // ── RESUME CHECK ──
+    // If a cap forced us out of healing and the healed block now has fresh
+    // incompletes from failed heal assignments, snap back to healing that block
+    // instead of walking away from it.
+    if (this.simultResumeMode === 'resume' && capForcedFromBlock !== null) {
+      const resumeIncompletes = newIncompletesByBlock.get(capForcedFromBlock);
+      if (resumeIncompletes && resumeIncompletes.length > 0) {
+        // Snap back: restore block pointer to the healed block, enter healing
+        block = capForcedFromBlock;
+        slot = this.nextHealAt; // keep slot at heal boundary (we're not walking this block)
+        phase = 'healing';
+        // Restore heal passes — the cap interrupted us, this isn't a "new" heal round
+        healPassesLeft = Math.max(capForcedHealPassesLeft, 1);
+        // Build fresh heal queue from the new incompletes
+        if (this.randomizeHeal) {
+          shuffleArray(resumeIncompletes);
+        } else {
+          resumeIncompletes.sort((a, b) => a.assignTime - b.assignTime);
+        }
+        healQueue = resumeIncompletes.map(s => s.condition);
+        healIdx = 0;
+        healPassesLeft--;
+        // Consume the incompletes so they don't double-fire
+        newIncompletesByBlock.delete(capForcedFromBlock);
+        this.blockIncomplete.delete(capForcedFromBlock);
+      }
     }
 
     // Update real pointers
@@ -1688,6 +1730,7 @@ function copyStats() {
     `  Max simultaneous arrivals: ${maxSimult}`,
     `  Simultaneous likelihood: ${simultLikelihood}%`,
     `  Simultaneous heal cap: ${simultHealCap} (${document.getElementById('healCapMode').value})`,
+    `  Cap resume mode: ${document.getElementById('simultResumeMode').value}`,
     '',
     `RESULTS (${total} total races)`,
     '',
@@ -1736,6 +1779,7 @@ function startRace() {
   const simultHealCapRaw = parseInt(document.getElementById('simultHealCap').value);
   const simultHealCap = isNaN(simultHealCapRaw) ? 2 : Math.max(1, simultHealCapRaw);
   const healCapMode = document.getElementById('healCapMode').value;
+  const simultResumeMode = document.getElementById('simultResumeMode').value;
   document.getElementById('dheal-desc').textContent = `${maxHealPasses} heal pass${maxHealPasses > 1 ? 'es' : ''} per block — catches heal-round dropouts`;
   totalRuns = parseInt(document.getElementById('numRuns').value) || 1;
   currentRun = 0;
@@ -1785,7 +1829,7 @@ function startRace() {
         currentRun++;
         const fates = generateParticipantFates(numP, dropPct, retPct, dropLen);
         const batches = generateArrivalBatches(numP, simultLikelihood, maxSimult);
-        const dhealAlgo = new HealAlgorithm(randomizeHeal, NUM_CONDITIONS, maxHealPasses, simultHealCap, healCapMode);
+        const dhealAlgo = new HealAlgorithm(randomizeHeal, NUM_CONDITIONS, maxHealPasses, simultHealCap, healCapMode, simultResumeMode);
         const healAlgo = new HealAlgorithm(randomizeHeal);
         const blockAlgo = new BlockAlgorithm();
         const randomAlgo = new RandomAlgorithm();
@@ -1868,7 +1912,7 @@ function startRace() {
     currentRun++;
     const fates = generateParticipantFates(numP, dropPct, retPct, dropLen);
     const batches = generateArrivalBatches(numP, simultLikelihood, maxSimult);
-    const dhealAlgo = new HealAlgorithm(randomizeHeal, NUM_CONDITIONS, maxHealPasses, simultHealCap, healCapMode);
+    const dhealAlgo = new HealAlgorithm(randomizeHeal, NUM_CONDITIONS, maxHealPasses, simultHealCap, healCapMode, simultResumeMode);
     const healAlgo = new HealAlgorithm(randomizeHeal);
     const blockAlgo = new BlockAlgorithm();
     const randomAlgo = new RandomAlgorithm();
