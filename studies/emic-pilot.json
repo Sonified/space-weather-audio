@@ -1,9 +1,6 @@
 {
-  "name": "EMIC Pilot Study",
-  "slug": "emic-pilot",
   "version": 1,
   "createdAt": "2026-03-06T00:00:00Z",
-  "adminKey": "emic2026",
   "appSettings": {
     "session": {
       "idMode": "manual",
@@ -28,11 +25,11 @@
       "displayOnLoad": "all",
       "initialHours": 12,
       "minUIWidth": 0,
-      "heightMinimap": "auto",
-      "heightSpectrogram": "auto"
+      "heightMinimap": 0,
+      "heightSpectrogram": 0
     },
     "audio": {
-      "quality": "16"
+      "quality": 16
     },
     "rendering": {
       "tileCompression": "uint8",
@@ -40,15 +37,15 @@
       "tileChunkSize": "adaptive",
       "zoomOutMode": "average",
       "levelTransition": "crossfade",
-      "crossfadePower": 1.0,
+      "crossfadePower": 1,
       "renderOrder": "pyramid-only",
       "waveformPanMode": "smartFreeze"
     },
     "waveformZoom": {
       "catmullMode": "default",
       "catmullThreshold": 128,
-      "catmullCore": 1.0,
-      "catmullFeather": 1.0
+      "catmullCore": 1,
+      "catmullFeather": 1
     },
     "navigation": {
       "arrowZoomStep": 15,
@@ -60,12 +57,12 @@
       "fadeInTime": 0.9,
       "fadeOutCurve": "easeOut",
       "fadeOutTime": 0.3,
-      "zoomSpatialCurve": "easeOut",
-      "zoomSpatialWidth": 0.5,
       "edgeFadeMode": "spatial",
       "edgeFadeCurve": "easeOut",
       "edgeSpatialWidth": 0.6,
-      "edgeTimeIn": 0.0,
+      "zoomSpatialCurve": "easeOut",
+      "zoomSpatialWidth": 0.5,
+      "edgeTimeIn": 0,
       "edgeTimeOut": 0.2
     },
     "featurePlayback": {
@@ -94,15 +91,15 @@
       "markers": "daily",
       "xAxis": "show",
       "boxFilter": "linear",
-      "vScroll": "zoom",
-      "vSens": 100,
-      "hScroll": "pan",
-      "hSens": 100,
       "numbers": "white",
       "numbersLoc": "inside",
       "numbersWeight": "normal",
       "numbersSize": 13,
-      "numbersShadow": "on"
+      "numbersShadow": "on",
+      "vScroll": "zoom",
+      "vSens": 100,
+      "hScroll": "pan",
+      "hSens": 100
     },
     "debug": {
       "printInit": false,
@@ -115,53 +112,343 @@
       "printInteraction": false
     }
   },
+  "updatedAt": "2026-03-15T03:48:30.752Z",
+  "urlMods": {
+    "study": {
+      "mode": "test"
+    },
+    "local": {
+      "mode": "test"
+    }
+  },
+  "adminKey": "emic2026",
+  "experimentalDesign": {
+    "conditions": [
+      {
+        "order": [
+          0,
+          1
+        ],
+        "task1Processing": "resample",
+        "task2Processing": "paulStretch"
+      },
+      {
+        "order": [
+          0,
+          1
+        ],
+        "task1Processing": "resample",
+        "task2Processing": "wavelet"
+      },
+      {
+        "order": [
+          0,
+          1
+        ],
+        "task1Processing": "paulStretch",
+        "task2Processing": "resample"
+      },
+      {
+        "order": [
+          0,
+          1
+        ],
+        "task1Processing": "paulStretch",
+        "task2Processing": "wavelet"
+      },
+      {
+        "order": [
+          0,
+          1
+        ],
+        "task1Processing": "wavelet",
+        "task2Processing": "resample"
+      },
+      {
+        "order": [
+          0,
+          1
+        ],
+        "task1Processing": "wavelet",
+        "task2Processing": "paulStretch"
+      },
+      {
+        "order": [
+          1,
+          0
+        ],
+        "task1Processing": "resample",
+        "task2Processing": "paulStretch"
+      },
+      {
+        "order": [
+          1,
+          0
+        ],
+        "task1Processing": "resample",
+        "task2Processing": "wavelet"
+      },
+      {
+        "order": [
+          1,
+          0
+        ],
+        "task1Processing": "paulStretch",
+        "task2Processing": "resample"
+      },
+      {
+        "order": [
+          1,
+          0
+        ],
+        "task1Processing": "paulStretch",
+        "task2Processing": "wavelet"
+      },
+      {
+        "order": [
+          1,
+          0
+        ],
+        "task1Processing": "wavelet",
+        "task2Processing": "resample"
+      },
+      {
+        "order": [
+          1,
+          0
+        ],
+        "task1Processing": "wavelet",
+        "task2Processing": "paulStretch"
+      }
+    ],
+    "returningParticipant": {
+      "defaultBehavior": "same_step",
+      "analysis1": {
+        "title": "Welcome Back",
+        "bodyHtml": "<span style=\"font-family: -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, Roboto, sans-serif; font-size: 13px; white-space-collapse: preserve;\">Welcome back! You were working on </span><strong style=\"direction: ltr; unicode-bidi: bidi-override; font-family: -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, Roboto, sans-serif; font-size: 13px; white-space-collapse: preserve;\">Section 1 of 2</strong><span style=\"font-family: -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, Roboto, sans-serif; font-size: 13px; white-space-collapse: preserve;\"> of the EMIC wave analysis. You'll pick up right where you left off. Click Continue when you're ready to begin.</span>",
+        "buttonLabel": "Continue"
+      },
+      "analysis2": {
+        "title": "Welcome Back",
+        "bodyHtml": "<span style=\"font-family: -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, Roboto, sans-serif; font-size: 13px; white-space-collapse: preserve;\">Welcome back! You were working on </span><strong style=\"direction: ltr; unicode-bidi: bidi-override; font-family: -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, Roboto, sans-serif; font-size: 13px; white-space-collapse: preserve;\">Section 2 of 2</strong><span style=\"font-family: -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, Roboto, sans-serif; font-size: 13px; white-space-collapse: preserve;\"> of the EMIC wave analysis. This is a different time period from the first section. Click Continue when you're ready to begin.</span>",
+        "buttonLabel": "Continue"
+      }
+    }
+  },
+  "name": "EMIC Pilot Study",
+  "slug": "emic-pilot",
   "steps": [
     {
       "type": "registration",
-      "idMethod": "manual",
-      "idPrefix": "",
-      "idPlaceholder": "Enter a user name",
-      "collectEmail": false,
-      "showConsent": false
+      "idMethod": "auto_generate",
+      "skipLogin": true,
+      "showIdCorner": false,
+      "idPlaceholder": "Enter a user name!",
+      "regTitle": "Welcome",
+      "regBodyHtml": "<p><b>Enter a user name to begin:&nbsp;</b></p>",
+      "regButtonLabel": "Confirm",
+      "modalWidth": "480px",
+      "modalHeight": "auto",
+      "titleFontSize": "20px",
+      "titleFontColor": "#550000",
+      "titleFontBold": true,
+      "bodyFontSize": "16px",
+      "bodyFontColor": "#4d0000",
+      "titleUnderline": true,
+      "titleUnderlineSize": "2px",
+      "titleUnderlineColor": "#c86464"
     },
     {
       "type": "info",
       "title": "☀️ Solar Audification Study",
-      "bodyHtml": "<p>You will be listening to real spacecraft data and identifying interesting features. Please use headphones or high-quality speakers in a quiet environment free from distractions.</p><p>The data comes from NASA spacecraft and may contain gaps or sudden volume spikes. Please listen at a comfortable volume.</p>",
-      "dismissLabel": "Begin",
-      "skippable": false
+      "bodyHtml": "<p>Your task is to listen to magnetometer data from the <b>GOES satellite</b> and identify <b>Electromagnetic Ion Cyclotron (EMIC) waves</b>. This study should take approximately 20-30 minutes.</p><p><br></p><p>Please use headphones or high-quality speakers in a quiet environment free from distractions. Listen carefully and draw boxes around any features you identify in the spectrogram, and when you are finished use the \"Complete\" button to submit your results.</p><p><br></p><hr><p><br></p><p>If you have any questions or need assistance, please contact the study coordinator, Lucy Williams, at <a href=\"mailto:lewilliams@smith.edu\">lewilliams@smith.edu</a>.</p>",
+      "editorHeight": "234px",
+      "dismissLabel": "OK",
+      "dismissBold": false,
+      "dismissColor": "#ffffff",
+      "dismissBgColor": "#2196f3",
+      "hideButton": false,
+      "closable": false,
+      "skippable": false,
+      "enterConfirms": true,
+      "modalWidth": "710px",
+      "modalHeight": "auto",
+      "titleFontSize": "20px",
+      "titleFontColor": "#550000",
+      "titleFontBold": true,
+      "bodyFontSize": "16px",
+      "bodyFontColor": "#333333",
+      "titleUnderline": true,
+      "titleUnderlineSize": "2px",
+      "titleUnderlineColor": "#c86464"
     },
     {
       "type": "info",
-      "title": "About This Study",
-      "bodyHtml": "<p>Your task is to listen to magnetometer data from the <b>GOES satellite</b> and identify <b>Electromagnetic Ion Cyclotron (EMIC) waves</b>.</p><p>Please use headphones or high-quality speakers in a quiet environment free from distractions. Listen carefully and draw boxes around any features you identify in the spectrogram, and when you are finished use the \"Complete\" button to submit your results.</p><hr><p>If you have any questions or need assistance, please contact the study coordinator, Lucy Williams, at <a href='mailto:lewilliams@smith.edu'>lewilliams@smith.edu</a>.</p>",
-      "modalWidth": "710px",
-      "dismissLabel": "OK",
-      "skippable": true
+      "title": "🔬 Part One",
+      "bodyHtml": "<p>You will be provided with <b>two different time periods</b> for analysis. Please take your time in identifying EMIC waves for each section,and refer to the <a href=\"https://www.youtube.com/watch?v=j9A2MTB9gl0\">video tutorial</a> for instruction if needed.</p>",
+      "editorHeight": "90px",
+      "dismissLabel": "Begin Part One",
+      "dismissBold": false,
+      "dismissColor": "#ffffff",
+      "dismissBgColor": "#2196f3",
+      "hideButton": false,
+      "closable": false,
+      "skippable": false,
+      "enterConfirms": true,
+      "modalWidth": "560px",
+      "modalHeight": "auto",
+      "titleFontSize": "20px",
+      "titleFontColor": "#550000",
+      "titleFontBold": true,
+      "bodyFontSize": "16px",
+      "bodyFontColor": "#333333",
+      "titleUnderline": true,
+      "titleUnderlineSize": "2px",
+      "titleUnderlineColor": "#c86464"
     },
     {
       "type": "analysis",
-      "title": "EMIC Wave Analysis",
-      "dataPreload": "step:2",
-      "spacecraft": "GOES-16",
-      "dataset": "Magnetometer (MAG)",
-      "startDate": "2022-08-17",
-      "endDate": "2022-08-20",
-      "dataSource": "cloudflare_r2",
+      "title": "EMIC Wave Analysis Part 1",
+      "completeBtnText": "✓ Proceed",
+      "spacecraft": "GOES",
+      "dataset": "DN_MAGN-L2-HIRES_G16",
       "playbackSpeed": "1x",
-      "allowFeatureDrawing": true,
-      "allowStretch": true,
-      "requireMinFeatures": false,
+      "startTime": "2022-08-17T00:00Z",
+      "endTime": "2022-08-20T00:00Z",
+      "dataSource": "cloudflare_r2",
+      "dataPreload": "pageLoad",
+      "displayOnLoad": "beginning",
+      "initialHours": 24,
+      "silentDataLoading": true,
+      "allowStretch": false,
+      "requireMinFeatures": true,
+      "minFeatures": 1,
       "prompts": [
-        { "trigger": "onLoad", "delay": 0, "text": "Press play to begin listening.", "effect": "typed", "speed": "medium" },
-        { "trigger": "onPlay", "delay": 0, "text": "Listen carefully for periodic tonal patterns.", "effect": "typed", "speed": "medium" },
-        { "trigger": "afterPrevious", "delay": 15, "text": "Draw boxes around any features you identify.", "effect": "typed", "speed": "medium" },
-        { "trigger": "onFeatureDraw", "delay": 0, "text": "You can resize or delete features by clicking on them.", "effect": "typed", "speed": "medium" }
+        {
+          "trigger": "onLoad",
+          "delay": 0,
+          "text": "Press PLAY to begin playback, or press the SPACE BAR.",
+          "effect": "typed",
+          "speed": "medium"
+        },
+        {
+          "trigger": "onPlay",
+          "delay": 0,
+          "text": "Listen carefully for EMIC waves.",
+          "effect": "typed",
+          "speed": "medium"
+        },
+        {
+          "trigger": "afterPrevious",
+          "delay": 15,
+          "text": "Click and drag to draw boxes around features.",
+          "effect": "typed",
+          "speed": "medium"
+        },
+        {
+          "trigger": "onFeatureDraw",
+          "delay": 0,
+          "text": "Provide your level of confidence in the feature panel.",
+          "effect": "typed",
+          "speed": "medium"
+        },
+        {
+          "trigger": "afterPrevious",
+          "delay": 10,
+          "text": "Click \"Proceed\" when you have identified all EMIC waves in this region 👉",
+          "effect": "typed",
+          "speed": "medium"
+        }
       ],
       "confirmCompletion": {
         "enabled": true,
         "title": "Complete?",
-        "message": "Are you sure you're ready to finish? You won't be able to go back after this.",
+        "message": "You have identified # EMIC wave features for this time region. Are you sure you would like to proceed? You will not be able to go back.",
+        "confirmLabel": "Yes, I'm done",
+        "cancelLabel": "Go back"
+      }
+    },
+    {
+      "type": "info",
+      "title": "🔬 Part Two",
+      "bodyHtml": "You will now analyze the second and final time period for the presence of EMIC waves.",
+      "editorHeight": "90px",
+      "dismissLabel": "OK",
+      "dismissBold": false,
+      "dismissColor": "#ffffff",
+      "dismissBgColor": "#2196F3",
+      "hideButton": false,
+      "closable": false,
+      "skippable": false,
+      "enterConfirms": true,
+      "modalWidth": "460px",
+      "modalHeight": "auto",
+      "titleFontSize": "20px",
+      "titleFontColor": "#550000",
+      "titleFontBold": true,
+      "bodyFontSize": "16px",
+      "bodyFontColor": "#333333",
+      "titleUnderline": true,
+      "titleUnderlineSize": "2px",
+      "titleUnderlineColor": "#c86464"
+    },
+    {
+      "type": "analysis",
+      "title": "EMIC Wave Analysis Part 2",
+      "spacecraft": "GOES",
+      "dataset": "DN_MAGN-L2-HIRES_G16",
+      "playbackSpeed": "1x",
+      "startTime": "2022-01-14T00:00Z",
+      "endTime": "2022-01-17T00:00Z",
+      "dataSource": "cloudflare_r2",
+      "dataPreload": "pageLoad",
+      "displayOnLoad": "beginning",
+      "initialHours": 24,
+      "silentDataLoading": true,
+      "allowStretch": false,
+      "requireMinFeatures": false,
+      "minFeatures": 1,
+      "prompts": [
+        {
+          "trigger": "onLoad",
+          "delay": 0,
+          "text": "Press PLAY to begin playback, or press the SPACE BAR.",
+          "effect": "typed",
+          "speed": "medium"
+        },
+        {
+          "trigger": "onPlay",
+          "delay": 0,
+          "text": "Listen carefully for EMIC waves.",
+          "effect": "typed",
+          "speed": "medium"
+        },
+        {
+          "trigger": "afterPrevious",
+          "delay": 15,
+          "text": "Click and drag to draw boxes around features.",
+          "effect": "typed",
+          "speed": "medium"
+        },
+        {
+          "trigger": "onFeatureDraw",
+          "delay": 0,
+          "text": "Provide your level of confidence in the feature panel.",
+          "effect": "typed",
+          "speed": "medium"
+        },
+        {
+          "trigger": "afterPrevious",
+          "delay": 10,
+          "text": "Click \"Proceed\" when you have identified all EMIC waves in this region 👉",
+          "effect": "typed",
+          "speed": "medium"
+        }
+      ],
+      "confirmCompletion": {
+        "enabled": true,
+        "title": "Complete?",
+        "message": "You have identified # EMIC wave features for this time region. Are you sure you would like to proceed? You will not be able to go back.",
         "confirmLabel": "Yes, I'm done",
         "cancelLabel": "Go back"
       }
@@ -170,77 +457,196 @@
       "type": "info",
       "title": "📋 Post-Study Questions",
       "bodyHtml": "<p>You will now be guided through a brief set of questions that should take 2–3 minutes.</p>",
+      "editorHeight": "90px",
       "dismissLabel": "OK",
-      "skippable": false
+      "dismissBold": false,
+      "dismissColor": "#ffffff",
+      "dismissBgColor": "#2196f3",
+      "hideButton": false,
+      "closable": false,
+      "skippable": false,
+      "enterConfirms": true,
+      "modalWidth": "460px",
+      "modalHeight": "auto",
+      "titleFontSize": "20px",
+      "titleFontColor": "#550000",
+      "titleFontBold": true,
+      "bodyFontSize": "16px",
+      "bodyFontColor": "#333333",
+      "titleUnderline": true,
+      "titleUnderlineSize": "2px",
+      "titleUnderlineColor": "#c86464"
     },
     {
       "type": "question",
-      "id": "background",
       "title": "What is your background in physics or space science?",
       "questionType": "radio",
-      "inputName": "backgroundLevel",
-      "required": true,
+      "id": "background",
+      "inputName": "background",
+      "labelMode": "visible",
       "options": [
-        { "value": "1", "label": "None", "description": "No prior background" },
-        { "value": "2", "label": "Minimal", "description": "Less than 1 year of coursework or experience" },
-        { "value": "3", "label": "Some", "description": "1–2 years of coursework or experience" },
-        { "value": "4", "label": "Considerable", "description": "3–5 years of coursework or professional experience" },
-        { "value": "5", "label": "Extensive", "description": "5+ years of coursework or professional experience" }
-      ]
+        {
+          "value": "1",
+          "label": "None",
+          "description": "No prior background"
+        },
+        {
+          "value": "2",
+          "label": "Minimal",
+          "description": "Less than 1 year of coursework or experience"
+        },
+        {
+          "value": "3",
+          "label": "Some",
+          "description": "1–2 years of coursework or experience"
+        },
+        {
+          "value": "4",
+          "label": "Considerable",
+          "description": "3–5 years of coursework or professional experience"
+        },
+        {
+          "value": "5",
+          "label": "Extensive",
+          "description": "5+ years of coursework or professional experience"
+        }
+      ],
+      "required": true,
+      "canGoBack": true,
+      "modalWidth": "580px",
+      "modalHeight": "auto",
+      "modalTitle": "📋 Questionnaire"
     },
     {
       "type": "question",
-      "id": "data_analysis",
       "title": "Have you previously analyzed scientific data?",
       "subtitle": "(e.g., time series, spectrograms, satellite measurements)",
       "questionType": "radio",
-      "inputName": "dataAnalysisLevel",
-      "required": true,
+      "id": "data_analysis",
+      "inputName": "data_analysis",
+      "labelMode": "bold",
       "options": [
-        { "value": "1", "label": "Never", "description": "This was my first time working with scientific data" },
-        { "value": "2", "label": "Rarely", "description": "A few times in coursework or casually" },
-        { "value": "3", "label": "Occasionally", "description": "Regular coursework or some research involvement" },
-        { "value": "4", "label": "Frequently", "description": "Ongoing research or professional work" },
-        { "value": "5", "label": "Extensively", "description": "Multiple years of hands-on data analysis experience" }
-      ]
+        {
+          "value": "1",
+          "label": "Never",
+          "description": "This was my first time working with scientific data"
+        },
+        {
+          "value": "2",
+          "label": "Rarely",
+          "description": "A few times in coursework or casually"
+        },
+        {
+          "value": "3",
+          "label": "Occasionally",
+          "description": "Regular coursework or some research involvement"
+        },
+        {
+          "value": "4",
+          "label": "Frequently",
+          "description": "Ongoing research or professional work"
+        },
+        {
+          "value": "5",
+          "label": "Extensively",
+          "description": "Multiple years of hands-on data analysis experience"
+        }
+      ],
+      "required": true,
+      "canGoBack": true,
+      "modalWidth": "580px",
+      "modalHeight": "auto",
+      "modalTitle": "📋 Questionnaire"
     },
     {
       "type": "question",
-      "id": "musical_experience",
       "title": "What is your level of musical experience?",
       "questionType": "radio",
-      "inputName": "musicalExperienceLevel",
-      "required": true,
+      "id": "musical_experience",
+      "inputName": "musical_experience",
+      "labelMode": "bold",
       "options": [
-        { "value": "1", "label": "None", "description": "No musical training or experience" },
-        { "value": "2", "label": "Minimal", "description": "Some informal exposure (e.g., basic music classes in school)" },
-        { "value": "3", "label": "Some", "description": "1–3 years of musical training or playing an instrument" },
-        { "value": "4", "label": "Considerable", "description": "4+ years of training, active musician or regular performer" },
-        { "value": "5", "label": "Extensive", "description": "Professional musician, music degree, or lifelong serious practice" }
-      ]
+        {
+          "value": "1",
+          "label": "None",
+          "description": "<span style=\"font-family: -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, Roboto, sans-serif; font-size: 13px;\">No musical training or experience</span>"
+        },
+        {
+          "value": "2",
+          "label": "Minimal",
+          "description": "<span style=\"font-family: -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, Roboto, sans-serif; font-size: 13px;\">Some informal exposure (e.g., basic music classes in school)</span>"
+        },
+        {
+          "value": "3",
+          "label": "Some",
+          "description": "<span style=\"font-family: -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, Roboto, sans-serif; font-size: 13px;\">1–3 years of musical training or playing an instrument</span>"
+        },
+        {
+          "value": "4",
+          "label": "Considerable",
+          "description": "<span style=\"font-family: -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, Roboto, sans-serif; font-size: 13px;\">4+ years of training, active musician or regular performer</span>"
+        },
+        {
+          "value": "5",
+          "label": "Extensive",
+          "description": "<span style=\"font-family: -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, Roboto, sans-serif; font-size: 13px;\">Professional musician, music degree, or lifelong serious practice</span>"
+        }
+      ],
+      "required": true,
+      "canGoBack": true,
+      "modalWidth": "580px",
+      "modalHeight": "auto",
+      "modalTitle": "📋 Questionnaire"
     },
     {
       "type": "question",
-      "id": "feedback",
       "title": "Do you have any additional feedback you'd like to share?",
       "questionType": "freetext",
-      "placeholder": "Type your response here (optional)...",
-      "required": false
+      "id": "feedback",
+      "inputName": "feedback",
+      "placeholder": "",
+      "required": false,
+      "canGoBack": true,
+      "modalWidth": "580px",
+      "modalHeight": "450px",
+      "modalTitle": "📋 Questionnaire"
     },
     {
       "type": "question",
-      "id": "referral",
       "title": "How did you learn about this experiment?",
       "questionType": "freetext",
-      "placeholder": "Type your response here (optional)...",
-      "required": false
+      "id": "referral",
+      "inputName": "referral",
+      "placeholder": "",
+      "required": false,
+      "canGoBack": true,
+      "modalWidth": "580px",
+      "modalHeight": "450px",
+      "modalTitle": "📋 Questionnaire"
     },
     {
       "type": "info",
       "title": "Thank You!",
-      "bodyHtml": "<p>Thank you for participating in this study! Your data has been saved.</p><p>If you have any questions, please contact Lucy Williams at <a href='mailto:lewilliams@smith.edu'>lewilliams@smith.edu</a>.</p>",
+      "bodyHtml": "<p><span style=\"font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;\">Thank you for participating in this study! Your data has been saved.&nbsp;</span><span style=\"font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;\">If you have any questions, please contact Lucy Williams at </span><a href=\"mailto:lewilliams@smith.edu\" style=\"font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;\">lewilliams@smith.edu</a><span style=\"font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;\">.</span></p><p><span style=\"font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;\"><br></span></p><p><span style=\"font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;\"><b>You can now close this page.</b></span></p>",
+      "editorHeight": "106px",
       "dismissLabel": "Close",
-      "skippable": false
+      "dismissBold": false,
+      "dismissColor": "#ffffff",
+      "dismissBgColor": "#2196f3",
+      "hideButton": true,
+      "closable": false,
+      "skippable": false,
+      "enterConfirms": false,
+      "modalWidth": "540px",
+      "modalHeight": "250px",
+      "titleFontSize": "20px",
+      "titleFontColor": "#550000",
+      "titleFontBold": true,
+      "bodyFontSize": "16px",
+      "bodyFontColor": "#333333",
+      "titleUnderline": true,
+      "titleUnderlineSize": "2px",
+      "titleUnderlineColor": "#c86464"
     }
   ]
 }
