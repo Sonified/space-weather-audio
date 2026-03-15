@@ -9,7 +9,7 @@
  * Does NOT modify emic_study.html or emic-study-flow.js.
  */
 
-import { fetchStudyConfig, setStudyId, initParticipant, saveSurveyAnswer, saveFeature, saveResponse, markComplete, getParticipantId as d1GetParticipantId } from './d1-sync.js';
+import { fetchStudyConfig, setStudyId, initParticipant, saveSurveyAnswer, saveFeature, saveResponse, markComplete, getParticipantId as d1GetParticipantId, startHeartbeat, stopHeartbeat } from './d1-sync.js';
 import { modalManager } from './modal-manager.js';
 import { getStandaloneFeatures } from './feature-tracker.js';
 import { getParticipantId, storeParticipantId, generateParticipantId } from './participant-id.js';
@@ -1122,6 +1122,7 @@ async function init() {
             const pid = window.__TEST_PARTICIPANT_ID || generateParticipantId(regStep.idPrefix);
             storeParticipantId(pid);
             initParticipant(pid, studySlug);
+            startHeartbeat();
             if (window.pm?.study_flow) console.log(`%c[INIT] ③ Early auto-registration: ${pid}`, 'color: #58a6ff; font-weight: bold;');
         } else {
             if (window.pm?.study_flow) console.log(`%c[INIT] ③ Not auto-skip — deferring registration to step flow`, 'color: #58a6ff;');
@@ -1530,6 +1531,7 @@ async function runRegistration(step) {
     console.log(`📋 [REG] existingId=${existingId}, idMethod=${step.idMethod}, step=`, step);
     if (existingId) {
         console.log(`📋 Already registered as ${existingId}, skipping registration`);
+        startHeartbeat();
         if (step.showIdCorner !== false) updateParticipantDisplay(existingId);
         else hideParticipantDisplay();
         advanceStep();
@@ -1552,6 +1554,7 @@ async function runRegistration(step) {
         if (step.showIdCorner !== false) updateParticipantDisplay(pid);
         else hideParticipantDisplay();
         initParticipant(pid, studySlug);
+        startHeartbeat();
         console.log(`📋 Auto-registered (skip login): ${pid}`);
         if (!assignedCondition) {
             assignedCondition = assignCondition();
@@ -1620,6 +1623,7 @@ function showLoginModal(step) {
             if (step.showIdCorner !== false) updateParticipantDisplay(pid);
             else hideParticipantDisplay();
             initParticipant(pid, studySlug);
+            startHeartbeat();
             console.log(`📋 Registered: ${pid}`);
             // Assign condition after manual registration
             if (!assignedCondition) {
@@ -2194,6 +2198,7 @@ function showQuestionModal(question, index, total, progressPct, previousAnswer, 
 
 function onStudyComplete() {
     console.log(`📋 Study complete!`);
+    stopHeartbeat();
     markComplete();
 
     // Clear progress and step flags

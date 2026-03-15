@@ -311,3 +311,42 @@ export async function fetchFeatures(participantId, studyId) {
     }
     return [];
 }
+
+// ── Heartbeat ────────────────────────────────────────────────────────────────
+
+let _heartbeatTimer = null;
+
+/**
+ * Start sending periodic heartbeats to the server.
+ * Fire-and-forget — never blocks participant flow.
+ * @param {number} intervalMinutes - How often to ping (default 1)
+ */
+export function startHeartbeat(intervalMinutes = 1) {
+    stopHeartbeat(); // clear any existing
+    const pid = getParticipantId();
+    const sid = getStudyId();
+    if (!pid || !sid) return;
+
+    const sendPing = async () => {
+        try {
+            await fetch(`${getApiBase()}/api/study/${sid}/participants/${encodeURIComponent(pid)}/heartbeat`, {
+                method: 'POST'
+            });
+        } catch (e) {
+            // Silent fail — never block participant
+        }
+    };
+
+    sendPing(); // immediate first ping
+    _heartbeatTimer = setInterval(sendPing, intervalMinutes * 60000);
+}
+
+/**
+ * Stop the heartbeat interval.
+ */
+export function stopHeartbeat() {
+    if (_heartbeatTimer) {
+        clearInterval(_heartbeatTimer);
+        _heartbeatTimer = null;
+    }
+}

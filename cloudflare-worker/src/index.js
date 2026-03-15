@@ -572,6 +572,18 @@ export default {
         return json({ success: true, conditionIndex: body.conditionIndex });
       }
 
+      // POST /api/study/:studyId/participants/:pid/heartbeat — update last active timestamp
+      const heartbeatStudyMatch = path.match(/^\/api\/study\/([^/]+)\/participants\/([^/]+)\/heartbeat$/);
+      if (heartbeatStudyMatch && request.method === 'POST') {
+        const [, studyId, pid] = heartbeatStudyMatch;
+        const decodedPid = decodeURIComponent(pid);
+        await env.DB.prepare(
+          `UPDATE participants SET last_heartbeat = datetime('now'), updated_at = datetime('now')
+           WHERE participant_id = ? AND study_id = ?`
+        ).bind(decodedPid, studyId).run();
+        return json({ success: true });
+      }
+
       // POST /api/study/:studyId/responses — save feature or survey response
       const studyResponsesMatch = path.match(/^\/api\/study\/([^/]+)\/responses$/);
       if (studyResponsesMatch && request.method === 'POST') {
@@ -655,6 +667,36 @@ export default {
          .slice(0, limit);
 
         return json({ success: true, events, count: events.length });
+      }
+
+      // GET /api/study/:studyId/dashboard — aggregate stats for study builder
+      const dashboardMatch = path.match(/^\/api\/study\/([^/]+)\/dashboard$/);
+      if (dashboardMatch && request.method === 'GET') {
+        const studyId = dashboardMatch[1];
+        const timeoutMin = parseInt(url.searchParams.get('timeout') || '10', 10);
+
+        const [totalRow, activeRow, assignedRow, completedRow, participantRows] = await Promise.all([
+          env.DB.prepare('SELECT COUNT(*) as count FROM participants WHERE study_id = ?').bind(studyId).first(),
+          env.DB.prepare(
+            `SELECT COUNT(*) as count FROM participants WHERE study_id = ? AND last_heartbeat > datetime('now', '-' || ? || ' minutes')`
+          ).bind(studyId, timeoutMin).first(),
+          env.DB.prepare('SELECT COUNT(*) as count FROM participants WHERE study_id = ? AND current_step > 0').bind(studyId).first(),
+          env.DB.prepare('SELECT COUNT(*) as count FROM participants WHERE study_id = ? AND completed_at IS NOT NULL').bind(studyId).first(),
+          env.DB.prepare(
+            `SELECT participant_id, current_step, last_heartbeat, registered_at, completed_at,
+                    CASE WHEN last_heartbeat > datetime('now', '-' || ? || ' minutes') THEN 1 ELSE 0 END as is_active
+             FROM participants WHERE study_id = ? ORDER BY updated_at DESC LIMIT 100`
+          ).bind(timeoutMin, studyId).all(),
+        ]);
+
+        return json({
+          success: true,
+          totalStarted: totalRow?.count || 0,
+          activeParticipants: activeRow?.count || 0,
+          totalAssigned: assignedRow?.count || 0,
+          completedCount: completedRow?.count || 0,
+          participants: participantRows?.results || [],
+        });
       }
 
       // =======================================================================
