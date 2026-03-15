@@ -76,9 +76,9 @@ An
 - [ ] **HS1.** Identify ideal settings for wavelet and Paul stretch algorithms
 - [ ] **HS2.** Generate wavelet-stretched audio at 1.25x speed for our two time regions and save to server — potentially use progressive chunking. Unique to our study, may not need full study builder integration. Must re-constitute audio perfectly locally.
 - [ ] **HS3.** Build deployment panel toward the bottom of study builder (above Data Stream) with settings like randomization for the two analysis sections
-- [ ] **HS4.** Add experimental conditions panel — map out each condition: which dataset, which order, which algorithm
+- [x] **HS4.** Add experimental conditions panel — map out each condition: which dataset, which order, which algorithm
 - [ ] **HS5.** Add participant randomization panel — options for random, block, and healing block. For healing block, include all settings from randomization-sim (algorithm settings only) using the preset from that page
-- [ ] **HS6.** Test flow on non-test pages — does it always re-start in the correct place?
+- [x] **HS6.** Test flow on non-test pages — does it always re-start in the correct place?
 - [ ] **HS7.** Add study launch panel — options: start immediately, start on date/time, end date/time, or keep open-ended (figure out go-live system)
 - [ ] **HS8.** Option for doing a test round using data from test runs
 - [ ] **HS9.** Build participant data explorer page — list all participant data, view question answers + feature metadata, view responses on page, visual for the blocks. Button in study builder to launch it.

@@ -512,7 +512,16 @@
     <label>Runs</label>
     <input type="number" id="numRuns" value="1000" min="1" max="10000">
   </div>
-  <input type="hidden" id="randomizeHeal">
+  <div class="control-group" style="max-width:130px;">
+    <label style="color:#aa77ff">Heal Priority</label>
+    <select id="healPriority" title="Height prioritizes healing conditions that have multiple stacked incompletes before conditions with fewer" style="background:#151520;border:1px solid #aa77ff55;color:#aa77ff;padding:6px 4px;border-radius:6px;font-family:inherit;font-size:0.75em;width:130px;text-align:center;">
+      <option value="fifo" selected>FIFO</option>
+      <option value="random">Random</option>
+      <option value="fifo-height">FIFO (Height)</option>
+      <option value="random-height">Random (Height)</option>
+    </select>
+    <div style="font-size:0.65em;color:#aa77ffcc;margin-top:3px;line-height:1.3;">Height prioritizes stacked conditions during healing</div>
+  </div>
   <div class="control-group">
     <label style="color:#aa77ff">Max Heal Passes</label>
     <input type="number" id="maxHealPasses" value="10" min="1" max="10" style="width:80px;border-color:#aa77ff55">
@@ -531,8 +540,8 @@
   <div class="control-group" style="max-width:110px;">
     <label style="color:#aa77ff">Cap Resume</label>
     <select id="simultResumeMode" style="background:#151520;border:1px solid #aa77ff55;color:#aa77ff;padding:6px 4px;border-radius:6px;font-family:inherit;font-size:0.75em;width:110px;text-align:center;">
-      <option value="resume" selected>Resume Heal</option>
-      <option value="walk">Walk Away</option>
+      <option value="resume">Resume Heal</option>
+      <option value="walk" selected>Proceed to Block</option>
     </select>
   </div>
   <div class="control-group">
@@ -860,8 +869,8 @@ function balanceScore(completions) {
 
 // ── HEAL ALGORITHM ──
 class HealAlgorithm {
-  constructor(randomizeHeal = false, healInterval = NUM_CONDITIONS, maxHealPasses = 1, simultHealCap = Infinity, healCapMode = 'total', simultResumeMode = 'walk') {
-    this.randomizeHeal = randomizeHeal;
+  constructor(healPriority = 'fifo', healInterval = NUM_CONDITIONS, maxHealPasses = 1, simultHealCap = Infinity, healCapMode = 'total', simultResumeMode = 'walk') {
+    this.healPriority = healPriority; // 'fifo', 'random', 'fifo-height', 'random-height'
     this.healInterval = healInterval;
     this.nextHealAt = healInterval;
     this.maxHealPasses = maxHealPasses;
@@ -883,6 +892,50 @@ class HealAlgorithm {
     this.droppedParticipants = []; // sorted by returnStep for efficient processing
     this.step = 0;
     for (let i = 0; i < 100; i++) this.blocks.push(generateBlock());
+  }
+
+  /**
+   * Sort incompletes array according to healPriority mode.
+   * Height modes group by condition frequency (most holes first).
+   */
+  sortHealQueue(incompletes) {
+    const useHeight = this.healPriority === 'fifo-height' || this.healPriority === 'random-height';
+    const useRandom = this.healPriority === 'random' || this.healPriority === 'random-height';
+
+    if (useHeight) {
+      // Count occurrences per condition
+      const counts = new Map();
+      for (const item of incompletes) {
+        counts.set(item.condition, (counts.get(item.condition) || 0) + 1);
+      }
+      // Sort by count descending, then by assignTime (FIFO) or shuffle within groups
+      if (useRandom) {
+        // Group by condition, sort groups by count desc, shuffle within each group
+        const groups = new Map();
+        for (const item of incompletes) {
+          if (!groups.has(item.condition)) groups.set(item.condition, []);
+          groups.get(item.condition).push(item);
+        }
+        const sorted = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+        incompletes.length = 0;
+        for (const [, group] of sorted) {
+          shuffleArray(group);
+          incompletes.push(...group);
+        }
+      } else {
+        // Sort by count desc, then FIFO within same count
+        incompletes.sort((a, b) => {
+          const countDiff = counts.get(b.condition) - counts.get(a.condition);
+          if (countDiff !== 0) return countDiff;
+          return a.assignTime - b.assignTime;
+        });
+      }
+    } else if (useRandom) {
+      shuffleArray(incompletes);
+    } else {
+      // Plain FIFO
+      incompletes.sort((a, b) => a.assignTime - b.assignTime);
+    }
   }
 
   ensureBlocks(idx) {
@@ -972,11 +1025,7 @@ class HealAlgorithm {
             continue;
           }
 
-          if (this.randomizeHeal) {
-            shuffleArray(incompletes);
-          } else {
-            incompletes.sort((a, b) => a.assignTime - b.assignTime);
-          }
+          this.sortHealQueue(incompletes);
           healQueue = incompletes.map(s => s.condition);
           healIdx = 0;
           phase = 'healing';
@@ -1055,11 +1104,7 @@ class HealAlgorithm {
           }
 
           if (healPassesLeft > 0 && newIncompletes.length > 0) {
-            if (this.randomizeHeal) {
-              shuffleArray(newIncompletes);
-            } else {
-              newIncompletes.sort((a, b) => a.assignTime - b.assignTime);
-            }
+            this.sortHealQueue(newIncompletes);
             healQueue = newIncompletes.map(s => s.condition);
             healIdx = 0;
             healPassesLeft--;
@@ -1142,11 +1187,7 @@ class HealAlgorithm {
         // Restore heal passes — the cap interrupted us, this isn't a "new" heal round
         healPassesLeft = Math.max(capForcedHealPassesLeft, 1);
         // Build fresh heal queue from the new incompletes
-        if (this.randomizeHeal) {
-          shuffleArray(resumeIncompletes);
-        } else {
-          resumeIncompletes.sort((a, b) => a.assignTime - b.assignTime);
-        }
+        this.sortHealQueue(resumeIncompletes);
         healQueue = resumeIncompletes.map(s => s.condition);
         healIdx = 0;
         healPassesLeft--;
@@ -1239,11 +1280,7 @@ class HealAlgorithm {
       this.healPassesLeft = 0;
       return;
     }
-    if (this.randomizeHeal) {
-      shuffleArray(incompletes);
-    } else {
-      incompletes.sort((a, b) => a.assignTime - b.assignTime);
-    }
+    this.sortHealQueue(incompletes);
     this.healQueue = incompletes.map(s => s.condition);
     this.healIndex = 0;
     this.phase = 'healing';
@@ -1731,6 +1768,7 @@ function copyStats() {
     `  Simultaneous likelihood: ${simultLikelihood}%`,
     `  Simultaneous heal cap: ${simultHealCap} (${document.getElementById('healCapMode').value})`,
     `  Cap resume mode: ${document.getElementById('simultResumeMode').value}`,
+    `  Heal priority: ${document.getElementById('healPriority').value}`,
     '',
     `RESULTS (${total} total races)`,
     '',
@@ -1771,7 +1809,7 @@ function startRace() {
   const dropLen = parseInt(document.getElementById('dropoutLength').value) || 8;
   const speedRaw = parseInt(document.getElementById('speed').value);
   const speed = isNaN(speedRaw) ? 5 : speedRaw;
-  const randomizeHeal = document.getElementById('randomizeHeal').checked;
+  const healPriority = document.getElementById('healPriority').value;
   const maxHealPassesRaw = parseInt(document.getElementById('maxHealPasses').value);
   const maxHealPasses = isNaN(maxHealPassesRaw) ? 2 : Math.max(1, maxHealPassesRaw);
   const maxSimult = parseInt(document.getElementById('maxSimultaneous').value) || 3;
@@ -1829,8 +1867,8 @@ function startRace() {
         currentRun++;
         const fates = generateParticipantFates(numP, dropPct, retPct, dropLen);
         const batches = generateArrivalBatches(numP, simultLikelihood, maxSimult);
-        const dhealAlgo = new HealAlgorithm(randomizeHeal, NUM_CONDITIONS, maxHealPasses, simultHealCap, healCapMode, simultResumeMode);
-        const healAlgo = new HealAlgorithm(randomizeHeal);
+        const dhealAlgo = new HealAlgorithm(healPriority, NUM_CONDITIONS, maxHealPasses, simultHealCap, healCapMode, simultResumeMode);
+        const healAlgo = new HealAlgorithm(healPriority);
         const blockAlgo = new BlockAlgorithm();
         const randomAlgo = new RandomAlgorithm();
 
@@ -1912,8 +1950,8 @@ function startRace() {
     currentRun++;
     const fates = generateParticipantFates(numP, dropPct, retPct, dropLen);
     const batches = generateArrivalBatches(numP, simultLikelihood, maxSimult);
-    const dhealAlgo = new HealAlgorithm(randomizeHeal, NUM_CONDITIONS, maxHealPasses, simultHealCap, healCapMode, simultResumeMode);
-    const healAlgo = new HealAlgorithm(randomizeHeal);
+    const dhealAlgo = new HealAlgorithm(healPriority, NUM_CONDITIONS, maxHealPasses, simultHealCap, healCapMode, simultResumeMode);
+    const healAlgo = new HealAlgorithm(healPriority);
     const blockAlgo = new BlockAlgorithm();
     const randomAlgo = new RandomAlgorithm();
 
