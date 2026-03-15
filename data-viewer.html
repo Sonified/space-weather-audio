@@ -636,7 +636,6 @@
       if (cached?.length) populateStudySelect(cached);
     } catch {}
   })();
-  fetchStudies();
 
   let pollTimer = null;
   let isPolling = false;
@@ -648,6 +647,16 @@
   }
   function stopPoll() {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  // Detect refresh — skip initial server fetch if cache is fresh
+  const isPageRefresh = performance.getEntriesByType('navigation')[0]?.type === 'reload';
+  if (isPageRefresh && allParticipants.length > 0) {
+    console.log('%c[DV] Refresh detected — using cached data, skipping initial fetch', 'color: #8b8; font-weight: bold');
+    startPoll();
+    setTimeout(fetchStudies, 2000);
+  } else {
+    fetchStudies();
   }
 
   // Initial load — shows spinner, resets UI

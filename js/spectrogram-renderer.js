@@ -6,7 +6,7 @@
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate, getYPositionForFrequencyScaled, getScaleTransitionState, getLogScaleMinFreq } from './spectrogram-axis-renderer.js';
-import { handleSpectrogramSelection, isInFrequencySelectionMode, getStandaloneFeatures, saveStandaloneFeatures, startFrequencySelection, getFlatFeatureNumber, deleteStandaloneFeature, renderStandaloneFeaturesList } from './feature-tracker.js';
+import { handleSpectrogramSelection, isInFrequencySelectionMode, getStandaloneFeatures, saveStandaloneFeatures, startFrequencySelection, getFlatFeatureNumber, deleteStandaloneFeature, renderStandaloneFeaturesList, updateFeature } from './feature-tracker.js';
 import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, resetSpectrogramState, updateElasticFriendInBackground, onColormapChanged, setScrollZoomHiRes } from './main-window-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { isStudyMode } from './master-modes.js';
@@ -914,6 +914,15 @@ export function getHoveredBoxKey() {
 }
 
 export function closeFeaturePopup() {
+    if (featurePopupEl && popupFeatureBox != null) {
+        // Auto-save notes/confidence before destroying popup — feature-tracker owns the D1 sync
+        const updates = {};
+        const notesArea = featurePopupEl.querySelector('.feature-popup-notes');
+        if (notesArea) updates.notes = notesArea.value.trim();
+        const activePill = featurePopupEl.querySelector('.feature-popup-pill.active');
+        if (activePill) updates.confidence = activePill.dataset.confidence;
+        updateFeature(popupFeatureBox.featureIndex, updates);
+    }
     if (featurePopupEl) {
         featurePopupEl.remove();
         featurePopupEl = null;

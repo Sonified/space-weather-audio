@@ -1912,7 +1912,10 @@ function executePrompts(prompts) {
             cleanups.push(() => window.removeEventListener('audioPlay', onPlay));
 
         } else if (trigger === 'onFeatureDraw') {
+            let firedOnce = false;
             const handler = () => {
+                if (prompt.frequency !== 'always' && firedOnce) return;
+                firedOnce = true;
                 // Interrupt any in-progress prompt — assert immediately
                 cancelTyping();
                 const p = showPrompt(prompt);
@@ -2059,6 +2062,7 @@ async function runAnalysis(step) {
                     return;
                 }
                 for (const feat of features) {
+                    if (window.pm?.features) console.log(`%c[FEATURE] Proceed bulk-save d1Id=${feat.d1Id?.slice(0,8)} notes="${feat.notes}" conf=${feat.confidence}`, 'color: #f0a; font-weight: bold');
                     saveFeature(feat);
                 }
                 console.log(`📋 Saved ${features.length} features to D1`);

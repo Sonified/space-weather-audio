@@ -1383,7 +1383,6 @@
         </div>
       </div>
       <button class="btn" onclick="previewStudy()">👁 Preview</button>
-      <button class="btn btn-primary" onclick="publishStudy()">🚀 Publish</button>
       <div class="save-indicator" id="saveIndicator"></div>
       <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="handleJsonFile(event)">
     </div>
@@ -1787,13 +1786,19 @@
     <div class="step-header" onclick="toggleStep(this)">
       <span class="lock-icon">🔒</span><span class="chevron">▶</span>
       <div class="step-number" style="background:#10b981;color:#fff;">📡</div>
-      <div class="step-title">Data Stream</div>
+      <div class="step-title">Data Collection</div>
       <span class="step-type-badge" style="background:rgba(16,185,129,0.15);color:#10b981;">LIVE</span>
       <span id="streamCount" style="margin-left:auto; font-size:11px; color:#666;">0 events</span>
     </div>
     <div class="step-detail" id="dataStreamDetail">
       <div style="display:flex; align-items:center; gap:8px; padding:8px 0 4px;">
-        <button class="btn" onclick="openDataExplorer()" style="font-size:11px; padding:4px 10px;" title="Open full participant data viewer in a new tab">🔍 Data Viewer</button>
+        <button class="btn" onclick="openDataExplorer()" style="font-size:14px; padding:8px 16px;" title="Open full participant data viewer in a new tab">🔍 Data Viewer</button>
+        <div style="flex:1;"></div>
+        <div class="stream-range-tabs" style="display:inline-flex; border:1px solid var(--border); border-radius:6px; overflow:hidden;">
+          <button class="stream-range-tab active" data-range="live" onclick="setStreamRange('live')" style="padding:4px 12px; font-size:11px; cursor:pointer; background:rgba(33,150,243,0.5); color:#fff; font-weight:600; border:none; border-right:1px solid var(--border); text-transform:uppercase; letter-spacing:0.3px;">Live</button>
+          <button class="stream-range-tab" data-range="24h" onclick="setStreamRange('24h')" style="padding:4px 12px; font-size:11px; cursor:pointer; background:var(--card-bg); color:var(--text-muted); border:none; border-right:1px solid var(--border); text-transform:uppercase; letter-spacing:0.3px;">24 Hours</button>
+          <button class="stream-range-tab" data-range="all" onclick="setStreamRange('all')" style="padding:4px 12px; font-size:11px; cursor:pointer; background:var(--card-bg); color:var(--text-muted); border:none; text-transform:uppercase; letter-spacing:0.3px;">All</button>
+        </div>
       </div>
       <div id="dataStreamLog" style="max-height:300px; overflow-y:auto; font-family:monospace; font-size:11px; line-height:1.6; color:#aaa; padding:8px 0;">
         <div style="color:#555; font-style:italic;">Waiting for activity...</div>
@@ -2145,15 +2150,7 @@
   function loadConfigIntoBuilder(config) {
     _isLoading = true; // Suppress autoSave during rebuild
     if (_autoSaveObserver) _autoSaveObserver.disconnect();
-    console.log('%c[LOAD] loadConfigIntoBuilder START', 'color: #ff6b6b; font-weight: bold;', {
-      name: config.name,
-      slug: config.slug,
-      stepCount: config.steps?.length,
-      stepTypes: config.steps?.map(s => s.type),
-      hasAppSettings: !!config.appSettings,
-      hasAdminKey: !!config.adminKey,
-      metaKeys: Object.keys(config).filter(k => !['steps','name','slug'].includes(k)),
-    });
+    console.groupCollapsed('%c[LOAD] loadConfigIntoBuilder — ' + (config.slug || '(no slug)') + ' (' + (config.steps?.length || 0) + ' steps)', 'color: #ff6b6b; font-weight: bold;');
 
     // Preserve metadata that builder doesn't edit
     const { steps, name, slug, author, contactEmail, ...meta } = config;
@@ -2358,7 +2355,7 @@
       updateUrlModsDisplay('local');
     }
 
-    console.log('%c[LOAD] loadConfigIntoBuilder DONE', 'color: #ff6b6b; font-weight: bold;');
+    console.groupEnd(); // [LOAD]
     // Keep _isLoading true briefly to absorb queued autoSave events from DOM changes during load
     setTimeout(() => {
       _lastSavedJSON = JSON.stringify(collectStudyConfig());
@@ -3155,7 +3152,7 @@
   }
 
   function buildPromptEntry(p, i) {
-    p = Object.assign({ trigger: 'onLoad', delay: 0, text: '', effect: 'typed', speed: 'medium' }, p);
+    p = Object.assign({ trigger: 'onLoad', delay: 0, text: '', effect: 'typed', speed: 'medium', frequency: 'first' }, p);
     const triggers = ['onLoad', 'onPlay', 'onFeatureDraw', 'afterPrevious'];
     const triggerLabels = { onLoad: 'On load', onPlay: 'On play', onFeatureDraw: 'On feature draw', afterPrevious: 'After previous prompt' };
     const showDelay = p.trigger === 'afterPrevious' ? '' : 'display:none;';
@@ -3175,6 +3172,12 @@
           <span class="prompt-delay-group" style="display:${p.trigger === 'afterPrevious' ? 'contents' : 'none'};">
             <span style="font-size:11px; color:#ccd; white-space:nowrap;">Delay</span>
             <input class="field-input prompt-delay" type="number" min="0" value="${p.delay || 0}" style="width:60px;" />
+          </span>
+          <span class="prompt-frequency-group" style="display:${p.trigger === 'onFeatureDraw' ? 'contents' : 'none'};">
+            <select class="field-input prompt-frequency" style="width:auto;">
+              <option value="first" ${p.frequency==='first'?'selected':''}>First only</option>
+              <option value="always" ${p.frequency==='always'?'selected':''}>Every time</option>
+            </select>
           </span>
           <span style="font-size:11px; color:#ccd; white-space:nowrap; margin-left:12px;">Effect</span>
           <select class="field-input prompt-effect" onchange="onPromptEffectChange(this)" style="width:auto;">
@@ -3219,7 +3222,9 @@
   function onPromptTriggerChange(sel) {
     const entry = sel.closest('.prompt-entry');
     const delayGroup = entry.querySelector('.prompt-delay-group');
+    const freqGroup = entry.querySelector('.prompt-frequency-group');
     delayGroup.style.display = sel.value === 'afterPrevious' ? 'contents' : 'none';
+    freqGroup.style.display = sel.value === 'onFeatureDraw' ? 'contents' : 'none';
   }
 
   function onPromptEffectChange(sel) {
@@ -3318,7 +3323,10 @@
       const text = entry.querySelector('.prompt-text')?.value || '';
       const effect = entry.querySelector('.prompt-effect')?.value || 'typed';
       const speed = entry.querySelector('.prompt-speed')?.value || 'medium';
-      if (text.trim()) prompts.push({ trigger, delay, text, effect, speed });
+      const frequency = entry.querySelector('.prompt-frequency')?.value || 'first';
+      const prompt = { trigger, delay, text, effect, speed };
+      if (trigger === 'onFeatureDraw') prompt.frequency = frequency;
+      if (text.trim()) prompts.push(prompt);
     });
     return prompts;
   }
@@ -3692,7 +3700,7 @@
   // ── End Experimental Design ──────────────────────────────────────────────
 
   function collectStudyConfig() {
-    console.log('%c[COLLECT] collectStudyConfig START', 'color: #58a6ff; font-weight: bold;');
+    console.groupCollapsed('%c[COLLECT] collectStudyConfig', 'color: #58a6ff; font-weight: bold;');
     const steps = [];
     document.querySelectorAll('.step-card').forEach((card, i) => {
       const type = card.dataset.type;
@@ -3896,12 +3904,7 @@
         local: getRowMods('local'),
       },
     };
-    console.log('%c[COLLECT] collectStudyConfig DONE', 'color: #58a6ff; font-weight: bold;', {
-      name: result.name,
-      slug: result.slug,
-      stepCount: result.steps.length,
-      stepTypes: result.steps.map(s => s.type),
-    });
+    console.groupEnd(); // [COLLECT]
     return result;
   }
 
@@ -6262,6 +6265,10 @@
   function openDataExplorer() {
     const slugEl = document.getElementById('slugEditable');
     const slug = slugEl ? slugEl.textContent.trim() : '';
+    // Pass admin auth to data viewer so it skips the gate
+    if (sessionStorage.getItem('admin_authed') === 'true') {
+      sessionStorage.setItem('dv_admin_authed', 'true');
+    }
     const url = slug ? `data-viewer.html?study=${encodeURIComponent(slug)}` : 'data-viewer.html';
     window.open(url, '_blank');
   }
@@ -6272,14 +6279,39 @@
     const COUNT_EL = 'streamCount';
     const POLL_MS = 5000;
     let eventCount = 0;
-    const featureCounts = {}; // participant_id → count (for feature numbering)
+    let featureCounts = {}; // participant_id → count (for feature numbering)
 
-    // D1 stores datetime('now') as 'YYYY-MM-DD HH:MM:SS' (UTC, no T/Z).
-    // JS toISOString() produces '2026-03-12T22:43:08.888Z' which breaks string comparison.
-    function toSqliteUTC(date) {
-      return date.toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
-    }
-    let lastSeen = toSqliteUTC(new Date(Date.now() - 86400000)); // last 24h on first load
+    const pageLoadTime = new Date().toISOString();
+    let lastSeen = pageLoadTime; // start from now — only show live events
+    let streamRange = 'live';
+
+    // Exposed globally for the toggle buttons
+    window.setStreamRange = function(range) {
+      streamRange = range;
+      // Update button styles
+      document.querySelectorAll('.stream-range-tab').forEach(btn => {
+        const isActive = btn.dataset.range === range;
+        btn.style.background = isActive ? 'rgba(33,150,243,0.5)' : 'var(--card-bg)';
+        btn.style.color = isActive ? '#fff' : 'var(--text-muted)';
+        btn.style.fontWeight = isActive ? '600' : '400';
+      });
+      // Reset and refetch
+      eventCount = 0;
+      featureCounts = {};
+      const log = document.getElementById(LOG_EL);
+      const count = document.getElementById(COUNT_EL);
+      if (log) log.innerHTML = '<div style="color:#555; font-style:italic;">Loading...</div>';
+      if (count) count.textContent = '0 events';
+
+      if (range === 'live') {
+        lastSeen = pageLoadTime;
+      } else if (range === '24h') {
+        lastSeen = new Date(Date.now() - 86400000).toISOString();
+      } else {
+        lastSeen = '2000-01-01T00:00:00Z';
+      }
+      poll(range !== 'live');
+    };
 
     function getStudySlug() {
       const el = document.getElementById('slugValue');
@@ -6337,21 +6369,28 @@
       </div>`;
     }
 
-    async function poll() {
+    let polling = false;
+
+    async function poll(bulk) {
+      if (polling) return;
+      polling = true;
       const slug = getStudySlug();
-      if (!slug) return;
+      if (!slug) { polling = false; return; }
+
+      // Bulk mode: grab up to 2000 in one shot. Live: small batches.
+      const batchSize = bulk ? 2000 : 50;
 
       try {
         const baseUrl = window.STUDY_API_BASE || 'https://spaceweather.now.audio';
-        const resp = await fetch(`${baseUrl}/api/study/${slug}/activity?since=${encodeURIComponent(lastSeen)}&limit=50`);
-        if (!resp.ok) return;
+        const resp = await fetch(`${baseUrl}/api/study/${slug}/activity?since=${encodeURIComponent(lastSeen)}&limit=${batchSize}`);
+        if (!resp.ok) { polling = false; return; }
 
         const data = await resp.json();
-        if (!data.events || data.events.length === 0) return;
+        if (!data.events || data.events.length === 0) { polling = false; return; }
 
         const log = document.getElementById(LOG_EL);
         const count = document.getElementById(COUNT_EL);
-        if (!log) return;
+        if (!log) { polling = false; return; }
 
         if (eventCount === 0) log.innerHTML = '';
 
@@ -6361,16 +6400,24 @@
         eventCount += data.events.length;
         if (count) count.textContent = `${eventCount} event${eventCount !== 1 ? 's' : ''}`;
 
+        // Advance cursor to newest event
         const newest = data.events[0];
         const ts = newest.timestamp || newest.updated_at || newest.created_at;
-        if (ts) lastSeen = ts.replace('T', ' ').replace(/\.\d+Z$/, '').replace('Z', '');
+        if (ts) lastSeen = ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z';
       } catch (e) {
         console.warn('Data stream poll error:', e);
       }
+      polling = false;
     }
 
-    setInterval(poll, POLL_MS);
-    setTimeout(poll, 1000);
+    setInterval(() => poll(false), POLL_MS);
+    const _isRefresh = performance.getEntriesByType('navigation')[0]?.type === 'reload';
+    if (_isRefresh) {
+      console.log('%c[SB] Refresh detected — delaying data stream poll', 'color: #8b8; font-weight: bold');
+      setTimeout(() => poll(false), POLL_MS);
+    } else {
+      setTimeout(() => poll(false), 1000);
+    }
   })();
 
   // ── Study Launch Panel ──────────────────────────────────────────
@@ -6563,8 +6610,14 @@
       // Start dashboard polling (read interval from input, default 2s)
       const pollSec = Math.max(1, parseInt(document.getElementById('pollInterval')?.value) || 2);
       heartbeatInterval = setInterval(pollTestHeartbeat, pollSec * 1000);
-      // First poll
-      pollTestHeartbeat();
+      // On refresh with cached dashboard, delay first poll; otherwise poll immediately
+      const isRefresh = performance.getEntriesByType('navigation')[0]?.type === 'reload';
+      if (isRefresh && localStorage.getItem('sb_dashboardCache')) {
+        console.log('%c[SB] Refresh detected — using cached dashboard, delaying server poll', 'color: #8b8; font-weight: bold');
+        setTimeout(pollTestHeartbeat, pollSec * 1000);
+      } else {
+        pollTestHeartbeat();
+      }
 
       // Re-measure panel height for smooth animation
       const detail = document.getElementById('studyLaunchDetail');
@@ -6599,14 +6652,25 @@
     }
   }
 
-  function updateTestDashboard(data) {
+  function updateTestDashboard(data, { cache = true } = {}) {
     document.getElementById('metricTotalStarted').textContent = data.totalStarted ?? 0;
     document.getElementById('metricActiveParticipants').textContent = data.activeParticipants ?? 0;
     document.getElementById('metricTotalAssigned').textContent = data.totalAssigned ?? 0;
     document.getElementById('metricNextAssignment').textContent = data.nextAssignment ?? '—';
     document.getElementById('metricCurrentBlock').textContent = data.currentBlock ?? 0;
     document.getElementById('metricCurrentStage').textContent = data.currentStage ?? '—';
+    if (cache) {
+      try { localStorage.setItem('sb_dashboardCache', JSON.stringify(data)); } catch {}
+    }
   }
+
+  // Instant restore from cache on load
+  (function restoreDashboardCache() {
+    try {
+      const cached = localStorage.getItem('sb_dashboardCache');
+      if (cached) updateTestDashboard(JSON.parse(cached), { cache: false });
+    } catch {}
+  })();
 
   async function pollTestHeartbeat() {
     if (!testModeActive) return;

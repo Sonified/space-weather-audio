@@ -1069,11 +1069,12 @@ export default {
       const activityMatch = path.match(/^\/api\/study\/([^/]+)\/activity$/);
       if (activityMatch && request.method === 'GET') {
         const studyId = activityMatch[1];
-        // Normalize to SQLite format (D1 stores 'YYYY-MM-DD HH:MM:SS', no T/Z)
+        // Normalize since — strip to bare 'YYYY-MM-DD HH:MM:SS' so it compares directly with stored values
         const rawSince = url.searchParams.get('since') || new Date(Date.now() - 3600000).toISOString();
         const since = rawSince.replace('T', ' ').replace(/\.\d+Z$/, '').replace('Z', '');
-        const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10), 200);
+        const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10), 2000);
 
+        // Direct column comparison — no functions on columns, so indexes can be used
         const [participantRows, featureRows] = await Promise.all([
           env.DB.prepare(
             `SELECT participant_id, current_step, updated_at, registered_at, completed_at, last_event, 'participant' as source

@@ -173,9 +173,23 @@ function addStandaloneFeature(featureData) {
     saveStandaloneFeatures();
 
     // Real-time sync to D1
+    if (window.pm?.features) console.log(`%c[FEATURE] created #${standaloneFeatures.length} d1Id=${featureData.d1Id?.slice(0,8)} notes="${featureData.notes}"`, 'color: #f0a');
     if (isStudyMode()) saveFeatureToD1(featureData);
 
     return standaloneFeatures.length - 1;
+}
+
+/**
+ * Update a feature's fields, persist to localStorage + D1.
+ * Called by spectrogram-renderer when popup closes.
+ */
+export function updateFeature(featureIndex, updates) {
+    const f = standaloneFeatures[featureIndex];
+    if (!f) return;
+    Object.assign(f, updates);
+    saveStandaloneFeatures();
+    if (isStudyMode()) saveFeatureToD1(f);
+    if (window.pm?.features) console.log(`%c[FEATURE] updateFeature #${featureIndex+1} d1Id=${f.d1Id?.slice(0,8)} notes="${f.notes}" conf=${f.confidence} → D1`, 'color: #f0a; font-weight: bold');
 }
 
 /**
@@ -590,6 +604,7 @@ function formatFeatureButtonText(feature) {
  * Shows a simple flat list of features numbered sequentially
  */
 export function renderStandaloneFeaturesList() {
+    if (window.pm?.features) console.log(`%c[FEATURE] renderStandaloneFeaturesList() called — ${standaloneFeatures.length} features`, 'color: #f0a', new Error().stack.split('\n')[2]?.trim());
     const container = document.getElementById('regionsList');
     if (!container) return;
 
@@ -648,8 +663,15 @@ export function renderStandaloneFeaturesList() {
             this.blur();
         });
 
+        // Sync notes to object on every keystroke (so Proceed always has latest)
+        notesField.addEventListener('input', function() {
+            standaloneFeatures[idx].notes = this.value;
+            if (window.pm?.features) console.log(`%c[FEATURE] input #${idx+1} notes="${this.value}"`, 'color: #f0a');
+        });
+        // Save to localStorage + D1 on blur
         notesField.addEventListener('change', function() {
             standaloneFeatures[idx].notes = this.value;
+            if (window.pm?.features) console.log(`%c[FEATURE] change/blur #${idx+1} d1Id=${standaloneFeatures[idx].d1Id?.slice(0,8)} notes="${this.value}" → saving to D1`, 'color: #f0a; font-weight: bold');
             saveStandaloneFeatures();
             if (isStudyMode()) saveFeatureToD1(standaloneFeatures[idx]);
         });

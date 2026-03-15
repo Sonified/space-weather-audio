@@ -122,7 +122,7 @@ export function drawMinimapXAxis() {
     
     // Get CSS variables for styling
     const rootStyles = getComputedStyle(document.body);
-    const fontSize = rootStyles.getPropertyValue('--axis-label-font-size').trim() || '16px';
+    const fontSize = rootStyles.getPropertyValue('--axis-label-font-size').trim() || '14px';
     const labelColor = rootStyles.getPropertyValue('--axis-label-color').trim() || '#ddd';
     const tickColor = rootStyles.getPropertyValue('--axis-tick-color').trim() || '#888';
     
@@ -304,7 +304,7 @@ export function drawMinimapDate() {
     
     // Get CSS variables for styling
     const rootStyles = getComputedStyle(document.body);
-    const fontSize = rootStyles.getPropertyValue('--axis-label-font-size').trim() || '16px';
+    const fontSize = rootStyles.getPropertyValue('--axis-label-font-size').trim() || '14px';
     const labelColor = rootStyles.getPropertyValue('--axis-label-color').trim() || '#ddd';
     
     // Setup text styling - match x-axis style
