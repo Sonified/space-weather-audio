@@ -2924,6 +2924,8 @@ input[type="range"]:disabled {
     opacity: 0.7;
     pointer-events: auto;
     cursor: not-allowed;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 #completeBtn.ready {

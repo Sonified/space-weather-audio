@@ -111,9 +111,9 @@ export function drawFrequencyAxis() {
         return;
     }
 
-    // Only resize if dimensions changed (resizing clears the canvas, may cause flicker)
+    // Use display height (offsetHeight) not buffer height — matches minimap-axis-renderer pattern
     const spectrogramCanvas = document.getElementById('spectrogram');
-    const targetHeight = spectrogramCanvas ? spectrogramCanvas.height : canvas.height;
+    const targetHeight = spectrogramCanvas ? spectrogramCanvas.offsetHeight : canvas.height;
     if (canvas.width !== 60 || canvas.height !== targetHeight) {
         canvas.width = 60;
         canvas.height = targetHeight;
@@ -669,10 +669,11 @@ export function resizeAxisCanvas() {
     
     if (!spectrogramCanvas || !axisCanvas) return;
     
-    // Only resize if dimensions changed (resizing clears the canvas, may cause flicker)
-    if (axisCanvas.width !== 60 || axisCanvas.height !== spectrogramCanvas.height) {
+    // Use display height (offsetHeight) not buffer height
+    const targetHeight = spectrogramCanvas.offsetHeight;
+    if (axisCanvas.width !== 60 || axisCanvas.height !== targetHeight) {
         axisCanvas.width = 60;
-        axisCanvas.height = spectrogramCanvas.height;
+        axisCanvas.height = targetHeight;
     }
     
     // Reposition and redraw after resize
