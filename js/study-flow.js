@@ -1870,6 +1870,8 @@ async function runAnalysis(step) {
     if (overlay) {
         overlay.style.transition = 'opacity 0.3s ease-out';
         overlay.style.opacity = '0';
+        // Tell modalManager the modal is closed so confirmation modal works later
+        modalManager.currentModal = null;
         setTimeout(() => {
             overlay.style.display = 'none';
             // Clean up study modal after overlay fade completes
