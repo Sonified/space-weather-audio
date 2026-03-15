@@ -64,8 +64,26 @@ An
 ### NEEDS COLLABORATION / INPUT
 
 - [x] **C1.** Loading experience — title + controls fade in cleanly, no spinner needed (#1)
-- [ ] **C2.** Data pre-load optimization — start loading first example during welcome modals, progressive reveal when ready (#2)
-- [ ] **C3.** Background download of second dataset during first example + local cache for reload. Involves reviewing existing browser cache system (#3)
-- [ ] **C4.** Tutorial video integration + Help button placement — currently (i) in upper right, is that ideal? (#9)
+- [x] **C2.** Data pre-load optimization — start loading first example during welcome modals, progressive reveal when ready (#2)
+- [x] **C3.** Background download of second dataset during first example + local cache for reload. Involves reviewing existing browser cache system (#3)
+- [x] **C4.** Tutorial video integration + Help button placement — (i) now shows only during analysis sessions (#9)
 - [x] **C5.** Feature copy/paste system — copy individual or all text prompts from top bar, hold in memory, paste with options: cancel / replace existing / add to existing (#11)
-- [ ] **C6.** Card duplication feature (low priority) (#12)
+- [x] **C6.** Card duplication feature (low priority) (#12)
+
+
+### HOME STRETCH
+
+- [ ] **HS1.** Identify ideal settings for wavelet and Paul stretch algorithms
+- [ ] **HS2.** Generate wavelet-stretched audio at 1.25x speed for our two time regions and save to server — potentially use progressive chunking. Unique to our study, may not need full study builder integration. Must re-constitute audio perfectly locally.
+- [ ] **HS3.** Build deployment panel toward the bottom of study builder (above Data Stream) with settings like randomization for the two analysis sections
+- [ ] **HS4.** Add experimental conditions panel — map out each condition: which dataset, which order, which algorithm
+- [ ] **HS5.** Add participant randomization panel — options for random, block, and healing block. For healing block, include all settings from randomization-sim (algorithm settings only) using the preset from that page
+- [ ] **HS6.** Test flow on non-test pages — does it always re-start in the correct place?
+- [ ] **HS7.** Add study launch panel — options: start immediately, start on date/time, end date/time, or keep open-ended (figure out go-live system)
+- [ ] **HS8.** Option for doing a test round using data from test runs
+- [ ] **HS9.** Build participant data explorer page — list all participant data, view question answers + feature metadata, view responses on page, visual for the blocks. Button in study builder to launch it.
+- [ ] **HS10.** Fill blocks with randomization-sim
+- [ ] **HS11.** Test filling blocks live — hover over blocks for info, click to bring up data
+- [ ] **HS12.** Final polish round for self-healing block algorithm — when a simultaneous batch interrupts a heal round (cap hit → spill to walking), the heal round is currently *terminated*. If any of the simultaneous assignments fail (dropout), those failures create new incompletes on a block that was already being healed. Fix: treat the heal round as *paused*, not terminated. After superposition resolves, check if any batch members on that block failed — if so, return the pointer to where it was in the heal round and continue healing instead of walking forward. The algorithm should never walk away from a block it knows is still broken.
+- [ ] **HS13.** Implement live simultaneous participant tracking — heartbeat system + smart timeout estimation for concurrent participants (from randomization-sim logic into production)
+- [ ] **HS14.** Confirm randomization-sim is correctly assigning participants end-to-end

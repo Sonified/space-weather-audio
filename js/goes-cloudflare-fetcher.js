@@ -1,14 +1,12 @@
 // ⚠️ When in any doubt, use Edit to surgically fix mistakes — never git checkout this file.
-// ========== GOES CLOUDFLARE PROGRESSIVE FETCHER ==========
-// Fetches pre-chunked GOES magnetometer data from Cloudflare R2
-// with tiered progressive streaming: 15m → 1h → 6h → 24h
+// ========== GOES CLOUDFLARE FETCHER ==========
+// Decomposed into two layers:
+//   1. Download Engine — fetches chunks, decompresses, caches to IndexedDB
+//   2. Render Pipeline — subscribes to download engine, feeds worklet + spectrogram
 //
-// Mirrors the volcano progressive pipeline in data-fetcher.js:
-//   1. Set up state/axes BEFORE downloading (time range is known)
-//   2. Download chunks sequentially, decompress with fzstd, normalize
-//   3. Feed each chunk to worklet + waveform worker progressively
-//   4. First chunk triggers immediate playback
-//   5. At completion: stitch, startCompleteVisualization, cleanup
+// The download engine runs as a "session" that the render pipeline can attach to
+// mid-stream. Preload starts a session silently; when analysis begins, it attaches
+// a renderer that replays cached chunks instantly and streams the rest live.
 
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
@@ -22,6 +20,8 @@ import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas } from './spectrog
 import { renderProgressiveSpectrogram, resetProgressiveSpectrogram } from './main-window-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { updateCompleteButtonState, loadRegionsAfterDataFetch } from './feature-tracker.js';
+import { storeChunk, getChunk } from './goes-data-cache.js';
+
 const WORKER_BASE = 'https://spaceweather.now.audio/emic';
 const INSTRUMENT_SAMPLE_RATE = 10; // Hz — GOES mag high-res cadence
 
@@ -39,7 +39,7 @@ const COMPONENT_MAP = ['bx', 'by', 'bz'];
 // =============================================================================
 
 let fzstdModule = null;
-let activeAbortController = null; // cancels in-flight download when a new one starts
+let activeAbortController = null; // cancels in-flight render pipeline
 
 async function ensureFzstd() {
     if (fzstdModule) return fzstdModule;
@@ -240,25 +240,285 @@ function buildChunkSchedule(startTime, endTime, allDayMetadata, satellite, compo
 }
 
 // =============================================================================
-// Main entry point — Progressive streaming pipeline
+// Download Session System
 // =============================================================================
+//
+// A download session fetches chunks from R2, decompresses them, normalizes them,
+// and caches raw data to IndexedDB. A renderer can attach at any time —
+// already-downloaded chunks replay instantly, future chunks stream live.
+
+const activeSessions = new Map();
+
+function sessionKey(spacecraft, dataset, startTime, endTime) {
+    return `${spacecraft}_${dataset}_${startTime}_${endTime}`;
+}
 
 /**
- * Fetch GOES data from Cloudflare R2 with progressive streaming.
- * Mirrors the volcano progressive pipeline in data-fetcher.js:
- *   - State/axes set up BEFORE downloading
- *   - Each chunk feeds audio worklet + waveform worker progressively
- *   - First chunk triggers immediate playback
- *   - Spectrogram renders after all data via startCompleteVisualization()
+ * Get an existing download session or create a new one.
+ * If a session exists for this exact data range, returns it (may be in-progress or done).
+ */
+export function getOrCreateDownloadSession(spacecraft, dataset, startTimeISO, endTimeISO) {
+    const key = sessionKey(spacecraft, dataset, startTimeISO, endTimeISO);
+    const existing = activeSessions.get(key);
+    if (existing && !existing.abortController.signal.aborted) {
+        if (window.pm?.data) console.log(`📦 [SESSION] Reusing existing session: ${key} (${existing.completedCount}/${existing.chunkSchedule?.length || '?'} chunks done)`);
+        return existing;
+    }
+    return createDownloadSession(spacecraft, dataset, startTimeISO, endTimeISO);
+}
+
+function createDownloadSession(spacecraft, dataset, startTimeISO, endTimeISO) {
+    const key = sessionKey(spacecraft, dataset, startTimeISO, endTimeISO);
+
+    let metadataResolve;
+    const metadataPromise = new Promise(r => { metadataResolve = r; });
+
+    const session = {
+        key,
+        spacecraft, dataset, startTimeISO, endTimeISO,
+        chunkSchedule: null,
+        metadata: null,
+        metadataPromise,
+        metadataResolve,
+        processedChunks: [],   // { normalized, raw } per chunk index
+        completedCount: 0,
+        done: false,
+        renderer: null,        // attached by render pipeline
+        rendererStartIndex: 0, // download loop only notifies for chunks >= this
+        abortController: new AbortController(),
+        promise: null,
+        totalBytesDownloaded: 0,
+    };
+
+    session.promise = runDownloadSession(session);
+    activeSessions.set(key, session);
+
+    if (window.pm?.data) console.log(`📦 [SESSION] Created new session: ${key}`);
+    return session;
+}
+
+/**
+ * Attach a renderer to a session.
+ * Replays all already-downloaded chunks through onChunkReady,
+ * then sets the renderer so future chunks stream live.
+ */
+async function attachRendererToSession(session, callbacks) {
+    const catchUpTo = session.completedCount;
+    session.rendererStartIndex = catchUpTo;
+    session.renderer = callbacks;
+
+    if (window.pm?.data) console.log(`🎨 [RENDER] Attaching renderer — replaying ${catchUpTo} cached chunks`);
+
+    // Replay all already-downloaded chunks
+    for (let i = 0; i < catchUpTo; i++) {
+        const chunk = session.processedChunks[i];
+        if (chunk) {
+            callbacks.onChunkReady(i, chunk.normalized, chunk.raw);
+        }
+    }
+
+    // If session already done, fire completion immediately
+    if (session.done) {
+        if (window.pm?.data) console.log(`🎨 [RENDER] Session already complete — firing onComplete`);
+        await callbacks.onComplete();
+    }
+}
+
+/**
+ * Core download engine. Runs the session: fetches metadata, builds chunk schedule,
+ * downloads + decompresses + normalizes + caches each chunk.
+ */
+async function runDownloadSession(session) {
+    const { abortController, startTimeISO, endTimeISO } = session;
+    const signal = abortController.signal;
+
+    try {
+        // Load fzstd for zstd decompression
+        const zstd = await ensureFzstd();
+        if (signal.aborted) return;
+
+        // Determine satellite and component
+        const satellite = DATASET_TO_SATELLITE[session.dataset] || 'GOES-16';
+        const componentIdx = parseInt(document.getElementById('componentSelector')?.value || '0');
+        const component = COMPONENT_MAP[componentIdx] || 'bx';
+
+        if (window.pm?.data) console.log(`📦 [SESSION] Satellite: ${satellite}, Component: ${component}`);
+
+        // Fetch metadata for all days
+        const allDayMetadata = await fetchAllDayMetadata(
+            startTimeISO, endTimeISO, satellite, component, signal
+        );
+        if (signal.aborted) return;
+
+        const validMetadata = allDayMetadata.filter(m => m !== null);
+        if (validMetadata.length === 0) {
+            throw new Error('No metadata available for any day in the requested range');
+        }
+
+        // Build tiered chunk schedule
+        const startDate = new Date(startTimeISO);
+        const endDate = new Date(endTimeISO);
+        const chunkSchedule = buildChunkSchedule(startDate, endDate, allDayMetadata, satellite, component);
+
+        if (chunkSchedule.length === 0) {
+            throw new Error('No chunks available for this time range');
+        }
+
+        // Calculate total expected samples and global normalization range
+        let totalExpectedSamples = 0;
+        let normMin = Infinity;
+        let normMax = -Infinity;
+        for (const chunk of chunkSchedule) {
+            totalExpectedSamples += chunk.samples;
+            if (chunk.min < normMin) normMin = chunk.min;
+            if (chunk.max > normMax) normMax = chunk.max;
+        }
+        const normRange = normMax - normMin;
+
+        const realWorldSpanSeconds = (endDate - startDate) / 1000;
+        const playbackSamplesPerRealSecond = totalExpectedSamples / realWorldSpanSeconds;
+
+        // Store metadata on session and resolve the promise
+        session.chunkSchedule = chunkSchedule;
+        session.metadata = {
+            satellite, component, normMin, normMax, normRange,
+            totalExpectedSamples, startDate, endDate,
+            realWorldSpanSeconds,
+            instrumentNyquist: INSTRUMENT_SAMPLE_RATE / 2,
+            playbackSamplesPerRealSecond,
+        };
+        session.metadataResolve(session.metadata);
+
+        if (window.pm?.data) {
+            console.log(`📦 [SESSION] Metadata ready: ${chunkSchedule.length} chunks, ${totalExpectedSamples.toLocaleString()} samples`);
+            console.log(`📦 [SESSION] Normalization range: ${normMin.toFixed(2)} → ${normMax.toFixed(2)}`);
+        }
+
+        // =====================================================================
+        // Sequential chunk download loop
+        // =====================================================================
+
+        for (let i = 0; i < chunkSchedule.length; i++) {
+            if (signal.aborted) return;
+            const chunk = chunkSchedule[i];
+
+            let rawSamples;
+
+            if (chunk.isMissing || !chunk.url) {
+                // Missing chunk — zeros
+                rawSamples = new Float32Array(chunk.samples);
+            } else {
+                // Check IndexedDB cache first
+                const cached = await getChunk(satellite, component, chunk.date, chunk.type, chunk.startTime);
+                if (cached) {
+                    rawSamples = cached;
+                    if (window.pm?.data) console.log(`💾 [CACHE HIT] chunk ${i + 1}/${chunkSchedule.length} [${chunk.type}]`);
+                } else {
+                    // Fetch from R2
+                    try {
+                        const resp = await fetch(chunk.url, { signal });
+                        if (!resp.ok) {
+                            console.warn(`⚠️ Chunk ${i + 1}/${chunkSchedule.length} failed: ${resp.status} — filling zeros`);
+                            rawSamples = new Float32Array(chunk.samples);
+                        } else {
+                            const compressed = new Uint8Array(await resp.arrayBuffer());
+                            session.totalBytesDownloaded += compressed.byteLength;
+
+                            // Decompress zstd → raw Float32Array
+                            const decompressed = zstd.decompress(compressed);
+                            rawSamples = new Float32Array(
+                                decompressed.buffer,
+                                decompressed.byteOffset,
+                                decompressed.byteLength / 4
+                            );
+
+                            // Cache for next time (fire-and-forget)
+                            storeChunk(satellite, component, chunk.date, chunk.type, chunk.startTime, rawSamples).catch(() => {});
+
+                            if (window.pm?.data) console.log(`☁️ [DOWNLOAD] chunk ${i + 1}/${chunkSchedule.length} [${chunk.type}]: ${(compressed.byteLength / 1024).toFixed(1)} KB → ${rawSamples.length.toLocaleString()} samples`);
+                        }
+                    } catch (e) {
+                        if (signal.aborted) return;
+                        console.warn(`⚠️ Chunk ${i + 1}/${chunkSchedule.length} error: ${e.message} — filling zeros`);
+                        rawSamples = new Float32Array(chunk.samples);
+                    }
+                }
+            }
+
+            // Normalize to [-1, 1] using global min/max
+            const normalized = new Float32Array(rawSamples.length);
+            if (normRange > 0) {
+                for (let s = 0; s < rawSamples.length; s++) {
+                    normalized[s] = 2 * (rawSamples[s] - normMin) / normRange - 1;
+                }
+            }
+
+            // Store on session
+            session.processedChunks[i] = { normalized, raw: rawSamples };
+            session.completedCount = i + 1;
+
+            // Notify renderer if attached (only for chunks past the replay point)
+            if (session.renderer && i >= session.rendererStartIndex) {
+                session.renderer.onChunkReady(i, normalized, rawSamples);
+            }
+
+            // Yield to browser event loop
+            await new Promise(r => setTimeout(r, 0));
+        }
+
+        if (signal.aborted) return;
+
+        // All chunks downloaded
+        session.done = true;
+        if (window.pm?.data) {
+            const dl = session.totalBytesDownloaded;
+            console.log(`📦 [SESSION] Complete: ${chunkSchedule.length} chunks, ${dl ? (dl / 1024 / 1024).toFixed(2) + ' MB downloaded' : 'all from cache'}`);
+        }
+
+        // Notify renderer of completion
+        if (session.renderer?.onComplete) {
+            await session.renderer.onComplete();
+        }
+
+    } catch (e) {
+        if (e.name === 'AbortError') {
+            if (window.pm?.data) console.log('📦 [SESSION] Aborted');
+            return;
+        }
+        throw e;
+    }
+}
+
+/**
+ * Prefetch data without rendering. Used by study preload queue.
+ * Creates a download session that fetches + caches all chunks silently.
+ */
+export async function prefetchCloudflareData(spacecraft, dataset, startTimeISO, endTimeISO) {
+    if (window.pm?.data) console.log(`📦 [PREFETCH] Starting silent prefetch: ${spacecraft} ${dataset} ${startTimeISO} → ${endTimeISO}`);
+    const session = getOrCreateDownloadSession(spacecraft, dataset, startTimeISO, endTimeISO);
+    return session.promise;
+}
+
+// =============================================================================
+// Render Pipeline — subscribes to a download session
+// =============================================================================
+//
+// fetchAndLoadCloudflareData sets up audio state, axes, and worklet,
+// then attaches renderer callbacks to a download session. Chunks that
+// were preloaded replay instantly; the rest stream live.
+
+/**
+ * Full fetch + render pipeline. Gets or creates a download session,
+ * sets up the render environment, and attaches renderer callbacks.
  */
 export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeISO, endTimeISO) {
-    // Cancel any in-flight download
+    // Cancel any in-flight render pipeline (NOT prefetch sessions — those continue)
     if (activeAbortController) {
         activeAbortController.abort();
-        if (window.pm?.data) console.log('☁️ [CLOUDFLARE] Cancelled previous download');
+        if (window.pm?.data) console.log('🎨 [RENDER] Cancelled previous render pipeline');
     }
     activeAbortController = new AbortController();
-    const abortSignal = activeAbortController.signal;
+    const renderSignal = activeAbortController.signal;
 
     try {
 
@@ -271,74 +531,40 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     }
 
     if (window.pm?.data) {
-        console.log(`☁️ [CLOUDFLARE] Progressive fetch: ${spacecraft} ${dataset}`);
-        console.log(`☁️ ${logTime()} Time range: ${startTimeISO} → ${endTimeISO}`);
+        console.log(`🎨 [RENDER] Starting render pipeline: ${spacecraft} ${dataset}`);
+        console.log(`🎨 ${logTime()} Time range: ${startTimeISO} → ${endTimeISO}`);
     }
 
-    // Determine satellite and component
-    const satellite = DATASET_TO_SATELLITE[dataset] || 'GOES-16';
-    const componentIdx = parseInt(document.getElementById('componentSelector')?.value || '0');
-    const component = COMPONENT_MAP[componentIdx] || 'bx';
+    // =========================================================================
+    // Get or create download session — may already be running from preload
+    // =========================================================================
 
-    if (window.pm?.data) console.log(`☁️ Satellite: ${satellite}, Component: ${component}`);
+    const session = getOrCreateDownloadSession(spacecraft, dataset, startTimeISO, endTimeISO);
 
-    // Step 1: Load fzstd for zstd decompression
+    // Wait for session metadata (resolves instantly if preload already fetched it)
     const silentEarly = document.getElementById('silentDownload')?.checked;
-    if (statusEl && !silentEarly) statusEl.textContent = 'Loading decompression library...';
-    const zstd = await ensureFzstd();
-    if (window.pm?.data) console.log(`✅ ${logTime()} fzstd loaded`);
+    if (statusEl && !silentEarly) statusEl.textContent = 'Preparing data...';
+    await session.metadataPromise;
 
-    // Step 2: Fetch metadata for all days
-    const startDate = new Date(startTimeISO);
-    const endDate = new Date(endTimeISO);
+    if (renderSignal.aborted) return;
 
-    if (statusEl && !silentEarly) statusEl.textContent = 'Fetching chunk metadata...';
-    const allDayMetadata = await fetchAllDayMetadata(
-        startTimeISO, endTimeISO, satellite, component, abortSignal
-    );
-
-    const validMetadata = allDayMetadata.filter(m => m !== null);
-    if (validMetadata.length === 0) {
-        throw new Error('No metadata available for any day in the requested range');
-    }
-    if (window.pm?.data) console.log(`✅ ${logTime()} Metadata loaded: ${validMetadata.length} days`);
-
-    // Step 3: Build tiered chunk schedule
-    const chunkSchedule = buildChunkSchedule(startDate, endDate, allDayMetadata, satellite, component);
-
-    if (chunkSchedule.length === 0) {
-        throw new Error('No chunks available for this time range');
-    }
-
-    // Calculate total expected samples and global min/max for normalization
-    let totalExpectedSamples = 0;
-    let normMin = Infinity;
-    let normMax = -Infinity;
-    for (const chunk of chunkSchedule) {
-        totalExpectedSamples += chunk.samples;
-        if (chunk.min < normMin) normMin = chunk.min;
-        if (chunk.max > normMax) normMax = chunk.max;
-    }
-    const normRange = normMax - normMin;
+    const { satellite, component, normMin, normMax, normRange,
+            totalExpectedSamples, startDate, endDate,
+            realWorldSpanSeconds, instrumentNyquist,
+            playbackSamplesPerRealSecond } = session.metadata;
+    const chunkSchedule = session.chunkSchedule;
 
     if (window.pm?.data) {
-        console.log(`📊 ${logTime()} Expected: ${totalExpectedSamples.toLocaleString()} samples (${(totalExpectedSamples / INSTRUMENT_SAMPLE_RATE / 3600).toFixed(1)}h at ${INSTRUMENT_SAMPLE_RATE}Hz)`);
-        console.log(`📊 Normalization range: ${normMin.toFixed(2)} → ${normMax.toFixed(2)}`);
+        console.log(`🎨 ${logTime()} Metadata ready (${session.completedCount}/${chunkSchedule.length} chunks already cached)`);
     }
 
     // =========================================================================
-    // Step 4: Set up state/axes BEFORE downloading (we know the full time range)
-    // This mirrors the volcano pipeline — axes, metadata, and duration are set
-    // early so the UI is ready for progressive data as it arrives.
+    // State/axes setup — identical to previous implementation
     // =========================================================================
-
-    const realWorldSpanSeconds = (endDate - startDate) / 1000;
-    const playbackSamplesPerRealSecond = totalExpectedSamples / realWorldSpanSeconds;
-    const instrumentNyquist = INSTRUMENT_SAMPLE_RATE / 2;
 
     // Set metadata (used by axes, playback speed, etc.)
     State.setCurrentMetadata({
-        playback_sample_rate: 44100, // nominal — worklet outputs at AudioContext rate
+        playback_sample_rate: 44100,
         playback_total_samples: totalExpectedSamples,
         playback_samples_per_real_second: playbackSamplesPerRealSecond,
         startTime: startTimeISO,
@@ -386,13 +612,13 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
         }
     }
 
-    // Position axis canvases (layout only — no visible ticks yet if triggered)
+    // Position axis canvases
     positionAxisCanvas();
     positionMinimapXAxisCanvas();
     positionSpectrogramXAxisCanvas();
     positionMinimapDateCanvas();
 
-    // Draw axis ticks — skip in triggered mode (they'll draw when rendering starts)
+    // Draw axis ticks — skip in triggered mode
     const initRenderMode = document.getElementById('dataRendering')?.value || 'progressive';
     if (initRenderMode !== 'triggered') {
         initializeAxisPlaybackRate();
@@ -411,80 +637,74 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     }
 
     // =========================================================================
-    // Step 5: Progressive download + decompress + feed
-    // Each chunk is fetched sequentially, decompressed with fzstd, normalized,
-    // then fed to the audio worklet and waveform worker progressively.
+    // Progressive rendering state
     // =========================================================================
 
     const processedChunks = [];
     let chunksReceived = 0;
     let playbackTriggered = false;
     let totalSamplesSentToWorklet = 0;
-    const BUFFER_THRESHOLD = 44100; // ~1 second at 44.1kHz — enough buffer before starting playback
+    const BUFFER_THRESHOLD = 44100;
     let spectrogramRenderInProgress = false;
-    // Data rendering mode: progressive | onComplete | triggered
-    // Read live from dropdown so mid-download changes take effect immediately
     const dataRenderingEl = document.getElementById('dataRendering');
     let renderTriggered = false;
     window.triggerDataRender = () => { renderTriggered = true; };
-    let totalBytesDownloaded = 0;
-    const progressiveT0 = performance.now();
     let lastRenderTime = 0;
     const RENDER_THROTTLE_MS = 100;
     let lastMinimapFFTTime = 0;
     const MINIMAP_FFT_THROTTLE_MS = 100;
 
-    // Running buffer: grows as chunks arrive, avoids full rebuild every render
+    // Running buffer: grows as chunks arrive
     let progressiveSamplesBuffer = null;
     let progressiveSamplesOffset = 0;
     let progressiveBufferChunkIndex = 0;
 
-    // Reset progressive spectrogram state for new load
+    // Reset progressive spectrogram state
     resetProgressiveSpectrogram();
 
     // Initialize worklet data tracking
     State.setAllReceivedData([]);
 
-    // Track ordered sending to worklet (mirrors volcano's sendChunksInOrder)
+    // Track ordered sending to worklet
     let nextChunkToSend = 0;
     let nextWaveformChunk = 0;
 
-    // WORKLET_CHUNK_SIZE matches the volcano pipeline
     const WORKLET_CHUNK_SIZE = 1024;
-
-    // Smooth boundary samples (eliminates clicks between real data and silence)
     const SMOOTH_SAMPLES = 1000;
 
-    // Set first-play flag BEFORE any audio data reaches the worklet
-    // This ensures the worklet uses a long 250ms fade-in on first playback
+    // Set first-play flag and sample rate on worklet
     if (State.workletNode) {
         State.workletNode.port.postMessage({ type: 'set-first-play-flag' });
-        // CRITICAL: Set sample rate early so position reports are correct from the start.
-        // Default is 100 Hz — GOES uses playbackSamplesPerRealSecond (≈10 Hz).
-        // Without this, positionSeconds = totalSamplesConsumed/100 instead of /10,
-        // causing the playhead to move 10x too slowly during progressive loading.
         State.workletNode.port.postMessage({
             type: 'set-sample-rate',
             sampleRate: playbackSamplesPerRealSecond,
         });
     }
 
+    // Kill the dot-animation interval
+    if (State.loadingInterval) {
+        clearInterval(State.loadingInterval);
+        State.setLoadingInterval(null);
+    }
+
+    const silentDownload = document.getElementById('silentDownload')?.checked;
+
+    // =========================================================================
+    // Render helper functions (closures over local state)
+    // =========================================================================
+
     /**
      * Grow the running samples buffer with newly sent chunks.
-     * Instead of rebuilding from ALL chunks every render, we pre-allocate
-     * for totalExpectedSamples and append as chunks arrive.
      */
     function growProgressiveBuffer() {
         if (!progressiveSamplesBuffer) {
             progressiveSamplesBuffer = new Float32Array(totalExpectedSamples || 1024 * 1024);
         }
-        // Append any new chunks from allReceivedData that we haven't copied yet
         const chunks = State.allReceivedData;
         while (progressiveBufferChunkIndex < chunks.length) {
             const chunk = chunks[progressiveBufferChunkIndex];
             if (chunk) {
                 if (progressiveSamplesOffset + chunk.length > progressiveSamplesBuffer.length) {
-                    // Rare: buffer too small, resize
                     const newBuf = new Float32Array(Math.max(progressiveSamplesBuffer.length * 2, progressiveSamplesOffset + chunk.length));
                     newBuf.set(progressiveSamplesBuffer);
                     progressiveSamplesBuffer = newBuf;
@@ -498,8 +718,7 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     }
 
     /**
-     * Send chunks to worklet in temporal order, maintaining ordering guarantee.
-     * Mirrors sendChunksInOrder() from data-fetcher.js volcano pipeline.
+     * Send chunks to worklet in temporal order.
      */
     function sendChunksInOrder() {
         while (processedChunks[nextChunkToSend]) {
@@ -542,12 +761,10 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
                 const size = Math.min(WORKLET_CHUNK_SIZE, samples.length - i);
                 const workletChunk = samples.slice(i, i + size);
 
-                // autoResume: only resume if already playing (buffer underrun recovery)
-                // Never auto-START — that's controlled by the autoPlay checkbox path above
                 const userPaused = State.playbackState === PlaybackState.PAUSED;
                 const isPlaying = State.playbackState === PlaybackState.PLAYING;
 
-                if (abortSignal.aborted) return;
+                if (renderSignal.aborted) return;
                 if (!State.workletNode) return;
                 State.workletNode.port.postMessage({
                     type: 'audio-data',
@@ -558,11 +775,10 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
                 State.allReceivedData.push(workletChunk);
                 totalSamplesSentToWorklet += size;
 
-                // Start playback when buffer threshold reached (not on first chunk)
+                // Start playback when buffer threshold reached
                 if (!playbackTriggered && totalSamplesSentToWorklet >= BUFFER_THRESHOLD) {
                     playbackTriggered = true;
-                    const ttfa = performance.now() - progressiveT0;
-                    if (window.pm?.audio) console.log(`⚡ BUFFER THRESHOLD reached (${totalSamplesSentToWorklet.toLocaleString()} samples) in ${ttfa.toFixed(0)}ms`);
+                    if (window.pm?.audio) console.log(`⚡ BUFFER THRESHOLD reached (${totalSamplesSentToWorklet.toLocaleString()} samples)`);
 
                     const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
                     const autoPlayEnabled = !isSharedSession && document.getElementById('autoPlay')?.checked;
@@ -614,7 +830,7 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
             nextChunkToSend++;
         }
 
-        // Progressive memory cleanup: free chunks already sent to both worklet and waveform worker
+        // Progressive memory cleanup
         for (let i = 0; i < nextChunkToSend; i++) {
             if (processedChunks[i] && processedChunks[i].samples !== null && i < nextWaveformChunk) {
                 processedChunks[i].samples = null;
@@ -659,314 +875,272 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     }
 
     // =========================================================================
-    // Step 6: Sequential chunk download loop
+    // Renderer callbacks — attached to the download session
     // =========================================================================
 
-    // Kill the dot-animation interval from main.js so it doesn't fight with chunk status
-    if (State.loadingInterval) {
-        clearInterval(State.loadingInterval);
-        State.setLoadingInterval(null);
-    }
+    const rendererCallbacks = {
+        /**
+         * Called for each chunk (from replay or live download).
+         * Feeds worklet, waveform worker, and progressive spectrogram.
+         */
+        onChunkReady: (i, normalized, raw) => {
+            if (renderSignal.aborted) return;
 
-    const silentDownload = document.getElementById('silentDownload')?.checked;
+            const chunk = chunkSchedule[i];
+            const progress = `${i + 1}/${chunkSchedule.length}`;
 
-    for (let i = 0; i < chunkSchedule.length; i++) {
-        if (abortSignal.aborted) return;
-        const chunk = chunkSchedule[i];
-        const progress = `${i + 1}/${chunkSchedule.length}`;
+            if (statusEl && !silentDownload) {
+                statusEl.textContent = `Loading chunk ${progress} (${chunk.date} ${chunk.startTime})...`;
+            }
 
-        if (statusEl && !silentDownload) {
-            statusEl.textContent = `Fetching chunk ${progress} from Cloudflare (${chunk.date} ${chunk.startTime})...`;
-        }
+            // Store for ordered worklet/waveform feeding
+            processedChunks[i] = { samples: normalized, rawSamples: raw };
+            chunksReceived++;
 
-        let samples, rawSamples;
+            // Feed to worklet (audio playback)
+            sendChunksInOrder();
 
-        if (chunk.url && !chunk.isMissing) {
-            try {
-                const resp = await fetch(chunk.url, { signal: abortSignal });
-                if (!resp.ok) {
-                    console.warn(`⚠️ Chunk ${progress} failed: ${resp.status} — filling zeros`);
-                    const zeroSamples = new Float32Array(chunk.samples);
-                    samples = zeroSamples;
-                    rawSamples = zeroSamples;
-                } else {
-                    const compressed = new Uint8Array(await resp.arrayBuffer());
-                    totalBytesDownloaded += compressed.byteLength;
+            // Feed to waveform worker (progressive waveform drawing)
+            const renderMode = dataRenderingEl?.value || 'progressive';
+            const allowMidStreamRender = renderMode === 'progressive' || (renderMode === 'triggered' && renderTriggered);
+            if (allowMidStreamRender) sendToWaveformInOrder();
 
-                    // Decompress zstd → raw Float32Array
-                    const decompressed = zstd.decompress(compressed);
-                    rawSamples = new Float32Array(
-                        decompressed.buffer,
-                        decompressed.byteOffset,
-                        decompressed.byteLength / 4
-                    );
+            // Progressive spectrogram render (throttled)
+            const now = performance.now();
+            const shouldRender = allowMidStreamRender && (now - lastRenderTime) >= RENDER_THROTTLE_MS;
 
-                    // Normalize to [-1, 1] using global min/max
-                    samples = new Float32Array(rawSamples.length);
-                    if (normRange > 0) {
-                        for (let s = 0; s < rawSamples.length; s++) {
-                            samples[s] = 2 * (rawSamples[s] - normMin) / normRange - 1;
-                        }
+            if (shouldRender) {
+                lastRenderTime = now;
+                const partialSamples = growProgressiveBuffer();
+                const shouldDoMinimapFFT = (now - lastMinimapFFTTime) >= MINIMAP_FFT_THROTTLE_MS;
+                if (shouldDoMinimapFFT) lastMinimapFFTTime = now;
+
+                if (!spectrogramRenderInProgress && partialSamples) {
+                    spectrogramRenderInProgress = true;
+                    renderProgressiveSpectrogram(partialSamples, { skipMinimapFFT: !shouldDoMinimapFFT })
+                        .catch(e => console.warn('Progressive spectrogram failed:', e))
+                        .finally(() => { spectrogramRenderInProgress = false; });
+                }
+            }
+
+            // Update download size display
+            if (!silentDownload) {
+                const downloadSizeEl = document.getElementById('downloadSize');
+                if (downloadSizeEl) {
+                    downloadSizeEl.textContent = `${(session.totalBytesDownloaded / 1024 / 1024).toFixed(2)} MB`;
+                }
+            }
+        },
+
+        /**
+         * Called when all chunks are downloaded and processed.
+         * Handles final render, memory cleanup, and UI updates.
+         */
+        onComplete: async () => {
+            if (renderSignal.aborted) return;
+
+            // Fallback playback trigger for short time ranges
+            if (!playbackTriggered && totalSamplesSentToWorklet > 0) {
+                playbackTriggered = true;
+                if (window.pm?.data) console.log(`⚡ FALLBACK: All chunks received (${totalSamplesSentToWorklet.toLocaleString()} samples < threshold ${BUFFER_THRESHOLD}) — starting playback now`);
+
+                const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
+                const autoPlayEnabled = !isSharedSession && document.getElementById('autoPlay')?.checked;
+
+                if (autoPlayEnabled && State.workletNode) {
+                    State.workletNode.port.postMessage({ type: 'start-immediately' });
+                    State.setPlaybackState(PlaybackState.PLAYING);
+
+                    if (State.gainNode && State.audioContext) {
+                        const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
+                        State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
+                        State.gainNode.gain.setValueAtTime(0.0001, State.audioContext.currentTime);
+                        State.gainNode.gain.exponentialRampToValueAtTime(
+                            Math.max(0.01, targetVolume),
+                            State.audioContext.currentTime + 0.05
+                        );
                     }
 
-                    if (window.pm?.data) console.log(`✅ ${logTime()} Chunk ${progress} [${chunk.type}]: ${(compressed.byteLength / 1024).toFixed(1)} KB → ${rawSamples.length.toLocaleString()} samples`);
+                    State.setCurrentAudioPosition(0);
+                    State.setLastWorkletPosition(0);
+                    State.setLastWorkletUpdateTime(State.audioContext.currentTime);
+                    State.setLastUpdateTime(State.audioContext.currentTime);
+
+                    const playPauseBtn = document.getElementById('playPauseBtn');
+                    if (playPauseBtn) {
+                        playPauseBtn.disabled = false;
+                        playPauseBtn.textContent = '⏸️ Pause';
+                        playPauseBtn.classList.remove('play-active', 'pulse-play', 'pulse-resume', 'pulse-attention');
+                        playPauseBtn.classList.add('pause-active');
+                    }
+
+                    startPlaybackIndicator();
+                } else {
+                    State.setPlaybackState(PlaybackState.STOPPED);
+                    const playPauseBtn = document.getElementById('playPauseBtn');
+                    if (playPauseBtn) {
+                        playPauseBtn.disabled = false;
+                        playPauseBtn.textContent = '▶️ Play';
+                        playPauseBtn.classList.remove('pause-active');
+                        playPauseBtn.classList.add('play-active');
+                    }
+                    if (isSharedSession) {
+                        playPauseBtn?.classList.add('pulse-attention');
+                    }
                 }
-            } catch (e) {
-                if (abortSignal.aborted) return;
-                console.warn(`⚠️ Chunk ${progress} error: ${e.message} — filling zeros`);
-                const zeroSamples = new Float32Array(chunk.samples);
-                samples = zeroSamples;
-                rawSamples = zeroSamples;
             }
-        } else {
-            // Missing chunk — zeros
-            const zeroSamples = new Float32Array(chunk.samples);
-            samples = zeroSamples;
-            rawSamples = zeroSamples;
-        }
 
-        // Store processed chunk
-        processedChunks[i] = { samples, rawSamples };
-        chunksReceived++;
-
-        // Feed to worklet in order (audio playback)
-        sendChunksInOrder();
-
-        // Feed to waveform worker in order (progressive waveform drawing)
-        // Respect rendering mode — don't draw waveform until triggered
-        const renderMode = dataRenderingEl?.value || 'progressive';
-        const allowMidStreamRender = renderMode === 'progressive' || (renderMode === 'triggered' && renderTriggered);
-        if (allowMidStreamRender) sendToWaveformInOrder();
-
-        // Throttle visual rendering so the audio worklet gets CPU/GPU breathing room
-        // Rendering mode: progressive (always), onComplete (skip mid-stream), triggered (wait for trigger then progressive)
-        const now = performance.now();
-        const shouldRender = allowMidStreamRender && (now - lastRenderTime) >= RENDER_THROTTLE_MS;
-
-        if (shouldRender) {
-            lastRenderTime = now;
-
-            // Grow running buffer (cheap append, no full rebuild)
-            const partialSamples = growProgressiveBuffer();
-
-            // Minimap FFT is expensive (full rebuild from scratch) — throttle separately
-            const shouldDoMinimapFFT = (now - lastMinimapFFTTime) >= MINIMAP_FFT_THROTTLE_MS;
-            if (shouldDoMinimapFFT) lastMinimapFFTTime = now;
-
-            if (!spectrogramRenderInProgress && partialSamples) {
-                spectrogramRenderInProgress = true;
-                renderProgressiveSpectrogram(partialSamples, { skipMinimapFFT: !shouldDoMinimapFFT })
-                    .catch(e => console.warn('Progressive spectrogram failed:', e))
-                    .finally(() => { spectrogramRenderInProgress = false; });
+            // Wait for any in-progress spectrogram render
+            if (spectrogramRenderInProgress) {
+                await new Promise(resolve => {
+                    const check = setInterval(() => {
+                        if (!spectrogramRenderInProgress) { clearInterval(check); resolve(); }
+                    }, 50);
+                });
             }
-        }
 
-        // Update download size display
-        if (!silentDownload) {
-            const downloadSizeEl = document.getElementById('downloadSize');
-            if (downloadSizeEl) {
-                downloadSizeEl.textContent = `${(totalBytesDownloaded / 1024 / 1024).toFixed(2)} MB`;
+            if (window.pm?.data) console.log(`🎨 [RENDER] All ${chunkSchedule.length} chunks processed`);
+
+            // Calculate total from worklet data
+            const totalWorkletSamples = State.allReceivedData.reduce((sum, c) => sum + c.length, 0);
+            if (window.pm?.data) console.log(`📊 ${logTime()} Total worklet samples: ${totalWorkletSamples.toLocaleString()}`);
+
+            // Update duration with actual sample count
+            const originalSampleRate = State.currentMetadata?.original_sample_rate || playbackSamplesPerRealSecond;
+            State.setTotalAudioDuration(totalWorkletSamples / originalSampleRate);
+            const sampleCountEl2 = document.getElementById('sampleCount');
+            if (sampleCountEl2) sampleCountEl2.textContent = totalWorkletSamples.toLocaleString();
+
+            // Refine zoom with actual sample count
+            zoomState.initialize(totalWorkletSamples);
+
+            // Kill loading animation
+            if (State.loadingInterval) {
+                clearInterval(State.loadingInterval);
+                State.setLoadingInterval(null);
             }
-        }
 
-        // Yield to browser event loop so UI stays responsive (playhead drags, clicks, etc.)
-        await new Promise(r => setTimeout(r, 0));
-    }
+            // Signal data complete to worklet
+            if (State.workletNode) {
+                State.workletNode.port.postMessage({
+                    type: 'data-complete',
+                    totalSamples: totalWorkletSamples,
+                    sampleRate: originalSampleRate,
+                });
+            }
 
-    if (abortSignal.aborted) return;
+            // Position waveform axis canvas
+            positionMinimapAxisCanvas();
+            const completeRenderMode = dataRenderingEl?.value || 'progressive';
+            if (completeRenderMode !== 'triggered' || renderTriggered) {
+                drawMinimapAxis();
+            }
+
+            // Use running buffer for completeSamplesArray
+            growProgressiveBuffer();
+            const stitched = progressiveSamplesBuffer
+                ? progressiveSamplesBuffer.subarray(0, progressiveSamplesOffset)
+                : new Float32Array(0);
+            State.setCompleteSamplesArray(stitched);
+            if (window.pm?.data) console.log(`📦 ${logTime()} completeSamplesArray ready: ${stitched.length.toLocaleString()} samples`);
+
+            // Free allReceivedData and processedChunks
+            for (let i = 0; i < State.allReceivedData.length; i++) {
+                State.allReceivedData[i] = null;
+            }
+            State.setAllReceivedData([]);
+
+            for (let i = 0; i < processedChunks.length; i++) {
+                if (processedChunks[i]) {
+                    processedChunks[i].samples = null;
+                    processedChunks[i].rawSamples = null;
+                    processedChunks[i] = null;
+                }
+            }
+            processedChunks.length = 0;
+            progressiveSamplesBuffer = null;
+            progressiveSamplesOffset = 0;
+            progressiveBufferChunkIndex = 0;
+
+            // Also free session processedChunks (no longer needed)
+            for (let i = 0; i < session.processedChunks.length; i++) {
+                if (session.processedChunks[i]) {
+                    session.processedChunks[i].normalized = null;
+                    session.processedChunks[i].raw = null;
+                    session.processedChunks[i] = null;
+                }
+            }
+
+            if (window.pm?.data) console.log(`🧹 ${logTime()} Memory cleaned up`);
+
+            // Enable download button
+            const downloadContainer = document.getElementById('downloadAudioContainer');
+            if (downloadContainer) downloadContainer.style.display = 'flex';
+            const downloadBtn = document.getElementById('downloadBtn');
+            if (downloadBtn) downloadBtn.disabled = false;
+
+            // Enable analysis button
+            updateCompleteButtonState();
+
+            // Final spectrogram render with complete data
+            const finalRenderMode = dataRenderingEl?.value || 'progressive';
+            if (finalRenderMode === 'triggered' && !renderTriggered) {
+                await new Promise(resolve => {
+                    window.triggerDataRender = () => { renderTriggered = true; resolve(); };
+                });
+            }
+            delete window.triggerDataRender;
+
+            // Send any unsent waveform chunks
+            sendToWaveformInOrder();
+
+            // Final waveform build with DC removal
+            const canvas = document.getElementById('minimap');
+            const removeDC = document.getElementById('removeDCOffset')?.checked || false;
+            const slider = document.getElementById('waveformFilterSlider');
+            const alpha = slider ? 0.9 + (parseInt(slider.value) / 1000) : 0.99;
+
+            State.waveformWorker.postMessage({
+                type: 'build-waveform',
+                canvasWidth: canvas.offsetWidth * window.devicePixelRatio,
+                canvasHeight: canvas.offsetHeight * window.devicePixelRatio,
+                removeDC: removeDC,
+                alpha: alpha,
+                isComplete: true,
+                totalExpectedSamples: totalWorkletSamples,
+            });
+
+            if (window.pm?.render) console.log(`🎨 ${logTime()} Final spectrogram render with complete data...`);
+            await renderProgressiveSpectrogram(State.completeSamplesArray, { isComplete: true });
+
+            // Update playback controls
+            updatePlaybackSpeed();
+            updatePlaybackDuration();
+
+            // Stop fetch button pulse
+            const startBtn = document.getElementById('startBtn');
+            if (startBtn) startBtn.classList.add('fetched');
+
+            State.setIsFetchingNewData(false);
+
+            if (window.pm?.data) console.log(`🎨 ${logTime()} Render pipeline complete!`);
+        },
+    };
 
     // =========================================================================
-    // Step 6b: Fallback playback trigger for short time ranges
-    // If total samples never reached the buffer threshold, start playback now
+    // Attach renderer to session — replays cached chunks, streams the rest
     // =========================================================================
 
-    if (!playbackTriggered && totalSamplesSentToWorklet > 0) {
-        playbackTriggered = true;
-        if (window.pm?.data) console.log(`⚡ FALLBACK: All chunks received (${totalSamplesSentToWorklet.toLocaleString()} samples < threshold ${BUFFER_THRESHOLD}) — starting playback now`);
+    await attachRendererToSession(session, rendererCallbacks);
 
-        const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
-        const autoPlayEnabled = !isSharedSession && document.getElementById('autoPlay')?.checked;
-
-        if (autoPlayEnabled && State.workletNode) {
-            State.workletNode.port.postMessage({ type: 'start-immediately' });
-            State.setPlaybackState(PlaybackState.PLAYING);
-
-            if (State.gainNode && State.audioContext) {
-                const targetVolume = parseFloat(document.getElementById('volumeSlider').value) / 100;
-                State.gainNode.gain.cancelScheduledValues(State.audioContext.currentTime);
-                State.gainNode.gain.setValueAtTime(0.0001, State.audioContext.currentTime);
-                State.gainNode.gain.exponentialRampToValueAtTime(
-                    Math.max(0.01, targetVolume),
-                    State.audioContext.currentTime + 0.05
-                );
-            }
-
-            State.setCurrentAudioPosition(0);
-            State.setLastWorkletPosition(0);
-            State.setLastWorkletUpdateTime(State.audioContext.currentTime);
-            State.setLastUpdateTime(State.audioContext.currentTime);
-
-            const playPauseBtn = document.getElementById('playPauseBtn');
-            if (playPauseBtn) {
-                playPauseBtn.disabled = false;
-                playPauseBtn.textContent = '⏸️ Pause';
-                playPauseBtn.classList.remove('play-active', 'pulse-play', 'pulse-resume', 'pulse-attention');
-                playPauseBtn.classList.add('pause-active');
-            }
-
-            startPlaybackIndicator();
-        } else {
-            State.setPlaybackState(PlaybackState.STOPPED);
-            const playPauseBtn = document.getElementById('playPauseBtn');
-            if (playPauseBtn) {
-                playPauseBtn.disabled = false;
-                playPauseBtn.textContent = '▶️ Play';
-                playPauseBtn.classList.remove('pause-active');
-                playPauseBtn.classList.add('play-active');
-            }
-            if (isSharedSession) {
-                playPauseBtn?.classList.add('pulse-attention');
-            }
-        }
+    // If session is still running, wait for it to complete
+    if (!session.done) {
+        await session.promise;
     }
-
-    // =========================================================================
-    // Step 7: All chunks received — completion
-    // Mirrors the volcano completion handler in data-fetcher.js
-    // =========================================================================
-
-    // Wait for any in-progress progressive spectrogram render to finish
-    if (spectrogramRenderInProgress) {
-        await new Promise(resolve => {
-            const check = setInterval(() => {
-                if (!spectrogramRenderInProgress) { clearInterval(check); resolve(); }
-            }, 50);
-        });
-    }
-
-    const totalTime = performance.now() - progressiveT0;
-    if (window.pm?.data) console.log(`✅ All ${chunkSchedule.length} chunks processed in ${totalTime.toFixed(0)}ms total`);
-
-    // Calculate total from worklet data (most reliable)
-    const totalWorkletSamples = State.allReceivedData.reduce((sum, c) => sum + c.length, 0);
-    if (window.pm?.data) console.log(`📊 ${logTime()} Total worklet samples: ${totalWorkletSamples.toLocaleString()}`);
-
-    // Update duration with actual sample count
-    const originalSampleRate = State.currentMetadata?.original_sample_rate || playbackSamplesPerRealSecond;
-    State.setTotalAudioDuration(totalWorkletSamples / originalSampleRate);
-    const sampleCountEl2 = document.getElementById('sampleCount');
-    if (sampleCountEl2) sampleCountEl2.textContent = totalWorkletSamples.toLocaleString();
-    if (window.pm?.data) console.log(`📊 ${logTime()} Updated totalAudioDuration to ${(totalWorkletSamples / originalSampleRate).toFixed(2)}s`);
-
-    // Refine zoom with actual sample count (viewport already set during progressive init)
-    zoomState.initialize(totalWorkletSamples);
-
-    // Kill loading animation
-    if (State.loadingInterval) {
-        clearInterval(State.loadingInterval);
-        State.setLoadingInterval(null);
-    }
-
-    // Signal data complete to worklet
-    if (State.workletNode) {
-        State.workletNode.port.postMessage({
-            type: 'data-complete',
-            totalSamples: totalWorkletSamples,
-            sampleRate: originalSampleRate,
-        });
-    }
-
-    // Position waveform axis canvas; draw labels only if not waiting for trigger
-    positionMinimapAxisCanvas();
-    const completeRenderMode = dataRenderingEl?.value || 'progressive';
-    if (completeRenderMode !== 'triggered' || renderTriggered) {
-        drawMinimapAxis();
-    }
-
-    // Use running buffer for completeSamplesArray (already stitched during download)
-    growProgressiveBuffer(); // ensure any remaining chunks are appended
-    const stitched = progressiveSamplesBuffer
-        ? progressiveSamplesBuffer.subarray(0, progressiveSamplesOffset)
-        : new Float32Array(0);
-    State.setCompleteSamplesArray(stitched);
-    if (window.pm?.data) console.log(`📦 ${logTime()} completeSamplesArray ready: ${stitched.length.toLocaleString()} samples`);
-
-    // Free allReceivedData and processedChunks (memory cleanup)
-    for (let i = 0; i < State.allReceivedData.length; i++) {
-        State.allReceivedData[i] = null;
-    }
-    State.setAllReceivedData([]);
-
-    for (let i = 0; i < processedChunks.length; i++) {
-        if (processedChunks[i]) {
-            processedChunks[i].samples = null;
-            processedChunks[i].rawSamples = null;
-            processedChunks[i] = null;
-        }
-    }
-    processedChunks.length = 0;
-    progressiveSamplesBuffer = null;
-    progressiveSamplesOffset = 0;
-    progressiveBufferChunkIndex = 0;
-    if (window.pm?.data) console.log(`🧹 ${logTime()} Memory cleaned up`);
-
-    // Enable download button
-    const downloadContainer = document.getElementById('downloadAudioContainer');
-    if (downloadContainer) downloadContainer.style.display = 'flex';
-    const downloadBtn = document.getElementById('downloadBtn');
-    if (downloadBtn) downloadBtn.disabled = false;
-
-    // Enable analysis button
-    updateCompleteButtonState();
-
-    // Final spectrogram render with complete data
-    // In triggered mode, wait for the trigger before rendering
-    const finalRenderMode = dataRenderingEl?.value || 'progressive';
-    if (finalRenderMode === 'triggered' && !renderTriggered) {
-        await new Promise(resolve => {
-            window.triggerDataRender = () => { renderTriggered = true; resolve(); };
-        });
-    }
-    delete window.triggerDataRender;
-
-    // Send any unsent waveform chunks now that rendering is allowed
-    sendToWaveformInOrder();
-
-    // Final waveform build with DC removal
-    if (window.pm?.render) console.log(`🎨 ${logTime()} Requesting final waveform (${totalWorkletSamples.toLocaleString()} samples)`);
-    const canvas = document.getElementById('minimap');
-    const removeDC = document.getElementById('removeDCOffset')?.checked || false;
-    const slider = document.getElementById('waveformFilterSlider');
-    const alpha = slider ? 0.9 + (parseInt(slider.value) / 1000) : 0.99;
-
-    State.waveformWorker.postMessage({
-        type: 'build-waveform',
-        canvasWidth: canvas.offsetWidth * window.devicePixelRatio,
-        canvasHeight: canvas.offsetHeight * window.devicePixelRatio,
-        removeDC: removeDC,
-        alpha: alpha,
-        isComplete: true,
-        totalExpectedSamples: totalWorkletSamples,
-    });
-
-    if (window.pm?.render) console.log(`🎨 ${logTime()} Final spectrogram render with complete data...`);
-    await renderProgressiveSpectrogram(State.completeSamplesArray, { isComplete: true });
-
-    // Update playback controls
-    updatePlaybackSpeed();
-    updatePlaybackDuration();
-
-    // Stop fetch button pulse
-    const startBtn = document.getElementById('startBtn');
-    if (startBtn) startBtn.classList.add('fetched');
-
-    State.setIsFetchingNewData(false);
-
-    if (window.pm?.data) console.log(`✅ ${logTime()} Cloudflare progressive pipeline complete!`);
 
     } catch (e) {
         if (e.name === 'AbortError') {
-            if (window.pm?.data) console.log('☁️ [CLOUDFLARE] Download aborted — new download starting');
+            if (window.pm?.data) console.log('🎨 [RENDER] Aborted');
             return;
         }
         throw e;

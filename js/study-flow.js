@@ -590,27 +590,47 @@ async function processPreloadQueue() {
     if (preloadQueueRunning) return;
     preloadQueueRunning = true;
 
+    // Same mapping as applyAnalysisConfig — must match so session keys align
+    const spacecraftMap = {
+        'GOES-16': { spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16' },
+        'GOES-17': { spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G17' },
+        'GOES-18': { spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G18' },
+        'GOES-19': { spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G19' },
+        'MMS':     { spacecraft: 'MMS', dataset: 'MMS1_FGM_SRVY_L2' },
+        'THEMIS':  { spacecraft: 'THEMIS', dataset: 'THA_L2_FGM' },
+        'Van Allen Probes': { spacecraft: 'RBSP', dataset: 'RBSPA_REL04_ECT-HOPE-SCI-L2SA' },
+    };
+
     while (preloadQueue.length > 0) {
         const stepIndex = preloadQueue.shift();
         const step = studyConfig.steps[stepIndex];
         if (!step || step.type !== 'analysis') continue;
 
-        if (window.pm?.data) console.log(`📦 [PRELOAD] Starting fetch for step ${stepIndex} ("${step.title || 'Analysis'}") — spacecraft: ${step.spacecraft}, dataset: ${step.dataset}, range: ${step.startTime || step.startDate || '?'} → ${step.endTime || step.endDate || '?'}`);
+        // Only prefetch Cloudflare data (CDAWeb has its own cache)
+        const srcValue = (step.dataSource || '').toLowerCase();
+        if (srcValue.includes('cdaweb')) {
+            if (window.pm?.data) console.log(`📦 [PRELOAD] Step ${stepIndex} uses CDAWeb — skipping prefetch`);
+            continue;
+        }
 
-        // Apply the analysis config so streaming knows what to fetch
-        applyAnalysisConfig(step);
+        // Resolve spacecraft/dataset from step config
+        const mapped = spacecraftMap[step.spacecraft] || { spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16' };
+        const startTime = step.startTime || (step.startDate ? step.startDate + 'T00:00:00.000Z' : null);
+        const endTime = step.endTime || (step.endDate ? step.endDate + 'T00:00:00.000Z' : null);
 
-        // Apply silent data loading setting from config
-        const silentCb = document.getElementById('silentDownload');
-        if (silentCb) silentCb.checked = !!step.silentDataLoading;
+        if (!startTime || !endTime) {
+            if (window.pm?.data) console.log(`📦 [PRELOAD] Step ${stepIndex} missing time range, skipping`);
+            continue;
+        }
 
-        // Call startStreaming directly with the config — no button clicking needed
+        if (window.pm?.data) console.log(`📦 [PRELOAD] Starting prefetch for step ${stepIndex} ("${step.title || 'Analysis'}") — ${mapped.spacecraft}/${mapped.dataset} ${startTime} → ${endTime}`);
+
         try {
-            const { startStreaming } = await import('./streaming.js');
-            await startStreaming(null, window.__STUDY_CONFIG);
-            if (window.pm?.data) console.log(`📦 [PRELOAD] Fetch complete for step ${stepIndex}`);
+            const { prefetchCloudflareData } = await import('./goes-cloudflare-fetcher.js');
+            await prefetchCloudflareData(mapped.spacecraft, mapped.dataset, startTime, endTime);
+            if (window.pm?.data) console.log(`📦 [PRELOAD] Prefetch complete for step ${stepIndex}`);
         } catch (err) {
-            if (window.pm?.data) console.log(`📦 [PRELOAD] Fetch failed for step ${stepIndex}:`, err.message);
+            if (window.pm?.data) console.log(`📦 [PRELOAD] Prefetch failed for step ${stepIndex}:`, err.message);
         }
 
         if (preloadQueue.length > 0) {
