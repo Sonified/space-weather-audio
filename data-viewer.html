@@ -238,7 +238,7 @@
     cursor: pointer;
   }
   .pid-cell:hover { text-decoration: underline; }
-  .pid-cell.test-pid { color: #8f99a4; }
+  .pid-cell.test-pid { color: #a3abb5; }
   .copy-pid {
     visibility: hidden;
     background: none;
@@ -272,12 +272,16 @@
 
   .condition-badge {
     display: inline-block;
-    padding: 1px 6px;
-    border-radius: 4px;
+    padding: 2px 8px;
+    border-radius: 10px;
     font-size: calc(13px + var(--font-bump));
     font-family: 'SF Mono', 'Fira Code', monospace;
     background: rgba(77, 168, 255, 0.15);
     color: var(--accent);
+  }
+  .condition-badge.condition-test {
+    background: rgba(100, 110, 125, 0.25);
+    color: #99a3ad;
   }
 
   .feature-count {
@@ -750,7 +754,7 @@
         <td class="pid-cell${isTest ? ' test-pid' : ''}">${escHtml(p.participant_id)}</td>
         <td class="time-cell">${formatTime(p.registered_at)}</td>
         <td style="font-family:'SF Mono','Fira Code',monospace; font-size:12px;">${p.assigned_block != null ? p.assigned_block : '<span style="opacity:0.3;">—</span>'}</td>
-        <td>${p.assigned_condition != null ? `<span class="condition-badge">C${p.assigned_condition}</span>` : '<span style="opacity:0.3;">—</span>'}</td>
+        <td>${p.assigned_condition != null ? `<span class="condition-badge${isTest ? ' condition-test' : ''}">C${p.assigned_condition}</span>` : '<span style="opacity:0.3;">—</span>'}</td>
         <td style="font-family:'SF Mono','Fira Code',monospace; font-size:12px;">${p.current_step ?? '—'}</td>
         <td><span class="feature-count ${p.feature_count === 0 ? 'zero' : ''}">${p.feature_count || 0}</span></td>
         <td class="time-cell">${formatTime(p.updated_at)}</td>
