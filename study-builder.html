@@ -6177,33 +6177,48 @@
         await indexdbSave(config).catch(() => {});
         refreshStudyPicker();
         dismissAdminGate();
-      } else if (resp.status === 429) {
-        const wait = data.retry_after;
-        const fmt = wait >= 60 ? `${Math.ceil(wait / 60)} minute${wait >= 120 ? 's' : ''}` : `${wait} seconds`;
-        errorEl.textContent = `Too many attempts. Try again in ${fmt}.`;
-        btn.disabled = true;
-        btn.textContent = 'Locked';
-        setTimeout(() => { btn.disabled = false; btn.textContent = 'Unlock'; }, Math.min(wait * 1000, 30000));
       } else {
-        // Wrong key — worker already incremented fails + set lockout
         const wait = data.retry_after;
-        if (wait && wait > 1) {
-          const fmt = wait >= 60 ? `${Math.ceil(wait / 60)} minute${wait >= 120 ? 's' : ''}` : `${wait} seconds`;
-          errorEl.innerHTML = `Invalid admin key — wait ${fmt}<br><span style="color:var(--text-muted);font-size:12px;">Contact <a href="mailto:robert@auralab.io" style="color:#58a6ff;">robert@auralab.io</a> for support</span>`;
-          btn.disabled = true;
-          btn.textContent = 'Locked';
-          setTimeout(() => { btn.disabled = false; btn.textContent = 'Unlock'; }, Math.min(wait * 1000, 30000));
+        if (wait && wait > 0) {
+          startBuilderLockout(wait, btn, errorEl, resp.status === 429);
         } else {
           errorEl.innerHTML = 'Invalid admin key<br><span style="color:var(--text-muted);font-size:12px;">Contact <a href="mailto:robert@auralab.io" style="color:#58a6ff;">robert@auralab.io</a> for support</span>';
+          btn.disabled = false;
+          btn.textContent = 'Unlock';
         }
         input.value = '';
         input.focus();
       }
     } catch (e) {
       errorEl.textContent = 'Connection error — try again';
+      btn.disabled = false;
+      btn.textContent = 'Unlock';
     }
-    btn.disabled = false;
-    btn.textContent = 'Unlock';
+  }
+
+  let builderLockoutTimer = null;
+  function startBuilderLockout(totalSec, btn, errorEl, isTooMany) {
+    btn.disabled = true;
+    if (builderLockoutTimer) clearInterval(builderLockoutTimer);
+    let remaining = totalSec;
+    const msg = isTooMany ? 'Too many attempts' : 'Invalid admin key';
+    const support = '<br><span style="color:var(--text-muted);font-size:12px;">Contact <a href="mailto:robert@auralab.io" style="color:#58a6ff;">robert@auralab.io</a> for support</span>';
+    const tick = () => {
+      if (remaining <= 0) {
+        clearInterval(builderLockoutTimer);
+        builderLockoutTimer = null;
+        btn.disabled = false;
+        btn.textContent = 'Unlock';
+        errorEl.textContent = '';
+        return;
+      }
+      const fmt = remaining >= 60 ? `${Math.ceil(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}` : `${remaining}s`;
+      btn.textContent = fmt;
+      errorEl.innerHTML = msg + support;
+      remaining--;
+    };
+    tick();
+    builderLockoutTimer = setInterval(tick, 1000);
   }
 
   function dismissAdminGate() {

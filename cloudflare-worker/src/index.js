@@ -697,11 +697,15 @@ export default {
           return json({ success: true, study: { id: row.id, name: row.name, config } });
         }
 
-        // Wrong key — increment fails, set exponential lockout: 5s, 20s, 80s, 320s, 1280s...
+        // Wrong key — first attempt free, then exponential lockout: 5s, 20s, 80s, 320s...
         const target = sentinel || await env.DB.prepare('SELECT id, auth_fails FROM studies LIMIT 1').first();
         if (target) {
           const fails = (target.auth_fails || 0) + 1;
-          const lockoutSec = 5 * Math.pow(4, fails - 1);
+          if (fails === 1) {
+            await env.DB.prepare('UPDATE studies SET auth_fails = ? WHERE id = ?').bind(fails, target.id).run();
+            return json({ error: 'Invalid admin key' }, 403);
+          }
+          const lockoutSec = 5 * Math.pow(4, fails - 2);
           const lockedUntil = new Date(Date.now() + lockoutSec * 1000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
           await env.DB.prepare('UPDATE studies SET auth_fails = ?, auth_locked_until = ? WHERE id = ?').bind(fails, lockedUntil, target.id).run();
           return json({ error: 'Invalid admin key', retry_after: lockoutSec }, 403);
