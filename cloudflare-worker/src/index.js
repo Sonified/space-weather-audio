@@ -324,6 +324,11 @@ export default {
         return await emicGetParticipant(env, decodeURIComponent(emicGetMatch[1]));
       }
 
+      // POST /api/emic/errors — Save a client-side error report
+      if (path === '/api/emic/errors' && request.method === 'POST') {
+        return await emicSaveErrorReport(request, env);
+      }
+
       // =======================================================================
       // Audio Cache Routes: /api/audio-cache/*
       // Stores and serves pre-cached WAV files for default datasets
@@ -546,6 +551,25 @@ export default {
            WHERE participant_id = ? AND study_id = ?`
         ).bind(step, entry, stepEvent, decodedPid, studyId).run();
         return json({ success: true, current_step: step });
+      }
+
+      // PUT /api/study/:studyId/participants/:pid/condition — store assigned condition
+      const conditionMatch = path.match(/^\/api\/study\/([^/]+)\/participants\/([^/]+)\/condition$/);
+      if (conditionMatch && request.method === 'PUT') {
+        const [, studyId, pid] = conditionMatch;
+        const body = await request.json();
+        if (body.conditionIndex == null) return json({ error: 'Missing conditionIndex' }, 400);
+        const decodedPid = decodeURIComponent(pid);
+        const conditionJson = JSON.stringify(body);
+        const conditionEvent = JSON.stringify({ type: 'condition', conditionIndex: body.conditionIndex });
+        await env.DB.prepare(
+          `UPDATE participants
+           SET flags = json_set(flags, '$.condition', json(?)),
+               updated_at = datetime('now'),
+               last_event = ?
+           WHERE participant_id = ? AND study_id = ?`
+        ).bind(conditionJson, conditionEvent, decodedPid, studyId).run();
+        return json({ success: true, conditionIndex: body.conditionIndex });
       }
 
       // POST /api/study/:studyId/responses — save feature or survey response
@@ -1368,4 +1392,31 @@ async function emicGetParticipant(env, participantId) {
     submissions,
     count: submissions.length,
   });
+}
+
+/**
+ * Save a client-side error report to R2
+ * R2 key: emic/errors/{timestamp}_{random}.json
+ */
+async function emicSaveErrorReport(request, env) {
+  try {
+    const data = await request.json();
+    const now = new Date();
+    const timestamp = now.toISOString().replace(/[-:]/g, '').split('.')[0];
+    const random = Math.random().toString(36).slice(2, 8);
+
+    const report = {
+      ...data,
+      serverReceivedAt: now.toISOString(),
+    };
+
+    const key = `emic/errors/${timestamp}_${random}.json`;
+    await env.EMIC_DATA.put(key, JSON.stringify(report, null, 2), {
+      httpMetadata: { contentType: 'application/json' },
+    });
+
+    return json({ success: true, key, receivedAt: now.toISOString() }, 201);
+  } catch (e) {
+    return json({ success: false, error: e.message }, 500);
+  }
 }
