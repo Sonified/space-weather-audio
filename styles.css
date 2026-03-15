@@ -3431,8 +3431,13 @@ select.csel-native {
     outline: none;
     transition: border-color 0.15s, background 0.15s;
     white-space: nowrap;
+    overflow: hidden;
     user-select: none;
     min-height: 28px;
+}
+.csel-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .csel-trigger:hover {
     border-color: #777;

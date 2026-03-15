@@ -13,9 +13,6 @@ let adminMode = false;
 export function applyAdminModeUI() {
     // Control groups to hide in user mode
     const userModeHiddenControlGroups = [
-        'stationControlGroup',    // Station dropdown
-        'durationControlGroup',   // Duration dropdown
-        'forceIrisControlGroup',  // Force IRIS Fetch button
     ];
     
     // Panel IDs to hide in user mode
@@ -66,19 +63,8 @@ export function applyAdminModeUI() {
     }
 }
 
-/**
- * Set default values for user mode
- * When station and duration are hidden, we need defaults
- */
 function setUserModeDefaults() {
-    // Set default duration to 24 hours if not already set
-    const durationSelect = document.getElementById('duration');
-    if (durationSelect && !durationSelect.value) {
-        durationSelect.value = '24';
-    }
-    
-    // Note: Station will be auto-selected when volcano changes in user mode
-    // The loadStations() function should handle selecting the first/default station
+    // No-op — relic station/duration defaults removed
 }
 
 /**

@@ -9,6 +9,7 @@ import { drawWaveform, changeWaveformFilter } from './minimap-window-renderer.js
 import { updatePlaybackSpeed } from './audio-player.js';
 import { isStudyMode, CURRENT_MODE, AppMode } from './master-modes.js';
 import { log, logGroup, logGroupEnd } from './logger.js';
+import { refreshSelectById } from './custom-select.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Re-exports from ui-modals.js (zero-breakage migration — consumers keep importing from here)
@@ -275,6 +276,7 @@ export function updateDatasetOptions() {
             console.warn(`No datasets configured for spacecraft: ${spacecraft}`);
         }
         dataTypeSelect.innerHTML = '<option value="">No datasets available</option>';
+        refreshSelectById('dataType');
         return;
     }
 
@@ -296,46 +298,12 @@ export function updateDatasetOptions() {
     if (inGroup) html += '</optgroup>';
     dataTypeSelect.innerHTML = html;
 
+    // Sync the custom select wrapper (if active) with the new options
+    refreshSelectById('dataType');
+
     console.log(`📊 Updated dataset options for ${spacecraft}: ${datasets.length} datasets available`);
 }
 
-export function updateStationList() {
-    const dataType = document.getElementById('dataType').value;
-    const spacecraftEl = document.getElementById('spacecraft');
-    const stationSelect = document.getElementById('station');
-
-    // Skip if spacecraft/station elements don't exist
-    if (!spacecraftEl || !stationSelect) {
-        return;
-    }
-
-    const spacecraft = spacecraftEl.value;
-    const stations = State.availableStations[dataType] || [];
-    
-    // Only log in dev/personal modes, not study mode
-    if (!isStudyMode()) {
-        console.log(`🔍 updateStationList: dataType="${dataType}", availableStations=`, State.availableStations);
-        console.log(`🔍 Stations for ${dataType}:`, stations);
-    }
-    
-    if (stations.length === 0) {
-        if (!isStudyMode()) {
-            console.warn(`⚠️ No ${dataType} stations available`);
-        }
-        stationSelect.innerHTML = '<option value="">No stations available</option>';
-        return;
-    }
-    
-    const defaultIndex = (spacecraft === 'kilauea') ? 3 : 0;
-    
-    stationSelect.innerHTML = stations.map((s, index) => 
-        `<option value='${JSON.stringify(s)}' ${index === defaultIndex ? 'selected' : ''}>${s.label}</option>`
-    ).join('');
-    
-    if (!isStudyMode()) {
-        console.log(`✅ Populated ${stations.length} ${dataType} stations`);
-    }
-}
 
 export function enableFetchButton() {
     const fetchBtn = document.getElementById('startBtn');

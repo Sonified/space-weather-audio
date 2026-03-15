@@ -10,7 +10,7 @@ import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSp
 import { initWaveformWorker, setupWaveformInteraction } from './minimap-window-renderer.js';
 import { startStreaming, updateSpacecraftDropdownLabels } from './streaming.js';
 import { changeFrequencyScale, loadFrequencyScale, changeColormap, loadColormap, changeFftSize, loadFftSize, setupSpectrogramSelection } from './spectrogram-renderer.js';
-import { loadSavedSpacecraft, saveDateTime, updateStationList, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, openWelcomeModal, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, openParticipantInfoModal, wireQuestionnaireModals } from './ui-controls.js';
+import { loadSavedSpacecraft, saveDateTime, updateDatasetOptions, enableFetchButton, purgeCloudflareCache, openParticipantModal, openWelcomeModal, changeBaseSampleRate, handleWaveformFilterChange, resetWaveformFilterToDefault, setupModalEventListeners, openParticipantInfoModal, wireQuestionnaireModals } from './ui-controls.js';
 import { getParticipantIdFromURL, getParticipantId, storeParticipantId, storeRealUsername } from './participant-id.js';
 import { initAdminMode, toggleAdminMode } from './admin-mode.js';
 import { initializeModals } from './modal-templates.js';
@@ -327,16 +327,8 @@ async function initializeMainApp() {
         // 💾 Save data type selection to localStorage for persistence
         localStorage.setItem('selectedDataType', e.target.value);
         console.log('💾 Saved data type selection:', e.target.value);
-        updateStationList();
         enableFetchButton();
         e.target.blur(); // Blur so spacebar can toggle play/pause
-    });
-    document.getElementById('station').addEventListener('change', (e) => {
-        enableFetchButton();
-        e.target.blur(); // Blur so spacebar can toggle play/pause
-    });
-    document.getElementById('duration').addEventListener('change', (e) => {
-        enableFetchButton();
         e.target.blur(); // Blur so spacebar can toggle play/pause
     });
 

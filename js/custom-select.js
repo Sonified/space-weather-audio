@@ -428,4 +428,13 @@ export function upgradeAllSelects(container = document) {
     return instances;
 }
 
+/**
+ * Refresh the CustomSelect instance wrapping a given native <select> element.
+ * Call after programmatically changing the <option>s via innerHTML.
+ */
+export function refreshSelectById(id) {
+    const inst = allInstances.find(cs => cs.select.id === id);
+    if (inst) inst.refresh();
+}
+
 export { CustomSelect };

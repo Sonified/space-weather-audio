@@ -45,9 +45,6 @@ export let playbackPositionInterval = null;
 export let pausedPosition = 0;
 export let playbackDurationSeconds = null;
 
-// Station data
-export let availableStations = { seismic: [], infrasound: [] };
-
 // Audio data
 export let allReceivedData = [];
 export let completeSamplesArray = null;
@@ -172,7 +169,6 @@ export function setPlaybackStartTime(value) { playbackStartTime = value; }
 export function setPlaybackPositionInterval(value) { playbackPositionInterval = value; }
 export function setPausedPosition(value) { pausedPosition = value; }
 export function setPlaybackDurationSeconds(value) { playbackDurationSeconds = value; }
-export function setAvailableStations(value) { availableStations = value; }
 export function setAllReceivedData(value) { allReceivedData = value; }
 let _onCompleteSamplesReady = null;
 export function setOnCompleteSamplesReady(fn) { _onCompleteSamplesReady = fn; }
