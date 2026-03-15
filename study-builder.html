@@ -1628,18 +1628,18 @@
         </div>
       </div>
 
-      <!-- Test Mode Toggle -->
+      <!-- Start Test -->
       <div style="display:flex; align-items:center; gap:12px; margin:16px 0;">
-        <button id="testModeBtn" onclick="toggleTestMode()" style="
-          padding:10px 24px; border-radius:var(--radius); font-size:14px; font-weight:600;
-          cursor:pointer; transition: all 0.3s ease;
-          background:rgba(34,197,94,0.1); border:2px solid var(--green); color:var(--green);
+        <button id="testModeBtn" onclick="toggleTestMode()" title="Opens a test session with a fresh participant pool. Test participants use TEST_ IDs and won't affect production data. The dashboard will track active testers, assignments, and heartbeats in real time." style="
+          padding:6px 16px; border-radius:var(--radius); font-size:12px; font-weight:500;
+          cursor:pointer; transition: all 0.2s ease;
+          background:transparent; border:1px solid var(--border); color:var(--text-muted);
         ">▶ Start Test</button>
         <span id="testModeLabel" style="font-size:12px; color:var(--text-muted);">Launch a test session with a fresh participant pool</span>
       </div>
 
       <!-- Test Dashboard (hidden until test active) -->
-      <div id="testDashboard" style="display:none;">
+      <div id="testDashboard" style="max-height:0; overflow:hidden; transition:max-height 0.35s ease, opacity 0.3s ease; opacity:0;">
         <div style="
           display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;
           margin-bottom:12px;
@@ -1669,10 +1669,56 @@
             <div class="test-metric-label">Stage</div>
           </div>
         </div>
-
         <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
           <span id="heartbeatDot" style="width:8px; height:8px; border-radius:50%; background:#555; display:inline-block;"></span>
           <span id="heartbeatLabel">Heartbeat: waiting...</span>
+        </div>
+      </div>
+
+      <!-- Launch Study -->
+      <div style="display:flex; align-items:center; gap:12px; margin:16px 0;">
+        <button id="launchStudyBtn" onclick="launchStudy()" title="Go live — makes the study accessible to real participants based on your launch schedule settings above." style="
+          padding:10px 24px; border-radius:var(--radius); font-size:14px; font-weight:600;
+          cursor:pointer; transition: all 0.3s ease;
+          background:rgba(245,158,11,0.1); border:2px solid var(--orange); color:var(--orange);
+        ">🚀 Launch Study</button>
+        <span id="launchStudyLabel" style="font-size:12px; color:var(--text-muted);">Go live — open the study to real participants</span>
+      </div>
+
+      <!-- Launch Dashboard (hidden until study launched) -->
+      <div id="launchDashboard" style="max-height:0; overflow:hidden; transition:max-height 0.35s ease, opacity 0.3s ease; opacity:0;">
+        <div style="
+          display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;
+          margin-bottom:12px;
+        ">
+          <div class="test-metric">
+            <div class="test-metric-value" id="liveMetricTotalStarted">0</div>
+            <div class="test-metric-label">Total Started</div>
+          </div>
+          <div class="test-metric">
+            <div class="test-metric-value" id="liveMetricActive" style="color:var(--green);">0</div>
+            <div class="test-metric-label">Active</div>
+          </div>
+          <div class="test-metric">
+            <div class="test-metric-value" id="liveMetricCompleted" style="color:var(--blue);">0</div>
+            <div class="test-metric-label">Completed</div>
+          </div>
+          <div class="test-metric">
+            <div class="test-metric-value" id="liveMetricDropouts" style="color:var(--red);">0</div>
+            <div class="test-metric-label">Dropouts</div>
+          </div>
+          <div class="test-metric">
+            <div class="test-metric-value" id="liveMetricCurrentBlock">0</div>
+            <div class="test-metric-label">Current Block</div>
+          </div>
+          <div class="test-metric">
+            <div class="test-metric-value" id="liveMetricStage" style="color:var(--orange);">—</div>
+            <div class="test-metric-label">Stage</div>
+          </div>
+        </div>
+        <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
+          <span id="liveHeartbeatDot" style="width:8px; height:8px; border-radius:50%; background:#555; display:inline-block;"></span>
+          <span id="liveHeartbeatLabel">Heartbeat: waiting...</span>
         </div>
       </div>
 
@@ -2255,6 +2301,16 @@
     // Load experimental design (conditions, etc.)
     if (config.experimentalDesign) {
       loadExperimentalDesign(config.experimentalDesign);
+    }
+
+    // Load launch settings
+    if (config.launch) {
+      loadLaunchSettings(config.launch);
+    }
+
+    // Load participant tracking settings
+    if (config.participantTracking) {
+      loadParticipantTracking(config.participantTracking);
     }
 
     // Restore URL toggle states
@@ -3532,6 +3588,53 @@
     if (panel) panel.style.display = method === 'healingBlock' ? 'block' : 'none';
   }
 
+  // ── Launch Settings collect/load ──────────────────────────────
+  function collectLaunchSettings() {
+    const startMode = document.querySelector('input[name="launchStart"]:checked')?.value || 'immediate';
+    const endMode = document.querySelector('input[name="launchEnd"]:checked')?.value || 'open';
+    const result = { startMode, endMode };
+    if (startMode === 'scheduled') {
+      result.startTime = document.getElementById('launchStartTime')?.value || '';
+    }
+    if (endMode === 'scheduled') {
+      result.endTime = document.getElementById('launchEndTime')?.value || '';
+    }
+    return result;
+  }
+
+  function loadLaunchSettings(launch) {
+    if (!launch) return;
+    const startRadio = document.querySelector(`input[name="launchStart"][value="${launch.startMode || 'immediate'}"]`);
+    if (startRadio) startRadio.checked = true;
+    const startTime = document.getElementById('launchStartTime');
+    if (startTime) {
+      startTime.disabled = launch.startMode !== 'scheduled';
+      if (launch.startTime) startTime.value = launch.startTime;
+    }
+    const endRadio = document.querySelector(`input[name="launchEnd"][value="${launch.endMode || 'open'}"]`);
+    if (endRadio) endRadio.checked = true;
+    const endTime = document.getElementById('launchEndTime');
+    if (endTime) {
+      endTime.disabled = launch.endMode !== 'scheduled';
+      if (launch.endTime) endTime.value = launch.endTime;
+    }
+  }
+
+  // ── Participant Tracking collect/load ─────────────────────────
+  function collectParticipantTracking() {
+    return {
+      heartbeatInterval: parseInt(document.getElementById('heartbeatInterval')?.value) || 1,
+      heartbeatTimeout: parseInt(document.getElementById('heartbeatTimeout')?.value) || 10,
+    };
+  }
+
+  function loadParticipantTracking(tracking) {
+    if (!tracking) return;
+    const el = id => document.getElementById(id);
+    if (el('heartbeatInterval') && tracking.heartbeatInterval != null) el('heartbeatInterval').value = tracking.heartbeatInterval;
+    if (el('heartbeatTimeout') && tracking.heartbeatTimeout != null) el('heartbeatTimeout').value = tracking.heartbeatTimeout;
+  }
+
   function refreshConditionOrderDropdowns() {
     const newOptions = buildOrderOptions();
     document.querySelectorAll('#conditionsList .cond-order').forEach(sel => {
@@ -3739,6 +3842,8 @@
       adminKey,
       appSettings,
       experimentalDesign: collectExperimentalDesign(),
+      launch: collectLaunchSettings(),
+      participantTracking: collectParticipantTracking(),
       steps,
       urlMods: {
         study: getRowMods('study'),
@@ -4443,9 +4548,9 @@
       const el = document.getElementById(id);
       if (el) fixedPanels[id] = el.classList.contains('active');
     });
-    // Sub-panels within Experimental Design
+    // Sub-panels within Experimental Design + Study Launch
     const expSubPanels = {};
-    document.querySelectorAll('#experimentalDesignDetail .card-settings').forEach(sp => {
+    document.querySelectorAll('#experimentalDesignDetail .card-settings, #studyLaunchDetail .card-settings').forEach(sp => {
       if (sp.id) expSubPanels[sp.id] = sp.classList.contains('open');
     });
     fixedPanels._subPanels = expSubPanels;
@@ -6245,6 +6350,28 @@
   let testModeActive = false;
   let heartbeatInterval = null;
 
+  function launchStudy() {
+    // TODO: wire to go-live system — for now, placeholder
+    alert('Launch Study is not yet wired to the go-live system. Use Start Test for now.');
+  }
+
+  // Restore test mode on page load (synchronous, no animation)
+  if (localStorage.getItem('sb_testModeActive') === '1') {
+    const dash = document.getElementById('testDashboard');
+    const ptDrawer = document.querySelector('#participantTrackingSettings .card-settings-drawer');
+    if (dash) { dash.style.transition = 'none'; dash.style.maxHeight = 'none'; dash.style.opacity = '1'; }
+    if (ptDrawer) ptDrawer.style.transition = 'none';
+    toggleTestMode();
+    // Override toggleTestMode's scrollHeight-based maxHeight with 'none' for instant display
+    if (dash) dash.style.maxHeight = 'none';
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (dash) { dash.style.transition = 'max-height 0.35s ease, opacity 0.3s ease'; dash.style.maxHeight = dash.scrollHeight + 'px'; }
+        if (ptDrawer) ptDrawer.style.transition = '';
+      });
+    });
+  }
+
   function toggleTestMode() {
     testModeActive = !testModeActive;
     const btn = document.getElementById('testModeBtn');
@@ -6254,12 +6381,26 @@
     const hbLabel = document.getElementById('heartbeatLabel');
     const statusEl = document.getElementById('launchStatus');
 
+    // Persist test mode state
+    localStorage.setItem('sb_testModeActive', testModeActive ? '1' : '');
+
     if (testModeActive) {
       btn.textContent = '■ End Test';
       btn.classList.add('active');
       label.textContent = 'Test session active — fresh participant pool';
       label.style.color = 'var(--green)';
-      dashboard.style.display = 'block';
+      dashboard.style.maxHeight = dashboard.scrollHeight + 200 + 'px';
+      dashboard.style.opacity = '1';
+      // Auto-open Study Launch card + Participant Tracking panel
+      const launchCard = document.getElementById('studyLaunchCard');
+      if (launchCard && !launchCard.classList.contains('active')) {
+        launchCard.classList.add('active');
+      }
+      const ptPanel = document.getElementById('participantTrackingSettings');
+      if (ptPanel && !ptPanel.classList.contains('open')) {
+        ptPanel.classList.add('open');
+      }
+      saveExpandedState();
       dot.classList.add('alive');
       hbLabel.textContent = 'Heartbeat: polling every 60s (10 min timeout)';
       if (statusEl) { statusEl.textContent = 'Test active'; statusEl.style.color = 'var(--green)'; }
@@ -6288,7 +6429,8 @@
       btn.classList.remove('active');
       label.textContent = 'Launch a test session with a fresh participant pool';
       label.style.color = 'var(--text-muted)';
-      dashboard.style.display = 'none';
+      dashboard.style.maxHeight = '0';
+      dashboard.style.opacity = '0';
       dot.classList.remove('alive');
       hbLabel.textContent = 'Heartbeat: waiting...';
       if (statusEl) { statusEl.textContent = 'Not started'; statusEl.style.color = '#666'; }
@@ -6312,12 +6454,41 @@
   async function pollTestHeartbeat() {
     if (!testModeActive) return;
     const hbLabel = document.getElementById('heartbeatLabel');
-    const now = new Date();
+    const dot = document.getElementById('heartbeatDot');
     const hbMin = document.getElementById('heartbeatInterval').value || 1;
     const toMin = document.getElementById('heartbeatTimeout').value || 10;
-    hbLabel.textContent = `Heartbeat: last poll ${now.toLocaleTimeString()} (${hbMin}min interval, ${toMin}min timeout)`;
-    // TODO: fetch real data from backend when wired
-    // For now, dashboard stays at current values
+    const slug = document.getElementById('slugValue')?.textContent?.trim();
+    const now = new Date();
+
+    if (!slug) {
+      hbLabel.textContent = `Heartbeat: no study loaded`;
+      return;
+    }
+
+    const apiBase = window.location.hostname === 'spaceweather.now.audio'
+      ? window.location.origin
+      : 'https://spaceweather.now.audio';
+
+    try {
+      const resp = await fetch(`${apiBase}/api/study/${slug}/dashboard?timeout=${toMin}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+
+      updateTestDashboard({
+        totalStarted: data.totalStarted || 0,
+        activeParticipants: data.activeParticipants || 0,
+        totalAssigned: data.totalAssigned || 0,
+        nextAssignment: '—',
+        currentBlock: '—',
+        currentStage: '—'
+      });
+
+      dot.classList.add('alive');
+      hbLabel.textContent = `Heartbeat: ${now.toLocaleTimeString()} (${hbMin}min interval, ${toMin}min timeout) — ${data.totalStarted} total, ${data.activeParticipants} active`;
+    } catch (e) {
+      dot.classList.remove('alive');
+      hbLabel.textContent = `Heartbeat: poll failed ${now.toLocaleTimeString()} — ${e.message}`;
+    }
   }
 </script>
 </body>
