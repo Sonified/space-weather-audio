@@ -26,19 +26,30 @@ export function getParticipantIdFromURL() {
 }
 
 /**
- * Store participant ID (study/simulation) in localStorage
+ * Store participant ID in both sessionStorage (per-tab, prevents cross-tab races)
+ * and localStorage (persists across reloads for session resume).
  * @param {string} participantId - The participant ID to store
  */
 export function storeParticipantId(participantId) {
     if (participantId && participantId.trim()) {
-        localStorage.setItem('participantId', participantId.trim());
-        console.log('💾 Stored participant ID:', participantId.trim());
+        const id = participantId.trim();
+        sessionStorage.setItem('participantId', id);
+        localStorage.setItem('participantId', id);
+        console.log('💾 Stored participant ID:', id);
     }
 }
 
 /**
- * Get participant ID (study/simulation) from localStorage or URL
- * Checks URL first, then falls back to localStorage
+ * Clear participant ID from both sessionStorage and localStorage.
+ */
+export function clearParticipantId() {
+    sessionStorage.removeItem('participantId');
+    localStorage.removeItem('participantId');
+}
+
+/**
+ * Get participant ID — checks URL first, then sessionStorage (per-tab),
+ * then falls back to localStorage (cross-tab, for resume on reload).
  * @returns {string|null} - Participant ID if found, null otherwise
  */
 export function getParticipantId() {
@@ -49,8 +60,8 @@ export function getParticipantId() {
         return urlId;
     }
 
-    // Fall back to localStorage
-    return localStorage.getItem('participantId') || null;
+    // sessionStorage is per-tab — immune to cross-tab races
+    return sessionStorage.getItem('participantId') || localStorage.getItem('participantId') || null;
 }
 
 /**
@@ -82,14 +93,14 @@ export function getRealUsernameStored() {
 export function getActiveId() {
     // On study.html, always use the participant ID from registration
     if (window.__STUDY_FLOW_MANAGED) {
-        return localStorage.getItem('participantId') || 'anonymous';
+        return sessionStorage.getItem('participantId') || localStorage.getItem('participantId') || 'anonymous';
     }
     const isAdvanced = document.getElementById('advancedMode')?.checked;
     const isSimulating = localStorage.getItem('emic_is_simulating') === 'true';
     if (!isAdvanced && isSimulating) {
-        return localStorage.getItem('participantId') || 'anonymous';
+        return sessionStorage.getItem('participantId') || localStorage.getItem('participantId') || 'anonymous';
     }
-    return localStorage.getItem('emic_real_username') || localStorage.getItem('participantId') || 'anonymous';
+    return localStorage.getItem('emic_real_username') || sessionStorage.getItem('participantId') || localStorage.getItem('participantId') || 'anonymous';
 }
 
 /**

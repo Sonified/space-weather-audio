@@ -15,6 +15,7 @@ import { switchComponent } from './component-selector.js';
 import { getLogScaleMinFreq } from './spectrogram-axis-renderer.js';
 import { isStudyMode } from './master-modes.js';
 import { logGroup, logGroupEnd } from './logger.js';
+import { saveFeature as saveFeatureToD1, deleteFeatureFromD1 } from './d1-sync.js';
 
 // ── Standalone features (drawn directly on spectrogram in windowed mode) ──
 // This is the PRIMARY feature tracking mechanism for EMIC study participants.
@@ -159,8 +160,20 @@ function loadStandaloneFeatures() {
  * Add a standalone feature (returns the new feature index)
  */
 function addStandaloneFeature(featureData) {
+    // Assign stable D1 ID so upserts are idempotent
+    if (!featureData.d1Id) {
+        featureData.d1Id = crypto.randomUUID
+            ? crypto.randomUUID()
+            : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+                const r = (Math.random() * 16) | 0;
+                return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+            });
+    }
     standaloneFeatures.push(featureData);
     saveStandaloneFeatures();
+
+    // Real-time sync to D1
+    if (isStudyMode()) saveFeatureToD1(featureData);
 
     return standaloneFeatures.length - 1;
 }
@@ -170,10 +183,14 @@ function addStandaloneFeature(featureData) {
  */
 export function deleteStandaloneFeature(featureIndex) {
     if (featureIndex < 0 || featureIndex >= standaloneFeatures.length) return;
+    const removed = standaloneFeatures[featureIndex];
     closeFeaturePopup();
     standaloneFeatures.splice(featureIndex, 1);
     saveStandaloneFeatures();
     notifyFeatureChange();
+
+    // Remove from D1
+    if (isStudyMode() && removed?.d1Id) deleteFeatureFromD1(removed.d1Id);
 }
 
 
@@ -461,7 +478,9 @@ export async function handleSpectrogramSelection(startY, endY, canvasHeight, sta
         endTime: endTime || '',
         notes: '',
         confidence: 'confirmed',
-        speedFactor: getCurrentSpeedFactor()
+        speedFactor: getCurrentSpeedFactor(),
+        createdAt: new Date().toISOString(),
+        analysisSession: window.__currentAnalysisSession || null
     };
     featureIndex = addStandaloneFeature(newFeature);
 
@@ -625,12 +644,14 @@ export function renderStandaloneFeaturesList() {
         confidenceSelect.addEventListener('change', function() {
             standaloneFeatures[idx].confidence = this.value;
             saveStandaloneFeatures();
+            if (isStudyMode()) saveFeatureToD1(standaloneFeatures[idx]);
             this.blur();
         });
 
         notesField.addEventListener('change', function() {
             standaloneFeatures[idx].notes = this.value;
             saveStandaloneFeatures();
+            if (isStudyMode()) saveFeatureToD1(standaloneFeatures[idx]);
         });
 
         notesField.addEventListener('keydown', function(event) {

@@ -1682,7 +1682,7 @@
         </div>
         <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
           <span id="heartbeatDot" style="width:8px; height:8px; border-radius:50%; background:#555; display:inline-block;"></span>
-          <span id="heartbeatLabel">Heartbeat: waiting...</span>
+          <span id="heartbeatLabel">Keepalive: waiting...</span>
         </div>
       </div>
 
@@ -1741,17 +1741,24 @@
         <div class="card-settings-drawer">
           <div class="settings-body">
 
-            <!-- Heartbeat & Timeout settings -->
-            <div style="display:flex; gap:28px; margin-bottom:16px;">
+            <!-- Polling, Keepalive & Timeout settings -->
+            <div style="display:flex; gap:28px; margin-bottom:16px; flex-wrap:wrap;">
               <div>
-                <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); display:block; margin-bottom:4px;">Heartbeat Interval</label>
+                <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); display:block; margin-bottom:4px;" title="How often the study builder dashboard polls the server for participant updates. Lower values = more responsive but more server requests.">Dashboard Poll</label>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <input type="number" id="pollInterval" value="2" min="1" max="60" style="width:60px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:var(--radius); padding:6px 8px; font-size:var(--input-font-size);">
+                  <span style="font-size:12px; color:var(--text-muted);">sec</span>
+                </div>
+              </div>
+              <div>
+                <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); display:block; margin-bottom:4px;" title="How often the participant's browser pings the server to prove the page is still open. This is a background keepalive — real activity tracking uses the last action timestamp.">Keepalive Interval</label>
                 <div style="display:flex; align-items:center; gap:6px;">
                   <input type="number" id="heartbeatInterval" value="1" min="1" max="30" style="width:60px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:var(--radius); padding:6px 8px; font-size:var(--input-font-size);">
                   <span style="font-size:12px; color:var(--text-muted);">min</span>
                 </div>
               </div>
               <div>
-                <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); display:block; margin-bottom:4px;" title="Minutes of no heartbeat before a participant is shown as inactive on the dashboard.">Inactive Timeout</label>
+                <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); display:block; margin-bottom:4px;" title="Minutes since last action before a participant is shown as inactive on the dashboard. Actions include step changes, feature saves, and response submissions.">Inactive Timeout</label>
                 <div style="display:flex; align-items:center; gap:6px;">
                   <input type="number" id="heartbeatTimeout" value="10" min="1" max="120" style="width:60px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:var(--radius); padding:6px 8px; font-size:var(--input-font-size);">
                   <span style="font-size:12px; color:var(--text-muted);">min</span>
@@ -1786,7 +1793,7 @@
     </div>
     <div class="step-detail" id="dataStreamDetail">
       <div style="display:flex; align-items:center; gap:8px; padding:8px 0 4px;">
-        <button class="btn" onclick="openDataExplorer()" style="font-size:11px; padding:4px 10px;" title="Open full participant data explorer in a new tab">🔍 Data Explorer</button>
+        <button class="btn" onclick="openDataExplorer()" style="font-size:11px; padding:4px 10px;" title="Open full participant data viewer in a new tab">🔍 Data Viewer</button>
       </div>
       <div id="dataStreamLog" style="max-height:300px; overflow-y:auto; font-family:monospace; font-size:11px; line-height:1.6; color:#aaa; padding:8px 0;">
         <div style="color:#555; font-style:italic;">Waiting for activity...</div>
@@ -3658,6 +3665,7 @@
   // ── Participant Tracking collect/load ─────────────────────────
   function collectParticipantTracking() {
     return {
+      pollInterval: parseInt(document.getElementById('pollInterval')?.value) || 2,
       heartbeatInterval: parseInt(document.getElementById('heartbeatInterval')?.value) || 1,
       heartbeatTimeout: parseInt(document.getElementById('heartbeatTimeout')?.value) || 10,
       dropoutTimeout: parseInt(document.getElementById('dropoutTimeout')?.value) || 120,
@@ -3667,6 +3675,7 @@
   function loadParticipantTracking(tracking) {
     if (!tracking) return;
     const el = id => document.getElementById(id);
+    if (el('pollInterval') && tracking.pollInterval != null) el('pollInterval').value = tracking.pollInterval;
     if (el('heartbeatInterval') && tracking.heartbeatInterval != null) el('heartbeatInterval').value = tracking.heartbeatInterval;
     if (el('heartbeatTimeout') && tracking.heartbeatTimeout != null) el('heartbeatTimeout').value = tracking.heartbeatTimeout;
     if (el('dropoutTimeout') && tracking.dropoutTimeout != null) el('dropoutTimeout').value = tracking.dropoutTimeout;
@@ -6253,7 +6262,7 @@
   function openDataExplorer() {
     const slugEl = document.getElementById('slugEditable');
     const slug = slugEl ? slugEl.textContent.trim() : '';
-    const url = slug ? `data-explorer.html?study=${encodeURIComponent(slug)}` : 'data-explorer.html';
+    const url = slug ? `data-viewer.html?study=${encodeURIComponent(slug)}` : 'data-viewer.html';
     window.open(url, '_blank');
   }
 
@@ -6407,7 +6416,7 @@
     const ptDrawer = document.querySelector('#participantTrackingSettings .card-settings-drawer');
     if (dash) { dash.style.transition = 'none'; dash.style.maxHeight = 'none'; dash.style.opacity = '1'; }
     if (ptDrawer) ptDrawer.style.transition = 'none';
-    toggleTestMode();
+    toggleTestMode({ restore: true });
     // Override toggleTestMode's scrollHeight-based maxHeight with 'none' for instant display
     if (dash) dash.style.maxHeight = 'none';
     requestAnimationFrame(() => {
@@ -6497,7 +6506,7 @@
     }
   }
 
-  async function toggleTestMode() {
+  async function toggleTestMode({ restore = false } = {}) {
     testModeActive = !testModeActive;
     const btn = document.getElementById('testModeBtn');
     const label = document.getElementById('testModeLabel');
@@ -6527,30 +6536,34 @@
       }
       saveExpandedState();
       dot.classList.add('alive');
-      hbLabel.textContent = 'Heartbeat: uploading block table...';
       if (statusEl) { statusEl.textContent = 'Test active'; statusEl.style.color = 'var(--green)'; }
 
-      // Record test start time for filtering
-      testStartTime = new Date().toISOString();
-      console.log(`[TEST] Started at ${testStartTime}`);
+      if (restore) {
+        // Page reload — resume polling the existing session, don't create a new one
+        console.log('[TEST] Restoring test mode — resuming existing session');
+        hbLabel.textContent = 'Resuming...';
+      } else {
+        // Fresh start — generate new block table + create new session
+        hbLabel.textContent = 'Uploading block table...';
+        testStartTime = new Date().toISOString();
+        console.log(`[TEST] Started at ${testStartTime}`);
+        await generateAndUploadAssignmentState();
 
-      // Generate block table + upload assignment state (await before polling)
-      await generateAndUploadAssignmentState();
+        // Reset metrics
+        updateTestDashboard({
+          totalStarted: 0,
+          activeParticipants: 0,
+          totalAssigned: 0,
+          nextAssignment: '—',
+          currentBlock: 0,
+          currentStage: '—'
+        });
+      }
 
-      // Reset metrics
-      updateTestDashboard({
-        totalStarted: 0,
-        activeParticipants: 0,
-        totalAssigned: 0,
-        nextAssignment: '—',
-        currentBlock: 0,
-        currentStage: '—'
-      });
-
-      // Start heartbeat polling (read interval from input)
-      const hbMinutes = Math.max(1, parseInt(document.getElementById('heartbeatInterval').value) || 1);
-      heartbeatInterval = setInterval(pollTestHeartbeat, hbMinutes * 60000);
-      // First poll — block table is confirmed uploaded
+      // Start dashboard polling (read interval from input, default 2s)
+      const pollSec = Math.max(1, parseInt(document.getElementById('pollInterval')?.value) || 2);
+      heartbeatInterval = setInterval(pollTestHeartbeat, pollSec * 1000);
+      // First poll
       pollTestHeartbeat();
 
       // Re-measure panel height for smooth animation
@@ -6564,7 +6577,7 @@
       dashboard.style.maxHeight = '0';
       dashboard.style.opacity = '0';
       dot.classList.remove('alive');
-      hbLabel.textContent = 'Heartbeat: waiting...';
+      hbLabel.textContent = 'Keepalive: waiting...';
       if (statusEl) { statusEl.textContent = 'Not started'; statusEl.style.color = '#666'; }
 
       if (heartbeatInterval) {
@@ -6599,13 +6612,12 @@
     if (!testModeActive) return;
     const hbLabel = document.getElementById('heartbeatLabel');
     const dot = document.getElementById('heartbeatDot');
-    const hbMin = document.getElementById('heartbeatInterval').value || 1;
     const toMin = document.getElementById('heartbeatTimeout').value || 10;
     const slug = document.getElementById('slugValue')?.textContent?.trim();
     const now = new Date();
 
     if (!slug) {
-      hbLabel.textContent = `Heartbeat: no study loaded`;
+      hbLabel.textContent = `No study loaded`;
       return;
     }
 
@@ -6614,13 +6626,13 @@
       : 'https://spaceweather.now.audio';
 
     try {
-      const sinceParam = testStartTime ? `&since=${encodeURIComponent(testStartTime)}` : '';
-      const resp = await fetch(`${apiBase}/api/study/${slug}/dashboard?timeout=${toMin}${sinceParam}`);
+      const resp = await fetch(`${apiBase}/api/study/${slug}/dashboard?timeout=${toMin}`);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
 
       const alg = data.algorithmState;
-      console.log(`[DASHBOARD] Poll: ${data.totalStarted} started, ${data.activeParticipants} active, ${data.totalAssigned} assigned, ${data.completedCount} completed`, alg ? `| Block ${alg.currentBlock + 1}, ${alg.phase}, step ${alg.step}` : '| no algorithm state');
+      if (data.sessionId && !activeSessionId) activeSessionId = data.sessionId; // sync if we missed it
+      console.log(`[DASHBOARD] Poll (session: ${data.sessionId || 'none'}): ${data.totalStarted} started, ${data.activeParticipants} active, ${data.totalAssigned} assigned, ${data.completedCount} completed`, alg ? `| Block ${alg.currentBlock + 1}, ${alg.phase}, step ${alg.step}` : '| no algorithm state');
       updateTestDashboard({
         totalStarted: data.totalStarted || 0,
         activeParticipants: data.activeParticipants || 0,
@@ -6631,10 +6643,10 @@
       });
 
       dot.classList.add('alive');
-      hbLabel.textContent = `Heartbeat: ${now.toLocaleTimeString()} (${hbMin}min interval, ${toMin}min timeout) — ${data.totalStarted} total, ${data.activeParticipants} active`;
+      hbLabel.textContent = `${now.toLocaleTimeString()} — ${data.totalStarted} started, ${data.activeParticipants} active (${toMin}min timeout)`;
     } catch (e) {
       dot.classList.remove('alive');
-      hbLabel.textContent = `Heartbeat: poll failed ${now.toLocaleTimeString()} — ${e.message}`;
+      hbLabel.textContent = `Poll failed ${now.toLocaleTimeString()} — ${e.message}`;
     }
   }
 </script>

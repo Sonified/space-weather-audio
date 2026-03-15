@@ -9,10 +9,10 @@
  * Does NOT modify emic_study.html or emic-study-flow.js.
  */
 
-import { fetchStudyConfig, setStudyId, initParticipant, saveSurveyAnswer, saveFeature, saveResponse, markComplete, getParticipantId as d1GetParticipantId, startHeartbeat, stopHeartbeat } from './d1-sync.js';
+import { fetchStudyConfig, setStudyId, initParticipant, saveSurveyAnswer, saveFeature, saveResponse, markComplete, getParticipantId as d1GetParticipantId, startHeartbeat, stopHeartbeat, getApiBase } from './d1-sync.js';
 import { modalManager } from './modal-manager.js';
 import { getStandaloneFeatures } from './feature-tracker.js';
-import { getParticipantId, storeParticipantId, generateParticipantId } from './participant-id.js';
+import { getParticipantId, storeParticipantId, clearParticipantId, generateParticipantId } from './participant-id.js';
 import { styleBodyHtml } from './study-builder/utils.js';
 import { pausePlayback } from './audio-player.js';
 import { typeText, cancelTyping } from './status-text.js';
@@ -158,14 +158,35 @@ function clearAllStepFlags() {
 const PROCESSING_MAP = { resample: 'resample', paulStretch: 'paul', wavelet: 'wavelet' };
 
 /**
- * Load a previously assigned condition from localStorage.
- * Returns the condition object or null if none exists.
+ * Load a previously assigned condition.
+ * Checks sessionStorage first (per-tab, immune to cross-tab races),
+ * then falls back to localStorage (for resume on reload).
+ * After a reset, localStorage is untrusted (other tabs may have written to it).
  */
 function loadSavedCondition(slug) {
     try {
-        const raw = localStorage.getItem(CONDITION_KEY_PREFIX + slug);
-        return raw ? JSON.parse(raw) : null;
+        const raw = sessionStorage.getItem(CONDITION_KEY_PREFIX + slug);
+        if (raw) return JSON.parse(raw);
+        // Only fall back to localStorage if this tab hasn't been reset
+        if (sessionStorage.getItem('_condition_reset')) return null;
+        const local = localStorage.getItem(CONDITION_KEY_PREFIX + slug);
+        return local ? JSON.parse(local) : null;
     } catch { return null; }
+}
+
+/** Save condition to both sessionStorage (per-tab) and localStorage (resume). */
+function saveCondition(slug, condition) {
+    const json = JSON.stringify(condition);
+    sessionStorage.setItem(CONDITION_KEY_PREFIX + slug, json);
+    localStorage.setItem(CONDITION_KEY_PREFIX + slug, json);
+    sessionStorage.removeItem('_condition_reset'); // have a real condition now
+}
+
+/** Clear condition from both storages. Flags this tab to not trust localStorage. */
+function clearCondition(slug) {
+    sessionStorage.removeItem(CONDITION_KEY_PREFIX + slug);
+    localStorage.removeItem(CONDITION_KEY_PREFIX + slug);
+    sessionStorage.setItem('_condition_reset', '1');
 }
 
 /**
@@ -173,7 +194,7 @@ function loadSavedCondition(slug) {
  * If already assigned, returns the existing condition.
  * Called after registration completes.
  */
-function assignCondition() {
+async function assignCondition() {
     const conditions = studyConfig.experimentalDesign?.conditions;
     if (!conditions || conditions.length === 0) return null;
 
@@ -184,7 +205,49 @@ function assignCondition() {
         return existing;
     }
 
-    // Random assignment (healing block algorithm replaces this later)
+    // Server-side assignment for block/healingBlock methods
+    const method = studyConfig.experimentalDesign?.randomization?.method;
+    if (method === 'block' || method === 'healingBlock') {
+        if (window.pm?.study_flow) console.log(`%c[ASSIGN] → Requesting server-side assignment (${method}) for ${getParticipantId()}`, 'color: #aa77ff;');
+        const maxRetries = 5;
+        const retryDelayMs = 500;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                const resp = await fetch(`${getApiBase()}/api/study/${studySlug}/assign`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ participant_id: getParticipantId() })
+                });
+                const data = await resp.json();
+                if (window.pm?.study_flow) console.log(`%c[ASSIGN] ← Server response (attempt ${attempt}):`, 'color: #aa77ff;', data);
+                if (data.success && data.conditionIndex != null) {
+                    const condition = {
+                        conditionIndex: data.conditionIndex,
+                        order: conditions[data.conditionIndex]?.order,
+                        task1Processing: conditions[data.conditionIndex]?.task1Processing,
+                        task2Processing: conditions[data.conditionIndex]?.task2Processing,
+                        assignmentMode: data.assignmentMode,
+                        block: data.block,
+                    };
+                    saveCondition(studySlug, condition);
+                    if (window.pm?.study_flow) console.log(`%c[ASSIGN] ✅ Condition #${data.conditionIndex + 1} (${data.assignmentMode} | block ${data.block + 1} | ${data.phase} | step ${data.step})`, 'color: #aa77ff; font-weight: bold;');
+                    return condition;
+                }
+                console.error(`[ASSIGN] ❌ Attempt ${attempt}/${maxRetries} failed:`, data.error || 'no condition returned');
+            } catch (e) {
+                console.error(`[ASSIGN] ❌ Attempt ${attempt}/${maxRetries} network error:`, e.message);
+            }
+            if (attempt < maxRetries) {
+                await new Promise(r => setTimeout(r, retryDelayMs * attempt));
+            }
+        }
+        // All retries exhausted — do NOT fall back to random. Block the study.
+        console.error('[ASSIGN] 🚫 FATAL: Server assignment failed after all retries.');
+        alert('Unable to assign a study condition. Please check your internet connection and reload the page to try again.');
+        return null;
+    }
+
+    // Random assignment — ONLY for studies explicitly configured with method='random'
     const idx = Math.floor(Math.random() * conditions.length);
     const picked = conditions[idx];
     const condition = {
@@ -195,8 +258,8 @@ function assignCondition() {
     };
 
     // Persist locally
-    localStorage.setItem(CONDITION_KEY_PREFIX + studySlug, JSON.stringify(condition));
-    if (window.pm?.study_flow) console.log(`🧪 Assigned to condition #${idx + 1}:`, condition);
+    saveCondition(studySlug, condition);
+    if (window.pm?.study_flow) console.log(`🧪 Assigned to condition #${idx + 1} (random method):`, condition);
 
     // Sync to D1 (fire-and-forget)
     import('./d1-sync.js').then(({ syncCondition }) => {
@@ -945,10 +1008,22 @@ async function init() {
     // &reset in URL clears ALL session state so everything runs fresh.
     // Must run BEFORE test mode so test mode sees a clean slate.
     if (urlParams.has('reset')) {
-        localStorage.removeItem('participantId');
+        clearParticipantId();
         localStorage.removeItem(PROGRESS_KEY);
         localStorage.removeItem(STUDY_SLUG_KEY);
-        localStorage.removeItem(CONDITION_KEY_PREFIX + studySlug);
+        clearCondition(studySlug);
+        // Clear saved survey answers
+        if (studyConfig?.steps) {
+            for (const step of studyConfig.steps) {
+                if (step.contentType === 'questions' && step.questions) {
+                    for (const q of step.questions) {
+                        localStorage.removeItem(`study_answer_${studySlug}_${q.id}`);
+                    }
+                } else if (step.type === 'question' && step.id) {
+                    localStorage.removeItem(`study_answer_${studySlug}_${step.id}`);
+                }
+            }
+        }
         currentStepIndex = 0;
         console.log('🧹 Reset mode — cleared session state (including condition)');
 
@@ -964,7 +1039,7 @@ async function init() {
         window.__TEST_MODE = true;
 
         // Check if we already have a TEST_ session in progress
-        const existingId = localStorage.getItem('participantId');
+        const existingId = sessionStorage.getItem('participantId') || localStorage.getItem('participantId');
         const hasTestSession = existingId && existingId.startsWith('TEST_');
 
         if (hasTestSession) {
@@ -977,9 +1052,22 @@ async function init() {
             const testSuffix = Array.from({ length: 5 }, () => testChars[Math.floor(Math.random() * 26)]).join('');
             const testId = `TEST_${testSuffix}`;
             window.__TEST_PARTICIPANT_ID = testId;
-            localStorage.removeItem('participantId');
+            clearParticipantId();
             localStorage.removeItem(PROGRESS_KEY);
             localStorage.removeItem(STUDY_SLUG_KEY);
+            clearCondition(studySlug);
+            // Clear saved survey answers from previous session
+            if (studyConfig?.steps) {
+                for (const step of studyConfig.steps) {
+                    if (step.contentType === 'questions' && step.questions) {
+                        for (const q of step.questions) {
+                            localStorage.removeItem(`study_answer_${studySlug}_${q.id}`);
+                        }
+                    } else if (step.type === 'question' && step.id) {
+                        localStorage.removeItem(`study_answer_${studySlug}_${step.id}`);
+                    }
+                }
+            }
             currentStepIndex = 0;
             console.log(`🧪 Test mode — new session: ${testId}`);
         }
@@ -997,7 +1085,7 @@ async function init() {
         const previewSuffix = Array.from({ length: 6 }, () => previewChars[Math.floor(Math.random() * 26)]).join('');
         const previewId = `Preview_${previewSuffix}`;
         // Don't set participantId yet — let registration run so it's visible in preview
-        localStorage.removeItem('participantId');
+        clearParticipantId();
         window.__PREVIEW_PARTICIPANT_ID = previewId;
 
         // Always start fresh in preview mode — clear any saved progress
@@ -1121,7 +1209,7 @@ async function init() {
             // In test mode, use the TEST_ ID that was already generated
             const pid = window.__TEST_PARTICIPANT_ID || generateParticipantId(regStep.idPrefix);
             storeParticipantId(pid);
-            initParticipant(pid, studySlug);
+            await initParticipant(pid, studySlug);
             startHeartbeat();
             if (window.pm?.study_flow) console.log(`%c[INIT] ③ Early auto-registration: ${pid}`, 'color: #58a6ff; font-weight: bold;');
         } else {
@@ -1138,7 +1226,7 @@ async function init() {
         if (window.pm?.study_flow) console.log(`%c[INIT] ④ Loaded saved condition #${assignedCondition.conditionIndex + 1}: order=[${assignedCondition.order}] task1=${assignedCondition.task1Processing} task2=${assignedCondition.task2Processing}`, 'color: #58a6ff;');
     } else if (getParticipantId()) {
         // Participant exists but no condition yet — assign now
-        assignedCondition = assignCondition();
+        assignedCondition = await assignCondition();
         if (assignedCondition) {
             if (window.pm?.study_flow) console.log(`%c[INIT] ④ Assigned NEW condition #${assignedCondition.conditionIndex + 1}`, 'color: #58a6ff; font-weight: bold;');
         } else {
@@ -1547,17 +1635,17 @@ async function runRegistration(step) {
 
     if (isAuto && step.skipLogin) {
         // Auto-generate and skip login screen entirely
-        // (For auto+skipLogin, early registration in init() already handled this.
-        //  This path is a fallback for edge cases like preview/test mode.)
-        const pid = generateParticipantId(step.idPrefix);
+        // Early registration in init() already handled this for most cases.
+        // Use existing TEST_ ID if available, then check localStorage, then generate new.
+        const pid = window.__TEST_PARTICIPANT_ID || getParticipantId() || generateParticipantId(step.idPrefix);
         storeParticipantId(pid);
         if (step.showIdCorner !== false) updateParticipantDisplay(pid);
         else hideParticipantDisplay();
-        initParticipant(pid, studySlug);
+        await initParticipant(pid, studySlug);
         startHeartbeat();
         console.log(`📋 Auto-registered (skip login): ${pid}`);
         if (!assignedCondition) {
-            assignedCondition = assignCondition();
+            assignedCondition = await assignCondition();
             if (assignedCondition) applyConditionOrder(assignedCondition);
         }
         advanceStep();
@@ -1616,7 +1704,7 @@ function showLoginModal(step) {
             submitBtn.disabled = !input.value.trim();
         });
 
-        const doSubmit = () => {
+        const doSubmit = async () => {
             const pid = input.value.trim();
             if (!pid) return;
             storeParticipantId(pid);
@@ -1627,7 +1715,7 @@ function showLoginModal(step) {
             console.log(`📋 Registered: ${pid}`);
             // Assign condition after manual registration
             if (!assignedCondition) {
-                assignedCondition = assignCondition();
+                assignedCondition = await assignCondition();
                 if (assignedCondition) applyConditionOrder(assignedCondition);
             }
             resolve();
@@ -1702,6 +1790,14 @@ function runInfoModal(step) {
 
         await setStudyModalContent(html);
         openStudyModalIfNeeded();
+
+        // If no more actionable steps remain, mark study complete now
+        // (e.g., a trailing 'launch' step is not a participant action)
+        const actionableTypes = new Set(['registration', 'modal', 'info', 'question', 'analysis']);
+        const hasMoreWork = studyConfig.steps.slice(currentStepIndex + 1).some(s => actionableTypes.has(s.type));
+        if (!hasMoreWork) {
+            onStudyComplete();
+        }
 
         const dismiss = () => {
             if (outsideHandler) studyModalEl.removeEventListener('click', outsideHandler);
@@ -1844,7 +1940,12 @@ async function runAnalysis(step) {
     analysisAbort = new AbortController();
     const signal = analysisAbort.signal;
 
-    console.log(`📋 Analysis step: entering drawing phase`);
+    // Determine which analysis session this is (1 or 2)
+    const analysisIndices = [];
+    studyConfig.steps.forEach((s, i) => { if (s.type === 'analysis') analysisIndices.push(i); });
+    const analysisSession = analysisIndices.indexOf(currentStepIndex) + 1; // 1-based
+    window.__currentAnalysisSession = analysisSession;
+    console.log(`📋 Analysis step: entering drawing phase (session ${analysisSession})`);
 
     // Apply this step's analysis config (spacecraft, dates, display settings)
     applyAnalysisConfig(step);
@@ -1858,6 +1959,17 @@ async function runAnalysis(step) {
             if (window.pm?.study_flow) console.log(`🧪 Applied processing: ${step._assignedProcessing} → ${mapped}`);
         }
     }
+
+    // Save analysis session metadata to D1 (data config for this session)
+    saveResponse('analysis_session', {
+        session: analysisSession,
+        spacecraft: step.spacecraft,
+        startDate: step.startDate || step.startTime,
+        endDate: step.endDate || step.endTime,
+        processing: step._assignedProcessing || null,
+        stepIndex: currentStepIndex,
+        enteredAt: new Date().toISOString(),
+    });
 
     // Clear old axis ticks and canvases immediately so stale dates don't linger
     for (const id of ['minimap-x-axis', 'spectrogram-x-axis']) {
@@ -2196,7 +2308,10 @@ function showQuestionModal(question, index, total, progressPct, previousAnswer, 
 // STUDY COMPLETE
 // ═══════════════════════════════════════════════════════════════════════════════
 
+let _studyCompleted = false;
 function onStudyComplete() {
+    if (_studyCompleted) return; // idempotent — may fire from final info modal + advanceStep
+    _studyCompleted = true;
     console.log(`📋 Study complete!`);
     stopHeartbeat();
     markComplete();
@@ -2213,6 +2328,8 @@ function onStudyComplete() {
                 for (const q of step.questions) {
                     localStorage.removeItem(`study_answer_${studySlug}_${q.id}`);
                 }
+            } else if (step.type === 'question' && step.id) {
+                localStorage.removeItem(`study_answer_${studySlug}_${step.id}`);
             }
         }
     }

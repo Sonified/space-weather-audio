@@ -11,7 +11,7 @@
 let _studyId = 'emic-pilot'; // default, overridden by setStudyId() or page config
 const PENDING_KEY = 'd1_pending_sync';
 
-function getApiBase() {
+export function getApiBase() {
     if (typeof window !== 'undefined' && window.location?.hostname === 'spaceweather.now.audio') {
         return window.location.origin;
     }
@@ -31,7 +31,7 @@ function generateUUID() {
 
 export function getParticipantId() {
     if (typeof localStorage === 'undefined') return null;
-    return localStorage.getItem('participantId') || null;
+    return sessionStorage.getItem('participantId') || localStorage.getItem('participantId') || null;
 }
 
 export function getStudyId() {
@@ -168,14 +168,14 @@ function d1Get(path) {
 /**
  * Register participant in D1. Call once at registration.
  */
-export function initParticipant(participantId, studyId) {
+export async function initParticipant(participantId, studyId) {
 
     const sid = studyId || getStudyId();
     const pid = participantId || getParticipantId();
     if (!pid) { log('⚠️', 'no participantId — skipping init'); return; }
 
-    d1Post(`/api/study/${sid}/participants`, { id: pid })
-        .then(r => r && log('✅', `${(r.mode || 'LIVE').toUpperCase()} — registered participant ${pid}`));
+    const r = await d1Post(`/api/study/${sid}/participants`, { id: pid });
+    if (r) log('✅', `${(r.mode || 'LIVE').toUpperCase()} — registered participant ${pid}`);
 }
 
 /**
@@ -191,7 +191,7 @@ export function saveResponse(type, data, options = {}) {
     if (!pid) { log('⚠️', 'no participantId — skipping save'); return; }
 
     const body = {
-        id: (crypto.randomUUID ? crypto.randomUUID() : generateUUID()),
+        id: options.id || (crypto.randomUUID ? crypto.randomUUID() : generateUUID()),
         participant_id: pid,
         type,
         data,
@@ -220,11 +220,24 @@ export function saveFeature(featureData) {
         notes: featureData.notes || '',
         confidence: featureData.confidence || 'confirmed',
         speedFactor: featureData.speedFactor || null,
+        createdAt: featureData.createdAt || null,
+        analysisSession: featureData.analysisSession || null,
         coordCount: coords.length,
     };
 
-    saveResponse('feature', payload);
-    log('📍', `saved feature (${coords.length} coords)`);
+    // Use stable d1Id for upsert (avoids duplicates on re-save)
+    saveResponse('feature', payload, { id: featureData.d1Id });
+    log('📍', `saved feature ${featureData.d1Id ? featureData.d1Id.slice(0, 8) : '(new)'} (${coords.length} coords)`);
+}
+
+/**
+ * Delete a feature from D1 by its stable ID. Fire-and-forget.
+ */
+export function deleteFeatureFromD1(featureId) {
+    if (!featureId) return;
+    const sid = getStudyId();
+    d1Fetch('DELETE', `/api/study/${sid}/features/${encodeURIComponent(featureId)}`, null, false)
+        .then(r => r && log('🗑️', `deleted feature ${featureId.slice(0, 8)}`));
 }
 
 /**
@@ -312,41 +325,41 @@ export async function fetchFeatures(participantId, studyId) {
     return [];
 }
 
-// ── Heartbeat ────────────────────────────────────────────────────────────────
+// ── Keepalive ────────────────────────────────────────────────────────────────
+// Lightweight idle keepalive — proves the page is still open when the user
+// isn't actively triggering actions. Real "last active" tracking uses
+// updated_at, which is bumped by every step/feature/response save.
 
-let _heartbeatTimer = null;
+let _keepaliveTimer = null;
 
 /**
- * Start sending periodic heartbeats to the server.
- * Fire-and-forget — never blocks participant flow.
+ * Start periodic keepalive pings. Fire-and-forget, never blocks UI.
  * @param {number} intervalMinutes - How often to ping (default 1)
  */
 export function startHeartbeat(intervalMinutes = 1) {
-    stopHeartbeat(); // clear any existing
+    stopHeartbeat();
     const pid = getParticipantId();
     const sid = getStudyId();
     if (!pid || !sid) return;
 
-    const sendPing = async () => {
+    const ping = async () => {
         try {
             await fetch(`${getApiBase()}/api/study/${sid}/participants/${encodeURIComponent(pid)}/heartbeat`, {
                 method: 'POST'
             });
-        } catch (e) {
-            // Silent fail — never block participant
+        } catch {
+            // Silent fail
         }
     };
 
-    sendPing(); // immediate first ping
-    _heartbeatTimer = setInterval(sendPing, intervalMinutes * 60000);
+    ping();
+    _keepaliveTimer = setInterval(ping, intervalMinutes * 60000);
 }
 
-/**
- * Stop the heartbeat interval.
- */
+/** Stop the keepalive interval. */
 export function stopHeartbeat() {
-    if (_heartbeatTimer) {
-        clearInterval(_heartbeatTimer);
-        _heartbeatTimer = null;
+    if (_keepaliveTimer) {
+        clearInterval(_keepaliveTimer);
+        _keepaliveTimer = null;
     }
 }

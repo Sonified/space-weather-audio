@@ -838,7 +838,7 @@ export default {
         const method = config.experimentalDesign?.randomization?.method || 'random';
 
         // Retry loop for optimistic concurrency
-        for (let attempt = 0; attempt < 5; attempt++) {
+        for (let attempt = 0; attempt < 10; attempt++) {
           // Find active session
           const session = await env.DB.prepare(
             `SELECT session_id, assignment_state, assignment_version FROM assignment_sessions
@@ -858,7 +858,7 @@ export default {
             const { results: dropouts } = await env.DB.prepare(
               `SELECT assigned_condition, assignment_mode FROM participants
                WHERE study_id = ? AND session_id = ? AND completed_at IS NULL AND assigned_condition IS NOT NULL
-               AND last_heartbeat < datetime('now', '-' || ? || ' minutes')`
+               AND updated_at < datetime('now', '-' || ? || ' minutes')`
             ).bind(studyId, sessionId, dropoutMin).all();
 
             if (dropouts && dropouts.length > 0) {
@@ -904,11 +904,12 @@ export default {
             continue; // retry
           }
 
-          // Write assignment to participant row (include session_id)
+          // Write assignment to participant row (include session_id + block)
+          const assignedBlock = state.currentBlock ?? null;
           await env.DB.prepare(
-            `UPDATE participants SET assigned_condition = ?, assignment_mode = ?, assigned_at = datetime('now'),
+            `UPDATE participants SET assigned_condition = ?, assignment_mode = ?, assigned_block = ?, assigned_at = datetime('now'),
              session_id = ?, updated_at = datetime('now') WHERE participant_id = ? AND study_id = ?`
-          ).bind(assignedCondition, assignmentMode, sessionId, pid, studyId).run();
+          ).bind(assignedCondition, assignmentMode, assignedBlock, sessionId, pid, studyId).run();
 
           const conditionDetails = conditions[assignedCondition] || {};
           return json({
@@ -950,13 +951,13 @@ export default {
         return json({ success: true, conditionIndex: body.conditionIndex });
       }
 
-      // POST /api/study/:studyId/participants/:pid/heartbeat — update last active timestamp
+      // POST /api/study/:studyId/participants/:pid/heartbeat — keepalive only (NOT updated_at)
       const heartbeatStudyMatch = path.match(/^\/api\/study\/([^/]+)\/participants\/([^/]+)\/heartbeat$/);
       if (heartbeatStudyMatch && request.method === 'POST') {
         const [, studyId, pid] = heartbeatStudyMatch;
         const decodedPid = decodeURIComponent(pid);
         await env.DB.prepare(
-          `UPDATE participants SET last_heartbeat = datetime('now'), updated_at = datetime('now')
+          `UPDATE participants SET last_heartbeat = datetime('now')
            WHERE participant_id = ? AND study_id = ?`
         ).bind(decodedPid, studyId).run();
         return json({ success: true });
@@ -973,13 +974,20 @@ export default {
         const type = body.type || 'unknown';
 
         if (type === 'feature') {
-          // Insert into features table
+          // Upsert into features table (stable d1Id allows re-saves without duplicates)
           const id = body.id || (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36));
           const d = body.data || {};
+          // Client-authoritative created_at; preserve original on re-saves
+          const clientCreatedAt = d.createdAt || null;
+          const analysisSession = d.analysisSession || null;
           await env.DB.prepare(
-            `INSERT INTO features (id, participant_id, study_id, start_time, end_time, low_freq, high_freq, confidence, notes, speed_factor)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-          ).bind(id, pid, studyId, d.startTime || null, d.endTime || null, d.lowFreq || null, d.highFreq || null, d.confidence || 'confirmed', d.notes || '', d.speedFactor || null).run();
+            `INSERT OR REPLACE INTO features (id, participant_id, study_id, start_time, end_time, low_freq, high_freq, confidence, notes, speed_factor, created_at, analysis_session)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM features WHERE id = ?), ?, datetime('now')), ?)`
+          ).bind(id, pid, studyId, d.startTime || null, d.endTime || null, d.lowFreq || null, d.highFreq || null, d.confidence || 'confirmed', d.notes || '', d.speedFactor || null, id, clientCreatedAt, analysisSession).run();
+          // Bump updated_at on participant (real action, not just keepalive)
+          await env.DB.prepare(
+            `UPDATE participants SET updated_at = datetime('now') WHERE participant_id = ? AND study_id = ?`
+          ).bind(pid, studyId).run();
           return json({ success: true, feature_id: id, mode });
         }
 
@@ -1004,6 +1012,14 @@ export default {
         return json({ success: true, mode });
       }
 
+      // DELETE /api/study/:studyId/features/:featureId — remove a single feature
+      const deleteFeatureMatch = path.match(/^\/api\/study\/([^/]+)\/features\/([^/]+)$/);
+      if (deleteFeatureMatch && request.method === 'DELETE') {
+        const [, studyId, featureId] = deleteFeatureMatch;
+        await env.DB.prepare(`DELETE FROM features WHERE id = ? AND study_id = ?`).bind(featureId, studyId).run();
+        return json({ success: true, deleted: featureId });
+      }
+
       // GET /api/study/:studyId/participants — list all participants with feature counts
       const listParticipantsMatch = path.match(/^\/api\/study\/([^/]+)\/participants$/);
       if (listParticipantsMatch && request.method === 'GET') {
@@ -1017,10 +1033,10 @@ export default {
 
         const { results } = await env.DB.prepare(
           `SELECT p.participant_id, p.current_step, p.registered_at, p.completed_at,
-                  p.assigned_condition, p.assignment_mode, p.assigned_at,
-                  p.last_heartbeat, p.updated_at, p.responses, p.flags,
+                  p.assigned_condition, p.assignment_mode, p.assigned_block, p.assigned_at,
+                  p.updated_at, p.responses, p.flags,
                   COUNT(f.id) as feature_count,
-                  CASE WHEN p.last_heartbeat > datetime('now', '-' || ? || ' minutes') THEN 1 ELSE 0 END as is_active
+                  CASE WHEN p.updated_at > datetime('now', '-' || ? || ' minutes') THEN 1 ELSE 0 END as is_active
            FROM participants p
            LEFT JOIN features f ON f.participant_id = p.participant_id AND f.study_id = p.study_id
            WHERE ${whereClause}
@@ -1091,13 +1107,13 @@ export default {
         const [totalRow, activeRow, assignedRow, completedRow, participantRows] = await Promise.all([
           env.DB.prepare(`SELECT COUNT(*) as count FROM participants WHERE study_id = ?${sessionFilter}`).bind(studyId, ...sessionBinds).first(),
           env.DB.prepare(
-            `SELECT COUNT(*) as count FROM participants WHERE study_id = ? AND last_heartbeat > datetime('now', '-' || ? || ' minutes')${sessionFilter}`
+            `SELECT COUNT(*) as count FROM participants WHERE study_id = ? AND updated_at > datetime('now', '-' || ? || ' minutes')${sessionFilter}`
           ).bind(studyId, timeoutMin, ...sessionBinds).first(),
           env.DB.prepare(`SELECT COUNT(*) as count FROM participants WHERE study_id = ? AND assigned_condition IS NOT NULL${sessionFilter}`).bind(studyId, ...sessionBinds).first(),
           env.DB.prepare(`SELECT COUNT(*) as count FROM participants WHERE study_id = ? AND completed_at IS NOT NULL${sessionFilter}`).bind(studyId, ...sessionBinds).first(),
           env.DB.prepare(
-            `SELECT participant_id, current_step, last_heartbeat, registered_at, completed_at, assigned_condition, assignment_mode,
-                    CASE WHEN last_heartbeat > datetime('now', '-' || ? || ' minutes') THEN 1 ELSE 0 END as is_active
+            `SELECT participant_id, current_step, updated_at, registered_at, completed_at, assigned_condition, assignment_mode, assigned_block,
+                    CASE WHEN updated_at > datetime('now', '-' || ? || ' minutes') THEN 1 ELSE 0 END as is_active
              FROM participants WHERE study_id = ?${sessionFilter} ORDER BY updated_at DESC LIMIT 100`
           ).bind(timeoutMin, studyId, ...sessionBinds).all(),
         ]);
