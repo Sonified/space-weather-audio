@@ -157,29 +157,41 @@ async function handleCriticalError(errorMessage, errorDetails) {
 }
 
 /**
- * Submit error report to backend
- * 🔥 TEMPORARILY DISABLED - Just log to console for now
+ * Submit error report to backend (Cloudflare Worker → R2)
  */
 async function submitErrorReport(errorMessage, errorDetails) {
     if (errorReported) return;
     errorReported = true;
-    
-    // Try to get participant ID (fail gracefully)
+
+    // Gather study context (fail gracefully on each)
     let participantId = 'unknown';
+    let studyStep = null;
+    let condition = null;
+    let studySlug = null;
     try {
-        // Check if qualtrics API is available
-        if (window.qualtricsAPI && window.qualtricsAPI.getParticipantId) {
-            participantId = window.qualtricsAPI.getParticipantId() || 'unknown';
+        participantId = localStorage.getItem('emic_participant_id') || localStorage.getItem('participantId') || 'unknown';
+        studyStep = localStorage.getItem('study_flow_step');
+        // Find condition key (study_condition_{slug})
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('study_condition_')) {
+                studySlug = key.replace('study_condition_', '');
+                try { condition = JSON.parse(localStorage.getItem(key)); } catch (e) { /* skip */ }
+                break;
+            }
         }
     } catch (e) {
-        // Qualtrics API not available, continue with 'unknown'
+        // localStorage not available
     }
-    
+
     const errorReport = {
-        participantId: participantId,
+        participantId,
+        studyStep: studyStep !== null ? parseInt(studyStep, 10) : null,
+        studySlug,
+        condition,
         timestamp: new Date().toISOString(),
-        errorMessage: errorMessage,
-        errorDetails: errorDetails,
+        errorMessage,
+        errorDetails,
         consoleLogs: consoleLogs.slice(-100),
         userAgent: navigator.userAgent,
         url: window.location.href,
@@ -189,27 +201,20 @@ async function submitErrorReport(errorMessage, errorDetails) {
         },
         source: 'core-error-system'
     };
-    
-    // Log what we're about to send
-    console.error('📤 [BACKEND SUBMISSION DISABLED] Error report ready:', {
-        errorMessage,
-        errorDetails,
-        participantId,
-        timestamp: errorReport.timestamp
-    });
-    console.error('📋 Full error report (not sent to backend):', errorReport);
-    
-    // 🔥 BACKEND SUBMISSION DISABLED - uncomment below to re-enable
-    /*
+
+    const apiBase = window.location.hostname === 'spaceweather.now.audio'
+        ? window.location.origin
+        : 'https://spaceweather.now.audio';
+
     try {
-        const response = await fetch('https://volcano-audio-collector-production.up.railway.app/api/report-error', {
+        const response = await fetch(`${apiBase}/api/emic/errors`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(errorReport)
         });
-        
+
         if (response.ok) {
-            console.log('✅ Error report submitted (core)');
+            console.log('✅ Error report submitted to R2');
         } else {
             console.error('❌ Failed to submit error report:', response.statusText);
             errorReported = false; // Allow retry
@@ -218,7 +223,6 @@ async function submitErrorReport(errorMessage, errorDetails) {
         console.error('❌ Error submitting report:', error);
         errorReported = false; // Allow retry
     }
-    */
 }
 
 /**
