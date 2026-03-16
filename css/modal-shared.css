@@ -182,3 +182,53 @@
     color: #555;
     font-weight: 400;
 }
+
+/* ── Likert Grid ────────────────────────────────────────────────────────── */
+.likert-grid {
+    display: grid;
+    margin-bottom: 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+.likert-corner {
+    background: #f5f5f5;
+    padding: 10px 14px;
+    border-bottom: 2px solid #e0e0e0;
+}
+.likert-col-header {
+    background: #f5f5f5;
+    padding: 10px 6px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: #444;
+    border-bottom: 2px solid #e0e0e0;
+    border-left: 1px solid #eee;
+}
+.likert-row-label {
+    padding: 10px 14px;
+    font-size: 15px;
+    color: #333;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    align-items: center;
+}
+.likert-cell {
+    padding: 10px 6px;
+    text-align: center;
+    border-bottom: 1px solid #eee;
+    border-left: 1px solid #eee;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.likert-cell input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #007bff;
+    cursor: pointer;
+}
+.likert-row-even {
+    background: rgba(0, 0, 0, 0.02);
+}

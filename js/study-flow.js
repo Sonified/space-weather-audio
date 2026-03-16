@@ -2120,31 +2120,30 @@ function showConfirmationModal(config) {
         if (overlay) { overlay.style.display = 'flex'; overlay.style.opacity = '1'; overlay.style.transition = ''; }
         overlay.appendChild(modal);
 
-        modalManager.openModal('studyConfirmModal', { keepOverlay: true });
-
-        requestAnimationFrame(() => {
-            document.getElementById('studyConfirmYes')?.addEventListener('click', async () => {
-                await modalManager.closeModal('studyConfirmModal', { keepOverlay: true });
-                modal.remove();
-                modalManager.currentModal = null;
-                // Seed studyModalInner with placeholder so setStudyModalContent
-                // takes the crossfade path (fade out → swap → fade in)
-                ensureStudyModal();
-                if (studyModalInner) {
-                    studyModalInner.innerHTML = '<div>&nbsp;</div>';
-                    studyModalInner.style.opacity = '1';
-                }
-                // Show studyModal instantly — the inner crossfade handles animation
-                openStudyModalIfNeeded();
-                resolve(true);
-            });
-            document.getElementById('studyConfirmNo')?.addEventListener('click', async () => {
-                await modalManager.closeModal('studyConfirmModal');
-                modal.remove();
-                if (overlay) { overlay.style.display = 'none'; }
-                resolve(false);
-            });
+        // Attach listeners BEFORE openModal — buttons are in the DOM, no race condition
+        document.getElementById('studyConfirmYes')?.addEventListener('click', async () => {
+            await modalManager.closeModal('studyConfirmModal', { keepOverlay: true });
+            modal.remove();
+            modalManager.currentModal = null;
+            // Seed studyModalInner with placeholder so setStudyModalContent
+            // takes the crossfade path (fade out → swap → fade in)
+            ensureStudyModal();
+            if (studyModalInner) {
+                studyModalInner.innerHTML = '<div>&nbsp;</div>';
+                studyModalInner.style.opacity = '1';
+            }
+            // Show studyModal instantly — the inner crossfade handles animation
+            openStudyModalIfNeeded();
+            resolve(true);
         });
+        document.getElementById('studyConfirmNo')?.addEventListener('click', async () => {
+            await modalManager.closeModal('studyConfirmModal');
+            modal.remove();
+            if (overlay) { overlay.style.display = 'none'; }
+            resolve(false);
+        });
+
+        modalManager.openModal('studyConfirmModal', { keepOverlay: true });
     });
 }
 
@@ -2167,6 +2166,8 @@ async function runQuestionnaire(step) {
             required: step.required,
             options: step.options,
             labelMode: step.labelMode || (step.labelPrefixes === false ? 'hidden' : (step.boldLabelPrefixes === false ? 'visible' : 'bold')),
+            scaleLabels: step.scaleLabels,
+            rows: step.rows,
         }];
     }
     if (!questions.length) { advanceStep(); return; }
@@ -2276,8 +2277,21 @@ function showQuestionModal(question, index, total, progressPct, previousAnswer, 
         const nextBtn = studyModalInner.querySelector('.modal-next');
         const backBtn = studyModalInner.querySelector('.modal-back');
 
-        if (question.type === 'radio') {
-            studyModalInner.querySelectorAll(`input[name="sq_${question.inputName || question.id}"]`).forEach(radio => {
+        const qType = question.type || question.questionType || 'radio';
+        const qName = question.inputName || question.id || 'q';
+
+        if (qType === 'likert') {
+            const totalRows = (question.rows || []).length;
+            const allRadios = studyModalInner.querySelectorAll(`input[type="radio"][name^="sq_${qName}_row"]`);
+            allRadios.forEach(radio => {
+                radio.addEventListener('change', () => {
+                    const filled = new Set();
+                    allRadios.forEach(r => { if (r.checked) filled.add(r.name); });
+                    nextBtn.disabled = filled.size < totalRows;
+                });
+            });
+        } else if (qType === 'radio') {
+            studyModalInner.querySelectorAll(`input[name="sq_${qName}"]`).forEach(radio => {
                 radio.addEventListener('change', () => { nextBtn.disabled = false; });
             });
         } else if (question.required !== false) {
@@ -2291,8 +2305,14 @@ function showQuestionModal(question, index, total, progressPct, previousAnswer, 
 
         nextBtn?.addEventListener('click', () => {
             let answer;
-            if (question.type === 'radio') {
-                const checked = studyModalInner.querySelector(`input[name="sq_${question.inputName || question.id}"]:checked`);
+            if (qType === 'likert') {
+                answer = {};
+                (question.rows || []).forEach((rowLabel, i) => {
+                    const checked = studyModalInner.querySelector(`input[name="sq_${qName}_row${i}"]:checked`);
+                    answer[rowLabel] = checked?.value || '';
+                });
+            } else if (qType === 'radio') {
+                const checked = studyModalInner.querySelector(`input[name="sq_${qName}"]:checked`);
                 answer = checked?.value || '';
             } else {
                 answer = studyModalInner.querySelector('textarea')?.value?.trim() || '';

@@ -75,6 +75,36 @@ export function renderFreetextInput({ placeholder, previousAnswer, preview = fal
     `;
 }
 
+export function renderLikertGrid({ scaleLabels, rows, inputName, previousAnswer, preview = false }) {
+    const cols = scaleLabels || [];
+    const items = rows || [];
+    if (cols.length === 0 || items.length === 0) return '<div style="color:#999;font-style:italic;">No scale labels or rows defined.</div>';
+
+    const namePrefix = preview ? `preview_${inputName}` : `sq_${inputName}`;
+    const disabled = preview ? ' disabled' : '';
+    const prevObj = (previousAnswer && typeof previousAnswer === 'object') ? previousAnswer : {};
+
+    // Header row
+    let html = `<div class="likert-grid" style="grid-template-columns: minmax(140px, 1.5fr) repeat(${cols.length}, 1fr);">`;
+    html += `<div class="likert-corner"></div>`;
+    for (const lbl of cols) {
+        html += `<div class="likert-col-header">${lbl}</div>`;
+    }
+
+    // Body rows
+    for (let r = 0; r < items.length; r++) {
+        const evenClass = r % 2 === 1 ? ' likert-row-even' : '';
+        html += `<div class="likert-row-label${evenClass}">${items[r]}</div>`;
+        for (let c = 0; c < cols.length; c++) {
+            const val = String(c + 1);
+            const checked = prevObj[items[r]] === val ? ' checked' : '';
+            html += `<div class="likert-cell${evenClass}"><input type="radio" name="${namePrefix}_row${r}" value="${val}"${checked}${disabled}></div>`;
+        }
+    }
+    html += `</div>`;
+    return html;
+}
+
 export function renderInfoModal({ step, bodyHtml, btnStyle, preview = false }) {
     const dimStyle = buildDimensionStyle(step, '560px');
     const ulStyle = buildHeaderUnderlineStyle(step);
@@ -138,9 +168,17 @@ export function renderRegistrationModal({ step, bodyHtml, preview = false }) {
 }
 
 export function renderQuestionModal({ question, index, total, progressPct, previousAnswer, showBack, dims, preview = false }) {
-    const isRadio = question.type === 'radio' || question.questionType === 'radio';
+    const qType = question.type || question.questionType || 'radio';
     let questionHtml = '';
-    if (isRadio) {
+    if (qType === 'likert') {
+        questionHtml = renderLikertGrid({
+            scaleLabels: question.scaleLabels || [],
+            rows: question.rows || [],
+            inputName: question.inputName || question.id || 'q',
+            previousAnswer,
+            preview
+        });
+    } else if (qType === 'radio') {
         questionHtml = renderRadioOptions({
             options: question.options || [],
             labelMode: question.labelMode || 'bold',
@@ -159,13 +197,21 @@ export function renderQuestionModal({ question, index, total, progressPct, previ
     const isLast = index === total - 1;
     const nextLabel = isLast ? '✓ Submit' : 'Next →';
     const stepDims = dims || {};
-    const dimStyle = buildDimensionStyle(stepDims, '750px');
+    const defaultWidth = qType === 'likert' ? '850px' : '750px';
+    const dimStyle = buildDimensionStyle(stepDims, defaultWidth);
     const ulStyle = buildHeaderUnderlineStyle(stepDims);
     const titleFont = buildTitleFontStyle(stepDims);
     const isRequired = question.required !== false;
     let disabledNext = '';
-    if (!preview && isRequired && !previousAnswer) {
-        disabledNext = ' disabled';
+    if (!preview && isRequired) {
+        if (qType === 'likert') {
+            const allFilled = previousAnswer && typeof previousAnswer === 'object'
+                && Object.keys(previousAnswer).length === (question.rows || []).length
+                && Object.values(previousAnswer).every(v => v);
+            if (!allFilled) disabledNext = ' disabled';
+        } else if (!previousAnswer) {
+            disabledNext = ' disabled';
+        }
     }
 
     return `
