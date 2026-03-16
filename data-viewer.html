@@ -27,6 +27,8 @@
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
+  html, body { overflow-x: hidden; }
+
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: var(--bg);
@@ -405,8 +407,11 @@
     display: none;
     position: fixed;
     inset: 0;
+    margin: 0;
+    padding: 0;
     z-index: 9999;
     background: var(--bg);
+    flex-direction: column;
     align-items: center;
     justify-content: center;
   }
@@ -1033,12 +1038,16 @@
   const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
   const adminGate = document.getElementById('adminGate');
 
+  // Show logout button in both local and production
+  document.getElementById('logoutBtn').style.display = '';
+
   if (!isLocal) {
     // Hide page content, show gate
     adminGate.style.display = 'flex';
-    document.querySelector('.header').style.visibility = 'hidden';
-    document.getElementById('toolbar').style.visibility = 'hidden';
-    document.getElementById('tableContainer').style.visibility = 'hidden';
+    document.body.style.overflow = 'hidden';
+    document.querySelector('.header').style.display = 'none';
+    document.getElementById('toolbar').style.display = 'none';
+    document.getElementById('tableContainer').style.display = 'none';
 
     // Check sessionStorage for prior auth
     if (sessionStorage.getItem('dv_admin_authed') === 'true') {
@@ -1173,19 +1182,21 @@
 
   function dismissAdminGate() {
     adminGate.style.display = 'none';
-    document.querySelector('.header').style.visibility = '';
-    document.getElementById('toolbar').style.visibility = '';
-    document.getElementById('tableContainer').style.visibility = '';
-    if (!isLocal) document.getElementById('logoutBtn').style.display = '';
+    document.body.style.overflow = '';
+    document.querySelector('.header').style.display = '';
+    document.getElementById('toolbar').style.display = '';
+    document.getElementById('tableContainer').style.display = '';
+    document.getElementById('logoutBtn').style.display = '';
   }
 
   function adminLogout() {
     sessionStorage.removeItem('dv_admin_authed');
     stopPoll();
     adminGate.style.display = 'flex';
-    document.querySelector('.header').style.visibility = 'hidden';
-    document.getElementById('toolbar').style.visibility = 'hidden';
-    document.getElementById('tableContainer').style.visibility = 'hidden';
+    document.body.style.overflow = 'hidden';
+    document.querySelector('.header').style.display = 'none';
+    document.getElementById('toolbar').style.display = 'none';
+    document.getElementById('tableContainer').style.display = 'none';
     document.getElementById('logoutBtn').style.display = 'none';
     const input = document.getElementById('adminKeyGate');
     if (input) { input.value = ''; input.focus(); }

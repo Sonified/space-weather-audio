@@ -6467,9 +6467,195 @@
   let heartbeatInterval = null;
   let testStartTime = null; // ISO timestamp when test was started
 
-  function launchStudy() {
-    // TODO: wire to go-live system — for now, placeholder
-    alert('Launch Study is not yet wired to the go-live system. Use Start Test for now.');
+  let liveModeActive = false;
+  let liveHeartbeatInterval = null;
+  let liveSessionId = null;
+
+  // Restore live mode on page load
+  if (localStorage.getItem('sb_liveModeActive') === '1') {
+    const dash = document.getElementById('launchDashboard');
+    if (dash) { dash.style.transition = 'none'; dash.style.maxHeight = 'none'; dash.style.opacity = '1'; }
+    launchStudy({ restore: true });
+    if (dash) dash.style.maxHeight = 'none';
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (dash) { dash.style.transition = 'max-height 0.35s ease, opacity 0.3s ease'; dash.style.maxHeight = dash.scrollHeight + 'px'; }
+      });
+    });
+  }
+
+  async function launchStudy({ restore = false } = {}) {
+    const btn = document.getElementById('launchStudyBtn');
+    const label = document.getElementById('launchStudyLabel');
+    const dashboard = document.getElementById('launchDashboard');
+    const dot = document.getElementById('liveHeartbeatDot');
+    const hbLabel = document.getElementById('liveHeartbeatLabel');
+    const statusEl = document.getElementById('launchStatus');
+
+    if (liveModeActive) {
+      // ── End live study ──
+      if (!confirm('End the live study? Participants currently in-progress can still finish, but no new assignments will be made.')) return;
+      liveModeActive = false;
+      localStorage.setItem('sb_liveModeActive', '');
+      btn.innerHTML = '🚀 Launch Study';
+      btn.style.background = 'rgba(245,158,11,0.1)';
+      btn.style.borderColor = 'var(--orange)';
+      btn.style.color = 'var(--orange)';
+      label.textContent = 'Go live — open the study to real participants';
+      label.style.color = 'var(--text-muted)';
+      dashboard.style.maxHeight = '0';
+      dashboard.style.opacity = '0';
+      if (dot) dot.classList.remove('alive');
+      if (hbLabel) hbLabel.textContent = 'Heartbeat: waiting...';
+      if (statusEl) { statusEl.textContent = 'Not started'; statusEl.style.color = '#666'; }
+      if (liveHeartbeatInterval) { clearInterval(liveHeartbeatInterval); liveHeartbeatInterval = null; }
+
+      // End session on server
+      const slug = document.getElementById('slugValue')?.textContent?.trim();
+      if (slug && liveSessionId) {
+        fetch(`${API_BASE}/api/study/${slug}/session/end`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        }).then(r => r.json()).then(data => {
+          console.log(`[LIVE] Session ${liveSessionId} ended:`, data);
+          liveSessionId = null;
+        }).catch(e => console.warn('[LIVE] Session end error:', e));
+      }
+      return;
+    }
+
+    // ── Start live study ──
+    if (!restore && testModeActive) {
+      alert('A test session is running. End it before launching the live study.');
+      return;
+    }
+    if (!restore) {
+      // Pre-flight checks
+      const numConditions = document.querySelectorAll('#conditionsList .condition-row').length;
+      if (numConditions === 0) {
+        alert('No conditions defined. Set up experimental conditions before launching.');
+        return;
+      }
+      const method = document.getElementById('rand_method')?.value || 'random';
+      if (method !== 'block' && method !== 'healingBlock' && method !== 'random') {
+        alert('Select a randomization method before launching.');
+        return;
+      }
+
+      // Confirmation with launch settings summary
+      const launch = collectLaunchSettings();
+      const startDesc = launch.startMode === 'scheduled' ? `Scheduled: ${launch.startTime}` : 'Immediately';
+      const endDesc = launch.endMode === 'scheduled' ? `Until: ${launch.endTime}` : 'Open-ended';
+      if (!confirm(`Launch study to REAL participants?\n\nStart: ${startDesc}\nEnd: ${endDesc}\nConditions: ${numConditions}\nRandomization: ${method}\n\nThis will create a fresh assignment session. Continue?`)) return;
+    }
+
+    liveModeActive = true;
+    localStorage.setItem('sb_liveModeActive', '1');
+
+    btn.innerHTML = '■ End Study';
+    btn.style.background = 'rgba(239,68,68,0.15)';
+    btn.style.borderColor = 'var(--red)';
+    btn.style.color = 'var(--red)';
+    label.textContent = 'Study is LIVE — real participants are being assigned';
+    label.style.color = 'var(--green)';
+    dashboard.style.maxHeight = dashboard.scrollHeight + 200 + 'px';
+    dashboard.style.opacity = '1';
+    if (dot) dot.classList.add('alive');
+    if (statusEl) { statusEl.textContent = 'LIVE'; statusEl.style.color = 'var(--green)'; statusEl.style.fontWeight = '700'; }
+
+    if (restore) {
+      console.log('[LIVE] Restoring live mode — resuming existing session');
+      if (hbLabel) hbLabel.textContent = 'Resuming...';
+    } else {
+      if (hbLabel) hbLabel.textContent = 'Uploading block table...';
+      console.log(`[LIVE] Launching study at ${new Date().toISOString()}`);
+      await generateAndUploadAssignmentState();
+      if (activeSessionId) {
+        liveSessionId = activeSessionId;
+        activeSessionId = null; // Don't let test mode reclaim it
+      }
+      updateLiveDashboard({
+        totalStarted: 0, activeParticipants: 0, completedCount: 0,
+        dropouts: 0, currentBlock: 0, currentStage: '—'
+      });
+    }
+
+    // Start polling
+    const pollSec = Math.max(1, parseInt(document.getElementById('pollInterval')?.value) || 2);
+    liveHeartbeatInterval = setInterval(pollLiveDashboard, pollSec * 1000);
+    const isRefresh = performance.getEntriesByType('navigation')[0]?.type === 'reload';
+    if (isRefresh && localStorage.getItem('sb_liveDashboardCache')) {
+      console.log('%c[SB] Refresh — using cached live dashboard', 'color: #8b8; font-weight: bold');
+      setTimeout(pollLiveDashboard, pollSec * 1000);
+    } else {
+      pollLiveDashboard();
+    }
+
+    // Expand panel
+    const detail = document.getElementById('studyLaunchDetail');
+    if (detail) detail.style.maxHeight = 'none';
+  }
+
+  function updateLiveDashboard(data, { cache = true } = {}) {
+    document.getElementById('liveMetricTotalStarted').textContent = data.totalStarted ?? 0;
+    document.getElementById('liveMetricActive').textContent = data.activeParticipants ?? 0;
+    document.getElementById('liveMetricCompleted').textContent = data.completedCount ?? 0;
+    document.getElementById('liveMetricDropouts').textContent = data.dropouts ?? 0;
+    document.getElementById('liveMetricCurrentBlock').textContent = data.currentBlock ?? 0;
+    document.getElementById('liveMetricStage').textContent = data.currentStage ?? '—';
+    if (cache) {
+      try { localStorage.setItem('sb_liveDashboardCache', JSON.stringify(data)); } catch {}
+    }
+  }
+
+  // Instant restore from cache
+  (function restoreLiveDashboardCache() {
+    try {
+      const cached = localStorage.getItem('sb_liveDashboardCache');
+      if (cached) updateLiveDashboard(JSON.parse(cached), { cache: false });
+    } catch {}
+  })();
+
+  async function pollLiveDashboard() {
+    if (!liveModeActive) return;
+    const hbLabel = document.getElementById('liveHeartbeatLabel');
+    const dot = document.getElementById('liveHeartbeatDot');
+    const toMin = document.getElementById('heartbeatTimeout')?.value || 10;
+    const slug = document.getElementById('slugValue')?.textContent?.trim();
+    const now = new Date();
+
+    if (!slug) {
+      if (hbLabel) hbLabel.textContent = 'No study loaded';
+      return;
+    }
+
+    const apiBase = window.location.hostname === 'spaceweather.now.audio'
+      ? window.location.origin
+      : 'https://spaceweather.now.audio';
+
+    try {
+      const resp = await fetch(`${apiBase}/api/study/${slug}/dashboard?timeout=${toMin}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+
+      const alg = data.algorithmState;
+      if (data.sessionId && !liveSessionId) liveSessionId = data.sessionId;
+      console.log(`[LIVE DASHBOARD] Poll (session: ${data.sessionId || 'none'}): ${data.totalStarted} started, ${data.activeParticipants} active, ${data.completedCount} completed`);
+      updateLiveDashboard({
+        totalStarted: data.totalStarted || 0,
+        activeParticipants: data.activeParticipants || 0,
+        completedCount: data.completedCount || 0,
+        dropouts: data.droppedCount || 0,
+        currentBlock: alg?.currentBlock != null ? alg.currentBlock + 1 : '—',
+        currentStage: alg?.phase ? (alg.phase === 'walking' ? 'Walking' : 'Healing') : '—'
+      });
+
+      if (dot) dot.classList.add('alive');
+      if (hbLabel) hbLabel.textContent = `${now.toLocaleTimeString()} — ${data.totalStarted} started, ${data.activeParticipants} active, ${data.completedCount || 0} completed`;
+    } catch (e) {
+      if (dot) dot.classList.remove('alive');
+      if (hbLabel) hbLabel.textContent = `Poll failed ${now.toLocaleTimeString()} — ${e.message}`;
+    }
   }
 
   // Restore test mode on page load (synchronous, no animation)
@@ -6569,6 +6755,11 @@
   }
 
   async function toggleTestMode({ restore = false } = {}) {
+    // Don't allow test mode while live study is running
+    if (!testModeActive && liveModeActive && !restore) {
+      alert('A live study is currently running. End it before starting a test session.');
+      return;
+    }
     testModeActive = !testModeActive;
     const btn = document.getElementById('testModeBtn');
     const label = document.getElementById('testModeLabel');
