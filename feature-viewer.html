@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Feature Viewer — spaceweather.now.audio</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔎</text></svg>">
+    <script>
+        // Auto-refresh when a new version is deployed
+        fetch('version.json?t=' + Date.now()).then(r => r.json()).then(d => {
+            var key = '_app_version', prev = localStorage.getItem(key);
+            localStorage.setItem(key, d.version);
+            if (prev && prev !== d.version) location.reload();
+        }).catch(function(){});
+    </script>
+    <script>
+        // ── Review mode: parse URL params ──
+        (function() {
+            var params = new URLSearchParams(window.location.search);
+            window.__STUDY_SLUG = params.get('s') || params.get('study') || null;
+            var pid = params.get('pid') || null;
+            var session = parseInt(params.get('session'), 10) || 1;
+
+            window.__REVIEW_MODE = true;
+            window.__REVIEW_PID = pid;
+            window.__REVIEW_SESSION = session;
+
+            // Needed for main.js infrastructure
+            window.__STUDY_MODE = true;
+            // Prevents main.js from running old EMIC init
+            window.__STUDY_FLOW_MANAGED = true;
+            window.__DEFAULT_TILE_CHUNK = '3600';
+
+            if (!pid) {
+                document.title = 'Feature Viewer — No participant ID specified';
+            }
+        })();
+
+        // Placeholder config — feature-viewer.js will populate from D1
+        window.__STUDY_CONFIG = {
+            spacecraft: 'GOES',
+            dataset: 'DN_MAGN-L2-HIRES_G16',
+            startTime: '2022-08-17T00:00:00.000Z',
+            endTime: '2022-08-24T00:00:00.000Z'
+        };
+
+        // Apply saved colormap accent colors BEFORE stylesheet loads to prevent flash
+        (function() {
+            var accents = {
+                solar:   { color: '#ff6b35', rgb: '255, 107, 53', bg: 'linear-gradient(135deg, #1a0f0a, #100805)', pageBg: '#3a2b2b' },
+                turbo:   { color: '#23a6d5', rgb: '35, 166, 213', bg: 'linear-gradient(135deg, #1a2830, #0f1a20)', pageBg: '#2b303a' },
+                viridis: { color: '#21918c', rgb: '33, 145, 140', bg: 'linear-gradient(135deg, #1e2830, #121c22)', pageBg: '#2b3535' },
+                jet:     { color: '#5dadec', rgb: '93, 173, 236', bg: 'linear-gradient(135deg, #1e2438, #121820)', pageBg: '#2b2b3a' },
+                aurora:  { color: '#9b4dca', rgb: '155, 77, 202', bg: 'linear-gradient(135deg, #2a2540, #1a1428)', pageBg: '#332b3a' },
+                plasma:  { color: '#22d3ee', rgb: '34, 211, 238', bg: 'linear-gradient(135deg, #1c2530, #101820)', pageBg: '#2b333a' },
+                inferno: { color: '#808080', rgb: '128, 128, 128', bg: 'linear-gradient(135deg, #252a40, #161a28)', pageBg: '#2b2b3a' }
+            };
+            var saved = localStorage.getItem('colormap');
+            var a = accents[saved] || accents.inferno;
+            var r = document.documentElement;
+            r.style.setProperty('--accent-color', a.color);
+            r.style.setProperty('--accent-rgb', a.rgb);
+            r.style.setProperty('--accent-glow', 'rgba(' + a.rgb + ', 0.25)');
+            r.style.setProperty('--accent-border', 'rgba(' + a.rgb + ', 0.2)');
+            r.style.setProperty('--accent-soft', 'rgba(' + a.rgb + ', 0.12)');
+            r.style.setProperty('--accent-bg', a.bg);
+            r.style.setProperty('--page-bg', a.pageBg);
+            r.style.background = a.pageBg;
+        })();
+
+        // Hide advanced-only panels BEFORE paint
+        (function() {
+            var h2 = window.location.hostname;
+            var isLocalEnv = h2 === 'localhost' || h2 === '127.0.0.1' || h2 === '' || window.location.protocol === 'file:';
+            if (isLocalEnv) {
+                var savedAdv = localStorage.getItem('study_advanced_mode');
+                if (savedAdv === 'true' || savedAdv === null) {
+                    document.documentElement.setAttribute('data-advanced', '');
+                }
+            }
+            if (isLocalEnv) {
+                document.documentElement.setAttribute('data-admin', '');
+            }
+        })();
+    </script>
+    <style>
+        /* Feature viewer always shows participant ID */
+        #participantIdDisplay { display: block !important; }
+    </style>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body class="study-page">
+    <div class="container">
+        <!-- Study Header — title is updated dynamically from config -->
+        <div class="top-header-bar" style="display: flex; align-items: flex-end; margin-bottom: 6px; margin-top: 0px; position: relative; z-index: 1001; min-height: 2.2em;">
+            <div style="flex: 1;"></div>
+            <h1 id="studyTitle" style="margin: 0 0 0 0; flex: 0 0 auto; font-size: 1.5em; opacity: 0; color: #fff; transition: opacity 0.6s ease;"></h1>
+            <div style="flex: 1; display: flex; justify-content: flex-end; align-items: flex-end; gap: 8px;">
+                <div id="participantIdDisplay" style="margin-bottom: 0;">
+                    <span id="participantIdText" title="Click to view your participant info">
+                        <span id="participantIdLabel">User ID</span>: <span id="participantIdValue" style="font-weight: 600; color: #bbb;">--</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Study Controls — hidden in feature viewer (data loads automatically) -->
+        <div id="studyControlsPanel" class="panel" style="padding: 8px 15px; display: none;">
+            <div class="study-controls-bar">
+                <button type="button" id="startBtn" class="btn-action" style="padding: 6px 14px; font-size: 14px;">📡 Fetch Data</button>
+                <div style="width: 0px; height: 0px; background: transparent; margin: 0 8px;"></div>
+                <div id="componentSelectorContainer" style="display: flex; align-items: center; gap: 6px; padding: 0 8px; opacity: 0.4; pointer-events: none;">
+                    <label for="componentSelector" style="font-size: var(--panel-label-size); font-weight: 600; color: #666; white-space: nowrap;">Component:</label>
+                    <select id="componentSelector">
+                        <option value="0">Bx (GSE)</option>
+                        <option value="1">By (GSE)</option>
+                        <option value="2">Bz (GSE)</option>
+                    </select>
+                </div>
+                <div style="width: 0px; height: 0px; background: transparent; margin: 0 4px;"></div>
+                <div id="detrendContainer" style="display: flex; align-items: center; gap: 6px; padding: 0 8px;">
+                    <label for="removeDCOffsetStudy" style="font-size: var(--panel-label-size); font-weight: 600; color: #666; cursor: pointer; white-space: nowrap;">De-trend:</label>
+                    <input type="checkbox" id="removeDCOffsetStudy" style="width: 16px; height: 16px; cursor: pointer;" onchange="document.getElementById('removeDCOffset').checked = this.checked; document.getElementById('removeDCOffset').dispatchEvent(new Event('change'));">
+                </div>
+                <div style="width: 0px; height: 0px; background: transparent; margin: 0 8px;"></div>
+                <div id="statusAnchorControls" style="display: contents;"></div>
+            </div>
+        </div>
+
+        <!-- Hidden Selection Panel — elements exist for startStreaming() -->
+        <div class="panel panel-selection" style="display: none;">
+            <div class="controls">
+                <div class="controls-row-1">
+                    <div class="control-group">
+                        <select id="spacecraft"><option value="GOES" selected>GOES-16</option></select>
+                    </div>
+                    <div class="control-group">
+                        <select id="dataType"><option value="DN_MAGN-L2-HIRES_G16" selected>DN_MAGN-L2-HIRES_G16</option></select>
+                    </div>
+                    <div class="control-group">
+                        <input type="checkbox" id="removeDCOffset">
+                    </div>
+                    <div class="control-group">
+                        <select id="recentSearches"><option value="">-- Select Recent Search --</option></select>
+                        <button type="button" id="shareBtn" class="btn-action" disabled style="display:none;">Share</button>
+                    </div>
+                </div>
+                <div class="control-group" style="display: none;">
+                    <select id="baseSampleRate"><option value="44100" selected>44.1 kHz</option></select>
+                </div>
+                <div class="control-group" style="display: none;">
+                    <button type="button" id="antiAliasingBtn" class="btn-action loop-active">🎛️ Anti-Alias: ON</button>
+                </div>
+                <div class="control-group" style="display: none;">
+                    <select id="highpassFreq"><option value="0.02" selected>0.02 Hz</option></select>
+                </div>
+                <div style="display: none;">
+                    <input type="checkbox" id="enableNormalize" checked>
+                </div>
+            </div>
+        </div>
+
+        <!-- Playback Controls -->
+        <div class="panel panel-playback">
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: nowrap; width: 100%; box-sizing: border-box;">
+                <button type="button" id="playPauseBtn" class="btn-action" disabled style="width: 135px; min-width: 135px;">⏸️ Pause</button>
+                <button type="button" id="loopBtn" class="btn-action" style="width: 160px; min-width: 160px; cursor: pointer !important;">Loop: Disabled</button>
+                <div style="display: none; align-items: center; flex: 1 1 auto; min-width: 180px; max-width: min(450px, 100%); gap: 10px; padding: 0 15px;">
+                    <label for="playbackSpeed" id="speedLabel" style="font-weight: 600; white-space: nowrap; font-size: var(--panel-label-size); flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0x">Speed: <span id="speedValue">1.0x</span></label>
+                    <input type="range" id="playbackSpeed" min="0" max="1000" step="1" value="667" style="flex: 1; min-width: 0;">
+                </div>
+                <div style="display: flex; align-items: center; flex: 1 1 auto; min-width: 180px; max-width: min(350px, 100%); gap: 10px; padding: 0 15px 0 5px;">
+                    <label for="volumeSlider" id="volumeLabel" style="font-weight: 600; white-space: nowrap; font-size: var(--panel-label-size); flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0">Volume: <span id="volumeValue">1.0</span></label>
+                    <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" style="flex: 1; min-width: 0;">
+                </div>
+                <div id="statusAnchorPlayback" style="display: contents;">
+                    <div class="status info" id="status" style="margin: 0; padding: 6px 12px; flex: 1; min-width: 80px; font-size: 13px;"></div>
+                </div>
+                <div style="width: 0px; height: 0px; background: transparent; margin: 0 4px;"></div>
+                <div class="study-btn-group" id="stretchGroup">
+                    <label>Stretch:</label>
+                    <button type="button" class="study-btn active" data-stretch="resample">Resample</button>
+                    <button type="button" class="study-btn" data-stretch="granular">Granular</button>
+                    <button type="button" class="study-btn" data-stretch="paulstretch">Paulstretch</button>
+                    <button type="button" class="study-btn" data-stretch="wavelet">Wavelet</button>
+                </div>
+                <div style="width: 0px; height: 0px; background: transparent; margin: 0 4px;"></div>
+                <div class="study-btn-group" id="speedGroup">
+                    <label>Speed:</label>
+                    <button type="button" class="study-btn" data-speed="0.5">0.5×</button>
+                    <button type="button" class="study-btn" data-speed="0.75">0.75×</button>
+                    <button type="button" class="study-btn active" data-speed="1">1×</button>
+                </div>
+                <div style="width: 0px; height: 0px; background: transparent; margin: 0 4px;"></div>
+                <div class="study-btn-group" id="sessionGroup">
+                    <label>Session:</label>
+                    <button type="button" class="study-btn active" data-session="1">1</button>
+                    <button type="button" class="study-btn" data-session="2">2</button>
+                </div>
+                <div style="display: none;">
+                    <input type="range" id="waveformFilterSlider" min="0" max="100" step="1" value="95">
+                    <label for="waveformFilterSlider" id="waveformFilterLabel"><span id="waveformFilterValue">0.9974</span></label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Visualization Panel -->
+        <div class="panel panel-visualization" style="position: relative;">
+            <canvas id="minimap" width="1200" height="121"></canvas>
+            <canvas id="minimap-axis" width="60" height="121"></canvas>
+            <canvas id="minimap-x-axis" width="1200" height="40"></canvas>
+            <canvas id="minimap-buttons" width="1200" height="121"></canvas>
+            <div class="panel-gear" id="navBarGear"></div>
+            <canvas id="spectrogram" width="1200" height="600"></canvas>
+            <script>document.getElementById('spectrogram').addEventListener('wheel',e=>e.preventDefault(),{passive:false});document.getElementById('minimap').addEventListener('wheel',e=>e.preventDefault(),{passive:false});</script>
+            <canvas id="spectrogram-axis" width="60" height="600"></canvas>
+            <canvas id="spectrogram-x-axis" width="1200" height="40"></canvas>
+            <div class="panel-gear" id="mainWindowGear"></div>
+            <div class="controls-bar-bottom">
+                <div id="oscilloscope-panel">
+                    <div class="oscilloscope-enclosure">
+                        <canvas id="oscilloscope" width="106" height="28"></canvas>
+                        <div id="oscilloscope-frost"></div>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+                    <label id="advancedToggle" class="admin-only" style="align-items: center; gap: 5px; cursor: pointer; user-select: none; font-size: 14px; font-weight: 700; color: #e8e8ff; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap; margin-right: 8px;">
+                        <input type="checkbox" id="advancedMode" style="width: 16px; height: 16px; cursor: pointer; accent-color: #80d0ff;">
+                        Advanced
+                    </label>
+
+                    <div id="stepNavGroup" class="admin-only" style="display: none; align-items: center; gap: 4px; margin-left: 8px;">
+                        <button type="button" id="stepBackBtn" class="study-btn" style="padding: 4px 8px; font-size: 14px;" title="Previous step">◀</button>
+                        <span id="stepIndicator" style="font-size: 13px; color: #ccd; min-width: 120px; text-align: center;">Step 0</span>
+                        <button type="button" id="stepForwardBtn" class="study-btn" style="padding: 4px 8px; font-size: 14px;" title="Next step">▶</button>
+                    </div>
+                </div>
+                <div class="viz-controls">
+                    <div style="display: none;">
+                        <input type="checkbox" id="playOnClick" checked>
+                    </div>
+                    <div class="dev-control" style="display: flex; align-items: center; gap: 8px;">
+                        <label for="annotationMode">Annotations:</label>
+                        <select id="annotationMode">
+                            <option value="none">None</option>
+                            <option value="persistent">Persistent</option>
+                            <option value="live" selected>Live</option>
+                        </select>
+                    </div>
+                    <div class="dev-control" style="display: flex; align-items: center; gap: 8px;">
+                        <label for="fftSize">FFT:</label>
+                        <select id="fftSize">
+                            <option value="512">512</option>
+                            <option value="1024">1024</option>
+                            <option value="2048" selected>2048</option>
+                            <option value="4096">4096</option>
+                            <option value="8192">8192</option>
+                        </select>
+                    </div>
+                    <div class="dev-control" style="display: flex; align-items: center; gap: 8px;">
+                        <label for="colormap">Color Map:</label>
+                        <select id="colormap">
+                            <option value="inferno" selected>Inferno</option>
+                            <option value="solar">Solar</option>
+                            <option value="aurora">Aurora</option>
+                            <option value="jet">Jet</option>
+                            <option value="plasma">Plasma</option>
+                            <option value="turbo">Turbo</option>
+                            <option value="viridis">Viridis</option>
+                        </select>
+                    </div>
+                    <div class="dev-control" style="display: flex; align-items: center; gap: 8px;">
+                        <label for="frequencyScale">Frequency Scale:</label>
+                        <select id="frequencyScale">
+                            <option value="logarithmic" selected>Logarithmic</option>
+                            <option value="sqrt">Square Root</option>
+                            <option value="linear">Linear</option>
+                        </select>
+                    </div>
+                    <div style="display: none;">
+                        <input type="number" id="minFreqMultiplier" value="3.8" step="0.1" min="0.1" max="20">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tracked Regions Panel -->
+        <div class="panel panel-regions" id="trackedRegionsPanel" style="position: relative; display: none;">
+            <h2 style="margin-bottom: 12px; font-size: 1.3em;">Selected Regions</h2>
+            <div id="regionsListContainer">
+                <div id="regionsList"></div>
+            </div>
+            <div id="downloadAudioContainer" style="position: absolute; bottom: -50px; right: 0; display: none; z-index: 100; gap: 8px;">
+                <button type="button" id="recordAudioBtn" class="audio-btn audio-btn-record">🔴 Begin Recording</button>
+                <button type="button" id="downloadAllComponentsBtn" class="audio-btn audio-btn-download" style="display: none;">📦 Download All Components</button>
+                <button type="button" id="downloadAudioBtn" class="audio-btn audio-btn-download">📥 Download This Component</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Study Flags Panel (floating, always on top — even above overlay) -->
+
+    <!-- CORE SYSTEM -->
+    <script type="module">
+        import { initFlameEngine } from './js/core/flame-engine.js';
+        import { initErrorSystem } from './js/core/error-system.js';
+        const flame = initFlameEngine();
+        const errorSystem = initErrorSystem(flame);
+        window.enterOverheatMode = () => flame.enterOverheatMode();
+        window.exitOverheatMode = () => flame.exitOverheatMode();
+    </script>
+
+    <!-- APPLICATION LAYER -->
+    <script type="module" src="js/main.js"></script>
+
+    <!-- Stretch/Speed button toggles -->
+    <script>
+        (function() {
+            document.querySelectorAll('.study-btn[data-stretch]').forEach(function(btn) {
+                btn.addEventListener('click', async function() {
+                    document.querySelectorAll('.study-btn[data-stretch]').forEach(function(b) { b.classList.remove('active'); });
+                    btn.classList.add('active');
+                    var stretchMap = { resample: 'resample', granular: 'granular', paulstretch: 'paul', wavelet: 'wavelet' };
+                    var algorithm = stretchMap[btn.getAttribute('data-stretch')] || 'paul';
+                    var { switchStretchAlgorithm } = await import('./js/audio-player.js');
+                    switchStretchAlgorithm(algorithm);
+                });
+            });
+            document.querySelectorAll('.study-btn[data-speed]').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.study-btn[data-speed]').forEach(function(b) { b.classList.remove('active'); });
+                    btn.classList.add('active');
+                    var speed = parseFloat(btn.getAttribute('data-speed'));
+                    var slider = document.getElementById('playbackSpeed');
+                    if (!slider) return;
+                    var sliderValue;
+                    if (speed <= 1.0) { sliderValue = 667 * Math.log10(speed / 0.1); }
+                    else { sliderValue = 667 + 333 * Math.log(speed) / Math.log(15); }
+                    slider.value = Math.round(sliderValue);
+                    slider.dispatchEvent(new Event('input'));
+                });
+            });
+        })();
+    </script>
+
+    <!-- Session switcher button wiring -->
+    <script>
+        (function() {
+            document.querySelectorAll('.study-btn[data-session]').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.study-btn[data-session]').forEach(function(b) { b.classList.remove('active'); });
+                    btn.classList.add('active');
+                    var session = parseInt(btn.getAttribute('data-session'), 10);
+                    window.__REVIEW_SESSION = session;
+                    window.dispatchEvent(new CustomEvent('review-session-change', { detail: { session } }));
+                });
+            });
+        })();
+    </script>
+
+    <!-- Feature viewer flow controller -->
+    <script type="module" src="./js/feature-viewer.js"></script>
+
+    <!-- Responsive spectrogram height: fill viewport so bottom panel sits at window edge -->
+    <script>
+    (function() {
+        const MIN_HEIGHT = 250;
+        const MAX_HEIGHT = 1200;
+        let rafPending = false;
+        let fitting = false;
+
+        function fitSpectrogram() {
+            if (fitting) return;
+            fitting = true;
+
+            const spec = document.getElementById('spectrogram');
+            if (!spec) { fitting = false; return; }
+
+            // Bottom anchor: questionnaires panel if visible, else the viz panel
+            const qPanel = document.getElementById('questionnairesPanel');
+            const vizPanel = spec.closest('.panel-visualization');
+            const anchor = (qPanel && qPanel.offsetHeight > 0) ? qPanel : vizPanel;
+            if (!anchor) { fitting = false; return; }
+
+            // How far the anchor's bottom is from the viewport bottom
+            const bodyPadBottom = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
+            const anchorRect = anchor.getBoundingClientRect();
+            const gap = window.innerHeight - anchorRect.bottom - bodyPadBottom;
+
+            // Adjust spectrogram by the gap (positive = room to grow, negative = overflowing)
+            const currentH = spec.offsetHeight;
+            const newH = Math.round(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, currentH + gap)));
+
+            if (newH !== currentH) {
+                spec.style.setProperty('--spec-height', newH + 'px');
+                requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+            }
+
+            fitting = false;
+        }
+
+        fitSpectrogram();
+        window.addEventListener('load', fitSpectrogram);
+        window.addEventListener('resize', () => {
+            if (rafPending || fitting) return;
+            rafPending = true;
+            requestAnimationFrame(() => { rafPending = false; fitSpectrogram(); });
+        });
+
+        // Re-fit when questionnaires panel toggles visibility
+        const observer = new MutationObserver(() => {
+            if (rafPending || fitting) return;
+            rafPending = true;
+            requestAnimationFrame(() => { rafPending = false; fitSpectrogram(); });
+        });
+        const qp = document.getElementById('questionnairesPanel');
+        if (qp) observer.observe(qp, { attributes: true, attributeFilter: ['style'] });
+    })();
+    </script>
+</body>
+</html>

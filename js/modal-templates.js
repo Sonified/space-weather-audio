@@ -406,6 +406,11 @@ export async function initializeModals() {
     
     // Append modals to the permanent overlay instead of body
     const overlay = document.getElementById('permanentOverlay');
+    if (!overlay) {
+        console.log('ℹ️ No #permanentOverlay — skipping modal initialization');
+        modalsInitialized = true;
+        return;
+    }
 
     // Shared modals (all modes)
     overlay.appendChild(createWelcomeModal());

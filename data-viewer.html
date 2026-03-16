@@ -1228,6 +1228,13 @@
     if (cell) cell.classList.toggle('expanded');
   });
 
+  function viewOnStudyPage(pid, session) {
+    const slug = document.getElementById('studySelect').value;
+    if (!slug) { alert('No study selected'); return; }
+    const url = `feature-viewer.html?s=${encodeURIComponent(slug)}&pid=${encodeURIComponent(pid)}&session=${session || 1}`;
+    window.open(url, '_blank');
+  }
+
   function renderDetailRow(p) {
     let responses = {};
     try { responses = typeof p.responses === 'string' ? JSON.parse(p.responses) : (p.responses || {}); } catch {}
@@ -1297,7 +1304,10 @@
         <!-- Features -->
         ${featureCount > 0 || p._features ? `
         <div class="detail-section">
-          <h4>Features</h4>
+          <h4 style="display:flex; align-items:center; justify-content:space-between;">
+            Features
+            <button onclick="viewOnStudyPage('${escHtml(p.participant_id)}', ${analysisSession?.session || 1})" style="font-size:11px; padding:3px 10px; cursor:pointer; background:rgba(100,160,255,0.15); border:1px solid rgba(100,160,255,0.3); color:#7bb8ff; border-radius:4px;">🔎 View On Study Page</button>
+          </h4>
           <div id="features-${escHtml(p.participant_id)}">${p._features
             ? renderFeatureTable(p._features)
             : '<div style="color:var(--text-muted); font-size:12px;">Loading features...</div>'

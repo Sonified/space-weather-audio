@@ -123,6 +123,7 @@ export function getStandaloneFeatures() {
  * Save standalone features and persist to localStorage
  */
 export function saveStandaloneFeatures() {
+    if (window.__REVIEW_MODE) return; // Read-only in feature viewer
     try {
         const storageKey = getCurrentStorageKey();
         if (!storageKey) return;
@@ -157,9 +158,47 @@ function loadStandaloneFeatures() {
 }
 
 /**
+ * Load features from D1 for review mode (feature viewer page).
+ * Fetches the reviewed participant's features and maps D1 format → internal format.
+ */
+async function loadReviewFeatures() {
+    try {
+        const { fetchFeatures } = await import('./d1-sync.js');
+        const pid = window.__REVIEW_PID;
+        const session = window.__REVIEW_SESSION || 1;
+
+        const features = await fetchFeatures(pid);
+
+        // Filter by analysis_session if specified
+        const filtered = features.filter(f => f.analysis_session == session);
+
+        // Map D1 snake_case → internal camelCase
+        standaloneFeatures = filtered.map(f => ({
+            lowFreq: f.low_freq != null ? String(f.low_freq) : '0',
+            highFreq: f.high_freq != null ? String(f.high_freq) : '0',
+            startTime: f.start_time,
+            endTime: f.end_time,
+            notes: f.notes || '',
+            confidence: f.confidence || 'unconfirmed',
+            speedFactor: f.speed_factor || null,
+            d1Id: f.id,
+            createdAt: f.created_at,
+            analysisSession: f.analysis_session,
+            _reviewOnly: true,
+        }));
+
+        console.log(`🔎 [Review] Loaded ${standaloneFeatures.length} features for ${pid} (session ${session}, ${features.length} total)`);
+    } catch (e) {
+        console.error('🔎 [Review] Failed to load features:', e);
+        standaloneFeatures = [];
+    }
+}
+
+/**
  * Add a standalone feature (returns the new feature index)
  */
 function addStandaloneFeature(featureData) {
+    if (window.__REVIEW_MODE) return -1; // Read-only in feature viewer
     // Assign stable D1 ID so upserts are idempotent
     if (!featureData.d1Id) {
         featureData.d1Id = crypto.randomUUID
@@ -184,6 +223,7 @@ function addStandaloneFeature(featureData) {
  * Called by spectrogram-renderer when popup closes.
  */
 export function updateFeature(featureIndex, updates) {
+    if (window.__REVIEW_MODE) return; // Read-only in feature viewer
     const f = standaloneFeatures[featureIndex];
     if (!f) return;
     Object.assign(f, updates);
@@ -196,6 +236,7 @@ export function updateFeature(featureIndex, updates) {
  * Delete a standalone feature by index
  */
 export function deleteStandaloneFeature(featureIndex) {
+    if (window.__REVIEW_MODE) return; // Read-only in feature viewer
     if (featureIndex < 0 || featureIndex >= standaloneFeatures.length) return;
     const removed = standaloneFeatures[featureIndex];
     closeFeaturePopup();
@@ -225,7 +266,7 @@ export function getFlatFeatureNumber(_regionIndex, featureIndex) {
  * Load features from storage after data fetch completes
  * Call this after State.dataStartTime and State.dataEndTime are set
  */
-export function loadRegionsAfterDataFetch() {
+export async function loadRegionsAfterDataFetch() {
     const spacecraft = getCurrentSpacecraft();
     if (!spacecraft) {
         console.warn('Cannot load features - no spacecraft selected');
@@ -234,8 +275,13 @@ export function loadRegionsAfterDataFetch() {
 
     const featureGroupOpen = logGroup('features', `Loading features for ${spacecraft}`);
 
-    // Load standalone features
-    loadStandaloneFeatures();
+    // Review mode: fetch features from D1 instead of localStorage
+    if (window.__REVIEW_MODE && window.__REVIEW_PID) {
+        await loadReviewFeatures();
+    } else {
+        // Normal path: load from localStorage
+        loadStandaloneFeatures();
+    }
 
     // Render standalone features list and canvas boxes
     renderStandaloneFeaturesList();
@@ -377,6 +423,7 @@ export function startFrequencySelection(regionIndex, featureIndex) {
  * Called when user completes a box selection on spectrogram — standalone feature creation only
  */
 export async function handleSpectrogramSelection(startY, endY, canvasHeight, startX, endX, canvasWidth) {
+    if (window.__REVIEW_MODE) return; // No feature creation in feature viewer
     if (window.pm?.interaction) console.log('[DEBUG] HANDLE_SPECTROGRAM_SELECTION CALLED');
 
     let featureIndex;

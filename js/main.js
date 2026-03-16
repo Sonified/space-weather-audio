@@ -206,8 +206,8 @@ async function initializeMainApp() {
         throw error;
     }
     
-    // Setup UI controls (all modes need them)
-    setupModalEventListeners();
+    // Setup UI controls (all modes need them — skip in review mode, no modals)
+    if (!window.__REVIEW_MODE) setupModalEventListeners();
     
     // Initialize complete button state (disabled until first feature is identified)
     updateCompleteButtonState();

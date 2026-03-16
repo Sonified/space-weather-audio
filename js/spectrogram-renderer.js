@@ -1036,7 +1036,8 @@ function showFeaturePopup(box) {
     // Build popup DOM
     const flatNum = getFlatFeatureNumber(box.regionIndex, box.featureIndex);
     const isAdvanced = document.getElementById('advancedMode')?.checked;
-    const canDelete = true;
+    const reviewMode = !!window.__REVIEW_MODE;
+    const canDelete = !reviewMode;
     const popup = document.createElement('div');
     popup.className = 'feature-popup';
     popup.innerHTML = `
@@ -1126,6 +1127,18 @@ function showFeaturePopup(box) {
         </details>
         <button class="feature-popup-save" disabled>Done</button>
     `;
+
+    // Review mode: make everything read-only
+    if (reviewMode) {
+        const textarea = popup.querySelector('.feature-popup-notes');
+        if (textarea) { textarea.readOnly = true; textarea.style.opacity = '0.8'; }
+        popup.querySelectorAll('.feature-popup-pill').forEach(btn => { btn.disabled = true; btn.style.pointerEvents = 'none'; });
+        popup.querySelectorAll('.feature-popup-details input').forEach(inp => { inp.readOnly = true; });
+        const saveBtn = popup.querySelector('.feature-popup-save');
+        if (saveBtn) saveBtn.style.display = 'none';
+        const gearEl = popup.querySelector('.feature-popup-gear');
+        if (gearEl) gearEl.style.display = 'none';
+    }
 
     popup.style.visibility = 'hidden';
     document.body.appendChild(popup);
@@ -1431,7 +1444,8 @@ function rebuildCanvasBoxesFromFeatures() {
                 endTime: feature.endTime,
                 lowFreq: parseFloat(feature.lowFreq),
                 highFreq: parseFloat(feature.highFreq),
-                notes: feature.notes
+                notes: feature.notes,
+                confidence: feature.confidence,
             });
         }
     });
@@ -2909,18 +2923,31 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
 
         ctx.strokeStyle = fbc.stroke;
         ctx.lineWidth = 2;
+        // Dashed borders by confidence level
+        const conf = box.confidence;
+        if (conf === 'possibly' || conf === 'possible') {
+            ctx.setLineDash([6, 4]);
+        } else if (conf === 'unconfirmed') {
+            ctx.setLineDash([2, 4]);
+        }
         ctx.strokeRect(x, y, width, height);
+        ctx.setLineDash([]);
 
         ctx.fillStyle = isBoxHovered ? fbc.fillHover : fbc.fill;
         ctx.fillRect(x, y, width, height);
 
-        // Draw close button (× ) in top-right inside corner — scales with font size
+        const numbersMode = document.getElementById('mainWindowNumbers')?.value || 'red';
+
+        // Shared sizing for close button + number labels (both depend on font size)
         const userFontSize = parseInt(document.getElementById('mainWindowNumbersSize')?.value || '15', 10);
         const closeSize = Math.round(userFontSize * 0.8);
         const closePad = Math.round(userFontSize * 0.4);
+
+        // Draw close button (×) in top-right inside corner — scales with font size
+        // Hidden in review mode (read-only)
+        if (!window.__REVIEW_MODE) {
         const closeX = x + width - closeSize - closePad;
         const closeY = y + closePad;
-        const numbersMode = document.getElementById('mainWindowNumbers')?.value || 'red';
         // Only draw × when box is wide enough that it won't look like "6×"
         // 250ms fade in / 150ms fade out based on crossing the size threshold
         const xMinW = closeSize * 2.5 + closePad * 2;
@@ -2958,6 +2985,7 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
             ctx.stroke();
             ctx.restore();
         }
+        } // end !__REVIEW_MODE close button guard
 
         // Add flat sequential feature number label (gated by Numbers dropdown)
         if (numbersMode !== 'hide') {
