@@ -75,7 +75,7 @@ export function renderFreetextInput({ placeholder, previousAnswer, preview = fal
     `;
 }
 
-export function renderLikertGrid({ scaleLabels, rows, inputName, previousAnswer, preview = false }) {
+export function renderLikertGrid({ scaleLabels, rows, inputName, previousAnswer, preview = false, boldRows = true, boldCols = true, colFontSize, colAlign, rowFontSize, rowAlign }) {
     const cols = scaleLabels || [];
     const items = rows || [];
     if (cols.length === 0 || items.length === 0) return '<div style="color:#999;font-style:italic;">No scale labels or rows defined.</div>';
@@ -83,18 +83,26 @@ export function renderLikertGrid({ scaleLabels, rows, inputName, previousAnswer,
     const namePrefix = preview ? `preview_${inputName}` : `sq_${inputName}`;
     const disabled = preview ? ' disabled' : '';
     const prevObj = (previousAnswer && typeof previousAnswer === 'object') ? previousAnswer : {};
+    let colStyle = boldCols ? 'font-weight:700;' : 'font-weight:400;';
+    if (colFontSize) colStyle += `font-size:${colFontSize};`;
+    if (colAlign) colStyle += `text-align:${colAlign};`;
+    let rowStyle = boldRows ? 'font-weight:700;' : 'font-weight:400;';
+    if (rowFontSize) rowStyle += `font-size:${rowFontSize};`;
+    if (rowAlign === 'right') rowStyle += 'justify-content:flex-end;';
+    else if (rowAlign === 'center') rowStyle += 'justify-content:center;';
+    else if (rowAlign === 'left') rowStyle += 'justify-content:flex-start;';
 
     // Header row
     let html = `<div class="likert-grid" style="grid-template-columns: minmax(140px, 1.5fr) repeat(${cols.length}, 1fr);">`;
     html += `<div class="likert-corner"></div>`;
     for (const lbl of cols) {
-        html += `<div class="likert-col-header">${lbl}</div>`;
+        html += `<div class="likert-col-header" style="${colStyle}">${lbl}</div>`;
     }
 
     // Body rows
     for (let r = 0; r < items.length; r++) {
         const evenClass = r % 2 === 1 ? ' likert-row-even' : '';
-        html += `<div class="likert-row-label${evenClass}">${items[r]}</div>`;
+        html += `<div class="likert-row-label${evenClass}" style="${rowStyle}">${items[r]}</div>`;
         for (let c = 0; c < cols.length; c++) {
             const val = String(c + 1);
             const checked = prevObj[items[r]] === val ? ' checked' : '';
@@ -176,7 +184,13 @@ export function renderQuestionModal({ question, index, total, progressPct, previ
             rows: question.rows || [],
             inputName: question.inputName || question.id || 'q',
             previousAnswer,
-            preview
+            preview,
+            boldRows: question.likertBoldRows !== false,
+            boldCols: question.likertBoldCols !== false,
+            colFontSize: question.likertColFontSize,
+            colAlign: question.likertColAlign,
+            rowFontSize: question.likertRowFontSize,
+            rowAlign: question.likertRowAlign,
         });
     } else if (qType === 'radio') {
         questionHtml = renderRadioOptions({

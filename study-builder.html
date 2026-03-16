@@ -777,7 +777,7 @@
     font-size: 11px;
     font-weight: 600;
     cursor: pointer;
-    width: 100px;
+    width: fit-content;
     box-sizing: border-box;
     transition: border-color 0.15s, color 0.15s;
   }
@@ -1001,7 +1001,43 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
+    position: relative;
   }
+  .settings-preview-eye {
+    position: absolute;
+    top: 5px;
+    right: 32px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 4px;
+    z-index: 2;
+    overflow: visible;
+  }
+  .card-settings:hover .settings-preview-eye { opacity: 1; }
+  .settings-preview-eye:hover { color: var(--accent); }
+  .settings-preview-eye[data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1c2028;
+    color: #c9d1d9;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.1s;
+    border: 1px solid var(--border);
+    z-index: 10;
+  }
+  .settings-preview-eye[data-tip]:hover::after { opacity: 1; }
   .card-settings-trigger {
     font-size: 13px;
     color: var(--text-muted);
@@ -1257,6 +1293,7 @@
   }
   .dim-grid .dim-label { text-align: center; font-size: 11px; opacity: 0.8; padding-right: 24px; }
   .dim-grid .dim-input-wrap .field-input { text-align: center; padding: 5px 4px; font-size: 13px; }
+  .dim-grid .dim-input-wrap select.field-input { text-align: left; padding-left: 8px; }
 
   /* Preview bar */
   .preview-bar-footer {
@@ -1598,7 +1635,7 @@
           <div class="dropdown-item" onclick="saveAsToServer()">☁️ Save as NEW to server...</div>
         </div>
       </div>
-      <button class="btn" onclick="previewStudy()">👁 Preview</button>
+      <button class="btn" onclick="previewStudy()" title="Preview full study"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Preview</button>
       <div class="save-indicator" id="saveIndicator"></div>
       <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="handleJsonFile(event)">
     </div>
@@ -2795,10 +2832,10 @@
   function buildStepActions(type) {
     // Modal steps get inline preview + page preview; analysis gets page preview only
     const previewBtns = (type === 'question' || type === 'info' || type === 'registration')
-      ? `<button class="step-action-btn preview-btn" data-tip="Preview on this page" onclick="event.stopPropagation(); openPreviewWindow(this)">👁</button>
+      ? `<button class="step-action-btn preview-btn" data-tip="Preview modal" onclick="event.stopPropagation(); openPreviewWindow(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
          <button class="step-action-btn preview-btn" data-tip="Preview in study (new tab)" onclick="event.stopPropagation(); previewStepOnPage(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>`
       : (type === 'modal')
-      ? `<button class="step-action-btn preview-btn" data-tip="Toggle inline preview" onclick="event.stopPropagation(); toggleInlinePreview(this)">👁</button>
+      ? `<button class="step-action-btn preview-btn" data-tip="Toggle inline preview" onclick="event.stopPropagation(); toggleInlinePreview(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
          <button class="step-action-btn preview-btn" data-tip="Preview in study (new tab)" onclick="event.stopPropagation(); previewStepOnPage(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>`
       : type === 'analysis'
       ? `<button class="step-action-btn preview-btn" data-tip="Preview in study (new tab)" onclick="event.stopPropagation(); previewStepOnPage(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>`
@@ -2958,6 +2995,7 @@
           </div>
         </div>
         <div class="card-settings" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open'); saveExpandedState()}">
+          <button class="settings-preview-eye" type="button" data-tip="Preview modal" onclick="event.stopPropagation(); openPreviewWindow(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
           <button class="card-settings-trigger" type="button">&#9881; Settings <span class="settings-chevron">&#9660;</span></button>
           <div class="card-settings-drawer"><div class="settings-body">
             <div class="settings-section-label">Behavior</div>
@@ -3063,7 +3101,7 @@
       contentHtml += `
       <div class="likert-editor">
         <div class="field-group">
-          <div class="field-label">Scale Columns (left → right)</div>
+          <div class="field-label">Column Headers (left → right)</div>
           <div class="likert-columns-editor">
             ${scaleLabels.map(lbl => `
             <div class="likert-col-row">
@@ -3076,7 +3114,7 @@
           </div>
         </div>
         <div class="field-group">
-          <div class="field-label">Row Items</div>
+          <div class="field-label">Row Labels</div>
           <div class="likert-rows-editor">
             ${rows.map(r => `
             <div class="likert-item-row">
@@ -3101,6 +3139,7 @@
     const lm = step.labelMode || (step.labelPrefixes === false ? 'hidden' : (step.boldLabelPrefixes === false ? 'visible' : 'bold'));
     contentHtml += `
       <div class="card-settings" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open'); saveExpandedState()}">
+        <button class="settings-preview-eye" type="button" data-tip="Preview modal" onclick="event.stopPropagation(); openPreviewWindow(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
         <button class="card-settings-trigger" type="button">&#9881; Settings <span class="settings-chevron">&#9660;</span></button>
         <div class="card-settings-drawer"><div class="settings-body">
           <div class="settings-section-label">Behavior</div>
@@ -3113,6 +3152,59 @@
               <span class="toggle-label">Show Question ID</span>
               <div class="toggle toggle-question-id ${step.id ? 'on' : ''}" onclick="this.classList.toggle('on'); const inp = this.closest('.settings-row').querySelector('.question-id-input'); inp.style.visibility = this.classList.contains('on') ? 'visible' : 'hidden';"></div>
               <input class="field-input question-id-input" value="${escapeAttr(qid)}" style="visibility: ${_qidVis}; flex: 1; min-width: 80px; font-size: 12px; font-family: monospace; padding: 3px 6px;" />
+            </div>
+          </div>
+          <div class="likert-settings-block" style="display:${isLikert ? '' : 'none'};">
+            <div class="settings-divider" style="margin-top:12px;"></div>
+            <div style="display:flex; gap:12px;">
+              <div style="flex:1; min-width:0;">
+                <div class="settings-section-label" style="margin-bottom:-4px;">Column Headers</div>
+                <div class="dim-grid" style="grid-template-columns: auto 90px auto 90px auto auto;">
+                  <span></span><span class="dim-label">Align</span><span></span><span class="dim-label">Size</span><span></span><span></span>
+                  <span class="toggle-label">Font:</span>
+                  <div class="dim-input-wrap">
+                    <select class="field-input likert-col-align" onclick="event.stopPropagation()">
+                      <option value="left"${(step.likertColAlign||'center')==='left'?' selected':''}>Left</option>
+                      <option value="center"${(step.likertColAlign||'center')==='center'?' selected':''}>Center</option>
+                      <option value="right"${(step.likertColAlign||'center')==='right'?' selected':''}>Right</option>
+                    </select>
+                  </div>
+                  <span></span>
+                  <div class="dim-input-wrap">
+                    <input class="field-input likert-col-fontsize" value="${escapeAttr(step.likertColFontSize || '13px')}" onclick="event.stopPropagation()" />
+                    <div class="dim-arrows">
+                      <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 1)">▲</button>
+                      <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -1)">▼</button>
+                    </div>
+                  </div>
+                  <span class="toggle-label" style="margin-left:8px;">Bold</span>
+                  <div class="toggle toggle-likert-bold-cols ${step.likertBoldCols !== false ? 'on' : ''}" onclick="this.classList.toggle('on')" style="align-self:center;"></div>
+                </div>
+              </div>
+              <div style="flex:1; min-width:0;">
+                <div class="settings-section-label" style="margin-bottom:-4px;">Row Labels</div>
+                <div class="dim-grid" style="grid-template-columns: auto 90px auto 90px auto auto;">
+                  <span></span><span class="dim-label">Align</span><span></span><span class="dim-label">Size</span><span></span><span></span>
+                  <span class="toggle-label">Font:</span>
+                  <div class="dim-input-wrap">
+                    <select class="field-input likert-row-align" onclick="event.stopPropagation()">
+                      <option value="left"${(step.likertRowAlign||'right')==='left'?' selected':''}>Left</option>
+                      <option value="center"${(step.likertRowAlign||'right')==='center'?' selected':''}>Center</option>
+                      <option value="right"${(step.likertRowAlign||'right')==='right'?' selected':''}>Right</option>
+                    </select>
+                  </div>
+                  <span></span>
+                  <div class="dim-input-wrap">
+                    <input class="field-input likert-row-fontsize" value="${escapeAttr(step.likertRowFontSize || '14px')}" onclick="event.stopPropagation()" />
+                    <div class="dim-arrows">
+                      <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, 1)">▲</button>
+                      <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -1)">▼</button>
+                    </div>
+                  </div>
+                  <span class="toggle-label" style="margin-left:8px;">Bold</span>
+                  <div class="toggle toggle-likert-bold-rows ${step.likertBoldRows !== false ? 'on' : ''}" onclick="this.classList.toggle('on')" style="align-self:center;"></div>
+                </div>
+              </div>
             </div>
           </div>
           <div class="settings-divider"></div>
@@ -4076,6 +4168,12 @@
           step.rows = rowEditor
             ? Array.from(rowEditor.querySelectorAll('.likert-item-input')).map(inp => inp.value.trim()).filter(Boolean)
             : [];
+          step.likertBoldRows = card.querySelector('.toggle-likert-bold-rows')?.classList.contains('on') ?? true;
+          step.likertBoldCols = card.querySelector('.toggle-likert-bold-cols')?.classList.contains('on') ?? true;
+          step.likertColFontSize = card.querySelector('.likert-col-fontsize')?.value?.trim() || '13px';
+          step.likertColAlign = card.querySelector('.likert-col-align')?.value || 'center';
+          step.likertRowFontSize = card.querySelector('.likert-row-fontsize')?.value?.trim() || '14px';
+          step.likertRowAlign = card.querySelector('.likert-row-align')?.value || 'right';
         } else if (step.questionType === 'radio') {
           const labelSelect = card.querySelector('.label-mode-select');
           step.labelMode = labelSelect?.value || 'bold';
@@ -4554,7 +4652,7 @@
 
   // URL mode cycler — 🟢 Live → 🧪 Test → 👁 Preview → 🟢 Live
   const URL_MODES = ['live', 'test', 'preview'];
-  const URL_MODE_ICONS = { live: '<svg width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#2ea043"/></svg>', test: '🧪', preview: '👁' };
+  const URL_MODE_ICONS = { live: '<svg width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#2ea043"/></svg>', test: '🧪', preview: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' };
   const URL_MODE_TITLES = { live: 'Live mode', test: 'Test: full data flow', preview: 'Preview: no data saved' };
 
   function cycleUrlMode(btn) {
@@ -5129,6 +5227,10 @@
       card.querySelectorAll('.label-mode-row').forEach(el => {
         el.style.display = isRadio ? '' : 'none';
       });
+      // Show/hide likert settings sections
+      card.querySelectorAll('.likert-settings-block').forEach(el => {
+        el.style.display = isLikert ? '' : 'none';
+      });
 
       const answerTypeGroup = group.closest('.field-group');
 
@@ -5138,7 +5240,7 @@
           likertEditor.className = 'likert-editor';
           likertEditor.innerHTML = `
             <div class="field-group">
-              <div class="field-label">Scale Columns (left → right)</div>
+              <div class="field-label">Column Headers (left → right)</div>
               <div class="likert-columns-editor">
                 ${['Not at all', 'A little', 'Moderate', 'Quite a bit', 'Very much'].map(lbl => `
                 <div class="likert-col-row">
@@ -5151,7 +5253,7 @@
               </div>
             </div>
             <div class="field-group">
-              <div class="field-label">Row Items</div>
+              <div class="field-label">Row Labels</div>
               <div class="likert-rows-editor">
                 <div class="likert-item-row">
                   <button class="opt-remove-btn" onclick="event.stopPropagation(); removeLikertRow(this)" title="Remove">−</button>
@@ -5264,6 +5366,7 @@
       <button class="opt-remove-btn" onclick="event.stopPropagation(); removeLikertCol(this)" title="Remove">−</button>
       <input class="likert-col-input" value="" placeholder="Scale label..." />`;
     btn.before(row);
+    row.querySelector('.likert-col-input').focus();
   }
   function removeLikertCol(btn) {
     const row = btn.closest('.likert-col-row');
@@ -5277,6 +5380,7 @@
       <button class="opt-remove-btn" onclick="event.stopPropagation(); removeLikertRow(this)" title="Remove">−</button>
       <input class="likert-item-input" value="" placeholder="Item label..." />`;
     btn.before(row);
+    row.querySelector('.likert-item-input').focus();
   }
   function removeLikertRow(btn) {
     const row = btn.closest('.likert-item-row');
@@ -6153,7 +6257,13 @@
       required,
       options, labelMode, placeholder, inputName: qid, id: qid,
       scaleLabels: isLikert ? Array.from(card.querySelectorAll('.likert-col-input')).map(i => i.value.trim()).filter(Boolean) : undefined,
-      rows: isLikert ? Array.from(card.querySelectorAll('.likert-item-input')).map(i => i.value.trim()).filter(Boolean) : undefined
+      rows: isLikert ? Array.from(card.querySelectorAll('.likert-item-input')).map(i => i.value.trim()).filter(Boolean) : undefined,
+      likertBoldRows: isLikert ? (card.querySelector('.toggle-likert-bold-rows')?.classList.contains('on') ?? true) : undefined,
+      likertBoldCols: isLikert ? (card.querySelector('.toggle-likert-bold-cols')?.classList.contains('on') ?? true) : undefined,
+      likertColFontSize: isLikert ? (card.querySelector('.likert-col-fontsize')?.value?.trim() || '13px') : undefined,
+      likertColAlign: isLikert ? (card.querySelector('.likert-col-align')?.value || 'center') : undefined,
+      likertRowFontSize: isLikert ? (card.querySelector('.likert-row-fontsize')?.value?.trim() || '14px') : undefined,
+      likertRowAlign: isLikert ? (card.querySelector('.likert-row-align')?.value || 'right') : undefined,
     };
     const dims = {};
     if (w) dims.modalWidth = normalizeDimValue(w);
@@ -6742,6 +6852,7 @@
     const unit = match ? (match[2] || 'px') : 'px';
     num = Math.max(0, num + delta);
     input.value = num + unit;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
     updatePreviewDimensions(input);
   }
 

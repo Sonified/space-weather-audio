@@ -205,6 +205,9 @@
     color: #444;
     border-bottom: 2px solid #e0e0e0;
     border-left: 1px solid #eee;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
 }
 .likert-row-label {
     padding: 10px 14px;

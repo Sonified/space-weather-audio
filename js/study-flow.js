@@ -1333,6 +1333,22 @@ function applyAnalysisConfig(step) {
         if (hoursEl) hoursEl.value = String(step.initialHours);
     }
 
+    // Populate date/time form fields so startStreaming() can read them
+    if (startTime) {
+        const st = new Date(startTime);
+        const sdEl = document.getElementById('startDate');
+        const stEl = document.getElementById('startTime');
+        if (sdEl) sdEl.value = st.toISOString().slice(0, 10);
+        if (stEl) stEl.value = st.toISOString().slice(11, 23);
+    }
+    if (endTime) {
+        const et = new Date(endTime);
+        const edEl = document.getElementById('endDate');
+        const etEl = document.getElementById('endTime');
+        if (edEl) edEl.value = et.toISOString().slice(0, 10);
+        if (etEl) etEl.value = et.toISOString().slice(11, 23);
+    }
+
     console.log(`📋 Analysis config applied: ${mapped.spacecraft} / ${mapped.dataset} / ${startTime} → ${endTime} / display=${step.displayOnLoad || 'all'}`);
 }
 
@@ -2168,6 +2184,12 @@ async function runQuestionnaire(step) {
             labelMode: step.labelMode || (step.labelPrefixes === false ? 'hidden' : (step.boldLabelPrefixes === false ? 'visible' : 'bold')),
             scaleLabels: step.scaleLabels,
             rows: step.rows,
+            likertBoldRows: step.likertBoldRows,
+            likertBoldCols: step.likertBoldCols,
+            likertColFontSize: step.likertColFontSize,
+            likertColAlign: step.likertColAlign,
+            likertRowFontSize: step.likertRowFontSize,
+            likertRowAlign: step.likertRowAlign,
         }];
     }
     if (!questions.length) { advanceStep(); return; }
