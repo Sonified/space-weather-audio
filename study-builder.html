@@ -795,6 +795,28 @@
     justify-content: center;
   }
   .opt-add-btn:hover .plus-circle { background: #2ecc71; }
+
+  /* Likert builder editor */
+  .likert-editor { margin-top: 14px; }
+  .likert-columns-editor, .likert-rows-editor { margin-top: 6px; }
+  .likert-col-row, .likert-item-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .likert-col-input, .likert-item-input {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: #fff;
+    font-size: var(--input-font-size);
+    outline: none;
+  }
+  .likert-col-input:focus, .likert-item-input:focus { border-color: var(--accent); }
+
   .add-question-btn {
     margin-top: 8px;
     padding: 6px 12px;
@@ -2979,6 +3001,8 @@
   function buildQuestionCard(num, step) {
     const qType = step.questionType || 'radio';
     const isRadio = qType === 'radio';
+    const isLikert = qType === 'likert';
+    const isFreetext = qType === 'freetext';
     let contentHtml = '';
 
     const qid = step.id || generateQuestionSlug();
@@ -3005,7 +3029,8 @@
         <div class="field-label">Answer Type</div>
         <div class="pill-group pill-group-flat pill-group-answer-type">
           <button class="pill ${isRadio ? 'active' : ''}" onclick="selectPill(this)">Multiple Choice</button>
-          <button class="pill ${!isRadio ? 'active' : ''}" onclick="selectPill(this)">Free Text</button>
+          <button class="pill ${isFreetext ? 'active' : ''}" onclick="selectPill(this)">Free Text</button>
+          <button class="pill ${isLikert ? 'active' : ''}" onclick="selectPill(this)">Likert Scale</button>
         </div>
       </div>`;
     if (isRadio) {
@@ -3031,7 +3056,39 @@
           <span class="plus-circle">+</span> Add
         </button>
       </div></div>`;
-    } else if (!isRadio) {
+    } else if (isLikert) {
+      const scaleLabels = step.scaleLabels || ['Not at all', 'A little', 'Moderate', 'Quite a bit', 'Very much'];
+      const rows = step.rows || ['Item 1'];
+      contentHtml += `
+      <div class="likert-editor">
+        <div class="field-group">
+          <div class="field-label">Scale Columns (left → right)</div>
+          <div class="likert-columns-editor">
+            ${scaleLabels.map(lbl => `
+            <div class="likert-col-row">
+              <button class="opt-remove-btn" onclick="event.stopPropagation(); removeLikertCol(this)" title="Remove">−</button>
+              <input class="likert-col-input" value="${escapeAttr(lbl)}" placeholder="Scale label..." />
+            </div>`).join('')}
+            <button class="opt-add-btn" onclick="event.stopPropagation(); addLikertCol(this)">
+              <span class="plus-circle">+</span> Add Column
+            </button>
+          </div>
+        </div>
+        <div class="field-group">
+          <div class="field-label">Row Items</div>
+          <div class="likert-rows-editor">
+            ${rows.map(r => `
+            <div class="likert-item-row">
+              <button class="opt-remove-btn" onclick="event.stopPropagation(); removeLikertRow(this)" title="Remove">−</button>
+              <input class="likert-item-input" value="${escapeAttr(r)}" placeholder="Item label..." />
+            </div>`).join('')}
+            <button class="opt-add-btn" onclick="event.stopPropagation(); addLikertRow(this)">
+              <span class="plus-circle">+</span> Add Row
+            </button>
+          </div>
+        </div>
+      </div>`;
+    } else {
       contentHtml += `
       <div class="freetext-fields">
       <div class="field-group">
@@ -3077,8 +3134,8 @@
                 <button class="dim-arrow" onclick="event.stopPropagation(); nudgeDimension(this, -50)">▼</button>
               </div>
             </div>
-            <span class="toggle-label label-mode-row" style="display:${isRadio ? 'inline' : 'none'}; margin-left:16px;">Labels</span>
-            <select class="field-input label-mode-select label-mode-row" style="display:${isRadio ? 'inline-block' : 'none'}; width:auto;" onchange="onLabelModeChange(this)">
+            <span class="toggle-label label-mode-row" style="display:${isRadio && !isLikert ? 'inline' : 'none'}; margin-left:16px;">Labels</span>
+            <select class="field-input label-mode-select label-mode-row" style="display:${isRadio && !isLikert ? 'inline-block' : 'none'}; width:auto;" onchange="onLabelModeChange(this)">
               <option value="hidden"${lm === 'hidden' ? ' selected' : ''}>Hidden</option>
               <option value="visible"${lm === 'visible' ? ' selected' : ''}>Visible</option>
               <option value="bold"${lm === 'bold' ? ' selected' : ''}>Bold</option>
@@ -4004,12 +4061,21 @@
         // Answer type from pill
         const qPill = card.querySelector('.pill-group-answer-type .pill.active');
         const qPillText = qPill?.textContent.trim().toLowerCase() || 'multiple choice';
-        step.questionType = qPillText.includes('free') ? 'freetext' : 'radio';
+        step.questionType = qPillText.includes('likert') ? 'likert' : qPillText.includes('free') ? 'freetext' : 'radio';
         // Read question ID from the editable input (always present, auto-generated if needed)
         const qIdInput = card.querySelector('.question-id-input');
         step.id = (qIdInput?.value || '').trim() || generateQuestionSlug();
         step.inputName = step.id;
-        if (step.questionType === 'radio') {
+        if (step.questionType === 'likert') {
+          const colEditor = card.querySelector('.likert-columns-editor');
+          step.scaleLabels = colEditor
+            ? Array.from(colEditor.querySelectorAll('.likert-col-input')).map(inp => inp.value.trim()).filter(Boolean)
+            : [];
+          const rowEditor = card.querySelector('.likert-rows-editor');
+          step.rows = rowEditor
+            ? Array.from(rowEditor.querySelectorAll('.likert-item-input')).map(inp => inp.value.trim()).filter(Boolean)
+            : [];
+        } else if (step.questionType === 'radio') {
           const labelSelect = card.querySelector('.label-mode-select');
           step.labelMode = labelSelect?.value || 'bold';
           const optEditor = card.querySelector('.radio-options-editor');
@@ -5028,23 +5094,65 @@
       }
     }
 
-    // Toggle question answer type: Multiple Choice ↔ Free Text
+    // Toggle question answer type: Multiple Choice / Free Text / Likert Scale
     if (card?.dataset.type === 'question' && group.classList.contains('pill-group-answer-type')) {
-      const isFreeText = pill.textContent.trim() === 'Free Text';
+      const pillText = pill.textContent.trim();
+      const isFreeText = pillText === 'Free Text';
+      const isLikert = pillText === 'Likert Scale';
+      const isRadio = pillText === 'Multiple Choice';
+
       const radioWrapper = card.querySelector('.radio-options-wrapper');
       const radioEditor = card.querySelector('.radio-options-editor');
       let freetextGroup = card.querySelector('.freetext-fields');
+      let likertEditor = card.querySelector('.likert-editor');
 
-      // Show/hide labels dropdown in settings
+      // Hide all editors first
+      if (radioWrapper) radioWrapper.style.display = 'none';
+      else if (radioEditor) radioEditor.style.display = 'none';
+      if (freetextGroup) freetextGroup.style.display = 'none';
+      if (likertEditor) likertEditor.style.display = 'none';
+
+      // Show/hide labels dropdown in settings (only for radio)
       card.querySelectorAll('.label-mode-row').forEach(el => {
-        el.style.display = isFreeText ? 'none' : '';
+        el.style.display = isRadio ? '' : 'none';
       });
 
-      if (isFreeText) {
-        // Hide all radio controls (toggles, stepper, editor)
-        if (radioWrapper) radioWrapper.style.display = 'none';
-        else if (radioEditor) radioEditor.style.display = 'none';
-        // Create free text placeholder field if it doesn't exist
+      const answerTypeGroup = group.closest('.field-group');
+
+      if (isLikert) {
+        if (!likertEditor) {
+          likertEditor = document.createElement('div');
+          likertEditor.className = 'likert-editor';
+          likertEditor.innerHTML = `
+            <div class="field-group">
+              <div class="field-label">Scale Columns (left → right)</div>
+              <div class="likert-columns-editor">
+                ${['Not at all', 'A little', 'Moderate', 'Quite a bit', 'Very much'].map(lbl => `
+                <div class="likert-col-row">
+                  <button class="opt-remove-btn" onclick="event.stopPropagation(); removeLikertCol(this)" title="Remove">−</button>
+                  <input class="likert-col-input" value="${lbl}" placeholder="Scale label..." />
+                </div>`).join('')}
+                <button class="opt-add-btn" onclick="event.stopPropagation(); addLikertCol(this)">
+                  <span class="plus-circle">+</span> Add Column
+                </button>
+              </div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Row Items</div>
+              <div class="likert-rows-editor">
+                <div class="likert-item-row">
+                  <button class="opt-remove-btn" onclick="event.stopPropagation(); removeLikertRow(this)" title="Remove">−</button>
+                  <input class="likert-item-input" value="Item 1" placeholder="Item label..." />
+                </div>
+                <button class="opt-add-btn" onclick="event.stopPropagation(); addLikertRow(this)">
+                  <span class="plus-circle">+</span> Add Row
+                </button>
+              </div>
+            </div>`;
+          answerTypeGroup.after(likertEditor);
+        }
+        likertEditor.style.display = '';
+      } else if (isFreeText) {
         if (!freetextGroup) {
           freetextGroup = document.createElement('div');
           freetextGroup.className = 'freetext-fields';
@@ -5053,17 +5161,14 @@
               <div class="field-label">Placeholder Text:</div>
               <input class="field-input question-placeholder-input" value="" placeholder="Type your response here..." />
             </div>`;
-          // Insert after the answer type pill group
-          const answerTypeGroup = group.closest('.field-group');
           answerTypeGroup.after(freetextGroup);
         }
         freetextGroup.style.display = '';
       } else {
-        // Show all radio controls
+        // Radio / Multiple Choice
         if (radioWrapper) {
           radioWrapper.style.display = '';
         } else {
-          // Create wrapper with toggles and editor
           const wrapper = document.createElement('div');
           wrapper.className = 'radio-options-wrapper';
           wrapper.innerHTML = `
@@ -5079,11 +5184,8 @@
                 <span class="plus-circle">+</span> Add
               </button>
             </div>`;
-          const answerTypeGroup = group.closest('.field-group');
           answerTypeGroup.after(wrapper);
         }
-        // Hide free text fields
-        if (freetextGroup) freetextGroup.style.display = 'none';
       }
       // Update preview if visible
       if (card.querySelector('.step-preview')) refreshInlinePreview(card);
@@ -5139,6 +5241,34 @@
     // Insert before the add button
     btn.before(row);
     if (card?.querySelector('.step-preview')) refreshInlinePreview(card);
+  }
+
+  // Likert helpers
+  function addLikertCol(btn) {
+    const row = document.createElement('div');
+    row.className = 'likert-col-row';
+    row.innerHTML = `
+      <button class="opt-remove-btn" onclick="event.stopPropagation(); removeLikertCol(this)" title="Remove">−</button>
+      <input class="likert-col-input" value="" placeholder="Scale label..." />`;
+    btn.before(row);
+  }
+  function removeLikertCol(btn) {
+    const row = btn.closest('.likert-col-row');
+    const editor = row.closest('.likert-columns-editor');
+    if (editor.querySelectorAll('.likert-col-row').length > 1) row.remove();
+  }
+  function addLikertRow(btn) {
+    const row = document.createElement('div');
+    row.className = 'likert-item-row';
+    row.innerHTML = `
+      <button class="opt-remove-btn" onclick="event.stopPropagation(); removeLikertRow(this)" title="Remove">−</button>
+      <input class="likert-item-input" value="" placeholder="Item label..." />`;
+    btn.before(row);
+  }
+  function removeLikertRow(btn) {
+    const row = btn.closest('.likert-item-row');
+    const editor = row.closest('.likert-rows-editor');
+    if (editor.querySelectorAll('.likert-item-row').length > 1) row.remove();
   }
 
   // Toggle add-step dropdown
@@ -5671,6 +5801,25 @@
 
   let _vnavLastCard = null;
 
+  // Wait for scroll to settle — fires callback once scroll position stops changing
+  function onScrollEnd(cb) {
+    let last = window.scrollY;
+    let raf;
+    let settled = 0;
+    function check() {
+      const now = window.scrollY;
+      if (now === last) {
+        settled++;
+        if (settled >= 3) { cb(); return; } // 3 frames stable = done
+      } else {
+        settled = 0;
+      }
+      last = now;
+      raf = requestAnimationFrame(check);
+    }
+    raf = requestAnimationFrame(check);
+  }
+
   function scrollAndOpen(card) {
     if (NAV_MODE === 'vertical') {
       // Same card clicked again and it's open → close immediately
@@ -5679,28 +5828,20 @@
         _vnavLastCard = null;
         return;
       }
-
       _vnavLastCard = card;
 
-      // Check if we actually need to scroll
+      // Scroll toward the card
       const vnav = document.getElementById('verticalNav');
       const navTop = vnav ? vnav.getBoundingClientRect().top : window.innerHeight / 2;
-      const cardTop = card.getBoundingClientRect().top;
-      const needsScroll = Math.abs(cardTop - navTop) > 10;
+      const y = card.getBoundingClientRect().top + window.scrollY - navTop;
+      window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
 
-      if (needsScroll) {
-        const y = cardTop + window.scrollY - navTop;
-        window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
-        setTimeout(() => {
-          if (!card.classList.contains('active')) toggleStep(card.querySelector('.step-header'));
-          card.style.outline = '2px solid var(--accent)';
-          setTimeout(() => card.style.outline = '', 1500);
-        }, 400);
-      } else {
+      // Open once scroll actually settles (instant if already there)
+      onScrollEnd(() => {
         if (!card.classList.contains('active')) toggleStep(card.querySelector('.step-header'));
         card.style.outline = '2px solid var(--accent)';
         setTimeout(() => card.style.outline = '', 1500);
-      }
+      });
       return;
     } else {
       const y = card.getBoundingClientRect().top + window.scrollY - 16;
@@ -5719,10 +5860,24 @@
   function syncVerticalNavDot(card) {
     const vnav = document.getElementById('verticalNav');
     if (!vnav) return;
+    const allCards = document.querySelectorAll('.step-card');
+    const participantCards = Array.from(allCards).filter(c => PARTICIPANT_STEP_TYPES.includes(c.dataset.type));
     const vdots = vnav.querySelectorAll('.vnav-dot');
-    // Find dot by matching card ID
+
+    // Try participant cards by index
+    const pIdx = participantCards.indexOf(card);
+    if (pIdx >= 0) {
+      // +1 offset for the home dot at index 0
+      const dot = vdots[pIdx + 1];
+      if (dot) {
+        if (card.classList.contains('active')) dot.classList.add('active');
+        else dot.classList.remove('active');
+      }
+      return;
+    }
+    // Try bottom cards by ID
     for (const dot of vdots) {
-      if (dot.dataset.cardId === card.id) {
+      if (dot.dataset.cardId && dot.dataset.cardId === card.id) {
         if (card.classList.contains('active')) dot.classList.add('active');
         else dot.classList.remove('active');
         return;
@@ -5957,7 +6112,10 @@
     const title = card.querySelector('.question-text-input')?.value || '';
     const subtitle = card.querySelector('.question-subtitle-input')?.value || '';
     const answerPills = card.querySelectorAll('.pill-group-answer-type .pill.active');
-    const isRadio = (answerPills[0]?.textContent.trim().toLowerCase() || '') === 'multiple choice';
+    const pillText = (answerPills[0]?.textContent.trim().toLowerCase() || '');
+    const isLikert = pillText === 'likert scale';
+    const isRadio = pillText === 'multiple choice';
+    const qTypeStr = isLikert ? 'likert' : isRadio ? 'radio' : 'freetext';
     const labelMode = card.querySelector('.label-mode-select')?.value || 'bold';
     const options = [];
     if (isRadio) {
@@ -5978,10 +6136,11 @@
     const question = {
       title: modalTitle || undefined,
       text: title, subtitle,
-      type: isRadio ? 'radio' : 'freetext',
-      questionType: isRadio ? 'radio' : 'freetext',
+      type: qTypeStr, questionType: qTypeStr,
       required,
-      options, labelMode, placeholder, inputName: qid, id: qid
+      options, labelMode, placeholder, inputName: qid, id: qid,
+      scaleLabels: isLikert ? Array.from(card.querySelectorAll('.likert-col-input')).map(i => i.value.trim()).filter(Boolean) : undefined,
+      rows: isLikert ? Array.from(card.querySelectorAll('.likert-item-input')).map(i => i.value.trim()).filter(Boolean) : undefined
     };
     const dims = {};
     if (w) dims.modalWidth = normalizeDimValue(w);
