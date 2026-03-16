@@ -348,7 +348,7 @@
   /* Detail panel (expandable row) */
   .detail-row td {
     padding: 0;
-    background: rgba(0, 0, 0, 0.15);
+    background: #0f1520;
   }
   .detail-wrapper {
     overflow: hidden;
@@ -360,6 +360,8 @@
     flex-direction: column;
     gap: 0;
     font-size: calc(12px + var(--font-bump));
+    border-left: 3px solid #4a9aba;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
   }
   /* ── Hero row: at-a-glance stats ── */
   .detail-hero {
@@ -381,8 +383,8 @@
     font-family: 'SF Mono', 'Fira Code', monospace;
     padding: 3px 8px;
     border-radius: 6px;
-    background: rgba(33,150,243,0.12);
-    color: #64b5f6;
+    background: rgba(74, 154, 186, 0.15);
+    color: #4a9aba;
     letter-spacing: 0.5px;
   }
   .hero-stat {
@@ -424,6 +426,8 @@
     color: var(--text-muted);
     margin-bottom: 8px;
     opacity: 0.6;
+    border-left: 2px solid rgba(255, 255, 255, 0.1);
+    padding-left: 8px;
   }
   .detail-section + .detail-section {
     border-top: 1px solid rgba(255,255,255,0.06);
@@ -446,36 +450,44 @@
   }
   /* ── Analysis session block ── */
   .analysis-block {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 20px;
-    padding: 6px 10px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 3px 16px;
+    padding: 8px 12px;
     background: rgba(255,255,255,0.025);
     border-radius: 6px;
     margin-bottom: 4px;
-  }
-  .analysis-block .ab-item {
-    white-space: nowrap;
     font-size: calc(11px + var(--font-bump));
   }
-  .analysis-block .ab-item .k { color: var(--text-muted); }
-  .analysis-block .ab-item .k::after { content: ': '; }
-  .analysis-block .ab-item .v { font-family: 'SF Mono', 'Fira Code', monospace; color: var(--text); }
+  .analysis-block .ab-k {
+    color: var(--text-muted);
+    text-align: right;
+    white-space: nowrap;
+  }
+  .analysis-block .ab-v {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    color: var(--text);
+  }
+  .analysis-block .ab-v.ab-highlight {
+    color: var(--accent);
+    font-weight: 600;
+  }
   /* ── Feature table ── */
   .feature-table {
     width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
     font-size: calc(11px + var(--font-bump));
   }
   .feature-table th {
     text-align: left;
     font-weight: 600;
-    color: var(--text-muted);
+    color: #556;
     padding: 4px 8px;
     border-bottom: 1px solid rgba(255,255,255,0.1);
-    font-size: calc(10px + var(--font-bump));
+    font-size: 0.7em;
     text-transform: uppercase;
-    letter-spacing: 0.3px;
+    letter-spacing: 1px;
   }
   .feature-table td {
     padding: 5px 8px;
@@ -483,9 +495,28 @@
     border-bottom: 1px solid rgba(255,255,255,0.03);
   }
   .feature-table tr:last-child td { border-bottom: none; }
+  .feature-table .notes-cell {
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.4;
+    max-height: 3.6em;
+    overflow: hidden;
+    position: relative;
+    color: var(--text-muted);
+  }
+  .feature-table .notes-cell.expanded { max-height: none; }
+  .notes-expand {
+    display: inline;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 0.85em;
+    margin-left: 4px;
+    opacity: 0.7;
+  }
+  .notes-expand:hover { opacity: 1; }
   /* no alternating stripes inside detail cards — parent table already alternates */
-  .conf-yes { color: #6ec477; font-weight: 600; }
-  .conf-possibly { color: #f0a05a; }
+  .conf-yes { color: #6a9a7a; font-weight: 500; }
+  .conf-possibly { color: #e8983a; font-weight: 600; }
   .conf-no { color: #666; }
 
   /* Summary stats — inline with study selector */
@@ -1095,11 +1126,12 @@
 
   function renderAnalysisBlock(session) {
     if (!session || typeof session !== 'object') {
-      return `<div class="analysis-block"><span style="color:var(--text-muted);">${escHtml(String(session))}</span></div>`;
+      return `<div class="analysis-block"><span class="ab-k"></span><span class="ab-v" style="color:var(--text-muted);">${escHtml(String(session))}</span></div>`;
     }
     const labels = {
-      session: 'Session',
       spacecraft: 'Spacecraft',
+      processing: 'Processing',
+      session: 'Session',
       startDate: 'Start',
       endDate: 'End',
       dataset: 'Dataset',
@@ -1107,6 +1139,7 @@
       component: 'Component',
       duration: 'Duration',
     };
+    const highlight = new Set(['spacecraft', 'processing']);
     const formatVal = (k, v) => {
       if (v == null) return '—';
       if ((k === 'startDate' || k === 'endDate') && typeof v === 'string') {
@@ -1117,12 +1150,18 @@
       }
       return String(v);
     };
-    const items = Object.entries(session)
-      .filter(([, v]) => v != null && v !== '')
-      .map(([k, v]) => {
-        const label = labels[k] || (k.charAt(0).toUpperCase() + k.slice(1));
-        return `<span class="ab-item"><span class="k">${escHtml(label)}</span><span class="v">${escHtml(formatVal(k, v))}</span></span>`;
-      }).join('');
+    // Order: spacecraft & processing first, then the rest
+    const entries = Object.entries(session).filter(([, v]) => v != null && v !== '');
+    const prioritized = ['spacecraft', 'processing'];
+    const ordered = [
+      ...prioritized.map(k => entries.find(([ek]) => ek === k)).filter(Boolean),
+      ...entries.filter(([k]) => !prioritized.includes(k)),
+    ];
+    const items = ordered.map(([k, v]) => {
+      const label = labels[k] || (k.charAt(0).toUpperCase() + k.slice(1));
+      const hl = highlight.has(k) ? ' ab-highlight' : '';
+      return `<span class="ab-k">${escHtml(label)}</span><span class="ab-v${hl}">${escHtml(formatVal(k, v))}</span>`;
+    }).join('');
     return `<div class="analysis-block">${items}</div>`;
   }
 
@@ -1140,7 +1179,7 @@
         <td>${timeRange}</td>
         <td>${freqRange}</td>
         <td class="${confClass(f.confidence)}">${confLabel(f.confidence)}</td>
-        <td style="color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escHtml(f.notes || '')}</td>
+        <td class="notes-cell">${escHtml(f.notes || '')}</td>
       </tr>`;
     }).join('');
     return `<table class="feature-table">
@@ -1149,12 +1188,18 @@
         <col style="width:240px;">
         <col style="width:140px;">
         <col style="width:50px;">
-        <col>
+        <col style="min-width:200px;">
       </colgroup>
       <thead><tr><th>#</th><th>Time Range</th><th>Freq Range</th><th>Conf</th><th>Notes</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
   }
+
+  // Click-to-expand overflowing notes cells
+  document.addEventListener('click', e => {
+    const cell = e.target.closest('.notes-cell');
+    if (cell) cell.classList.toggle('expanded');
+  });
 
   function renderDetailRow(p) {
     let responses = {};

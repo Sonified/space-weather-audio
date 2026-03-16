@@ -93,3 +93,4 @@ An
 - [x] **HS14.** Confirm randomization-sim is correctly assigning participants end-to-end
 - [ ] **HS15.** New post-study question for comparing audio experience and choosing a preference
 - [ ] **HS16.** Code for matching participant's audio score with processing type, time period, and order received
+- [ ] **HS17.** Add new question step after second analysis section
