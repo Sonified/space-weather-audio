@@ -403,6 +403,7 @@
   .summary-stat.completed .value { color: #6ec477; }
   .summary-stat.features .value { color: #bfc3eb; }
   /* Admin gate overlay */
+  body.gate-open { overflow: hidden !important; }
   .admin-gate {
     display: none;
     position: fixed;
@@ -482,7 +483,7 @@
     <h2 style="margin:0 0 8px; font-size:20px;">Data Viewer</h2>
     <p style="color:var(--text-muted); margin:0 0 20px; font-size:14px;">Enter admin key to continue</p>
     <input type="password" id="adminKeyGate" placeholder="Admin key" autocomplete="off"
-      oninput="document.getElementById('adminGateBtn').disabled = !this.value.trim()" />
+      oninput="if (!lockoutTimer) document.getElementById('adminGateBtn').disabled = !this.value.trim()" />
     <div id="adminGateError" style="color:#f85149; font-size:13px; margin-top:8px; min-height:20px;"></div>
     <button class="gate-btn" id="adminGateBtn" onclick="verifyAdminKey()" disabled>Unlock</button>
   </div>
@@ -1041,10 +1042,15 @@
   // Show logout button in both local and production
   document.getElementById('logoutBtn').style.display = '';
 
+  // Enter key submits admin key — always wired (works after logout too)
+  document.getElementById('adminKeyGate')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !document.getElementById('adminGateBtn').disabled) verifyAdminKey();
+  });
+
   if (!isLocal) {
     // Hide page content, show gate
     adminGate.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
+    document.body.classList.add('gate-open');
     document.querySelector('.header').style.display = 'none';
     document.getElementById('toolbar').style.display = 'none';
     document.getElementById('tableContainer').style.display = 'none';
@@ -1052,10 +1058,6 @@
     // Check sessionStorage for prior auth
     if (sessionStorage.getItem('dv_admin_authed') === 'true') {
       dismissAdminGate();
-    } else {
-      document.getElementById('adminKeyGate')?.addEventListener('keydown', e => {
-        if (e.key === 'Enter') verifyAdminKey();
-      });
     }
 
     // Production mode: replace dropdown with static label
@@ -1182,21 +1184,26 @@
 
   function dismissAdminGate() {
     adminGate.style.display = 'none';
-    document.body.style.overflow = '';
+    document.body.classList.remove('gate-open');
     document.querySelector('.header').style.display = '';
     document.getElementById('toolbar').style.display = '';
     document.getElementById('tableContainer').style.display = '';
     document.getElementById('logoutBtn').style.display = '';
+    showData();
   }
 
   function adminLogout() {
+    gateActive = true;
     sessionStorage.removeItem('dv_admin_authed');
     stopPoll();
     adminGate.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
+    document.body.classList.add('gate-open');
     document.querySelector('.header').style.display = 'none';
     document.getElementById('toolbar').style.display = 'none';
     document.getElementById('tableContainer').style.display = 'none';
+    document.getElementById('summaryBar').style.display = 'none';
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('emptyState').style.display = 'none';
     document.getElementById('logoutBtn').style.display = 'none';
     const input = document.getElementById('adminKeyGate');
     if (input) { input.value = ''; input.focus(); }

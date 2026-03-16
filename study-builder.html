@@ -6525,10 +6525,6 @@
     }
 
     // ── Start live study ──
-    if (!restore && testModeActive) {
-      alert('A test session is running. End it before launching the live study.');
-      return;
-    }
     if (!restore) {
       // Pre-flight checks
       const numConditions = document.querySelectorAll('#conditionsList .condition-row').length;
@@ -6613,6 +6609,11 @@
     try {
       const cached = localStorage.getItem('sb_liveDashboardCache');
       if (cached) updateLiveDashboard(JSON.parse(cached), { cache: false });
+      const labelText = localStorage.getItem('sb_liveHeartbeatLabel');
+      if (labelText) {
+        const hb = document.getElementById('liveHeartbeatLabel');
+        if (hb) hb.textContent = labelText;
+      }
     } catch {}
   })();
 
@@ -6651,7 +6652,9 @@
       });
 
       if (dot) dot.classList.add('alive');
-      if (hbLabel) hbLabel.textContent = `${now.toLocaleTimeString()} — ${data.totalStarted} started, ${data.activeParticipants} active, ${data.completedCount || 0} completed`;
+      const liveLabel = `${now.toLocaleTimeString()} — ${data.totalStarted} started, ${data.activeParticipants} active, ${data.completedCount || 0} completed`;
+      if (hbLabel) hbLabel.textContent = liveLabel;
+      try { localStorage.setItem('sb_liveHeartbeatLabel', liveLabel); } catch {}
     } catch (e) {
       if (dot) dot.classList.remove('alive');
       if (hbLabel) hbLabel.textContent = `Poll failed ${now.toLocaleTimeString()} — ${e.message}`;
@@ -6875,6 +6878,11 @@
     try {
       const cached = localStorage.getItem('sb_dashboardCache');
       if (cached) updateTestDashboard(JSON.parse(cached), { cache: false });
+      const labelText = localStorage.getItem('sb_heartbeatLabel');
+      if (labelText) {
+        const hb = document.getElementById('heartbeatLabel');
+        if (hb) hb.textContent = labelText;
+      }
     } catch {}
   })();
 
@@ -6913,7 +6921,9 @@
       });
 
       dot.classList.add('alive');
-      hbLabel.textContent = `${now.toLocaleTimeString()} — ${data.totalStarted} started, ${data.activeParticipants} active (${toMin}min timeout)`;
+      const labelText = `${now.toLocaleTimeString()} — ${data.totalStarted} started, ${data.activeParticipants} active (${toMin}min timeout)`;
+      hbLabel.textContent = labelText;
+      try { localStorage.setItem('sb_heartbeatLabel', labelText); } catch {}
     } catch (e) {
       dot.classList.remove('alive');
       hbLabel.textContent = `Poll failed ${now.toLocaleTimeString()} — ${e.message}`;

@@ -1073,9 +1073,8 @@ export default {
       const activityMatch = path.match(/^\/api\/study\/([^/]+)\/activity$/);
       if (activityMatch && request.method === 'GET') {
         const studyId = activityMatch[1];
-        // Normalize since — strip to bare 'YYYY-MM-DD HH:MM:SS' so it compares directly with stored values
-        const rawSince = url.searchParams.get('since') || new Date(Date.now() - 3600000).toISOString();
-        const since = rawSince.replace('T', ' ').replace(/\.\d+Z$/, '').replace('Z', '');
+        // Keep since in ISO format — nowISO() stores 'YYYY-MM-DDTHH:MM:SS.mmmZ' in D1
+        const since = url.searchParams.get('since') || new Date(Date.now() - 3600000).toISOString();
         const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10), 2000);
 
         // Direct column comparison — no functions on columns, so indexes can be used
