@@ -176,17 +176,35 @@
     width: 100%;
     border-collapse: collapse;
     table-layout: fixed;
+    /*
+     * Column ratios — just change these numbers.
+     * Bigger number = wider column. Everything else adjusts automatically.
+     * Total is computed, no manual math needed.
+     */
+    --c-status:    3.25;
+    --c-copy:      1;
+    --c-pid:       10;
+    --c-started:   8;
+    --c-lastseen:  8;
+    --c-block:     3;
+    --c-condition: 3.5;
+    --c-step:      3;
+    --c-features:  3.5;
+    --c-total: calc(
+      var(--c-status) + var(--c-copy) + var(--c-pid) + var(--c-started) +
+      var(--c-lastseen) + var(--c-block) + var(--c-condition) + var(--c-step) +
+      var(--c-features)
+    );
   }
-  /* Fixed column widths — prevent layout shift on detail expand */
-  col.col-status    { width: 64px; }
-  col.col-copy      { width: 20px; }
-  col.col-pid       { width: 22%; }
-  col.col-started   { width: 20%; }
-  col.col-block     { width: 56px; }
-  col.col-condition { width: 72px; }
-  col.col-step      { width: 52px; }
-  col.col-features  { width: 64px; }
-  col.col-lastseen  { width: 16%; }
+  col.col-status    { width: calc(100% * var(--c-status)    / var(--c-total)); }
+  col.col-copy      { width: calc(100% * var(--c-copy)      / var(--c-total)); }
+  col.col-pid       { width: calc(100% * var(--c-pid)       / var(--c-total)); }
+  col.col-started   { width: calc(100% * var(--c-started)   / var(--c-total)); }
+  col.col-lastseen  { width: calc(100% * var(--c-lastseen)  / var(--c-total)); }
+  col.col-block     { width: calc(100% * var(--c-block)     / var(--c-total)); }
+  col.col-condition { width: calc(100% * var(--c-condition)  / var(--c-total)); }
+  col.col-step      { width: calc(100% * var(--c-step)      / var(--c-total)); }
+  col.col-features  { width: calc(100% * var(--c-features)  / var(--c-total)); }
   thead th {
     text-align: left;
     padding: 10px 14px;
@@ -203,8 +221,16 @@
     user-select: none;
   }
   thead th:hover { color: var(--text); }
-  thead th .sort-arrow { font-size: 9px; margin-left: 3px; opacity: 0.5; }
-  thead th.sorted .sort-arrow { opacity: 1; color: var(--accent); }
+  thead th:last-child { padding-right: 16px; }
+  thead th .sort-arrow { font-size: 11px; margin-left: 3px; color: #667; }
+  thead th:hover .sort-arrow { color: #99a; }
+  thead th.sorted .sort-arrow { color: var(--accent); }
+
+  /* Center the small numeric columns (block, cond, step, feats) */
+  th:nth-child(6), td:nth-child(6),
+  th:nth-child(7), td:nth-child(7),
+  th:nth-child(8), td:nth-child(8),
+  th:nth-child(9), td:nth-child(9) { text-align: center; }
 
   tbody tr {
     border-bottom: 1px solid rgba(80, 96, 120, 0.3);
@@ -235,7 +261,7 @@
   .status-test { background: rgba(100, 110, 125, 0.25); color: #99a3ad; }
 
   .pid-cell {
-    font-family: 'SF Mono', 'Fira Code', monospace;
+
     font-size: calc(12px + var(--font-bump));
     color: var(--accent);
     cursor: pointer;
@@ -278,7 +304,7 @@
     padding: 2px 8px;
     border-radius: 10px;
     font-size: calc(13px + var(--font-bump));
-    font-family: 'SF Mono', 'Fira Code', monospace;
+
     background: rgba(77, 168, 255, 0.15);
     color: var(--accent);
   }
@@ -288,7 +314,7 @@
   }
 
   .feature-count {
-    font-family: 'SF Mono', 'Fira Code', monospace;
+
     font-size: calc(12px + var(--font-bump));
   }
   .feature-count.zero { color: var(--text-muted); opacity: 0.4; }
@@ -374,13 +400,11 @@
   .hero-pid {
     font-size: 13px;
     font-weight: 600;
-    font-family: 'SF Mono', 'Fira Code', monospace;
     color: var(--accent);
   }
   .hero-condition {
     font-size: 12px;
     font-weight: 600;
-    font-family: 'SF Mono', 'Fira Code', monospace;
     padding: 3px 8px;
     border-radius: 6px;
     background: rgba(74, 154, 186, 0.15);
@@ -400,7 +424,6 @@
   .hero-stat .val {
     font-size: calc(13px + var(--font-bump));
     font-weight: 600;
-    font-family: 'SF Mono', 'Fira Code', monospace;
   }
   /* ── Timestamps ── */
   .detail-timestamps {
@@ -417,7 +440,11 @@
   .ts-item .v { color: var(--text); font-family: 'SF Mono', 'Fira Code', monospace; opacity: 0.85; }
   /* ── Section headers ── */
   .detail-section {
-    padding-top: 12px;
+    padding: 12px 10px 8px 10px;
+    border-left: 2px solid rgba(255, 255, 255, 0.08);
+    margin-left: 2px;
+    background: rgba(255, 255, 255, 0.035);
+    border-radius: 0 4px 4px 0;
   }
   .detail-section h4 {
     font-size: calc(10px + var(--font-bump));
@@ -425,12 +452,10 @@
     letter-spacing: 0.5px;
     color: var(--text-muted);
     margin-bottom: 8px;
-    opacity: 0.6;
-    border-left: 2px solid rgba(255, 255, 255, 0.1);
-    padding-left: 8px;
+    opacity: 0.8;
   }
   .detail-section + .detail-section {
-    border-top: 1px solid rgba(255,255,255,0.06);
+    margin-top: 12px;
   }
   /* ── Response rows ── */
   .response-row {
@@ -443,29 +468,31 @@
   .response-row .q { color: var(--text); opacity: 0.7; }
   .response-row .a {
     color: var(--text);
-    font-family: 'SF Mono', 'Fira Code', monospace;
+
     text-align: right;
     flex-shrink: 0;
     font-weight: 500;
   }
   /* ── Analysis session block ── */
   .analysis-block {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 3px 16px;
-    padding: 8px 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 18px;
+    padding: 6px 12px;
     background: rgba(255,255,255,0.025);
     border-radius: 6px;
     margin-bottom: 4px;
     font-size: calc(11px + var(--font-bump));
   }
-  .analysis-block .ab-k {
-    color: var(--text-muted);
-    text-align: right;
+  .analysis-block .ab-item {
     white-space: nowrap;
   }
+  .analysis-block .ab-k {
+    color: var(--text-muted);
+  }
+  .analysis-block .ab-k::after { content: ': '; }
   .analysis-block .ab-v {
-    font-family: 'SF Mono', 'Fira Code', monospace;
+
     color: var(--text);
   }
   .analysis-block .ab-v.ab-highlight {
@@ -477,7 +504,7 @@
     width: 100%;
     table-layout: fixed;
     border-collapse: collapse;
-    font-size: calc(11px + var(--font-bump));
+    font-size: calc(10px + var(--font-bump));
   }
   .feature-table th {
     text-align: left;
@@ -491,7 +518,6 @@
   }
   .feature-table td {
     padding: 5px 8px;
-    font-family: 'SF Mono', 'Fira Code', monospace;
     border-bottom: 1px solid rgba(255,255,255,0.03);
   }
   .feature-table tr:last-child td { border-bottom: none; }
@@ -662,23 +688,23 @@
       <col class="col-copy">
       <col class="col-pid">
       <col class="col-started">
+      <col class="col-lastseen">
       <col class="col-block">
       <col class="col-condition">
       <col class="col-step">
       <col class="col-features">
-      <col class="col-lastseen">
     </colgroup>
     <thead>
       <tr>
-        <th onclick="sortBy('status')">Status <span class="sort-arrow">▾</span></th>
+        <th onclick="sortBy('status')">Status <span class="sort-arrow">▼</span></th>
         <th></th>
-        <th onclick="sortBy('participant_id')">Participant <span class="sort-arrow">▾</span></th>
-        <th onclick="sortBy('registered_at')" class="sorted">Started <span class="sort-arrow">▾</span></th>
-        <th onclick="sortBy('assigned_block')">Block <span class="sort-arrow">▾</span></th>
-        <th onclick="sortBy('assigned_condition')">Condition <span class="sort-arrow">▾</span></th>
-        <th onclick="sortBy('current_step')">Step <span class="sort-arrow">▾</span></th>
-        <th onclick="sortBy('feature_count')">Features <span class="sort-arrow">▾</span></th>
-        <th onclick="sortBy('updated_at')">Last Seen <span class="sort-arrow">▾</span></th>
+        <th onclick="sortBy('participant_id')">Participant <span class="sort-arrow">▼</span></th>
+        <th onclick="sortBy('registered_at')" class="sorted">Started <span class="sort-arrow">▼</span></th>
+        <th onclick="sortBy('updated_at')">Last Seen <span class="sort-arrow">▼</span></th>
+        <th onclick="sortBy('assigned_block')">Block <span class="sort-arrow">▼</span></th>
+        <th onclick="sortBy('assigned_condition')">Cond. <span class="sort-arrow">▼</span></th>
+        <th onclick="sortBy('current_step')">Step <span class="sort-arrow">▼</span></th>
+        <th onclick="sortBy('feature_count')">Feats. <span class="sort-arrow">▼</span></th>
       </tr>
     </thead>
     <tbody id="participantBody">
@@ -976,7 +1002,7 @@
 
     // Update header styles
     document.querySelectorAll('thead th').forEach(th => th.classList.remove('sorted'));
-    const idx = ['status', 'participant_id', 'registered_at', 'assigned_block', 'assigned_condition', 'current_step', 'feature_count', 'updated_at'].indexOf(key);
+    const idx = ['status', null, 'participant_id', 'registered_at', 'updated_at', 'assigned_block', 'assigned_condition', 'current_step', 'feature_count'].indexOf(key);
     if (idx >= 0) document.querySelectorAll('thead th')[idx]?.classList.add('sorted');
 
     renderTable();
@@ -1048,11 +1074,11 @@
         <td style="padding:0; text-align:center; overflow:visible; position:relative; z-index:10;"><button class="copy-pid" onclick="event.stopPropagation(); copyParticipant('${escHtml(p.participant_id)}', this)" data-tip="Copy all participant data as JSON">📋</button></td>
         <td class="pid-cell${isTest ? ' test-pid' : ''}">${escHtml(p.participant_id)}</td>
         <td class="time-cell">${formatTime(p.registered_at)}</td>
-        <td style="font-family:'SF Mono','Fira Code',monospace; font-size:12px;">${p.assigned_block != null ? p.assigned_block : '<span style="opacity:0.3;">—</span>'}</td>
-        <td>${p.assigned_condition != null ? `<span class="condition-badge${isTest ? ' condition-test' : ''}">C${p.assigned_condition}</span>` : '<span style="opacity:0.3;">—</span>'}</td>
-        <td style="font-family:'SF Mono','Fira Code',monospace; font-size:12px;">${p.current_step ?? '—'}</td>
-        <td><span class="feature-count ${p.feature_count === 0 ? 'zero' : ''}">${p.feature_count || 0}</span></td>
         <td class="time-cell">${formatTime(p.updated_at)}</td>
+        <td style="font-size:12px;">${p.assigned_block != null ? p.assigned_block : '<span style="opacity:0.3;">—</span>'}</td>
+        <td>${p.assigned_condition != null ? `<span class="condition-badge${isTest ? ' condition-test' : ''}">C${p.assigned_condition}</span>` : '<span style="opacity:0.3;">—</span>'}</td>
+        <td style="font-size:12px;">${p.current_step ?? '—'}</td>
+        <td><span class="feature-count ${p.feature_count === 0 ? 'zero' : ''}">${p.feature_count || 0}</span></td>
       </tr>
       ${expandedPids.has(p.participant_id) ? renderDetailRow(p) : ''}`);
     }
@@ -1121,6 +1147,7 @@
     const lc = c.toLowerCase();
     if (lc === 'confirmed') return 'Yes';
     if (lc === 'possibly' || lc === 'possible') return 'Poss';
+    if (lc === 'unconfirmed') return 'No';
     return c;
   }
 
@@ -1151,8 +1178,8 @@
       return String(v);
     };
     // Order: spacecraft & processing first, then the rest
-    const entries = Object.entries(session).filter(([, v]) => v != null && v !== '');
-    const prioritized = ['spacecraft', 'processing'];
+    const entries = Object.entries(session).filter(([k, v]) => v != null && v !== '' && k !== 'stepIndex');
+    const prioritized = ['session', 'spacecraft', 'processing'];
     const ordered = [
       ...prioritized.map(k => entries.find(([ek]) => ek === k)).filter(Boolean),
       ...entries.filter(([k]) => !prioritized.includes(k)),
@@ -1160,7 +1187,7 @@
     const items = ordered.map(([k, v]) => {
       const label = labels[k] || (k.charAt(0).toUpperCase() + k.slice(1));
       const hl = highlight.has(k) ? ' ab-highlight' : '';
-      return `<span class="ab-k">${escHtml(label)}</span><span class="ab-v${hl}">${escHtml(formatVal(k, v))}</span>`;
+      return `<span class="ab-item"><span class="ab-k">${escHtml(label)}</span><span class="ab-v${hl}">${escHtml(formatVal(k, v))}</span></span>`;
     }).join('');
     return `<div class="analysis-block">${items}</div>`;
   }
