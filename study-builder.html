@@ -250,10 +250,12 @@
     cursor: grab;
     color: var(--text-muted);
     font-size: 14px;
-    padding: 2px 4px;
+    padding: 2px 0;
     border-radius: 4px;
     flex-shrink: 0;
     user-select: none;
+    width: 20px;
+    text-align: center;
   }
   .drag-handle:hover { color: var(--text); background: var(--surface2); }
   .drag-handle:active { cursor: grabbing; }
@@ -265,6 +267,11 @@
     opacity: 0.45;
     width: 20px;
     text-align: center;
+  }
+  /* Right-side spacer on fixed panels to align badges with step-card badges */
+  .step-actions-spacer {
+    width: 130px;
+    flex-shrink: 0;
   }
 
   .step-header {
@@ -1041,12 +1048,44 @@
     box-shadow: 0 0 12px rgba(34,197,94,0.2);
   }
   @keyframes heartbeat-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
+    0%, 100% { opacity: 0.4; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.4); }
   }
-  #heartbeatDot.alive {
+  #heartbeatDot.alive, #liveHeartbeatDot.alive {
     background: var(--green);
-    animation: heartbeat-pulse 2s ease-in-out infinite;
+    animation: heartbeat-pulse 1.4s ease-in-out infinite;
+  }
+
+  /* Launch study button gloss wipe */
+  #launchStudyBtn {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+  }
+  #launchStudyBtn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.15) 30%,
+      rgba(255, 255, 255, 0.25) 50%,
+      rgba(255, 255, 255, 0.15) 70%,
+      transparent
+    );
+    pointer-events: none;
+    z-index: 0;
+  }
+  #launchStudyBtn:hover::before {
+    animation: shimmerSweep 1.5s ease-in-out infinite;
+  }
+  @keyframes shimmerSweep {
+    0% { left: -100%; }
+    100% { left: 100%; }
   }
 
   /* Condition rows */
@@ -1250,20 +1289,24 @@
     align-items: center;
   }
   .preview-dot {
-    width: 10px;
-    height: 10px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     border: 2px solid;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+    cursor: pointer;
+    transition: transform 0.15s ease;
   }
-  .preview-dot.registration { border-color: var(--accent); background: var(--accent); }
-  .preview-dot.modal { border-color: var(--purple); }
-  .preview-dot.modal.filled { background: var(--purple); }
-  .preview-dot.info { border-color: var(--purple); }
-  .preview-dot.info.filled { background: var(--purple); }
-  .preview-dot.question { border-color: var(--orange); }
-  .preview-dot.question.filled { background: var(--orange); }
-  .preview-dot.analysis { border-color: var(--green); }
-  .preview-dot.analysis.filled { background: var(--green); }
+  .preview-dot:hover { transform: scale(1.4); }
+  .preview-dot.registration { border-color: #888; background: #888; }
+  .preview-dot.info { border-color: #D97706; background: #D97706; }
+  .preview-dot.question { border-color: #4361EE; background: #4361EE; }
+  .preview-dot.analysis { border-color: #3d8b7a; background: #3d8b7a; }
   .preview-line {
     width: 16px;
     height: 2px;
@@ -1392,7 +1435,7 @@
 <div class="steps-container" id="stepList"></div>
 
 <!-- Add Step Button -->
-<div class="add-step-area" style="max-width: 792px; margin: 12px auto 0;">
+<div class="add-step-area" style="max-width: 792px; margin: 0 auto 0;">
   <button class="add-step-btn" onclick="toggleDropdown(this)">
     + Add Step
   </button>
@@ -1422,13 +1465,14 @@
 </div>
 
 <!-- Experimental Design -->
-<div class="steps-container" style="margin-top:12px;">
+<div class="steps-container" style="margin-top:24px;">
   <div class="step-card" id="experimentalDesignCard" data-type="experimental-design">
     <div class="step-header" onclick="toggleStep(this)">
       <span class="lock-icon">🔒</span><span class="chevron">▶</span>
       <div class="step-number" style="background:#8b5cf6;color:#fff;">🧪</div>
       <div class="step-title">Experimental Design</div>
       <span class="step-type-badge" style="background:rgba(139,92,246,0.15);color:#8b5cf6;">DESIGN</span>
+      <span class="step-actions-spacer"></span>
     </div>
     <div class="step-detail" id="experimentalDesignDetail">
 
@@ -1602,133 +1646,157 @@
       <div class="step-number" style="background:#f59e0b;color:#000;">🚀</div>
       <div class="step-title">Study Launch</div>
       <span class="step-type-badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;">LAUNCH</span>
-      <span id="launchStatus" style="margin-left:auto; font-size:11px; color:#666;">Not started</span>
+      <span class="step-actions-spacer" style="text-align:right;"><span id="launchStatus" style="font-size:11px; color:#666;">Not started</span></span>
     </div>
     <div class="step-detail" id="studyLaunchDetail">
 
-      <!-- Launch Timing -->
-      <div style="display:flex; gap:32px; margin-bottom:20px;">
-        <div>
-          <div class="field-group"><div class="field-label">Start</div></div>
-          <div style="display:flex; flex-direction:column; gap:8px; margin-top:6px;">
-            <label style="display:inline-flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; width:fit-content;">
-              <input type="radio" name="launchStart" value="immediate" checked style="accent-color:#f59e0b;">
-              Start immediately
-            </label>
-            <label style="display:inline-flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; width:fit-content;">
-              <input type="radio" name="launchStart" value="scheduled" style="accent-color:#f59e0b;">
-              Schedule start
-            </label>
-            <input type="datetime-local" id="launchStartTime" disabled style="align-self:flex-start; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:var(--radius); padding:4px 8px; font-size:12px;">
-          </div>
-        </div>
-        <div>
-          <div class="field-group"><div class="field-label">End</div></div>
-          <div style="display:flex; flex-direction:column; gap:8px; margin-top:6px;">
-            <label style="display:inline-flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; width:fit-content;">
-              <input type="radio" name="launchEnd" value="open" checked style="accent-color:#f59e0b;">
-              Keep open-ended
-            </label>
-            <label style="display:inline-flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; width:fit-content;">
-              <input type="radio" name="launchEnd" value="scheduled" style="accent-color:#f59e0b;">
-              End on date/time
-            </label>
-            <input type="datetime-local" id="launchEndTime" disabled style="align-self:flex-start; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:var(--radius); padding:4px 8px; font-size:12px;">
+      <!-- Testing sub-panel -->
+      <div class="card-settings" id="testingSettings" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open'); saveExpandedState()}">
+        <button class="card-settings-trigger" type="button">
+          🧪 Testing <span id="testingStatusLabel" style="font-size:11px; color:#555; margin-left:8px;">Inactive</span> <span class="settings-chevron">&#9660;</span>
+        </button>
+        <div class="card-settings-drawer">
+          <div class="settings-body">
+
+            <!-- Start Test -->
+            <div style="display:flex; align-items:center; gap:12px; margin:4px 0 16px;">
+              <button id="testModeBtn" onclick="toggleTestMode()" title="Opens a test session with a fresh participant pool. Test participants use TEST_ IDs and won't affect production data. The dashboard will track active testers, assignments, and heartbeats in real time." style="
+                padding:6px 16px; border-radius:var(--radius); font-size:12px; font-weight:500;
+                cursor:pointer; transition: all 0.2s ease;
+                background:transparent; border:1px solid var(--border); color:var(--text-muted);
+              ">▶ Start Test</button>
+              <span id="testModeLabel" style="font-size:12px; color:var(--text-muted);">Launch a test session with a fresh participant pool</span>
+            </div>
+
+            <!-- Test Dashboard (hidden until test active) -->
+            <div id="testDashboard" style="max-height:0; overflow:hidden; transition:max-height 0.35s ease, opacity 0.3s ease; opacity:0;">
+              <div style="
+                display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;
+                margin-bottom:12px;
+              ">
+                <div class="test-metric">
+                  <div class="test-metric-value" id="metricTotalStarted">0</div>
+                  <div class="test-metric-label">Total Started</div>
+                </div>
+                <div class="test-metric">
+                  <div class="test-metric-value" id="metricActiveParticipants" style="color:var(--green);">0</div>
+                  <div class="test-metric-label">Active</div>
+                </div>
+                <div class="test-metric">
+                  <div class="test-metric-value" id="metricTotalAssigned">0</div>
+                  <div class="test-metric-label">Total Assigned</div>
+                </div>
+                <div class="test-metric">
+                  <div class="test-metric-value" id="metricNextAssignment">—</div>
+                  <div class="test-metric-label">Next Assignment</div>
+                </div>
+                <div class="test-metric">
+                  <div class="test-metric-value" id="metricCurrentBlock">0</div>
+                  <div class="test-metric-label">Current Block</div>
+                </div>
+                <div class="test-metric">
+                  <div class="test-metric-value" id="metricCurrentStage" style="color:var(--purple);">—</div>
+                  <div class="test-metric-label">Stage</div>
+                </div>
+              </div>
+              <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px; overflow:visible;">
+                <span id="heartbeatDot" style="width:8px; height:8px; min-width:8px; border-radius:50%; background:#999; display:inline-block; margin-left:4px;"></span>
+                <span id="heartbeatLabel">Keepalive: waiting...</span>
+              </div>
+            </div>
+
           </div>
         </div>
       </div>
 
-      <!-- Start Test -->
-      <div style="display:flex; align-items:center; gap:12px; margin:16px 0;">
-        <button id="testModeBtn" onclick="toggleTestMode()" title="Opens a test session with a fresh participant pool. Test participants use TEST_ IDs and won't affect production data. The dashboard will track active testers, assignments, and heartbeats in real time." style="
-          padding:6px 16px; border-radius:var(--radius); font-size:12px; font-weight:500;
-          cursor:pointer; transition: all 0.2s ease;
-          background:transparent; border:1px solid var(--border); color:var(--text-muted);
-        ">▶ Start Test</button>
-        <span id="testModeLabel" style="font-size:12px; color:var(--text-muted);">Launch a test session with a fresh participant pool</span>
-      </div>
+      <!-- Deploy Study sub-panel -->
+      <div class="card-settings" id="deployStudySettings" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open'); saveExpandedState()}">
+        <button class="card-settings-trigger" type="button">
+          🚀 Deploy Study <span id="deployStatusLabel" style="font-size:11px; color:#555; margin-left:8px;">Inactive</span> <span class="settings-chevron">&#9660;</span>
+        </button>
+        <div class="card-settings-drawer">
+          <div class="settings-body">
 
-      <!-- Test Dashboard (hidden until test active) -->
-      <div id="testDashboard" style="max-height:0; overflow:hidden; transition:max-height 0.35s ease, opacity 0.3s ease; opacity:0;">
-        <div style="
-          display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;
-          margin-bottom:12px;
-        ">
-          <div class="test-metric">
-            <div class="test-metric-value" id="metricTotalStarted">0</div>
-            <div class="test-metric-label">Total Started</div>
-          </div>
-          <div class="test-metric">
-            <div class="test-metric-value" id="metricActiveParticipants" style="color:var(--green);">0</div>
-            <div class="test-metric-label">Active</div>
-          </div>
-          <div class="test-metric">
-            <div class="test-metric-value" id="metricTotalAssigned">0</div>
-            <div class="test-metric-label">Total Assigned</div>
-          </div>
-          <div class="test-metric">
-            <div class="test-metric-value" id="metricNextAssignment">—</div>
-            <div class="test-metric-label">Next Assignment</div>
-          </div>
-          <div class="test-metric">
-            <div class="test-metric-value" id="metricCurrentBlock">0</div>
-            <div class="test-metric-label">Current Block</div>
-          </div>
-          <div class="test-metric">
-            <div class="test-metric-value" id="metricCurrentStage" style="color:var(--purple);">—</div>
-            <div class="test-metric-label">Stage</div>
-          </div>
-        </div>
-        <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
-          <span id="heartbeatDot" style="width:8px; height:8px; border-radius:50%; background:#555; display:inline-block;"></span>
-          <span id="heartbeatLabel">Keepalive: waiting...</span>
-        </div>
-      </div>
+            <!-- Launch Timing -->
+            <div style="display:flex; gap:32px; margin-bottom:20px;">
+              <div>
+                <div class="field-group"><div class="field-label">Start</div></div>
+                <div style="display:flex; flex-direction:column; gap:8px; margin-top:6px;">
+                  <label style="display:inline-flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; width:fit-content;">
+                    <input type="radio" name="launchStart" value="immediate" checked style="accent-color:#f59e0b;">
+                    Start immediately
+                  </label>
+                  <label style="display:inline-flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; width:fit-content;">
+                    <input type="radio" name="launchStart" value="scheduled" style="accent-color:#f59e0b;">
+                    Schedule start
+                  </label>
+                  <input type="datetime-local" id="launchStartTime" disabled style="align-self:flex-start; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:var(--radius); padding:4px 8px; font-size:12px;">
+                </div>
+              </div>
+              <div>
+                <div class="field-group"><div class="field-label">End</div></div>
+                <div style="display:flex; flex-direction:column; gap:8px; margin-top:6px;">
+                  <label style="display:inline-flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; width:fit-content;">
+                    <input type="radio" name="launchEnd" value="open" checked style="accent-color:#f59e0b;">
+                    Keep open-ended
+                  </label>
+                  <label style="display:inline-flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; width:fit-content;">
+                    <input type="radio" name="launchEnd" value="scheduled" style="accent-color:#f59e0b;">
+                    End on date/time
+                  </label>
+                  <input type="datetime-local" id="launchEndTime" disabled style="align-self:flex-start; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:var(--radius); padding:4px 8px; font-size:12px;">
+                </div>
+              </div>
+            </div>
 
-      <!-- Launch Study -->
-      <div style="display:flex; align-items:center; gap:12px; margin:16px 0;">
-        <button id="launchStudyBtn" onclick="launchStudy()" title="Go live — makes the study accessible to real participants based on your launch schedule settings above." style="
-          padding:10px 24px; border-radius:var(--radius); font-size:14px; font-weight:600;
-          cursor:pointer; transition: all 0.3s ease;
-          background:rgba(245,158,11,0.1); border:2px solid var(--orange); color:var(--orange);
-        ">🚀 Launch Study</button>
-        <span id="launchStudyLabel" style="font-size:12px; color:var(--text-muted);">Go live — open the study to real participants</span>
-      </div>
+            <!-- Launch Study -->
+            <div style="display:flex; align-items:center; gap:12px; margin:16px 0;">
+              <button id="launchStudyBtn" onclick="launchStudy()" title="Go live — makes the study accessible to real participants based on your launch schedule settings above." style="
+                padding:10px 24px; border-radius:var(--radius); font-size:14px; font-weight:600;
+                cursor:pointer; transition: all 0.3s ease;
+                background:rgba(34,197,94,0.1); border:2px solid var(--green); color:var(--green);
+              ">🚀 Launch Study</button>
+              <span id="launchStudyLabel" style="font-size:12px; color:var(--text-muted);">Go live — open the study to real participants</span>
+            </div>
 
-      <!-- Launch Dashboard (hidden until study launched) -->
-      <div id="launchDashboard" style="max-height:0; overflow:hidden; transition:max-height 0.35s ease, opacity 0.3s ease; opacity:0;">
-        <div style="
-          display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;
-          margin-bottom:12px;
-        ">
-          <div class="test-metric">
-            <div class="test-metric-value" id="liveMetricTotalStarted">0</div>
-            <div class="test-metric-label">Total Started</div>
+            <!-- Launch Dashboard (hidden until study launched) -->
+            <div id="launchDashboard" style="max-height:0; overflow:hidden; transition:max-height 0.35s ease, opacity 0.3s ease; opacity:0;">
+              <div style="
+                display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;
+                margin-bottom:12px;
+              ">
+                <div class="test-metric">
+                  <div class="test-metric-value" id="liveMetricTotalStarted">0</div>
+                  <div class="test-metric-label">Total Started</div>
+                </div>
+                <div class="test-metric">
+                  <div class="test-metric-value" id="liveMetricActive" style="color:var(--green);">0</div>
+                  <div class="test-metric-label">Active</div>
+                </div>
+                <div class="test-metric">
+                  <div class="test-metric-value" id="liveMetricCompleted" style="color:var(--blue);">0</div>
+                  <div class="test-metric-label">Completed</div>
+                </div>
+                <div class="test-metric">
+                  <div class="test-metric-value" id="liveMetricDropouts" style="color:var(--red);">0</div>
+                  <div class="test-metric-label">Dropouts</div>
+                </div>
+                <div class="test-metric">
+                  <div class="test-metric-value" id="liveMetricCurrentBlock">0</div>
+                  <div class="test-metric-label">Current Block</div>
+                </div>
+                <div class="test-metric">
+                  <div class="test-metric-value" id="liveMetricStage" style="color:var(--orange);">—</div>
+                  <div class="test-metric-label">Stage</div>
+                </div>
+              </div>
+              <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px; overflow:visible;">
+                <span id="liveHeartbeatDot" style="width:8px; height:8px; min-width:8px; border-radius:50%; background:#999; display:inline-block; margin-left:4px;"></span>
+                <span id="liveHeartbeatLabel">Heartbeat: waiting...</span>
+              </div>
+            </div>
+
           </div>
-          <div class="test-metric">
-            <div class="test-metric-value" id="liveMetricActive" style="color:var(--green);">0</div>
-            <div class="test-metric-label">Active</div>
-          </div>
-          <div class="test-metric">
-            <div class="test-metric-value" id="liveMetricCompleted" style="color:var(--blue);">0</div>
-            <div class="test-metric-label">Completed</div>
-          </div>
-          <div class="test-metric">
-            <div class="test-metric-value" id="liveMetricDropouts" style="color:var(--red);">0</div>
-            <div class="test-metric-label">Dropouts</div>
-          </div>
-          <div class="test-metric">
-            <div class="test-metric-value" id="liveMetricCurrentBlock">0</div>
-            <div class="test-metric-label">Current Block</div>
-          </div>
-          <div class="test-metric">
-            <div class="test-metric-value" id="liveMetricStage" style="color:var(--orange);">—</div>
-            <div class="test-metric-label">Stage</div>
-          </div>
-        </div>
-        <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
-          <span id="liveHeartbeatDot" style="width:8px; height:8px; border-radius:50%; background:#555; display:inline-block;"></span>
-          <span id="liveHeartbeatLabel">Heartbeat: waiting...</span>
         </div>
       </div>
 
@@ -1788,7 +1856,7 @@
       <div class="step-number" style="background:#10b981;color:#fff;">📡</div>
       <div class="step-title">Data Collection</div>
       <span class="step-type-badge" style="background:rgba(16,185,129,0.15);color:#10b981;">LIVE</span>
-      <span id="streamCount" style="margin-left:auto; font-size:11px; color:#666;">0 events</span>
+      <span class="step-actions-spacer" style="text-align:right;"><span id="streamCount" style="font-size:11px; color:#666;">0 events</span></span>
     </div>
     <div class="step-detail" id="dataStreamDetail">
       <div style="display:flex; align-items:center; gap:8px; padding:8px 0 4px;">
@@ -1815,6 +1883,7 @@
       <div class="step-number" style="background:var(--orange);color:#000;">⚙️</div>
       <div class="step-title">App Settings</div>
       <span class="step-type-badge" style="background:rgba(210,153,34,0.15);color:var(--orange);">CONFIG</span>
+      <span class="step-actions-spacer"></span>
     </div>
     <div class="step-detail" id="appSettingsDetail">
 
@@ -2008,7 +2077,6 @@
   <div class="preview-dots" id="previewDots">
     <!-- Generated by JS -->
   </div>
-  <span class="preview-label" id="stepCount">6 steps</span>
 </div>
 
 <script>
@@ -4626,23 +4694,48 @@
       if (!n) return false;
 
       // Expand cards — skip any indices out of range
+      // Kill transitions so restored cards open instantly (no visible jump)
       if (openCards.length) {
         cards.forEach(c => c.classList.remove('active'));
-        openCards.forEach(i => { if (i >= 0 && i < n) cards[i].classList.add('active'); });
+        openCards.forEach(i => {
+          if (i < 0 || i >= n) return;
+          const card = cards[i];
+          const detail = card.querySelector('.step-detail');
+          if (detail) detail.style.transition = 'none';
+          card.classList.add('active');
+          if (detail) detail.style.maxHeight = 'none';
+        });
       }
 
-      // Open settings drawers
+      // Open settings drawers — suppress transitions
       openSettings.forEach(i => {
         if (i < 0 || i >= n) return;
         const drawer = cards[i]?.querySelector('.card-settings');
-        if (drawer) drawer.classList.add('open');
+        if (drawer) {
+          const drawerPanel = drawer.querySelector('.card-settings-drawer');
+          if (drawerPanel) drawerPanel.style.transition = 'none';
+          drawer.classList.add('open');
+        }
       });
 
-      // Open prompts sections
+      // Open prompts sections — suppress transitions
       openPrompts.forEach(i => {
         if (i < 0 || i >= n) return;
         const section = cards[i]?.querySelector('.prompts-section');
-        if (section) section.classList.add('open');
+        if (section) {
+          const drawerPanel = section.querySelector('.card-settings-drawer');
+          if (drawerPanel) drawerPanel.style.transition = 'none';
+          section.classList.add('open');
+        }
+      });
+
+      // Re-enable step card transitions after layout settles
+      requestAnimationFrame(() => {
+        cards.forEach(card => {
+          const detail = card.querySelector('.step-detail');
+          if (detail) detail.style.transition = '';
+          card.querySelectorAll('.card-settings-drawer').forEach(d => d.style.transition = '');
+        });
       });
 
       // Re-open previews in background (async — don't block page load)
@@ -5263,9 +5356,12 @@
   }
 
   // Update preview dots
+  const PARTICIPANT_STEP_TYPES = ['registration', 'info', 'question', 'analysis'];
+
   function updatePreview() {
     const dots = document.getElementById('previewDots');
-    const cards = document.querySelectorAll('.step-card');
+    const allCards = document.querySelectorAll('.step-card');
+    const cards = Array.from(allCards).filter(c => PARTICIPANT_STEP_TYPES.includes(c.dataset.type));
     dots.innerHTML = '';
     cards.forEach((card, i) => {
       if (i > 0) {
@@ -5274,10 +5370,23 @@
         dots.appendChild(line);
       }
       const dot = document.createElement('div');
-      dot.className = `preview-dot ${card.dataset.type} filled`;
+      dot.className = `preview-dot ${card.dataset.type}`;
+      dot.textContent = i + 1;
+      dot.title = `Step ${i + 1}: ${card.dataset.type}`;
+      dot.onclick = () => {
+        const y = card.getBoundingClientRect().top + window.scrollY - 16;
+        window.scrollTo({ top: y, behavior: 'smooth' });
+        // Open after scroll lands, if collapsed
+        setTimeout(() => {
+          if (!card.classList.contains('active')) {
+            toggleStep(card.querySelector('.step-header'));
+          }
+          card.style.outline = '2px solid var(--accent)';
+          setTimeout(() => card.style.outline = '', 1500);
+        }, 400);
+      };
       dots.appendChild(dot);
     });
-    document.getElementById('stepCount').textContent = `${cards.length} steps`;
   }
 
   // Initial preview
@@ -6484,6 +6593,91 @@
     });
   }
 
+  function showLaunchConfirmModal({ numConditions, method, numBlocks, startDesc, endDesc }) {
+    return new Promise(resolve => {
+      // Remove any existing modal
+      document.getElementById('launchConfirmOverlay')?.remove();
+
+      const overlay = document.createElement('div');
+      overlay.id = 'launchConfirmOverlay';
+      Object.assign(overlay.style, {
+        position: 'fixed', inset: '0', zIndex: '10000',
+        background: 'rgba(0,0,0,0.75)', display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+        opacity: '0', transition: 'opacity 0.2s ease',
+      });
+
+      const box = document.createElement('div');
+      Object.assign(box.style, {
+        background: 'var(--surface, #2a3444)', border: '1px solid var(--border, #506078)',
+        borderRadius: '12px', padding: '28px 32px', maxWidth: '440px', width: '90%',
+        color: 'var(--text, #e6edf3)', transform: 'scale(0.95)',
+        transition: 'transform 0.2s ease',
+      });
+
+      box.innerHTML = `
+        <h2 style="margin:0 0 6px; font-size:18px; color:var(--green, #22C55E);">🚀 Launch Study</h2>
+        <p style="color:var(--text-muted, #aab4c0); margin:0 0 20px; font-size:13px;">
+          Are you sure you're ready to go live?
+        </p>
+        <div style="background:var(--bg, #141a22); border-radius:8px; padding:14px 16px; margin-bottom:20px; font-size:13px; line-height:2;">
+          <div><span style="color:var(--text-muted);">Conditions:</span> <strong>${numConditions}</strong></div>
+          <div><span style="color:var(--text-muted);">Randomization:</span> <strong>${method}</strong></div>
+          <div><span style="color:var(--text-muted);">Start:</span> <strong style="color:var(--green, #22C55E);">${startDesc}</strong></div>
+          <div><span style="color:var(--text-muted);">End:</span> <strong>${endDesc}</strong></div>
+        </div>
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+          <button id="launchConfirmCancel" style="
+            padding:8px 20px; border-radius:var(--radius, 4px); font-size:14px;
+            background:transparent; border:1px solid var(--border, #506078);
+            color:var(--text-muted, #aab4c0); cursor:pointer;
+          ">Cancel</button>
+          <button id="launchConfirmGo" style="
+            padding:8px 20px; border-radius:var(--radius, 4px); font-size:14px; font-weight:600;
+            background:var(--green, #22C55E); border:none;
+            color:#000; cursor:pointer; transition: transform 0.15s ease, box-shadow 0.15s ease;
+          ">Launch</button>
+        <style>
+          @keyframes launch-pulse {
+            0%, 100% { box-shadow: 0 0 8px rgba(34,197,94,0.4); }
+            50% { box-shadow: 0 0 20px rgba(34,197,94,0.8), 0 0 40px rgba(34,197,94,0.3); }
+          }
+          #launchConfirmGo:hover {
+            transform: scale(1.05);
+            animation: launch-pulse 1s ease-in-out infinite;
+          }
+        </style>
+        </div>
+      `;
+
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+
+      // Animate in
+      requestAnimationFrame(() => {
+        overlay.style.opacity = '1';
+        box.style.transform = 'scale(1)';
+      });
+
+      function close(result) {
+        overlay.style.opacity = '0';
+        box.style.transform = 'scale(0.95)';
+        setTimeout(() => overlay.remove(), 200);
+        resolve(result);
+      }
+
+      document.getElementById('launchConfirmCancel').onclick = () => close(false);
+      document.getElementById('launchConfirmGo').onclick = () => close(true);
+      overlay.addEventListener('keydown', e => {
+        if (e.key === 'Escape') close(false);
+        if (e.key === 'Enter') close(true);
+      });
+      // Focus the overlay so keyboard events work
+      overlay.tabIndex = -1;
+      overlay.focus();
+    });
+  }
+
   async function launchStudy({ restore = false } = {}) {
     const btn = document.getElementById('launchStudyBtn');
     const label = document.getElementById('launchStudyLabel');
@@ -6496,11 +6690,11 @@
       // ── End live study ──
       if (!confirm('End the live study? Participants currently in-progress can still finish, but no new assignments will be made.')) return;
       liveModeActive = false;
-      localStorage.setItem('sb_liveModeActive', '');
+      localStorage.removeItem('sb_liveModeActive');
       btn.innerHTML = '🚀 Launch Study';
-      btn.style.background = 'rgba(245,158,11,0.1)';
-      btn.style.borderColor = 'var(--orange)';
-      btn.style.color = 'var(--orange)';
+      btn.style.background = 'rgba(34,197,94,0.1)';
+      btn.style.borderColor = 'var(--green)';
+      btn.style.color = 'var(--green)';
       label.textContent = 'Go live — open the study to real participants';
       label.style.color = 'var(--text-muted)';
       dashboard.style.maxHeight = '0';
@@ -6508,6 +6702,8 @@
       if (dot) dot.classList.remove('alive');
       if (hbLabel) hbLabel.textContent = 'Heartbeat: waiting...';
       if (statusEl) { statusEl.textContent = 'Not started'; statusEl.style.color = '#666'; }
+      const deployLabel = document.getElementById('deployStatusLabel');
+      if (deployLabel) { deployLabel.textContent = 'Inactive'; deployLabel.style.color = '#555'; }
       if (liveHeartbeatInterval) { clearInterval(liveHeartbeatInterval); liveHeartbeatInterval = null; }
 
       // End session on server
@@ -6538,11 +6734,22 @@
         return;
       }
 
-      // Confirmation with launch settings summary
+      // Confirmation modal
       const launch = collectLaunchSettings();
-      const startDesc = launch.startMode === 'scheduled' ? `Scheduled: ${launch.startTime}` : 'Immediately';
-      const endDesc = launch.endMode === 'scheduled' ? `Until: ${launch.endTime}` : 'Open-ended';
-      if (!confirm(`Launch study to REAL participants?\n\nStart: ${startDesc}\nEnd: ${endDesc}\nConditions: ${numConditions}\nRandomization: ${method}\n\nThis will create a fresh assignment session. Continue?`)) return;
+      const numBlocks = parseInt(document.getElementById('rand_numBlocks')?.value) || 100;
+      const methodLabels = { random: 'Random', block: 'Block', healingBlock: 'Healing Block' };
+      const methodLabel = methodLabels[method] || method;
+      const startDesc = launch.startMode === 'scheduled'
+        ? new Date(launch.startTime).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+        : 'Immediately';
+      const endDesc = launch.endMode === 'scheduled'
+        ? new Date(launch.endTime).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+        : 'Open-ended';
+
+      const confirmed = await showLaunchConfirmModal({
+        numConditions, method: methodLabel, numBlocks, startDesc, endDesc,
+      });
+      if (!confirmed) return;
     }
 
     liveModeActive = true;
@@ -6558,6 +6765,8 @@
     dashboard.style.opacity = '1';
     if (dot) dot.classList.add('alive');
     if (statusEl) { statusEl.textContent = 'LIVE'; statusEl.style.color = 'var(--green)'; statusEl.style.fontWeight = '700'; }
+    const deployLabel = document.getElementById('deployStatusLabel');
+    if (deployLabel) { deployLabel.textContent = 'Live'; deployLabel.style.color = 'var(--green)'; }
 
     if (restore) {
       console.log('[LIVE] Restoring live mode — resuming existing session');
@@ -6664,16 +6873,16 @@
   // Restore test mode on page load (synchronous, no animation)
   if (localStorage.getItem('sb_testModeActive') === '1') {
     const dash = document.getElementById('testDashboard');
-    const ptDrawer = document.querySelector('#participantTrackingSettings .card-settings-drawer');
+    const testDrawer = document.querySelector('#testingSettings .card-settings-drawer');
     if (dash) { dash.style.transition = 'none'; dash.style.maxHeight = 'none'; dash.style.opacity = '1'; }
-    if (ptDrawer) ptDrawer.style.transition = 'none';
+    if (testDrawer) testDrawer.style.transition = 'none';
     toggleTestMode({ restore: true });
     // Override toggleTestMode's scrollHeight-based maxHeight with 'none' for instant display
     if (dash) dash.style.maxHeight = 'none';
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         if (dash) { dash.style.transition = 'max-height 0.35s ease, opacity 0.3s ease'; dash.style.maxHeight = dash.scrollHeight + 'px'; }
-        if (ptDrawer) ptDrawer.style.transition = '';
+        if (testDrawer) testDrawer.style.transition = '';
       });
     });
   }
@@ -6772,7 +6981,8 @@
     const statusEl = document.getElementById('launchStatus');
 
     // Persist test mode state
-    localStorage.setItem('sb_testModeActive', testModeActive ? '1' : '');
+    if (testModeActive) localStorage.setItem('sb_testModeActive', '1');
+    else localStorage.removeItem('sb_testModeActive');
 
     if (testModeActive) {
       btn.textContent = '■ End Test';
@@ -6781,18 +6991,22 @@
       label.style.color = 'var(--green)';
       dashboard.style.maxHeight = dashboard.scrollHeight + 200 + 'px';
       dashboard.style.opacity = '1';
-      // Auto-open Study Launch card + Participant Tracking panel
-      const launchCard = document.getElementById('studyLaunchCard');
-      if (launchCard && !launchCard.classList.contains('active')) {
-        launchCard.classList.add('active');
+      // Only auto-open on fresh launch, not on page restore
+      if (!restore) {
+        const launchCard = document.getElementById('studyLaunchCard');
+        if (launchCard && !launchCard.classList.contains('active')) {
+          launchCard.classList.add('active');
+        }
+        const testPanel = document.getElementById('testingSettings');
+        if (testPanel && !testPanel.classList.contains('open')) {
+          testPanel.classList.add('open');
+        }
+        saveExpandedState();
       }
-      const ptPanel = document.getElementById('participantTrackingSettings');
-      if (ptPanel && !ptPanel.classList.contains('open')) {
-        ptPanel.classList.add('open');
-      }
-      saveExpandedState();
       dot.classList.add('alive');
       if (statusEl) { statusEl.textContent = 'Test active'; statusEl.style.color = 'var(--green)'; }
+      const testStatusLabel = document.getElementById('testingStatusLabel');
+      if (testStatusLabel) { testStatusLabel.textContent = 'Active'; testStatusLabel.style.color = 'var(--green)'; }
 
       if (restore) {
         // Page reload — resume polling the existing session, don't create a new one
@@ -6828,9 +7042,10 @@
         pollTestHeartbeat();
       }
 
-      // Re-measure panel height for smooth animation
+      // Re-measure panel height for smooth animation (only if card is actually open)
+      const launchCardEl = document.getElementById('studyLaunchCard');
       const detail = document.getElementById('studyLaunchDetail');
-      if (detail) detail.style.maxHeight = 'none';
+      if (detail && launchCardEl?.classList.contains('active')) detail.style.maxHeight = 'none';
     } else {
       btn.textContent = '▶ Start Test';
       btn.classList.remove('active');
@@ -6841,6 +7056,8 @@
       dot.classList.remove('alive');
       hbLabel.textContent = 'Keepalive: waiting...';
       if (statusEl) { statusEl.textContent = 'Not started'; statusEl.style.color = '#666'; }
+      const testStatusLabel = document.getElementById('testingStatusLabel');
+      if (testStatusLabel) { testStatusLabel.textContent = 'Inactive'; testStatusLabel.style.color = '#555'; }
 
       if (heartbeatInterval) {
         clearInterval(heartbeatInterval);

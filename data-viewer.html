@@ -356,25 +356,137 @@
   }
   .detail-panel {
     padding: 16px 20px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
     font-size: calc(12px + var(--font-bump));
   }
-  .detail-section h4 {
+  /* ── Hero row: at-a-glance stats ── */
+  .detail-hero {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .hero-pid {
+    font-size: 13px;
+    font-weight: 600;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    color: var(--accent);
+  }
+  .hero-condition {
+    font-size: 12px;
+    font-weight: 600;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: rgba(33,150,243,0.12);
+    color: #64b5f6;
+    letter-spacing: 0.5px;
+  }
+  .hero-stat {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+  }
+  .hero-stat .lbl {
     font-size: calc(11px + var(--font-bump));
+    color: var(--text-muted);
+  }
+  .hero-stat .lbl::after { content: ':'; }
+  .hero-stat .val {
+    font-size: calc(13px + var(--font-bump));
+    font-weight: 600;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  /* ── Timestamps ── */
+  .detail-timestamps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 24px;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    font-size: calc(11px + var(--font-bump));
+  }
+  .ts-item { white-space: nowrap; }
+  .ts-item .k { color: var(--text-muted); }
+  .ts-item .k::after { content: ': '; }
+  .ts-item .v { color: var(--text); font-family: 'SF Mono', 'Fira Code', monospace; opacity: 0.85; }
+  /* ── Section headers ── */
+  .detail-section {
+    padding-top: 12px;
+  }
+  .detail-section h4 {
+    font-size: calc(10px + var(--font-bump));
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--text-muted);
-    margin-bottom: 6px;
+    margin-bottom: 8px;
+    opacity: 0.6;
   }
-  .detail-kv {
+  .detail-section + .detail-section {
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  /* ── Response rows ── */
+  .response-row {
     display: flex;
-    gap: 8px;
-    margin-bottom: 3px;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 4px 0;
+    line-height: 1.5;
   }
-  .detail-kv .k { color: var(--text-muted); min-width: 100px; }
-  .detail-kv .v { color: var(--text); font-family: 'SF Mono', 'Fira Code', monospace; }
+  .response-row .q { color: var(--text); opacity: 0.7; }
+  .response-row .a {
+    color: var(--text);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    text-align: right;
+    flex-shrink: 0;
+    font-weight: 500;
+  }
+  /* ── Analysis session block ── */
+  .analysis-block {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 20px;
+    padding: 6px 10px;
+    background: rgba(255,255,255,0.025);
+    border-radius: 6px;
+    margin-bottom: 4px;
+  }
+  .analysis-block .ab-item {
+    white-space: nowrap;
+    font-size: calc(11px + var(--font-bump));
+  }
+  .analysis-block .ab-item .k { color: var(--text-muted); }
+  .analysis-block .ab-item .k::after { content: ': '; }
+  .analysis-block .ab-item .v { font-family: 'SF Mono', 'Fira Code', monospace; color: var(--text); }
+  /* ── Feature table ── */
+  .feature-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: calc(11px + var(--font-bump));
+  }
+  .feature-table th {
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-muted);
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    font-size: calc(10px + var(--font-bump));
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .feature-table td {
+    padding: 5px 8px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+  .feature-table tr:last-child td { border-bottom: none; }
+  /* no alternating stripes inside detail cards — parent table already alternates */
+  .conf-yes { color: #6ec477; font-weight: 600; }
+  .conf-possibly { color: #f0a05a; }
+  .conf-no { color: #666; }
 
   /* Summary stats — inline with study selector */
   .summary-inline {
@@ -561,26 +673,13 @@
   let allParticipants = [];
   let currentFilter = 'all';
   let currentSort = { key: 'registered_at', dir: 'desc' };
-  let expandedPid = null;
+  let expandedPids = new Set(JSON.parse(localStorage.getItem('dv_expandedPids') || '[]'));
 
   // Fetch studies list and populate dropdown
   const urlSlug = new URLSearchParams(window.location.search).get('study');
 
-  // Synchronous cache restore — render instantly before any network call
   function cacheKey(slug) { return `dv_cache_${slug}`; }
-  (function instantCacheRestore() {
-    const slug = urlSlug;
-    if (!slug) return;
-    try {
-      const cached = localStorage.getItem(cacheKey(slug));
-      if (!cached) return;
-      allParticipants = JSON.parse(cached);
-      if (allParticipants.length > 0) {
-        showData();
-        requestAnimationFrame(() => spinRefreshIcon());
-      }
-    } catch { /* bad cache, ignore */ }
-  })();
+  const STUDIES_CACHE_KEY = 'dv_studies_cache';
 
   function populateStudySelect(studies) {
     const select = document.getElementById('studySelect');
@@ -634,13 +733,27 @@
     }
   }
 
-  // Instantly restore dropdown from cached studies list
-  const STUDIES_CACHE_KEY = 'dv_studies_cache';
+  // 1) Restore study dropdown from cache so studySelect.value is set for feature fetches
   (function restoreStudiesCache() {
     try {
       const cached = JSON.parse(localStorage.getItem(STUDIES_CACHE_KEY));
       if (cached?.length) populateStudySelect(cached);
     } catch {}
+  })();
+
+  // 2) Restore participant data from cache — render instantly before any network call
+  (function instantCacheRestore() {
+    const slug = urlSlug;
+    if (!slug) return;
+    try {
+      const cached = localStorage.getItem(cacheKey(slug));
+      if (!cached) return;
+      allParticipants = JSON.parse(cached);
+      if (allParticipants.length > 0) {
+        showData();
+        requestAnimationFrame(() => spinRefreshIcon());
+      }
+    } catch { /* bad cache, ignore */ }
   })();
 
   let pollTimer = null;
@@ -698,7 +811,13 @@
     // Fetch fresh data — silently updates if cache was already showing
     try {
       const data = await fetchParticipantData(slug);
-      allParticipants = data.participants || [];
+      const newList = data.participants || [];
+      // Preserve _features cache from previous data
+      for (const np of newList) {
+        const old = allParticipants.find(o => o.participant_id === np.participant_id);
+        if (old?._features) np._features = old._features;
+      }
+      allParticipants = newList;
       localStorage.setItem(cacheKey(slug), JSON.stringify(allParticipants));
       showData();
       startPoll();
@@ -735,9 +854,16 @@
       const data = await fetchParticipantData(slug);
       const newList = data.participants || [];
 
-      // Only re-render if data actually changed
-      if (JSON.stringify(newList) !== JSON.stringify(allParticipants)) {
+      // Only re-render if server data actually changed (strip _features for comparison)
+      const strip = list => JSON.stringify(list.map(({ _features, ...rest }) => rest));
+      if (strip(newList) !== strip(allParticipants)) {
+        // Preserve _features cache from previous data
+        for (const np of newList) {
+          const old = allParticipants.find(o => o.participant_id === np.participant_id);
+          if (old?._features) np._features = old._features;
+        }
         allParticipants = newList;
+        localStorage.setItem(cacheKey(slug), JSON.stringify(allParticipants));
 
         if (allParticipants.length === 0) {
           document.getElementById('tableContainer').style.display = 'none';
@@ -748,7 +874,7 @@
           updateSummary();
           renderTable();
           document.getElementById('summaryBar').style.display = 'inline-flex';
-    
+
           document.getElementById('tableContainer').style.display = '';
         }
       }
@@ -773,6 +899,22 @@
       return 'https://spaceweather.now.audio';
     }
     return location.origin;
+  }
+
+  async function fetchParticipantFeatures(p) {
+    const slug = document.getElementById('studySelect')?.value || urlSlug;
+    if (!slug) return;
+    try {
+      const resp = await fetch(`${detectApiBase()}/api/study/${slug}/participants/${encodeURIComponent(p.participant_id)}/features`);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      p._features = data.features || [];
+      // Update cache with features included
+      localStorage.setItem(cacheKey(slug), JSON.stringify(allParticipants));
+    } catch (e) {
+      console.warn('[DV] Feature fetch failed:', e);
+      p._features = [];
+    }
   }
 
   function updateSummary() {
@@ -881,45 +1023,226 @@
         <td><span class="feature-count ${p.feature_count === 0 ? 'zero' : ''}">${p.feature_count || 0}</span></td>
         <td class="time-cell">${formatTime(p.updated_at)}</td>
       </tr>
-      ${expandedPid === p.participant_id ? renderDetailRow(p) : ''}`);
+      ${expandedPids.has(p.participant_id) ? renderDetailRow(p) : ''}`);
     }
     body.innerHTML = rows.join('');
+    // Instant-open restored detail rows (no transition jump)
+    body.querySelectorAll('.detail-wrapper').forEach(w => {
+      w.style.transition = 'none';
+      w.style.height = 'auto';
+    });
+    requestAnimationFrame(() => {
+      body.querySelectorAll('.detail-wrapper').forEach(w => w.style.transition = '');
+    });
+    // Lazy-fetch features for restored rows
+    expandedPids.forEach(pid => {
+      const p = allParticipants.find(x => x.participant_id === pid);
+      if (p && p.feature_count > 0 && !p._features) {
+        fetchParticipantFeatures(p).then(() => {
+          const el = document.getElementById(`features-${CSS.escape(pid)}`);
+          if (el) el.innerHTML = renderFeatureTable(p._features);
+        });
+      }
+    });
+  }
+
+  function formatResponseKey(k) {
+    // Strip q_ prefix, replace underscores with spaces, title-case
+    let label = k.replace(/^q_/, '').replace(/_/g, ' ');
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  }
+
+  function formatResponseValue(v) {
+    if (v == null) return '—';
+    if (typeof v === 'string') return v || '—';
+    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+    if (Array.isArray(v)) return v.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(', ');
+    if (typeof v === 'object') {
+      if (v.label) return String(v.label);
+      if (v.value != null) return String(v.value);
+      if (v.answer != null) return String(v.answer);
+      // Summarize object — show up to 3 key:value pairs
+      const entries = Object.entries(v).filter(([,val]) => val != null && val !== '');
+      if (entries.length <= 3) return entries.map(([k,val]) => `${k}: ${truncate(String(val), 20)}`).join(', ');
+      return entries.slice(0, 3).map(([k,val]) => `${k}: ${truncate(String(val), 20)}`).join(', ') + ' …';
+    }
+    return String(v);
+  }
+
+  function formatFeatureTime(isoStr) {
+    if (!isoStr) return '—';
+    try {
+      const d = new Date(isoStr.includes('T') ? isoStr : isoStr.replace(' ', 'T') + 'Z');
+      return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }) + ' UT';
+    } catch { return '—'; }
+  }
+
+  function confClass(c) {
+    if (!c) return 'conf-no';
+    const lc = c.toLowerCase();
+    if (lc === 'confirmed' || lc === 'yes') return 'conf-yes';
+    if (lc === 'possibly' || lc === 'possible') return 'conf-possibly';
+    return 'conf-no';
+  }
+
+  function confLabel(c) {
+    if (!c) return '—';
+    const lc = c.toLowerCase();
+    if (lc === 'confirmed') return 'Yes';
+    if (lc === 'possibly' || lc === 'possible') return 'Poss';
+    return c;
+  }
+
+  function renderAnalysisBlock(session) {
+    if (!session || typeof session !== 'object') {
+      return `<div class="analysis-block"><span style="color:var(--text-muted);">${escHtml(String(session))}</span></div>`;
+    }
+    const labels = {
+      session: 'Session',
+      spacecraft: 'Spacecraft',
+      startDate: 'Start',
+      endDate: 'End',
+      dataset: 'Dataset',
+      region: 'Region',
+      component: 'Component',
+      duration: 'Duration',
+    };
+    const formatVal = (k, v) => {
+      if (v == null) return '—';
+      if ((k === 'startDate' || k === 'endDate') && typeof v === 'string') {
+        try {
+          const d = new Date(v);
+          return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        } catch { return String(v); }
+      }
+      return String(v);
+    };
+    const items = Object.entries(session)
+      .filter(([, v]) => v != null && v !== '')
+      .map(([k, v]) => {
+        const label = labels[k] || (k.charAt(0).toUpperCase() + k.slice(1));
+        return `<span class="ab-item"><span class="k">${escHtml(label)}</span><span class="v">${escHtml(formatVal(k, v))}</span></span>`;
+      }).join('');
+    return `<div class="analysis-block">${items}</div>`;
+  }
+
+  function renderFeatureTable(features) {
+    if (!features || features.length === 0) {
+      return '<div style="color:var(--text-muted); opacity:0.5; font-size:12px;">No features recorded</div>';
+    }
+    const rows = features.map((f, i) => {
+      const timeRange = `${formatFeatureTime(f.start_time)} – ${formatFeatureTime(f.end_time)}`;
+      const low = f.low_freq != null ? parseFloat(f.low_freq).toFixed(1) : '?';
+      const high = f.high_freq != null ? parseFloat(f.high_freq).toFixed(1) : '?';
+      const freqRange = `${low} – ${high} Hz`;
+      return `<tr>
+        <td style="color:var(--text-muted);">${i + 1}</td>
+        <td>${timeRange}</td>
+        <td>${freqRange}</td>
+        <td class="${confClass(f.confidence)}">${confLabel(f.confidence)}</td>
+        <td style="color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escHtml(f.notes || '')}</td>
+      </tr>`;
+    }).join('');
+    return `<table class="feature-table">
+      <colgroup>
+        <col style="width:30px;">
+        <col style="width:240px;">
+        <col style="width:140px;">
+        <col style="width:50px;">
+        <col>
+      </colgroup>
+      <thead><tr><th>#</th><th>Time Range</th><th>Freq Range</th><th>Conf</th><th>Notes</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
   }
 
   function renderDetailRow(p) {
     let responses = {};
     try { responses = typeof p.responses === 'string' ? JSON.parse(p.responses) : (p.responses || {}); } catch {}
-    const responseKeys = Object.keys(responses);
+    // Separate analysis_session from Q&A responses
+    const analysisSession = responses.analysis_session || responses.q_analysis_session || null;
+    const qaKeys = Object.keys(responses).filter(k => k !== 'analysis_session' && k !== 'q_analysis_session');
+
+    const condLabel = p.assigned_condition != null ? `C${p.assigned_condition}` : '—';
+    const stepLabel = p.current_step ?? '—';
+    const blockLabel = p.assigned_block != null ? p.assigned_block : '—';
+    const modeLabel = p.assignment_mode ? p.assignment_mode.charAt(0).toUpperCase() + p.assignment_mode.slice(1) : '—';
+    const featureCount = p.feature_count || 0;
+    const isComplete = !!p.completed_at;
 
     return `<tr class="detail-row" id="detail-${escHtml(p.participant_id)}"><td colspan="9">
       <div class="detail-wrapper">
       <div class="detail-panel">
-        <div class="detail-section">
-          <h4>Session</h4>
-          <div class="detail-kv"><span class="k">Registered</span><span class="v">${formatTimeFull(p.registered_at)}</span></div>
-          <div class="detail-kv"><span class="k">Last action</span><span class="v">${formatTimeFull(p.updated_at)}</span></div>
-          <div class="detail-kv"><span class="k">Completed</span><span class="v">${formatTimeFull(p.completed_at)}</span></div>
-          <div class="detail-kv"><span class="k">Current step</span><span class="v">${p.current_step ?? '—'}</span></div>
-          <div class="detail-kv"><span class="k">Block</span><span class="v">${p.assigned_block != null ? p.assigned_block : '—'}</span></div>
-          <div class="detail-kv"><span class="k">Condition</span><span class="v">${p.assigned_condition != null ? p.assigned_condition : '—'}</span></div>
-          <div class="detail-kv"><span class="k">Assignment</span><span class="v">${p.assignment_mode || '—'}</span></div>
-          <div class="detail-kv"><span class="k">Assigned at</span><span class="v">${formatTimeFull(p.assigned_at)}</span></div>
-          <div class="detail-kv"><span class="k">Features</span><span class="v">${p.feature_count || 0}</span></div>
+
+        <!-- Hero: at-a-glance -->
+        <div class="detail-hero">
+          <div class="hero-pid">${escHtml(p.participant_id)}</div>
+          <div class="hero-condition">${condLabel}</div>
+          <div class="hero-stat">
+            <span class="lbl">Progress</span>
+            <span class="val" style="color:${isComplete ? '#6ec477' : 'var(--text)'};">${isComplete ? 'Done' : 'Step ' + stepLabel}</span>
+          </div>
+          <div class="hero-stat">
+            <span class="lbl">Block</span>
+            <span class="val">${blockLabel}</span>
+          </div>
+          <div class="hero-stat">
+            <span class="lbl">Mode</span>
+            <span class="val">${modeLabel}</span>
+          </div>
+          <div class="hero-stat">
+            <span class="lbl">Features</span>
+            <span class="val">${featureCount}</span>
+          </div>
+          <div class="hero-stat">
+            <span class="lbl">Responses</span>
+            <span class="val">${qaKeys.length}</span>
+          </div>
         </div>
-        <div class="detail-section">
-          <h4>Responses (${responseKeys.length})</h4>
-          ${responseKeys.length === 0
-            ? '<div style="color:var(--text-muted); opacity:0.5; font-size:12px;">No responses yet</div>'
-            : responseKeys.map(k => `<div class="detail-kv"><span class="k">${escHtml(k)}</span><span class="v">${escHtml(truncate(JSON.stringify(responses[k]), 80))}</span></div>`).join('')
-          }
+
+        <!-- Timestamps: compact grid -->
+        <div class="detail-timestamps">
+          <div class="ts-item"><span class="k">Registered</span><span class="v">${formatTimeFull(p.registered_at)}</span></div>
+          <div class="ts-item"><span class="k">Last active</span><span class="v">${formatTimeFull(p.updated_at)}</span></div>
+          <div class="ts-item"><span class="k">Assigned</span><span class="v">${formatTimeFull(p.assigned_at)}</span></div>
+          <div class="ts-item"><span class="k">Completed</span><span class="v">${formatTimeFull(p.completed_at)}</span></div>
         </div>
+
+        <!-- Analysis session -->
+        ${analysisSession ? `
+        <div class="detail-section">
+          <h4>Analysis Session</h4>
+          ${renderAnalysisBlock(analysisSession)}
+        </div>` : ''}
+
+        <!-- Responses -->
+        ${qaKeys.length > 0 ? `
+        <div class="detail-section">
+          <h4>Responses</h4>
+          ${qaKeys.map(k => `<div class="response-row"><span class="q">${escHtml(formatResponseKey(k))}</span><span class="a">${escHtml(truncate(formatResponseValue(responses[k]), 80))}</span></div>`).join('')}
+        </div>` : ''}
+
+        <!-- Features -->
+        ${featureCount > 0 || p._features ? `
+        <div class="detail-section">
+          <h4>Features</h4>
+          <div id="features-${escHtml(p.participant_id)}">${p._features
+            ? renderFeatureTable(p._features)
+            : '<div style="color:var(--text-muted); font-size:12px;">Loading features...</div>'
+          }</div>
+        </div>` : ''}
+
       </div>
       </div>
     </td></tr>`;
   }
 
+  function saveExpandedPids() {
+    localStorage.setItem('dv_expandedPids', JSON.stringify([...expandedPids]));
+  }
+
   function toggleDetail(pid) {
-    if (expandedPid === pid) {
+    if (expandedPids.has(pid)) {
       // Close: animate out, then remove
       const wrapper = document.querySelector(`#detail-${CSS.escape(pid)} .detail-wrapper`);
       if (wrapper) {
@@ -927,22 +1250,20 @@
         requestAnimationFrame(() => {
           wrapper.style.height = '0px';
           wrapper.addEventListener('transitionend', () => {
-            expandedPid = null;
+            expandedPids.delete(pid);
+            saveExpandedPids();
             const detailRow = document.getElementById(`detail-${CSS.escape(pid)}`);
             if (detailRow) detailRow.remove();
           }, { once: true });
         });
       } else {
-        expandedPid = null;
+        expandedPids.delete(pid);
+        saveExpandedPids();
         renderTable();
       }
     } else {
-      // Close any existing detail row first
-      if (expandedPid) {
-        const oldDetail = document.getElementById(`detail-${CSS.escape(expandedPid)}`);
-        if (oldDetail) oldDetail.remove();
-      }
-      expandedPid = pid;
+      expandedPids.add(pid);
+      saveExpandedPids();
       // Insert detail row directly after clicked row — no full re-render
       const clickedRow = document.querySelector(`tr[onclick*="'${CSS.escape(pid)}'"]`);
       if (clickedRow) {
@@ -960,6 +1281,17 @@
               wrapper.addEventListener('transitionend', () => {
                 wrapper.style.height = 'auto';
               }, { once: true });
+            });
+          }
+          // Lazy-fetch features if needed
+          if (p.feature_count > 0 && !p._features) {
+            fetchParticipantFeatures(p).then(() => {
+              const el = document.getElementById(`features-${CSS.escape(p.participant_id)}`);
+              if (el) {
+                el.innerHTML = renderFeatureTable(p._features);
+                // Re-measure wrapper height for smooth content
+                if (wrapper) wrapper.style.height = 'auto';
+              }
             });
           }
         }
@@ -1002,11 +1334,8 @@
       const normalized = isoStr.includes('T') ? isoStr : isoStr.replace(' ', 'T') + 'Z';
       const d = new Date(normalized);
       if (isNaN(d.getTime())) return escHtml(isoStr);
-      const cs = String(Math.floor(d.getMilliseconds() / 10)).padStart(2, '0');
       const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
-      // Insert centiseconds before AM/PM: "2:28:07 AM" → "2:28:07.46 AM"
-      const timeWithCs = time.replace(/(\d{2})\s*(AM|PM)/i, `$1.${cs} $2`);
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' + timeWithCs;
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + time;
     } catch {
       return escHtml(isoStr);
     }
