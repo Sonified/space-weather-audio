@@ -807,6 +807,7 @@
   }
   .likert-col-input, .likert-item-input {
     flex: 1;
+    min-width: 200px;
     padding: 6px 10px;
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -3029,8 +3030,8 @@
         <div class="field-label">Answer Type</div>
         <div class="pill-group pill-group-flat pill-group-answer-type">
           <button class="pill ${isRadio ? 'active' : ''}" onclick="selectPill(this)">Multiple Choice</button>
-          <button class="pill ${isFreetext ? 'active' : ''}" onclick="selectPill(this)">Free Text</button>
           <button class="pill ${isLikert ? 'active' : ''}" onclick="selectPill(this)">Likert Scale</button>
+          <button class="pill ${isFreetext ? 'active' : ''}" onclick="selectPill(this)">Free Text</button>
         </div>
       </div>`;
     if (isRadio) {
@@ -4861,10 +4862,22 @@
       detail.style.maxHeight = '0';
       detail.offsetHeight; // force reflow
       detail.style.maxHeight = targetHeight + 'px';
+
+      // Pin the card header in place during expansion — adjust scroll to compensate
+      const pinY = card.getBoundingClientRect().top;
+      let pinRaf;
+      function pinCard() {
+        const drift = card.getBoundingClientRect().top - pinY;
+        if (Math.abs(drift) > 1) window.scrollBy(0, drift);
+        pinRaf = requestAnimationFrame(pinCard);
+      }
+      pinRaf = requestAnimationFrame(pinCard);
+
       // After transition, switch to 'none' so content can resize freely
       detail.addEventListener('transitionend', function handler(e) {
         if (e.propertyName === 'max-height') {
           detail.style.maxHeight = 'none';
+          cancelAnimationFrame(pinRaf);
           detail.removeEventListener('transitionend', handler);
         }
       });
