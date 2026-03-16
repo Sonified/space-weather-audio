@@ -257,17 +257,17 @@ function sessionKey(spacecraft, dataset, startTime, endTime) {
  * Get an existing download session or create a new one.
  * If a session exists for this exact data range, returns it (may be in-progress or done).
  */
-export function getOrCreateDownloadSession(spacecraft, dataset, startTimeISO, endTimeISO) {
+export async function getOrCreateDownloadSession(spacecraft, dataset, startTimeISO, endTimeISO) {
     const key = sessionKey(spacecraft, dataset, startTimeISO, endTimeISO);
     const existing = activeSessions.get(key);
     if (existing && !existing.abortController.signal.aborted) {
         if (window.pm?.data) console.log(`📦 [SESSION] Reusing existing session: ${key} (${existing.completedCount}/${existing.chunkSchedule?.length || '?'} chunks done)`);
         return existing;
     }
-    return createDownloadSession(spacecraft, dataset, startTimeISO, endTimeISO);
+    return await createDownloadSession(spacecraft, dataset, startTimeISO, endTimeISO);
 }
 
-function createDownloadSession(spacecraft, dataset, startTimeISO, endTimeISO) {
+async function createDownloadSession(spacecraft, dataset, startTimeISO, endTimeISO) {
     const key = sessionKey(spacecraft, dataset, startTimeISO, endTimeISO);
 
     let metadataResolve;
@@ -495,7 +495,7 @@ async function runDownloadSession(session) {
  */
 export async function prefetchCloudflareData(spacecraft, dataset, startTimeISO, endTimeISO) {
     if (window.pm?.data) console.log(`📦 [PREFETCH] Starting silent prefetch: ${spacecraft} ${dataset} ${startTimeISO} → ${endTimeISO}`);
-    const session = getOrCreateDownloadSession(spacecraft, dataset, startTimeISO, endTimeISO);
+    const session = await getOrCreateDownloadSession(spacecraft, dataset, startTimeISO, endTimeISO);
     return session.promise;
 }
 
@@ -539,7 +539,7 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     // Get or create download session — may already be running from preload
     // =========================================================================
 
-    const session = getOrCreateDownloadSession(spacecraft, dataset, startTimeISO, endTimeISO);
+    const session = await getOrCreateDownloadSession(spacecraft, dataset, startTimeISO, endTimeISO);
 
     // Wait for session metadata (resolves instantly if preload already fetched it)
     const silentEarly = document.getElementById('silentDownload')?.checked;
@@ -581,8 +581,8 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
     State.setDataStartTime(startDate);
     State.setDataEndTime(endDate);
 
-    // Load saved regions now that time range is known
-    loadRegionsAfterDataFetch();
+    // Load saved regions now that time range is known (await needed for review mode D1 fetch)
+    await loadRegionsAfterDataFetch();
 
     // Frequency range for Y-axis
     State.setOriginalDataFrequencyRange({

@@ -100,7 +100,9 @@ async function init() {
 
     // Page title
     const studyName = studyConfig.name || slug;
-    document.title = `[Review] ${pid} — ${studyName}`;
+    // Shorten test PIDs for tab: TEST_20260315_2038_DCVJW → TEST_DCVJW
+    const shortPid = pid.startsWith('TEST_') ? 'TEST_' + pid.split('_').pop() : pid;
+    document.title = `[Review] ${shortPid} — ${studyName}`;
     const titleEl = document.getElementById('studyTitle');
     if (titleEl) {
         titleEl.textContent = `[Review] ${studyName}`;

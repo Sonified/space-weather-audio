@@ -15,6 +15,12 @@ export function getParticipantIdFromURL() {
     // Try parameter names in order of likelihood
     const paramNames = ['ResponseID', 'responseId', 'ParticipantID', 'participantId', 'participant_id', 'id', 'pid'];
 
+    // Local dev only: allow &part=FULL_ID to impersonate a participant
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+        const part = params.get('part');
+        if (part && part.trim()) return part.trim();
+    }
+
     for (const paramName of paramNames) {
         const value = params.get(paramName);
         if (value && value.trim()) {
