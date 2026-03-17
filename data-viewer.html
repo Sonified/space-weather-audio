@@ -380,6 +380,16 @@
     font-weight: 500;
     opacity: 0.7;
   }
+  .session-separator.session-live td {
+    background: rgba(77, 168, 255, 0.06);
+    border-top: 1px solid rgba(77, 168, 255, 0.25);
+    border-bottom: 1px solid rgba(77, 168, 255, 0.25);
+  }
+  .session-live .session-label { color: var(--accent); }
+  .session-live.session-end td {
+    border-top: 1px dashed rgba(77, 168, 255, 0.2);
+    border-bottom: 1px dashed rgba(77, 168, 255, 0.2);
+  }
   .session-copy-btn {
     margin-left: 10px;
     opacity: 0;
@@ -1131,9 +1141,10 @@
     const sessionEvents = [];
     for (const s of allSessions) {
       const startTime = s.started_at || s.session_id;
-      sessionEvents.push({ type: 'session-start', ms: toMs(startTime), time: startTime, sid: s.session_id });
+      const modeLabel = (s.mode === 'live') ? 'Study' : 'Test';
+      sessionEvents.push({ type: 'session-start', ms: toMs(startTime), time: startTime, sid: s.session_id, modeLabel });
       if (s.ended_at) {
-        sessionEvents.push({ type: 'session-end', ms: toMs(s.ended_at), time: s.ended_at, sid: s.session_id });
+        sessionEvents.push({ type: 'session-end', ms: toMs(s.ended_at), time: s.ended_at, sid: s.session_id, modeLabel });
       }
     }
     sessionEvents.sort((a, b) => {
@@ -1151,11 +1162,12 @@
       while (eventIdx < sessionEvents.length && sessionEvents[eventIdx].ms >= participantMs) {
         const ev = sessionEvents[eventIdx];
         const label = formatTime(ev.time);
+        const liveClass = ev.modeLabel === 'Study' ? ' session-live' : '';
         const copyBtn = `<button class="session-copy-btn" onclick="event.stopPropagation(); copySessionData('${ev.sid}', this)">Copy JSON</button>`;
         if (ev.type === 'session-end') {
-          rows.push(`<tr class="session-separator session-end"><td colspan="9"><span class="session-label">Test ended ${label}</span>${copyBtn}</td></tr>`);
+          rows.push(`<tr class="session-separator session-end${liveClass}"><td colspan="9"><span class="session-label">${ev.modeLabel} ended ${label}</span>${copyBtn}</td></tr>`);
         } else {
-          rows.push(`<tr class="session-separator"><td colspan="9"><span class="session-label">Test started ${label}</span>${copyBtn}</td></tr>`);
+          rows.push(`<tr class="session-separator${liveClass}"><td colspan="9"><span class="session-label">${ev.modeLabel} started ${label}</span>${copyBtn}</td></tr>`);
         }
         eventIdx++;
       }

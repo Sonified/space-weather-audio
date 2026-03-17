@@ -1653,6 +1653,7 @@
           <div class="dropdown-item" onclick="saveAsToServer()">☁️ Save as NEW to server...</div>
         </div>
       </div>
+      <button class="btn" onclick="copyFullStudyJson()" title="Copy entire study config to clipboard">Copy Study JSON</button>
       <button class="btn" onclick="previewStudy()" title="Preview full study"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Preview</button>
       <div class="save-indicator" id="saveIndicator"></div>
       <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="handleJsonFile(event)">
@@ -5752,6 +5753,19 @@
     updatePreview();
   }
 
+  function copyFullStudyJson() {
+    const config = collectStudyConfig();
+    const json = JSON.stringify(config, null, 2);
+    navigator.clipboard.writeText(json).then(() => {
+      const indicator = document.getElementById('saveIndicator');
+      if (indicator) {
+        indicator.textContent = '✓ Copied';
+        indicator.style.opacity = '1';
+        setTimeout(() => { indicator.style.opacity = '0'; }, 1500);
+      }
+    });
+  }
+
   function copyStepInfo(btn) {
     const card = btn.closest('.step-card');
     if (!card) return;
@@ -7148,8 +7162,7 @@
   })();
   // ── Data Explorer launcher ──
   function openDataExplorer() {
-    const slugEl = document.getElementById('slugEditable');
-    const slug = slugEl ? slugEl.textContent.trim() : '';
+    const slug = (document.getElementById('urlTagInput')?.value || document.getElementById('slugValue')?.textContent || '').trim();
     // Pass admin auth to data viewer so it skips the gate
     if (sessionStorage.getItem('admin_authed') === 'true') {
       sessionStorage.setItem('dv_admin_authed', 'true');
@@ -7535,7 +7548,7 @@
     } else {
       if (hbLabel) hbLabel.textContent = 'Uploading block table...';
       console.log(`[LIVE] Launching study at ${new Date().toISOString()}`);
-      await generateAndUploadAssignmentState();
+      await generateAndUploadAssignmentState('live');
       if (activeSessionId) {
         liveSessionId = activeSessionId;
         activeSessionId = null; // Don't let test mode reclaim it
@@ -7665,7 +7678,7 @@
 
   let activeSessionId = null; // Track current session ID
 
-  async function generateAndUploadAssignmentState() {
+  async function generateAndUploadAssignmentState(mode = 'test') {
     const slug = document.getElementById('slugValue')?.textContent?.trim();
     if (!slug) return;
 
@@ -7713,7 +7726,7 @@
       const resp = await fetch(`${API_BASE}/api/study/${slug}/session/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state }),
+        body: JSON.stringify({ state, mode }),
       });
       const data = await resp.json();
       if (resp.ok) {

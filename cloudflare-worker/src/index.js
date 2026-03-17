@@ -794,10 +794,11 @@ export default {
 
         // Create new session
         const sessionId = body.sessionId || new Date().toISOString().replace(/[:.]/g, '-');
+        const mode = body.mode || 'test';
         await env.DB.prepare(
-          `INSERT INTO assignment_sessions (session_id, study_id, assignment_state, assignment_version)
-           VALUES (?, ?, ?, 0)`
-        ).bind(sessionId, studyId, JSON.stringify(body.state)).run();
+          `INSERT INTO assignment_sessions (session_id, study_id, assignment_state, assignment_version, mode)
+           VALUES (?, ?, ?, 0, ?)`
+        ).bind(sessionId, studyId, JSON.stringify(body.state), mode).run();
 
         const s = body.state;
         return json({
@@ -825,7 +826,7 @@ export default {
       if (sessionsListMatch && request.method === 'GET') {
         const studyId = sessionsListMatch[1];
         const { results } = await env.DB.prepare(
-          `SELECT session_id, started_at, ended_at FROM assignment_sessions
+          `SELECT session_id, started_at, ended_at, mode FROM assignment_sessions
            WHERE study_id = ? ORDER BY started_at DESC LIMIT 50`
         ).bind(studyId).all();
         return json({ success: true, sessions: results || [] });
