@@ -239,6 +239,35 @@
   .step-card[data-type="analysis"]     { background: color-mix(in srgb, #3d8b7a 15%, var(--surface)); }
   .step-card:hover { border-color: var(--border-hover); }
   .step-card.active { border-color: var(--accent); overflow: visible; }
+  .step-card.active.live { border-color: #fff; }
+
+  /* Live study glow */
+  .step-card.live {
+    border-color: rgba(34, 197, 94, 0.3);
+    box-shadow: 0 0 12px rgba(34, 197, 94, 0.08), inset 0 0 12px rgba(34, 197, 94, 0.03);
+    position: relative;
+  }
+  .step-card.live::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: conic-gradient(from var(--trace-angle, 0deg), transparent 0%, transparent 85%, rgba(34, 197, 94, 0.5) 92%, rgba(34, 197, 94, 0.8) 95%, transparent 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    animation: trace-border 4s linear infinite;
+    pointer-events: none;
+  }
+  @keyframes trace-border {
+    to { --trace-angle: 360deg; }
+  }
+  @property --trace-angle {
+    syntax: '<angle>';
+    initial-value: 0deg;
+    inherits: false;
+  }
 
   .step-card.dragging {
     opacity: 0.7;
@@ -2012,9 +2041,9 @@
             <!-- Launch Study -->
             <div style="display:flex; align-items:center; gap:12px; margin:16px 0;">
               <button id="launchStudyBtn" onclick="launchStudy()" title="Go live — makes the study accessible to real participants based on your launch schedule settings above." style="
-                padding:10px 24px; border-radius:var(--radius); font-size:14px; font-weight:600;
-                cursor:pointer; transition: all 0.3s ease;
-                background:rgba(34,197,94,0.1); border:2px solid var(--green); color:var(--green);
+                padding:6px 16px; border-radius:var(--radius); font-size:12px; font-weight:500;
+                cursor:pointer; transition: all 0.2s ease;
+                background:rgba(34,197,94,0.1); border:1px solid var(--green); color:var(--green);
               ">🚀 Launch Study</button>
               <span id="launchStudyLabel" style="font-size:12px; color:var(--text-muted);">Go live — open the study to real participants</span>
             </div>
@@ -2023,8 +2052,9 @@
               if (localStorage.getItem('sb_liveModeActive') === '1') {
                 const b = document.getElementById('launchStudyBtn');
                 const l = document.getElementById('launchStudyLabel');
-                if (b) { b.innerHTML = '■ End Study'; b.style.background = 'rgba(239,68,68,0.15)'; b.style.borderColor = 'var(--red)'; b.style.color = 'var(--red)'; }
-                if (l) { l.textContent = 'Study is LIVE — real participants are being assigned'; l.style.color = 'var(--green)'; }
+                if (b) { b.innerHTML = 'End Study'; b.style.background = 'transparent'; b.style.borderColor = 'var(--border, #506078)'; b.style.color = 'var(--text-muted, #888)'; }
+                if (l) { l.innerHTML = 'Study is LIVE'; l.style.color = 'var(--green)'; }
+                document.getElementById('studyLaunchCard')?.classList.add('live');
               }
             </script>
 
@@ -2047,7 +2077,7 @@
                   <div class="test-metric-label">Completed</div>
                 </div>
                 <div class="test-metric">
-                  <div class="test-metric-value" id="liveMetricDropouts" style="color:var(--red);">0</div>
+                  <div class="test-metric-value" id="liveMetricDropouts">0</div>
                   <div class="test-metric-label">Dropouts</div>
                 </div>
                 <div class="test-metric">
@@ -7607,6 +7637,10 @@
     });
   }
 
+  function groupIdHtml(sid) {
+    return `<span style="font-family:'SF Mono','Fira Code',monospace; font-size:10px; color:var(--text-muted,#888); user-select:all;">${sid}</span> <button onclick="navigator.clipboard.writeText('${sid}');this.textContent='✓';setTimeout(()=>this.textContent='📋',1000)" style="background:none;border:1px solid var(--border,#506078);color:var(--text-muted);cursor:pointer;padding:1px 5px;border-radius:3px;font-size:10px;vertical-align:middle;margin-left:2px;">📋</button>`;
+  }
+
   async function launchStudy({ restore = false } = {}) {
     const btn = document.getElementById('launchStudyBtn');
     const label = document.getElementById('launchStudyLabel');
@@ -7620,7 +7654,18 @@
       if (!confirm('End the live study? Participants currently in-progress can still finish, but no new assignments will be made.')) return;
       liveModeActive = false;
       localStorage.removeItem('sb_liveModeActive');
+      document.getElementById('studyLaunchCard')?.classList.remove('live');
       document.querySelectorAll('.url-mode-cycle[data-mode="test"]').forEach(b => b.dataset.tip = 'Test: full data flow');
+
+      // Re-enable launch timing controls
+      // Re-enable start timing controls
+      document.querySelectorAll('input[name="launchStart"]').forEach(el => {
+        el.disabled = false;
+        el.closest('label').style.opacity = '';
+      });
+      const startScheduled = document.querySelector('input[name="launchStart"][value="scheduled"]')?.checked;
+      const startTimeEl = document.getElementById('launchStartTime');
+      if (startTimeEl) { startTimeEl.disabled = !startScheduled; startTimeEl.style.opacity = ''; }
       btn.innerHTML = '🚀 Launch Study';
       btn.style.background = 'rgba(34,197,94,0.1)';
       btn.style.borderColor = 'var(--green)';
@@ -7689,13 +7734,22 @@
 
     liveModeActive = true;
     localStorage.setItem('sb_liveModeActive', '1');
+    document.getElementById('studyLaunchCard')?.classList.add('live');
     document.querySelectorAll('.url-mode-cycle[data-mode="test"]').forEach(b => b.dataset.tip = 'Test: no block assignment');
 
-    btn.innerHTML = '■ End Study';
-    btn.style.background = 'rgba(239,68,68,0.15)';
-    btn.style.borderColor = 'var(--red)';
-    btn.style.color = 'var(--red)';
-    label.textContent = 'Study is LIVE — real participants are being assigned';
+    // Disable start timing controls while live (end controls stay editable)
+    document.querySelectorAll('input[name="launchStart"]').forEach(el => {
+      el.disabled = true;
+      el.closest('label').style.opacity = '0.4';
+    });
+    const startTimeInput = document.getElementById('launchStartTime');
+    if (startTimeInput) { startTimeInput.disabled = true; startTimeInput.style.opacity = '0.4'; }
+
+    btn.innerHTML = 'End Study';
+    btn.style.background = 'transparent';
+    btn.style.borderColor = 'var(--border, #506078)';
+    btn.style.color = 'var(--text-muted, #888)';
+    label.innerHTML = 'Study is LIVE — real participants are being assigned';
     label.style.color = 'var(--green)';
     dashboard.style.maxHeight = dashboard.scrollHeight + 200 + 'px';
     dashboard.style.opacity = '1';
@@ -7707,6 +7761,10 @@
     if (restore) {
       console.log('[LIVE] Restoring live mode — resuming existing session');
       if (hbLabel) hbLabel.textContent = 'Resuming...';
+      // Show session ID on restore too
+      if (liveSessionId) {
+        label.innerHTML = `Study is LIVE &nbsp;${groupIdHtml(liveSessionId)}`;
+      }
     } else {
       if (hbLabel) hbLabel.textContent = 'Uploading block table...';
       console.log(`[LIVE] Launching study at ${new Date().toISOString()}`);
@@ -7714,6 +7772,10 @@
       if (activeSessionId) {
         liveSessionId = activeSessionId;
         activeSessionId = null; // Don't let test mode reclaim it
+      }
+      // Show session ID after launch
+      if (liveSessionId) {
+        label.innerHTML = `Study is LIVE &nbsp;${groupIdHtml(liveSessionId)}`;
       }
       updateLiveDashboard({
         totalStarted: 0, activeParticipants: 0, completedCount: 0,
@@ -7785,7 +7847,11 @@
       const data = await resp.json();
 
       const alg = data.algorithmState;
-      if (data.sessionId && !liveSessionId) liveSessionId = data.sessionId;
+      if (data.sessionId && !liveSessionId) {
+        liveSessionId = data.sessionId;
+        const lbl = document.getElementById('launchStudyLabel');
+        if (lbl) lbl.innerHTML = `Study is LIVE &nbsp;${groupIdHtml(liveSessionId)}`;
+      }
       console.log(`[LIVE DASHBOARD] Poll (session: ${data.sessionId || 'none'}): ${data.totalStarted} started, ${data.activeParticipants} active, ${data.completedCount} completed`);
       updateLiveDashboard({
         totalStarted: data.totalStarted || 0,
@@ -7930,7 +7996,7 @@
       });
       btn.textContent = '■ End Test';
       btn.classList.add('active');
-      label.textContent = 'Test session active — fresh participant pool';
+      label.innerHTML = 'Test session active — fresh participant pool';
       label.style.color = 'var(--green)';
       dashboard.style.maxHeight = dashboard.scrollHeight + 200 + 'px';
       dashboard.style.opacity = '1';
@@ -7951,16 +8017,22 @@
       const testStatusLabel = document.getElementById('testingStatusLabel');
       if (testStatusLabel) { testStatusLabel.textContent = 'Active'; testStatusLabel.style.color = 'var(--green)'; }
 
+      function showTestSessionId(sid) {
+        if (sid) label.innerHTML = `Test active &nbsp;${groupIdHtml(sid)}`;
+      }
+
       if (restore) {
         // Page reload — resume polling the existing session, don't create a new one
         console.log('[TEST] Restoring test mode — resuming existing session');
         hbLabel.textContent = 'Resuming...';
+        showTestSessionId(activeSessionId);
       } else {
         // Fresh start — generate new block table + create new session
         hbLabel.textContent = 'Uploading block table...';
         testStartTime = new Date().toISOString();
         console.log(`[TEST] Started at ${testStartTime}`);
         await generateAndUploadAssignmentState();
+        showTestSessionId(activeSessionId);
 
         // Reset metrics
         updateTestDashboard({
