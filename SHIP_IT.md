@@ -78,7 +78,7 @@ An
 - [x] **HS7.3.** Make sure test / study END bars appear correctly ⏱ ~30 min ▶️ 17:52 ⏸️ 18:52 ▶️ 20:54 ✅ 21:32
 - [x] **HS9.5.** Download batch data for entire tests and study runs (use horizontal bar) ⏱ ~1 hr ✅
 - [x] **HS9.4.** Option to download all data ⏱ ~1-2 hrs ▶️ 20:54 ✅ 21:32
-- [ ] **HS7.2.** Confirm study data presents well in data viewer ⏱ ~30 min
+- [x] **HS7.2.** Confirm study data presents well in data viewer ⏱ ~30 min ✅
 - [x] **HS20.** Update placement of copy card info to prevent accidental clicking ⏱ ~30 min ▶️ 00:35 ✅ 00:50
 
 #### 🎵 Stretch implementation (~3-5 hrs) — sequential chain
