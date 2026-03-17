@@ -74,12 +74,12 @@ An
 ### HOME STRETCH
 
 #### ⚡ Quick wins (~4-6 hrs)
-- [ ] **HS15.** New post-analysis question comparing audio experience + preference ⏱ ~1-2 hrs ▶️ 17:32
-- [ ] **HS7.3.** Make sure test / study END bars appear correctly ⏱ ~30 min
-- [ ] **HS9.5.** Download batch data for entire tests and study runs (use horizontal bar) ⏱ ~1 hr
-- [ ] **HS9.4.** Option to download all data ⏱ ~1-2 hrs
+- [x] **HS15.** New post-analysis question comparing audio experience + preference ⏱ ~1-2 hrs ▶️ 16:54 ✅ 17:47
+- [x] **HS7.3.** Make sure test / study END bars appear correctly ⏱ ~30 min ▶️ 17:52 ⏸️ 18:52 ▶️ 20:54 ✅ 21:32
+- [x] **HS9.5.** Download batch data for entire tests and study runs (use horizontal bar) ⏱ ~1 hr ✅
+- [x] **HS9.4.** Option to download all data ⏱ ~1-2 hrs ▶️ 20:54 ✅ 21:32
 - [ ] **HS7.2.** Confirm study data presents well in data viewer ⏱ ~30 min
-- [ ] **HS20.** Update placement of copy card info to prevent accidental clicking ⏱ ~30 min
+- [x] **HS20.** Update placement of copy card info to prevent accidental clicking ⏱ ~30 min ▶️ 00:35 ✅ 00:50
 
 #### 🎵 Stretch implementation (~3-5 hrs) — sequential chain
 - [ ] **HS1.** Identify ideal settings for wavelet and Paul stretch algorithms ⏱ ~1-2 hrs
@@ -122,6 +122,7 @@ An
 - [ ] **LPI4.** Load features from D1 on study page resume — returning participants get their features back cross-device, not just from localStorage
 - [ ] **LPI2.** Regenerate admin key (current key is in committed JSON files in repo)
 - [ ] **LPI3.** Remove or .gitignore study JSON files containing admin keys
+- [ ] **LPI5.** Fix dashed border flow on "possibly" feature boxes during edge drag — dashes shift on opposite edge when resizing
 
 ---
 
