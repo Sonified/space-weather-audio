@@ -23,7 +23,7 @@
     --emerald: #10B981;
     --font-bump: 2px;
     --radius: 4px;
-    --content-width: 1100px;
+    --content-width: 1122px;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -182,15 +182,15 @@
      * Bigger number = wider column. Everything else adjusts automatically.
      * Total is computed, no manual math needed.
      */
-    --c-status:    3;
+    --c-status:    4.4;
     --c-copy:      1;
     --c-pid:       10;
     --c-started:   9;
     --c-lastseen:  9;
-    --c-block:     2.5;
-    --c-condition: 3;
-    --c-step:      2.5;
-    --c-features:  3.25;
+    --c-block:     3.5;
+    --c-condition: 3.5;
+    --c-step:      3;
+    --c-features:  4;
     --c-total: calc(
       var(--c-status) + var(--c-copy) + var(--c-pid) + var(--c-started) +
       var(--c-lastseen) + var(--c-block) + var(--c-condition) + var(--c-step) +
@@ -298,7 +298,7 @@
     border: 1px solid var(--border);
   }
   .copy-pid[data-tip]:hover::after { opacity: 1; }
-  tr:hover .copy-pid { visibility: visible; }
+  tr:hover .copy-pid, .toolbar:hover .copy-pid { visibility: visible; }
 
   .condition-badge {
     display: inline-block;
@@ -360,36 +360,37 @@
   /* Session separator row */
   .session-separator td {
     padding: 6px 14px;
-    background: rgba(122, 133, 148, 0.08);
+    background: #1e2630;
     border-top: 1px solid rgba(122, 133, 148, 0.25);
     border-bottom: 1px solid rgba(122, 133, 148, 0.25);
   }
   .session-label {
-    font-size: calc(11px + var(--font-bump));
-    font-weight: 600;
-    color: #7a8594;
-    letter-spacing: 0.3px;
+    font-size: calc(12px + var(--font-bump));
+    font-weight: 500;
+    color: #a3abb5;
     text-transform: uppercase;
   }
   .session-end td {
-    background: rgba(122, 133, 148, 0.04);
-    border-top: 1px dashed rgba(122, 133, 148, 0.2);
-    border-bottom: 1px dashed rgba(122, 133, 148, 0.2);
+    background: #1e2630;
+    border-top: 1px solid rgba(122, 133, 148, 0.25);
+    border-bottom: 1px solid rgba(122, 133, 148, 0.25);
   }
   .session-end .session-label {
     font-weight: 500;
-    opacity: 0.7;
+    opacity: 1;
   }
   .session-separator.session-live td {
-    background: rgba(77, 168, 255, 0.06);
-    border-top: 1px solid rgba(77, 168, 255, 0.25);
-    border-bottom: 1px solid rgba(77, 168, 255, 0.25);
+    background: rgba(77, 168, 255, 0.15);
+    border-top: 1px solid rgba(77, 168, 255, 0.5);
+    border-bottom: 1px solid rgba(77, 168, 255, 0.5);
   }
   .session-live .session-label { color: var(--accent); }
   .session-live.session-end td {
-    border-top: 1px dashed rgba(77, 168, 255, 0.2);
-    border-bottom: 1px dashed rgba(77, 168, 255, 0.2);
+    background: rgba(77, 168, 255, 0.15);
+    border-top: 1px solid rgba(77, 168, 255, 0.5);
+    border-bottom: 1px solid rgba(77, 168, 255, 0.5);
   }
+  .session-live.session-end .session-label { opacity: 1; }
   .session-copy-btn {
     margin-left: 10px;
     opacity: 0;
@@ -706,6 +707,7 @@
     <option value="">Loading studies...</option>
   </select>
   <button class="btn refresh-icon" onclick="spinRefreshIcon(); loadParticipants()" title="Refresh participant list"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>
+  <button class="btn" id="copyAllBtn" onclick="copyAllStudyData()" title="Copy all data as JSON" style="font-size:12px; padding:6px 8px; width:70px; text-align:center;">Copy All</button>
   <div style="flex:1;"></div>
   <span class="summary-inline" id="summaryBar" style="display:none;"><span class="summary-stat total"><span class="value" id="sumTotal">0</span> <span class="label">total</span></span><span class="summary-div">·</span><span class="summary-stat active"><span class="value" id="sumActive">0</span> <span class="label">active</span></span><span class="summary-div">·</span><span class="summary-stat completed"><span class="value" id="sumCompleted">0</span> <span class="label">completed</span></span><span class="summary-div">·</span><span class="summary-stat features"><span class="value" id="sumFeatures">0</span> <span class="label">features</span></span></span>
   <div style="flex:1;"></div>
@@ -851,12 +853,22 @@
 
   // 2) Restore participant data from cache — render instantly before any network call
   (function instantCacheRestore() {
-    const slug = urlSlug;
+    const slug = urlSlug || localStorage.getItem('dv_last_study');
     if (!slug) return;
     try {
-      const cached = localStorage.getItem(cacheKey(slug));
-      if (!cached) return;
-      allParticipants = JSON.parse(cached);
+      const raw = JSON.parse(localStorage.getItem(cacheKey(slug)));
+      if (!raw) return;
+      // Support both old format (array) and new format ({participants, sessions})
+      if (Array.isArray(raw)) {
+        allParticipants = raw;
+      } else {
+        allParticipants = raw.participants || [];
+        allSessions = raw.sessions || [];
+        sessionEndMap = {};
+        for (const s of allSessions) {
+          if (s.ended_at) sessionEndMap[s.session_id] = s.ended_at;
+        }
+      }
       if (allParticipants.length > 0) {
         showData();
         requestAnimationFrame(() => spinRefreshIcon());
@@ -939,7 +951,7 @@
         if (old?._features) np._features = old._features;
       }
       allParticipants = newList;
-      localStorage.setItem(cacheKey(slug), JSON.stringify(allParticipants));
+      localStorage.setItem(cacheKey(slug), JSON.stringify({ participants: allParticipants, sessions: allSessions }));
       showData();
       startPoll();
     } catch (err) {
@@ -999,7 +1011,7 @@
           if (old?._features) np._features = old._features;
         }
         allParticipants = newList;
-        localStorage.setItem(cacheKey(slug), JSON.stringify(allParticipants));
+        localStorage.setItem(cacheKey(slug), JSON.stringify({ participants: allParticipants, sessions: allSessions }));
 
         if (allParticipants.length === 0) {
           document.getElementById('tableContainer').style.display = 'none';
@@ -1054,7 +1066,7 @@
       const data = await resp.json();
       p._features = data.features || [];
       // Update cache with features included
-      localStorage.setItem(cacheKey(slug), JSON.stringify(allParticipants));
+      localStorage.setItem(cacheKey(slug), JSON.stringify({ participants: allParticipants, sessions: allSessions }));
     } catch (e) {
       console.warn('[DV] Feature fetch failed:', e);
       p._features = [];
@@ -1186,7 +1198,7 @@
       rowIdx++;
       rows.push(`<tr class="${stripe}" onclick="toggleDetail('${escHtml(p.participant_id)}')" style="cursor:pointer;">
         <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
-        <td style="padding:0; text-align:center; overflow:visible; position:relative; z-index:10;"><button class="copy-pid" onclick="event.stopPropagation(); copyParticipant('${escHtml(p.participant_id)}', this)" data-tip="Copy all participant data as JSON">📋</button></td>
+        <td style="padding:0; text-align:center; overflow:visible; position:relative; z-index:10;"><button class="copy-pid" onclick="event.stopPropagation(); copyParticipant('${escHtml(p.participant_id)}', this)" data-tip="Copy participant JSON data">📋</button></td>
         <td class="pid-cell${isTest ? ' test-pid' : ''}">${escHtml(p.participant_id)}</td>
         <td class="time-cell">${formatTime(p.registered_at)}</td>
         <td class="time-cell">${formatTime(p.updated_at)}</td>
@@ -1563,6 +1575,26 @@
       btn.style.visibility = 'visible';
       btn.style.color = 'var(--green, #4ade80)';
       setTimeout(() => { btn.textContent = orig; btn.style.opacity = ''; btn.style.visibility = ''; btn.style.color = ''; }, 1200);
+    });
+  }
+
+  function copyAllStudyData() {
+    const slug = document.getElementById('studySelect').value;
+    const btn = document.getElementById('copyAllBtn');
+    const exportData = {
+      study: slug,
+      exported_at: new Date().toISOString(),
+      filter: currentFilter,
+      participants: allParticipants.map(p => {
+        const pSessions = allSessions.filter(s => s.participant_id === p.participant_id);
+        return { ...p, sessions: pSessions };
+      })
+    };
+    const json = JSON.stringify(exportData, null, 2);
+    navigator.clipboard.writeText(json).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = '✓ Copied';
+      setTimeout(() => { btn.textContent = orig; }, 1500);
     });
   }
 
