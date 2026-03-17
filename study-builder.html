@@ -1618,8 +1618,8 @@
       <button class="url-action-btn" onclick="copyUrl('study')" data-tip="Copy URL">📋</button>
       <button class="url-action-btn" onclick="openUrl('study')" data-tip="Open in new tab"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#79b8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
       <span class="url-divider"></span>
-      <button class="url-action-btn url-mode-cycle" data-row="study" data-mode="live" onclick="cycleUrlMode(this)" data-tip="Live mode"><svg width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#2ea043"/></svg></button>
-      <button class="url-action-btn url-toggle" data-row="study" data-mod="reset" onclick="toggleUrlMod(this)" data-tip="Clean reload each session">♻️</button>
+      <button class="url-action-btn url-mode-cycle" data-row="study" data-mode="live" onclick="cycleUrlMode(this)" data-tip="Live study mode"><svg width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#2ea043"/></svg></button>
+      <button class="url-action-btn url-toggle" data-row="study" data-mod="reset" onclick="toggleUrlMod(this)" data-tip="Clean reset on page load">♻️</button>
     </div>
     <div class="slug-preview" id="localUrlPreview" style="margin-top:2px;display:none;">
       <span class="slug-label">Local:</span>
@@ -1627,8 +1627,8 @@
       <button class="url-action-btn" onclick="copyUrl('local')" data-tip="Copy URL">📋</button>
       <button class="url-action-btn" onclick="openUrl('local')" data-tip="Open in new tab"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#79b8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>
       <span class="url-divider"></span>
-      <button class="url-action-btn url-mode-cycle" data-row="local" data-mode="live" onclick="cycleUrlMode(this)" data-tip="Live mode"><svg width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#2ea043"/></svg></button>
-      <button class="url-action-btn url-toggle" data-row="local" data-mod="reset" onclick="toggleUrlMod(this)" data-tip="Clean reload each session">♻️</button>
+      <button class="url-action-btn url-mode-cycle" data-row="local" data-mode="live" onclick="cycleUrlMode(this)" data-tip="Live study mode"><svg width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#2ea043"/></svg></button>
+      <button class="url-action-btn url-toggle" data-row="local" data-mod="reset" onclick="toggleUrlMod(this)" data-tip="Clean reset on page load">♻️</button>
     </div>
     <!-- Row 3: Admin Key -->
     <div class="header-row" style="margin-top:4px;">
@@ -2716,6 +2716,8 @@
       });
       updateUrlModsDisplay('study');
       updateUrlModsDisplay('local');
+      // If live session is active, update test tooltips now that mode buttons are restored
+      if (localStorage.getItem('sb_liveModeActive') === '1') document.querySelectorAll('.url-mode-cycle[data-mode="test"]').forEach(b => b.dataset.tip = 'Test: no block assignment');
     }
 
     console.groupEnd(); // [LOAD]
@@ -4737,12 +4739,7 @@
   // URL mode cycler — 🟢 Live → 🧪 Test → 👁 Preview → 🟢 Live
   const URL_MODES = ['live', 'test', 'preview'];
   const URL_MODE_ICONS = { live: '<svg width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#2ea043"/></svg>', test: '🧪', preview: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' };
-  function getUrlModeTitle(mode) {
-    if (mode === 'live') return 'Live mode';
-    if (mode === 'test') return liveModeActive ? 'Test: no block assignment' : 'Test: full data flow';
-    if (mode === 'preview') return 'Preview: no data saved';
-    return mode;
-  }
+  const URL_MODE_TITLES = { live: 'Live study mode', test: 'Test: full data flow', preview: 'Preview: no data saved' };
 
   function cycleUrlMode(btn) {
     const cur = btn.dataset.mode || 'live';
@@ -4755,7 +4752,7 @@
     const next = modes[(idx + 1) % modes.length];
     btn.dataset.mode = next;
     btn.innerHTML = URL_MODE_ICONS[next];
-    btn.dataset.tip = getUrlModeTitle(next);
+    btn.dataset.tip = (next === 'test' && liveModeActive) ? 'Test: no block assignment' : URL_MODE_TITLES[next];
     updateUrlModsDisplay(btn.dataset.row);
     autoSave('toggle');
   }
@@ -4765,7 +4762,7 @@
     if (!btn) return;
     btn.dataset.mode = mode;
     btn.innerHTML = URL_MODE_ICONS[mode] || URL_MODE_ICONS.live;
-    btn.dataset.tip = getUrlModeTitle(mode) || getUrlModeTitle('live');
+    btn.dataset.tip = URL_MODE_TITLES[mode] || URL_MODE_TITLES.live;
   }
 
   // ♻️ reset is still an independent toggle
@@ -7553,6 +7550,7 @@
       if (!confirm('End the live study? Participants currently in-progress can still finish, but no new assignments will be made.')) return;
       liveModeActive = false;
       localStorage.removeItem('sb_liveModeActive');
+      document.querySelectorAll('.url-mode-cycle[data-mode="test"]').forEach(b => b.dataset.tip = 'Test: full data flow');
       btn.innerHTML = '🚀 Launch Study';
       btn.style.background = 'rgba(34,197,94,0.1)';
       btn.style.borderColor = 'var(--green)';
@@ -7621,6 +7619,7 @@
 
     liveModeActive = true;
     localStorage.setItem('sb_liveModeActive', '1');
+    document.querySelectorAll('.url-mode-cycle[data-mode="test"]').forEach(b => b.dataset.tip = 'Test: no block assignment');
 
     btn.innerHTML = '■ End Study';
     btn.style.background = 'rgba(239,68,68,0.15)';
@@ -7856,7 +7855,7 @@
       document.querySelectorAll('.url-mode-cycle[data-mode="live"]').forEach(b => {
         b.dataset.mode = 'test';
         b.innerHTML = URL_MODE_ICONS.test;
-        b.dataset.tip = getUrlModeTitle('test');
+        b.dataset.tip = URL_MODE_TITLES.test;
         updateUrlModsDisplay(b.dataset.row);
       });
       btn.textContent = '■ End Test';
