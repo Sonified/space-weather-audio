@@ -2354,7 +2354,9 @@ function showQuestionModal(question, index, total, progressPct, previousAnswer, 
                 });
             } else if (qType === 'radio') {
                 const checked = studyModalInner.querySelector(`input[name="sq_${qName}"]:checked`);
-                answer = checked?.value || '';
+                const rawValue = checked?.value || '';
+                const opt = (question.options || []).find(o => String(o.value) === rawValue);
+                answer = opt?.label ? { value: rawValue, label: opt.label } : rawValue;
             } else {
                 answer = studyModalInner.querySelector('textarea')?.value?.trim() || '';
             }

@@ -831,13 +831,6 @@
   function cacheKey(slug) { return `dv_cache_${slug}`; }
   const STUDIES_CACHE_KEY = 'dv_studies_cache';
 
-  // Label lookups for radio questionnaire responses (value → label)
-  const RADIO_LABELS = {
-    background:         { 1: 'None', 2: 'Minimal', 3: 'Some', 4: 'Considerable', 5: 'Extensive' },
-    dataAnalysis:       { 1: 'Never', 2: 'Rarely', 3: 'Occasionally', 4: 'Frequently', 5: 'Extensively' },
-    musicalExperience:  { 1: 'None', 2: 'Minimal', 3: 'Some', 4: 'Considerable', 5: 'Extensive' }
-  };
-
   function populateStudySelect(studies) {
     const select = document.getElementById('studySelect');
     let preselect = urlSlug || '';
@@ -1328,18 +1321,14 @@
     return label.charAt(0).toUpperCase() + label.slice(1);
   }
 
-  function formatResponseValue(v, key) {
+  function formatResponseValue(v) {
     if (v == null) return '—';
-    // For radio questions, show "N - Label"
-    if (key && RADIO_LABELS[key]) {
-      const num = typeof v === 'number' ? v : Number(v);
-      const label = RADIO_LABELS[key][num];
-      if (label) return `${num} - ${label}`;
-    }
     if (typeof v === 'string') return v || '—';
     if (typeof v === 'number' || typeof v === 'boolean') return String(v);
     if (Array.isArray(v)) return v.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(', ');
     if (typeof v === 'object') {
+      // Radio answers stored as { value, label }
+      if (v.value != null && v.label) return `${v.value} - ${v.label}`;
       if (v.label) return String(v.label);
       if (v.value != null) return String(v.value);
       if (v.answer != null) return String(v.answer);
@@ -1526,7 +1515,7 @@
         <div class="detail-section">
           <h4>Responses</h4>
           <div class="response-grid">
-            ${qaKeys.map(k => `<span class="q">${escHtml(formatResponseKey(k))}:</span><span class="a">${escHtml(truncate(formatResponseValue(responses[k], k), 80))}</span>`).join('')}
+            ${qaKeys.map(k => `<span class="q">${escHtml(formatResponseKey(k))}:</span><span class="a">${escHtml(truncate(formatResponseValue(responses[k]), 80))}</span>`).join('')}
           </div>
         </div>` : ''}
 
@@ -1654,12 +1643,106 @@
     }
   }
 
-  function copySessionData(sessionId, btn) {
+  // ── Shared export helper ──────────────────────────────────────────────────
+  // Normalize any timestamp to ISO 8601 (e.g. "2026-03-17 06:53:57" → "2026-03-17T06:53:57Z")
+  function toISO(t) {
+    if (!t) return null;
+    let s = String(t);
+    if (!s.includes('T')) s = s.replace(' ', 'T');
+    if (!s.endsWith('Z') && !s.includes('+')) s += 'Z';
+    return s;
+  }
+
+  function getStudyMeta() {
+    const slug = document.getElementById('studySelect').value || '';
+    let name = slug;
+    try {
+      const studies = JSON.parse(localStorage.getItem(STUDIES_CACHE_KEY)) || [];
+      const match = studies.find(s => s.id === slug);
+      if (match?.name) name = match.name;
+    } catch {}
+    return { study_name: name, study_id: slug };
+  }
+
+  function getParticipantNumber(p) {
+    const sameSession = allParticipants
+      .filter(x => x.session_id === p.session_id)
+      .sort((a, b) => (a.registered_at || '').localeCompare(b.registered_at || ''));
+    return sameSession.findIndex(x => x.participant_id === p.participant_id) + 1;
+  }
+
+  function formatParticipantExport(p) {
+    const meta = getStudyMeta();
+    const isTest = isTestParticipant(p);
+    const session = allSessions.find(s => s.session_id === p.session_id);
+    const rawSessionStart = session ? (session.started_at || session.session_id) : null;
+    const sessionStarted = rawSessionStart ? toISO(rawSessionStart) : null;
+
+    // Parse JSON strings
+    let responses = p.responses;
+    if (typeof responses === 'string') {
+      try { responses = JSON.parse(responses); } catch (e) {}
+    }
+    let flags = p.flags;
+    if (typeof flags === 'string') {
+      try { flags = JSON.parse(flags); } catch (e) {}
+    }
+
+    const out = {
+      // Study context
+      study_name: meta.study_name,
+      study_id: meta.study_id,
+
+      // Participant identity
+      participant_id: p.participant_id,
+      participant_type: isTest ? 'test' : 'live',
+      participant_number: getParticipantNumber(p),
+
+      // Timeline
+      group_id: p.session_id || null,
+      group_started_at: sessionStarted,
+      registered_at: p.registered_at,
+
+      // Assignment
+      assigned_block: p.assigned_block,
+      assigned_condition: p.assigned_condition,
+      assignment_mode: p.assignment_mode,
+      assigned_at: p.assigned_at,
+
+      // Progress
+      current_step: p.current_step,
+      completed_at: p.completed_at,
+      updated_at: p.updated_at,
+
+      // Data
+      responses,
+      feature_count: p.feature_count,
+    };
+
+    if (p._features) {
+      out.features = p._features.map(({ participant_id, study_id, ...rest }) => rest);
+    }
+
+    return out;
+  }
+
+  // ── Copy / export functions ─────────────────────────────────────────────
+  async function copySessionData(sessionId, btn) {
     const participants = allParticipants.filter(p => p.session_id === sessionId);
     const session = allSessions.find(s => s.session_id === sessionId);
-    const data = { session: session || { session_id: sessionId }, participants };
+
+    // Fetch features for all participants in this session
+    btn.textContent = '⏳';
+    await Promise.all(participants.map(p =>
+      (!p._features && p.feature_count > 0) ? fetchParticipantFeatures(p) : Promise.resolve()
+    ));
+
+    const data = {
+      session: session || { session_id: sessionId },
+      participants: participants.map(p => formatParticipantExport(p))
+    };
     navigator.clipboard.writeText(JSON.stringify(data, null, 2)).then(() => {
-      const orig = btn.textContent;
+      const orig = '📋';
       btn.textContent = `✓ ${participants.length}`;
       btn.style.opacity = '1';
       btn.style.color = 'var(--green, #4ade80)';
@@ -1667,11 +1750,19 @@
     });
   }
 
-  function copyParticipant(pid, btn) {
+  async function copyParticipant(pid, btn) {
     const p = allParticipants.find(x => x.participant_id === pid);
-    const text = p ? JSON.stringify(p, null, 2) : pid;
-    navigator.clipboard.writeText(text).then(() => {
-      const orig = btn.textContent;
+    if (!p) { navigator.clipboard.writeText(pid); return; }
+
+    if (!p._features && p.feature_count > 0) {
+      btn.textContent = '⏳';
+      await fetchParticipantFeatures(p);
+    }
+
+    const out = formatParticipantExport(p);
+
+    navigator.clipboard.writeText(JSON.stringify(out, null, 2)).then(() => {
+      const orig = '📋';
       btn.textContent = '✓';
       btn.style.opacity = '1';
       btn.style.visibility = 'visible';
@@ -1681,15 +1772,16 @@
   }
 
   function copyAllStudyData() {
-    const slug = document.getElementById('studySelect').value;
+    const meta = getStudyMeta();
     const btn = document.getElementById('copyAllBtn');
     const exportData = {
-      study: slug,
+      study_name: meta.study_name,
+      study_id: meta.study_id,
       exported_at: new Date().toISOString(),
       filter: currentFilter,
       participants: allParticipants.map(p => {
-        const pSessions = allSessions.filter(s => s.participant_id === p.participant_id);
-        return { ...p, sessions: pSessions };
+        const out = formatParticipantExport(p);
+        return out;
       })
     };
     const json = JSON.stringify(exportData, null, 2);
