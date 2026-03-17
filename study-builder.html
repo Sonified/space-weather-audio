@@ -1666,7 +1666,7 @@
     </div>
     <!-- Row 3: Admin Key -->
     <div class="header-row" style="margin-top:4px;">
-      <div style="display:flex;align-items:center;gap:8px;">
+      <div style="display:flex;align-items:center;gap:8px;width:100%;">
         <span style="font-size:13px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Admin Key</span>
         <input class="field-input" id="adminKeyInput" value="emic2026" placeholder="Access key..." style="width:150px;padding:4px 8px;font-size:13px;font-family:'SF Mono','Fira Code',monospace;" class="field-input" />
         <button title="Copy admin key" onclick="navigator.clipboard.writeText(document.getElementById('adminKeyInput').value);this.textContent='✓';setTimeout(()=>this.textContent='📋',1000)" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.5'" style="background:none;border:1px solid var(--border,#506078);color:var(--text-muted);cursor:pointer;padding:2px 6px;border-radius:3px;font-size:11px;opacity:0.5;transition:opacity 0.15s;">📋</button>
@@ -7809,6 +7809,16 @@
       if (activeSessionId) {
         liveSessionId = activeSessionId;
         activeSessionId = null; // Don't let test mode reclaim it
+      }
+      // Snapshot config to R2 at launch
+      if (liveSessionId) {
+        const config = collectStudyConfig();
+        fetch(`${API_BASE}/api/study/${config.slug}/snapshot`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ label: liveSessionId, config }),
+        }).then(() => console.log('[LIVE] Config snapshot saved to R2'))
+          .catch(e => console.warn('[LIVE] Snapshot save failed:', e));
       }
       // Show session ID after launch
       if (liveSessionId) {

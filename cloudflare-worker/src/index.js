@@ -685,6 +685,39 @@ export default {
         return json({ error: 'Method not allowed' }, 405);
       }
 
+      // POST /api/study/:studyId/snapshot — save config snapshot to R2
+      // GET  /api/study/:studyId/snapshot — list all snapshots
+      const snapshotMatch = path.match(/^\/api\/study\/([^/]+)\/snapshot$/);
+      if (snapshotMatch) {
+        const studyId = snapshotMatch[1];
+
+        if (request.method === 'POST') {
+          const body = await request.json();
+          const label = body.label || body.session_id || nowISO().replace(/[:.]/g, '-');
+          const config = typeof body.config === 'string' ? body.config : JSON.stringify(body.config, null, 2);
+          if (!config) return json({ error: 'config required' }, 400);
+          const key = `study_snapshots/${studyId}/${label}.json`;
+          await env.BUCKET.put(key, config, {
+            customMetadata: { study_id: studyId, label, created_at: nowISO() },
+          });
+          return json({ success: true, key });
+        }
+
+        if (request.method === 'GET') {
+          const prefix = `study_snapshots/${studyId}/`;
+          const listed = await env.BUCKET.list({ prefix });
+          const snapshots = listed.objects.map(obj => ({
+            key: obj.key,
+            label: obj.key.replace(prefix, '').replace('.json', ''),
+            size: obj.size,
+            uploaded: obj.uploaded,
+          }));
+          return json({ success: true, snapshots });
+        }
+
+        return json({ error: 'Method not allowed' }, 405);
+      }
+
       // POST /api/verify-admin — verify admin key with exponential backoff
       // Single endpoint: check lockout → try key → success or increment fails
       if (path === '/api/verify-admin' && request.method === 'POST') {
