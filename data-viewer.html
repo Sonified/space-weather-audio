@@ -380,6 +380,21 @@
     font-weight: 500;
     opacity: 0.7;
   }
+  .session-copy-btn {
+    margin-left: 10px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    background: none;
+    border: 1px solid rgba(122, 133, 148, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 11px;
+    padding: 2px 8px;
+    line-height: 1.4;
+  }
+  .session-separator:hover .session-copy-btn { opacity: 1; }
+  .session-copy-btn:hover { color: var(--accent); border-color: var(--accent); }
 
   /* Detail panel (expandable row) */
   .detail-row td {
@@ -1136,10 +1151,11 @@
       while (eventIdx < sessionEvents.length && sessionEvents[eventIdx].ms >= participantMs) {
         const ev = sessionEvents[eventIdx];
         const label = formatTime(ev.time);
+        const copyBtn = `<button class="session-copy-btn" onclick="event.stopPropagation(); copySessionData('${ev.sid}', this)">Copy JSON</button>`;
         if (ev.type === 'session-end') {
-          rows.push(`<tr class="session-separator session-end"><td colspan="9"><span class="session-label">Test ended ${label}</span></td></tr>`);
+          rows.push(`<tr class="session-separator session-end"><td colspan="9"><span class="session-label">Test ended ${label}</span>${copyBtn}</td></tr>`);
         } else {
-          rows.push(`<tr class="session-separator"><td colspan="9"><span class="session-label">Test started ${label}</span></td></tr>`);
+          rows.push(`<tr class="session-separator"><td colspan="9"><span class="session-label">Test started ${label}</span>${copyBtn}</td></tr>`);
         }
         eventIdx++;
       }
@@ -1510,6 +1526,19 @@
     } catch {
       return escHtml(isoStr);
     }
+  }
+
+  function copySessionData(sessionId, btn) {
+    const participants = allParticipants.filter(p => p.session_id === sessionId);
+    const session = allSessions.find(s => s.session_id === sessionId);
+    const data = { session: session || { session_id: sessionId }, participants };
+    navigator.clipboard.writeText(JSON.stringify(data, null, 2)).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = `✓ ${participants.length}`;
+      btn.style.opacity = '1';
+      btn.style.color = 'var(--green, #4ade80)';
+      setTimeout(() => { btn.textContent = orig; btn.style.opacity = ''; btn.style.color = ''; }, 1200);
+    });
   }
 
   function copyParticipant(pid, btn) {
