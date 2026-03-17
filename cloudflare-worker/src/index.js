@@ -813,9 +813,15 @@ export default {
           `UPDATE assignment_sessions SET ended_at = ? WHERE study_id = ? AND ended_at IS NULL`
         ).bind(nowISO(), studyId).run();
 
-        // Create new session
-        const sessionId = body.sessionId || new Date().toISOString().replace(/[:.]/g, '-');
+        // Create new session — ID format: STUDY_slug_YYYYMMDD_HHMM_XXXXX or TEST_slug_YYYYMMDD_HHMM_XXXXX
         const mode = body.mode || 'test';
+        const prefix = mode === 'live' ? 'STUDY' : 'TEST';
+        const now = new Date();
+        const datePart = `${now.getUTCFullYear()}${String(now.getUTCMonth()+1).padStart(2,'0')}${String(now.getUTCDate()).padStart(2,'0')}`;
+        const timePart = `${String(now.getUTCHours()).padStart(2,'0')}${String(now.getUTCMinutes()).padStart(2,'0')}`;
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        let suffix = ''; for (let i = 0; i < 5; i++) suffix += chars[Math.floor(Math.random() * 26)];
+        const sessionId = body.sessionId || `${prefix}_${studyId}_${datePart}_${timePart}_${suffix}`;
         await env.DB.prepare(
           `INSERT INTO assignment_sessions (session_id, study_id, assignment_state, assignment_version, mode)
            VALUES (?, ?, ?, 0, ?)`

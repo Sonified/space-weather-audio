@@ -125,6 +125,7 @@ An
 - [ ] **LPI5.** Fix dashed border flow on "possibly" feature boxes during edge drag — dashes shift on opposite edge when resizing
 - [ ] **LPI6.** Polish vnav scroll indicator — close but not perfect, edge cases with open cards and bar extremes could be tighter
 - [ ] **LPI7.** Some elements still flash on study builder refresh — chevron/card state restore race condition not fully eliminated
+- [ ] **LPI8.** Defensively clean study slug as it's written — sanitize special chars, emoji, spaces to prevent malformed session IDs and URLs
 
 ---
 
