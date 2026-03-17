@@ -23,6 +23,7 @@
     --emerald: #10B981;
     --font-bump: 2px;
     --radius: 4px;
+    --content-width: 1100px;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -39,7 +40,7 @@
 
   /* Header */
   .header {
-    max-width: 1100px;
+    max-width: var(--content-width);
     margin: 0 auto 10px;
     display: flex;
     flex-direction: column;
@@ -117,7 +118,7 @@
 
   /* Filter tabs */
   .toolbar {
-    max-width: 1100px;
+    max-width: var(--content-width);
     margin: 0 auto 12px;
     display: flex;
     align-items: center;
@@ -165,7 +166,7 @@
 
   /* Table */
   .table-container {
-    max-width: 1100px;
+    max-width: var(--content-width);
     margin: 0 auto;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -181,15 +182,15 @@
      * Bigger number = wider column. Everything else adjusts automatically.
      * Total is computed, no manual math needed.
      */
-    --c-status:    3.25;
+    --c-status:    3;
     --c-copy:      1;
     --c-pid:       10;
-    --c-started:   8;
-    --c-lastseen:  8;
-    --c-block:     3;
-    --c-condition: 3.5;
-    --c-step:      3;
-    --c-features:  3.5;
+    --c-started:   9;
+    --c-lastseen:  9;
+    --c-block:     2.5;
+    --c-condition: 3;
+    --c-step:      2.5;
+    --c-features:  3.25;
     --c-total: calc(
       var(--c-status) + var(--c-copy) + var(--c-pid) + var(--c-started) +
       var(--c-lastseen) + var(--c-block) + var(--c-condition) + var(--c-step) +
@@ -705,15 +706,15 @@
     </colgroup>
     <thead>
       <tr>
-        <th onclick="sortBy('status')">Status <span class="sort-arrow">▼</span></th>
+        <th onclick="sortBy('status')" title="Participant status: active, inactive, completed, or test">Status <span class="sort-arrow">▼</span></th>
         <th></th>
-        <th onclick="sortBy('participant_id')">Participant <span class="sort-arrow">▼</span></th>
-        <th onclick="sortBy('registered_at')" class="sorted">Started <span class="sort-arrow">▼</span></th>
-        <th onclick="sortBy('updated_at')">Last Seen <span class="sort-arrow">▼</span></th>
-        <th onclick="sortBy('assigned_block')">Block <span class="sort-arrow">▼</span></th>
-        <th onclick="sortBy('assigned_condition')">Cond. <span class="sort-arrow">▼</span></th>
-        <th onclick="sortBy('current_step')">Step <span class="sort-arrow">▼</span></th>
-        <th onclick="sortBy('feature_count')">Feats. <span class="sort-arrow">▼</span></th>
+        <th onclick="sortBy('participant_id')" title="Unique participant identifier">Participant <span class="sort-arrow">▼</span></th>
+        <th onclick="sortBy('registered_at')" class="sorted" title="When the participant first registered">Started <span class="sort-arrow">▼</span></th>
+        <th onclick="sortBy('updated_at')" title="Most recent activity from the participant">Last Seen <span class="sort-arrow">▼</span></th>
+        <th onclick="sortBy('assigned_block')" title="Randomization block number">Block <span class="sort-arrow">▼</span></th>
+        <th onclick="sortBy('assigned_condition')" title="Assigned experimental condition">Cond. <span class="sort-arrow">▼</span></th>
+        <th onclick="sortBy('current_step')" title="Current step in the study flow">Step <span class="sort-arrow">▼</span></th>
+        <th onclick="sortBy('feature_count')" title="Number of identified features">Feats. <span class="sort-arrow">▼</span></th>
       </tr>
     </thead>
     <tbody id="participantBody">
@@ -737,6 +738,7 @@
 
 <script>
   let allParticipants = [];
+  let allSessions = []; // full session list from API
   let sessionEndMap = {}; // session_id → ended_at
   let currentFilter = 'all';
   let currentSort = { key: 'registered_at', dir: 'desc' };
@@ -899,6 +901,7 @@
         fetchSessions(slug)
       ]);
       if (sessData?.sessions) {
+        allSessions = sessData.sessions;
         sessionEndMap = {};
         for (const s of sessData.sessions) {
           if (s.ended_at) sessionEndMap[s.session_id] = s.ended_at;
@@ -948,17 +951,23 @@
         fetchParticipantData(slug),
         fetchSessions(slug)
       ]);
+      let sessionEnded = false;
       if (sessData?.sessions) {
-        sessionEndMap = {};
+        allSessions = sessData.sessions;
+        const newMap = {};
         for (const s of sessData.sessions) {
-          if (s.ended_at) sessionEndMap[s.session_id] = s.ended_at;
+          if (s.ended_at) {
+            if (!sessionEndMap[s.session_id]) sessionEnded = true;
+            newMap[s.session_id] = s.ended_at;
+          }
         }
+        sessionEndMap = newMap;
       }
       const newList = data.participants || [];
 
-      // Only re-render if server data actually changed (strip _features for comparison)
+      // Only re-render if participant data changed or a session just ended
       const strip = list => JSON.stringify(list.map(({ _features, ...rest }) => rest));
-      if (strip(newList) !== strip(allParticipants)) {
+      if (strip(newList) !== strip(allParticipants) || sessionEnded) {
         // Preserve _features cache from previous data
         for (const np of newList) {
           const old = allParticipants.find(o => o.participant_id === np.participant_id);
@@ -1100,33 +1109,46 @@
     const sorted = sortParticipants(allParticipants);
     const body = document.getElementById('participantBody');
 
-    let lastSessionId = null;
+    // Build session events sorted newest-first by Date, with tiebreaker: end before start
+    // Normalize D1 timestamps ("2026-03-17 01:28:38") to ISO ("2026-03-17T01:28:38Z")
+    // so they parse as UTC, not local time
+    const toMs = t => { let s = String(t); if (!s.includes('T')) s = s.replace(' ', 'T'); if (!s.endsWith('Z')) s += 'Z'; return new Date(s).getTime() || 0; };
+    const sessionEvents = [];
+    for (const s of allSessions) {
+      const startTime = s.started_at || s.session_id;
+      sessionEvents.push({ type: 'session-start', ms: toMs(startTime), time: startTime, sid: s.session_id });
+      if (s.ended_at) {
+        sessionEvents.push({ type: 'session-end', ms: toMs(s.ended_at), time: s.ended_at, sid: s.session_id });
+      }
+    }
+    sessionEvents.sort((a, b) => {
+      if (b.ms !== a.ms) return b.ms - a.ms;
+      // Same ms: end before start (end=0, start=1 → end sorts first in newest-first)
+      return (a.type === 'session-end' ? 0 : 1) - (b.type === 'session-end' ? 0 : 1);
+    });
+
+    // Walk sorted participants, inserting session bars where they belong chronologically
     const rows = [];
     let rowIdx = 0;
+    let eventIdx = 0;
 
-    function sessionEndBar(sid) {
-      const endedAt = sessionEndMap[sid];
-      if (!endedAt) return '';
-      const endLabel = formatTime(endedAt);
-      return `<tr class="session-separator session-end"><td colspan="9"><span class="session-label">Test ended ${endLabel}</span></td></tr>`;
+    function insertEventsBefore(participantMs) {
+      while (eventIdx < sessionEvents.length && sessionEvents[eventIdx].ms >= participantMs) {
+        const ev = sessionEvents[eventIdx];
+        const label = formatTime(ev.time);
+        if (ev.type === 'session-end') {
+          rows.push(`<tr class="session-separator session-end"><td colspan="9"><span class="session-label">Test ended ${label}</span></td></tr>`);
+        } else {
+          rows.push(`<tr class="session-separator"><td colspan="9"><span class="session-label">Test started ${label}</span></td></tr>`);
+        }
+        eventIdx++;
+      }
     }
 
     for (const p of sorted) {
-      // Insert session separator when session_id changes
-      if (p.session_id && p.session_id !== lastSessionId) {
-        // End bar for previous session (if it ended)
-        if (lastSessionId !== null) {
-          rows.push(sessionEndBar(lastSessionId));
-        }
-        // Start bar for new session
-        if (lastSessionId !== null) {
-          const sid = p.session_id;
-          const m = sid.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})/);
-          const sessionLabel = m ? formatTime(`${m[1]} ${m[2]}:${m[3]}:${m[4]}`) : sid;
-          rows.push(`<tr class="session-separator"><td colspan="9"><span class="session-label">Test started ${sessionLabel}</span></td></tr>`);
-        }
-        lastSessionId = p.session_id;
-      }
+      const pMs = toMs(p.registered_at);
+      insertEventsBefore(pMs);
+
       const status = getStatus(p);
       const isTest = isTestParticipant(p);
       const statusLabel = isTest ? 'test' : status;
@@ -1147,8 +1169,8 @@
       </tr>
       ${expandedPids.has(p.participant_id) ? renderDetailRow(p) : ''}`);
     }
-    // End bar for the final session
-    if (lastSessionId) rows.push(sessionEndBar(lastSessionId));
+    // Flush any remaining session events after all participants
+    insertEventsBefore(-Infinity);
     body.innerHTML = rows.join('');
     // Instant-open restored detail rows (no transition jump)
     body.querySelectorAll('.detail-wrapper').forEach(w => {

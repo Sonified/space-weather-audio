@@ -215,42 +215,34 @@ async function assignCondition() {
     const method = studyConfig.experimentalDesign?.randomization?.method;
     if (method === 'block' || method === 'healingBlock') {
         if (window.pm?.study_flow) console.log(`%c[ASSIGN] → Requesting server-side assignment (${method}) for ${getParticipantId()}`, 'color: #aa77ff;');
-        const maxRetries = 5;
-        const retryDelayMs = 500;
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-            try {
-                const resp = await fetch(`${getApiBase()}/api/study/${studySlug}/assign`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ participant_id: getParticipantId() })
-                });
-                const data = await resp.json();
-                if (window.pm?.study_flow) console.log(`%c[ASSIGN] ← Server response (attempt ${attempt}):`, 'color: #aa77ff;', data);
-                if (data.success && data.conditionIndex != null) {
-                    const condition = {
-                        conditionIndex: data.conditionIndex,
-                        order: data.order,
-                        task1Processing: data.task1Processing,
-                        task2Processing: data.task2Processing,
-                        assignmentMode: data.assignmentMode,
-                        block: data.block,
-                    };
-                    saveCondition(studySlug, condition);
-                    if (window.pm?.study_flow) console.log(`%c[ASSIGN] ✅ Condition #${data.conditionIndex} (${data.assignmentMode} | block ${data.block} | ${data.phase} | step ${data.step})`, 'color: #aa77ff; font-weight: bold;');
-                    return condition;
-                }
-                console.error(`[ASSIGN] ❌ Attempt ${attempt}/${maxRetries} failed:`, data.error || 'no condition returned');
-            } catch (e) {
-                console.error(`[ASSIGN] ❌ Attempt ${attempt}/${maxRetries} network error:`, e.message);
+        try {
+            const resp = await fetch(`${getApiBase()}/api/study/${studySlug}/assign`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ participant_id: getParticipantId() })
+            });
+            const data = await resp.json();
+            if (window.pm?.study_flow) console.log(`%c[ASSIGN] ← Server response:`, 'color: #aa77ff;', data);
+            if (data.success && data.conditionIndex != null) {
+                const condition = {
+                    conditionIndex: data.conditionIndex,
+                    order: data.order,
+                    task1Processing: data.task1Processing,
+                    task2Processing: data.task2Processing,
+                    assignmentMode: data.assignmentMode,
+                    block: data.block,
+                };
+                saveCondition(studySlug, condition);
+                if (window.pm?.study_flow) console.log(`%c[ASSIGN] ✅ Condition #${data.conditionIndex} (${data.assignmentMode} | block ${data.block} | ${data.phase} | step ${data.step})`, 'color: #aa77ff; font-weight: bold;');
+                return condition;
             }
-            if (attempt < maxRetries) {
-                await new Promise(r => setTimeout(r, retryDelayMs * attempt));
-            }
+            // No active session — just proceed with default flow (no condition)
+            console.warn(`[ASSIGN] ⚠️ No active study session — proceeding with default flow (no condition)`);
+            return null;
+        } catch (e) {
+            console.warn('[ASSIGN] ⚠️ Server unreachable — proceeding with default flow (no condition)');
+            return null;
         }
-        // All retries exhausted — do NOT fall back to random. Block the study.
-        console.error('[ASSIGN] 🚫 FATAL: Server assignment failed after all retries.');
-        alert('Unable to assign a study condition. Please check your internet connection and reload the page to try again.');
-        return null;
     }
 
     // Random assignment — ONLY for studies explicitly configured with method='random'
