@@ -45,7 +45,7 @@ export function buildHeaderUnderlineStyle(step) {
 
 export function renderRadioOptions({ options, labelMode, inputName, previousAnswer, preview = false }) {
     const name = preview ? `preview_${inputName}` : `sq_${inputName}`;
-    const disabled = preview ? ' disabled' : '';
+    const disabled = '';
     return `
         <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;">
             ${options.map(opt => {
@@ -67,7 +67,7 @@ export function renderRadioOptions({ options, labelMode, inputName, previousAnsw
 }
 
 export function renderFreetextInput({ placeholder, previousAnswer, preview = false }) {
-    const disabled = preview ? ' disabled' : '';
+    const disabled = '';
     return `
         <textarea${disabled} placeholder="${placeholder || 'Type your response here...'}"
             style="width: 100%; flex: 1; min-height: 120px; padding: 14px; font-size: 15px; font-family: inherit; border: 1px solid #ddd; border-radius: 8px; resize: vertical; box-sizing: border-box; line-height: 1.5; color: #333;"
@@ -81,16 +81,18 @@ export function renderLikertGrid({ scaleLabels, rows, inputName, previousAnswer,
     if (cols.length === 0 || items.length === 0) return '<div style="color:#999;font-style:italic;">No scale labels or rows defined.</div>';
 
     const namePrefix = preview ? `preview_${inputName}` : `sq_${inputName}`;
-    const disabled = preview ? ' disabled' : '';
+    const disabled = '';
     const prevObj = (previousAnswer && typeof previousAnswer === 'object') ? previousAnswer : {};
     let colStyle = boldCols ? 'font-weight:700;' : 'font-weight:400;';
     if (colFontSize) colStyle += `font-size:${colFontSize};`;
-    if (colAlign) colStyle += `text-align:${colAlign};`;
+    if (colAlign === 'left') colStyle += 'justify-content:flex-start;text-align:left;';
+    else if (colAlign === 'right') colStyle += 'justify-content:flex-end;text-align:right;';
+    else if (colAlign === 'center') colStyle += 'justify-content:center;text-align:center;';
     let rowStyle = boldRows ? 'font-weight:700;' : 'font-weight:400;';
     if (rowFontSize) rowStyle += `font-size:${rowFontSize};`;
-    if (rowAlign === 'right') rowStyle += 'justify-content:flex-end;';
-    else if (rowAlign === 'center') rowStyle += 'justify-content:center;';
-    else if (rowAlign === 'left') rowStyle += 'justify-content:flex-start;';
+    if (rowAlign === 'right') rowStyle += 'justify-content:flex-end;text-align:right;';
+    else if (rowAlign === 'center') rowStyle += 'justify-content:center;text-align:center;';
+    else if (rowAlign === 'left') rowStyle += 'justify-content:flex-start;text-align:left;';
 
     // Header row
     let html = `<div class="likert-grid" style="grid-template-columns: minmax(140px, 1.5fr) repeat(${cols.length}, 1fr);">`;
@@ -217,7 +219,7 @@ export function renderQuestionModal({ question, index, total, progressPct, previ
     const titleFont = buildTitleFontStyle(stepDims);
     const isRequired = question.required !== false;
     let disabledNext = '';
-    if (!preview && isRequired) {
+    if (isRequired) {
         if (qType === 'likert') {
             const allFilled = previousAnswer && typeof previousAnswer === 'object'
                 && Object.keys(previousAnswer).length === (question.rows || []).length
