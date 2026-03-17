@@ -629,33 +629,12 @@ export default {
         const studyId = studyConfigMatch[1];
 
         if (request.method === 'GET') {
-          const [row, activeSession] = await Promise.all([
-            env.DB.prepare('SELECT id, name, config, created_at, updated_at FROM studies WHERE id = ?').bind(studyId).first(),
-            env.DB.prepare(
-              `SELECT session_id, mode, started_at, assignment_state FROM assignment_sessions
-               WHERE study_id = ? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1`
-            ).bind(studyId).first(),
-          ]);
+          const row = await env.DB.prepare('SELECT id, name, config, created_at, updated_at FROM studies WHERE id = ?').bind(studyId).first();
           if (!row) return json({ error: 'Study not found' }, 404);
           const config = typeof row.config === 'string' ? JSON.parse(row.config) : row.config;
           // Strip adminKey from config — it lives in its own column now
           delete config.adminKey;
-          // Include active session summary (mode, block, started_at)
-          let session = null;
-          if (activeSession) {
-            let currentBlock = null;
-            try {
-              const s = JSON.parse(activeSession.assignment_state);
-              currentBlock = s.currentBlock != null ? s.currentBlock + 1 : null;
-            } catch {}
-            session = {
-              id: activeSession.session_id,
-              mode: activeSession.mode || 'test',
-              startedAt: activeSession.started_at,
-              currentBlock,
-            };
-          }
-          return json({ success: true, study: { id: row.id, name: row.name, config }, session });
+          return json({ success: true, study: { id: row.id, name: row.name, config } });
         }
 
         if (request.method === 'PUT') {
@@ -873,30 +852,11 @@ export default {
         for (let attempt = 0; attempt < 10; attempt++) {
           // Find active session
           const session = await env.DB.prepare(
-            `SELECT session_id, assignment_state, assignment_version, mode FROM assignment_sessions
+            `SELECT session_id, assignment_state, assignment_version FROM assignment_sessions
              WHERE study_id = ? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1`
           ).bind(studyId).first();
           if (!session || !session.assignment_state) {
             return json({ success: false, noSession: true, message: 'No active session' });
-          }
-
-          // Test participant in a live session → return default condition, don't burn a block slot
-          const isTestParticipant = pid.startsWith('TEST_');
-          const isLiveSession = session.mode === 'live';
-          if (isTestParticipant && isLiveSession) {
-            const defaultCondition = conditions[0] || {};
-            return json({
-              success: true,
-              conditionIndex: 0,
-              order: [0, 1],
-              task1Processing: null,
-              task2Processing: null,
-              assignmentMode: 'test_in_live',
-              sessionId: session.session_id,
-              block: null,
-              phase: 'test_bypass',
-              step: null,
-            });
           }
 
           const sessionId = session.session_id;

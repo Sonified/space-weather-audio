@@ -1896,15 +1896,6 @@
               ">▶ Start Test</button>
               <span id="testModeLabel" style="font-size:12px; color:var(--text-muted);">Launch a test session with a fresh participant pool</span>
             </div>
-            <script>
-              // Instant visual restore — no flash on refresh
-              if (localStorage.getItem('sb_testModeActive') === '1') {
-                const b = document.getElementById('testModeBtn');
-                const l = document.getElementById('testModeLabel');
-                if (b) { b.textContent = '■ End Test'; b.classList.add('active'); }
-                if (l) { l.textContent = 'Test session active — fresh participant pool'; l.style.color = 'var(--green)'; }
-              }
-            </script>
 
             <!-- Test Dashboard (hidden until test active) -->
             <div id="testDashboard" style="max-height:0; overflow:hidden; transition:max-height 0.35s ease, opacity 0.3s ease; opacity:0;">
@@ -1996,15 +1987,6 @@
               ">🚀 Launch Study</button>
               <span id="launchStudyLabel" style="font-size:12px; color:var(--text-muted);">Go live — open the study to real participants</span>
             </div>
-            <script>
-              // Instant visual restore — no flash from green to red on refresh
-              if (localStorage.getItem('sb_liveModeActive') === '1') {
-                const b = document.getElementById('launchStudyBtn');
-                const l = document.getElementById('launchStudyLabel');
-                if (b) { b.innerHTML = '■ End Study'; b.style.background = 'rgba(239,68,68,0.15)'; b.style.borderColor = 'var(--red)'; b.style.color = 'var(--red)'; }
-                if (l) { l.textContent = 'Study is LIVE — real participants are being assigned'; l.style.color = 'var(--green)'; }
-              }
-            </script>
 
             <!-- Launch Dashboard (hidden until study launched) -->
             <div id="launchDashboard" style="max-height:0; overflow:hidden; transition:max-height 0.35s ease, opacity 0.3s ease; opacity:0;">
@@ -2317,42 +2299,6 @@
     </div>
   </div>
 </div>
-<script>
-  // Instant restore of fixed card expanded states — no chevron flash on refresh
-  try {
-    const _fp = JSON.parse(localStorage.getItem('sb_fixedPanels') || '{}');
-    // Force launch card open if a test or live session is active
-    const _sessionActive = localStorage.getItem('sb_liveModeActive') === '1' || localStorage.getItem('sb_testModeActive') === '1';
-    if (_sessionActive) _fp.studyLaunchCard = true;
-    ['experimentalDesignCard', 'studyLaunchCard', 'appSettingsCard', 'dataStreamCard'].forEach(id => {
-      if (_fp[id]) {
-        const el = document.getElementById(id);
-        if (el) {
-          const chev = el.querySelector('.chevron');
-          if (chev) chev.style.transition = 'none';
-          el.classList.add('active');
-          const d = el.querySelector('.step-detail');
-          if (d) { d.style.transition = 'none'; d.style.maxHeight = 'none'; }
-        }
-      }
-    });
-    if (_fp._subPanels) {
-      // Also force testing sub-panel open if test session active
-      if (localStorage.getItem('sb_testModeActive') === '1') _fp._subPanels.testingSettings = true;
-      if (localStorage.getItem('sb_liveModeActive') === '1') _fp._subPanels.deployStudySettings = true;
-      Object.entries(_fp._subPanels).forEach(([spId, isOpen]) => {
-        if (isOpen) {
-          const sp = document.getElementById(spId);
-          if (sp) {
-            sp.classList.add('open');
-            const dr = sp.querySelector('.card-settings-drawer');
-            if (dr) dr.style.transition = 'none';
-          }
-        }
-      });
-    }
-  } catch(e) {}
-</script>
 
 <!-- Vertical nav (fixed left sidebar) -->
 <div class="vertical-nav" id="verticalNav">
@@ -4737,12 +4683,7 @@
   // URL mode cycler — 🟢 Live → 🧪 Test → 👁 Preview → 🟢 Live
   const URL_MODES = ['live', 'test', 'preview'];
   const URL_MODE_ICONS = { live: '<svg width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#2ea043"/></svg>', test: '🧪', preview: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' };
-  function getUrlModeTitle(mode) {
-    if (mode === 'live') return 'Live mode';
-    if (mode === 'test') return liveModeActive ? 'Test: no block assignment' : 'Test: full data flow';
-    if (mode === 'preview') return 'Preview: no data saved';
-    return mode;
-  }
+  const URL_MODE_TITLES = { live: 'Live mode', test: 'Test: full data flow', preview: 'Preview: no data saved' };
 
   function cycleUrlMode(btn) {
     const cur = btn.dataset.mode || 'live';
@@ -4755,7 +4696,7 @@
     const next = modes[(idx + 1) % modes.length];
     btn.dataset.mode = next;
     btn.innerHTML = URL_MODE_ICONS[next];
-    btn.dataset.tip = getUrlModeTitle(next);
+    btn.dataset.tip = URL_MODE_TITLES[next];
     updateUrlModsDisplay(btn.dataset.row);
     autoSave('toggle');
   }
@@ -4765,7 +4706,7 @@
     if (!btn) return;
     btn.dataset.mode = mode;
     btn.innerHTML = URL_MODE_ICONS[mode] || URL_MODE_ICONS.live;
-    btn.dataset.tip = getUrlModeTitle(mode) || getUrlModeTitle('live');
+    btn.dataset.tip = URL_MODE_TITLES[mode] || URL_MODE_TITLES.live;
   }
 
   // ♻️ reset is still an independent toggle
@@ -5204,8 +5145,7 @@
             if (detail) detail.style.transition = 'none';
             el.classList.add('active');
             if (detail) detail.style.maxHeight = 'none';
-          } else if (fp.hasOwnProperty(id)) {
-            // Only collapse if explicitly saved as closed — don't override inline script restore
+          } else {
             el.classList.remove('active');
           }
         });
@@ -7856,7 +7796,7 @@
       document.querySelectorAll('.url-mode-cycle[data-mode="live"]').forEach(b => {
         b.dataset.mode = 'test';
         b.innerHTML = URL_MODE_ICONS.test;
-        b.dataset.tip = getUrlModeTitle('test');
+        b.dataset.tip = URL_MODE_TITLES.test;
         updateUrlModsDisplay(b.dataset.row);
       });
       btn.textContent = '■ End Test';

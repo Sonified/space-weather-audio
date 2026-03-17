@@ -67,13 +67,8 @@ export async function fetchStudyConfig(studyId) {
         if (resp.ok) {
             const data = await resp.json();
             log('✅', `loaded config for "${sid}"`);
-            // Server returns { success, study: { id, name, config: {...} }, session: {...} | null }
-            if (data.study && data.study.config) {
-                // Attach session info to config so callers can access it
-                const config = data.study.config;
-                if (data.session) config._activeSession = data.session;
-                return config;
-            }
+            // Server returns { success, study: { id, name, config: {...} } }
+            if (data.study && data.study.config) return data.study.config;
             // Fallback: maybe config is at top level
             if (data.config) return typeof data.config === 'string' ? JSON.parse(data.config) : data.config;
             return data;
@@ -86,7 +81,7 @@ export async function fetchStudyConfig(studyId) {
 }
 
 function log(emoji, msg) {
-    if (window.pm?.d1) console.log(`📡 D1: ${emoji} ${msg}`);
+    console.log(`📡 D1: ${emoji} ${msg}`);
 }
 
 // ── Offline Queue ────────────────────────────────────────────────────────────

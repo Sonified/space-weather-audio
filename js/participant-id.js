@@ -41,7 +41,7 @@ export function storeParticipantId(participantId) {
         const id = participantId.trim();
         sessionStorage.setItem('participantId', id);
         localStorage.setItem('participantId', id);
-        if (window.pm?.study_flow) console.log('💾 Stored participant ID:', id);
+        console.log('💾 Stored participant ID:', id);
     }
 }
 

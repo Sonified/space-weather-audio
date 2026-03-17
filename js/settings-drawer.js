@@ -511,12 +511,6 @@ export function injectSettingsDrawer() {
             </div>
             <div class="drawer-row" style="margin-top: 4px;">
                 <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="printD1" style="width: 16px; height: 16px; cursor: pointer;">
-                    D1
-                </label>
-            </div>
-            <div class="drawer-row" style="margin-top: 4px;">
-                <label class="drawer-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
                     <input type="checkbox" id="printInteraction" style="width: 16px; height: 16px; cursor: pointer;">
                     Interaction
                 </label>

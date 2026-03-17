@@ -51,7 +51,6 @@ const pm = {
     features: false, // Feature boxes, regions, standalone features
     memory: false,   // Memory health monitoring
     cache: false,    // IndexedDB cache operations
-    d1: false,       // D1 database (participants, features, configs)
     error: true,     // Errors (keep on)
 
     // === Methods ===

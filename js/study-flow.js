@@ -198,7 +198,7 @@ async function assignCondition() {
     const conditions = studyConfig.experimentalDesign?.conditions;
     if (!conditions || conditions.length === 0) return null;
 
-    // Preview mode — skip assignment entirely (no server calls)
+    // Preview mode — skip assignment entirely, just preview the step as-is
     if (window.__PREVIEW_MODE) {
         if (window.pm?.study_flow) console.log('%c[ASSIGN] Preview mode — skipping condition assignment', 'color: #aa77ff;');
         return null;
@@ -655,7 +655,7 @@ function applyAppSettings(settings) {
         el.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
-    if (window.pm?.study_flow) console.log(`📋 Applied ${Object.keys(flat).length} app settings from config`);
+    console.log(`📋 Applied ${Object.keys(flat).length} app settings from config`);
 }
 
 /**
@@ -913,7 +913,7 @@ async function init() {
             const resp = await fetch(`/studies/${studySlug}.json`);
             if (resp.ok) {
                 studyConfig = await resp.json();
-                if (window.pm?.study_flow) console.log(`📋 Study config loaded from local JSON fallback`);
+                console.log(`📋 Study config loaded from local JSON fallback`);
             }
         } catch (e) { /* ignore */ }
     }
@@ -923,7 +923,7 @@ async function init() {
         return;
     }
 
-    if (window.pm?.study_flow) console.log(`📋 Study config loaded: "${studyConfig.name}" (${studyConfig.steps.length} steps)`);
+    console.log(`📋 Study config loaded: "${studyConfig.name}" (${studyConfig.steps.length} steps)`);
 
     // Generate per-step flag keys
     stepFlagKeys = generateStepFlagKeys(studyConfig, studySlug);
@@ -977,51 +977,30 @@ async function init() {
     const isPreview = mode === 'preview' || urlParams.get('preview') === 'true';
     const isTestMode = mode === 'test' || urlParams.get('test') === 'true';
 
-    // Ungated mode banner — always visible, impossible to miss
-    const modeLabel = isPreview ? 'PREVIEW' : isTestMode ? 'TEST' : 'LIVE';
-    const modeDot = isPreview ? '⚪' : isTestMode ? '🟡' : '🟢';
-    const host = location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? 'localhost' : location.hostname;
-    const resetFlag = urlParams.has('reset') ? ' | RESET' : '';
-    console.log(`%c${modeDot} ${studyConfig.name || studySlug} | ${modeLabel} mode | ${host}${resetFlag}`, 'font-size: 14px; font-weight: bold; padding: 4px 0;');
-
-    // Ungated session status line
-    const sess = studyConfig._activeSession;
-    if (sess) {
-        const sessMode = (sess.mode || 'test').toUpperCase();
-        const sessDot = sess.mode === 'live' ? '🟢' : '🟡';
-        const blockInfo = sess.currentBlock ? `Block ${sess.currentBlock}` : 'No blocks yet';
-        const started = sess.startedAt ? new Date(sess.startedAt).toLocaleString() : 'unknown';
-        console.log(`%c   ${sessDot} ${sessMode} session active | ${blockInfo} | Started ${started}`, 'font-size: 12px; color: #888; padding: 2px 0;');
-    } else {
-        console.log('%c   ⚫ No active study session', 'font-size: 12px; color: #888; padding: 2px 0;');
-    }
-
     // State dump for diagnostics
-    if (window.pm?.study_flow) {
-        console.log('📋 [STATE] mode param:', mode, '| isPreview:', isPreview, '| isTestMode:', isTestMode, '| jumpToStep:', jumpToStep);
-        console.log('📋 [STATE] localStorage:', {
-            participantId: localStorage.getItem('participantId'),
-            progress: localStorage.getItem(PROGRESS_KEY),
-            studySlug: localStorage.getItem(STUDY_SLUG_KEY),
-            advancedMode: localStorage.getItem('study_advanced_mode') || localStorage.getItem('emic_advanced_mode'),
-            adminUnlocked: localStorage.getItem('admin_unlocked'),
-            flagsVisible: localStorage.getItem('study_flags_panel_visible'),
-        });
-        console.log('📋 [STATE] window flags:', {
-            __PREVIEW_MODE: window.__PREVIEW_MODE,
-            __TEST_MODE: window.__TEST_MODE,
-            __STUDY_MODE: window.__STUDY_MODE,
-            __EMIC_STUDY_MODE: window.__EMIC_STUDY_MODE,
-            __STUDY_SLUG: window.__STUDY_SLUG,
-        });
-        console.log('📋 [STATE] DOM:', {
-            permanentOverlay: !!document.getElementById('permanentOverlay'),
-            studyModal: !!document.getElementById('studyModal'),
-            dataAdvanced: document.documentElement.hasAttribute('data-advanced'),
-            dataAdmin: document.documentElement.hasAttribute('data-admin'),
-            modalManagerCurrent: modalManager.currentModal,
-        });
-    }
+    console.log('📋 [STATE] mode param:', mode, '| isPreview:', isPreview, '| isTestMode:', isTestMode, '| jumpToStep:', jumpToStep);
+    console.log('📋 [STATE] localStorage:', {
+        participantId: localStorage.getItem('participantId'),
+        progress: localStorage.getItem(PROGRESS_KEY),
+        studySlug: localStorage.getItem(STUDY_SLUG_KEY),
+        advancedMode: localStorage.getItem('study_advanced_mode') || localStorage.getItem('emic_advanced_mode'),
+        adminUnlocked: localStorage.getItem('admin_unlocked'),
+        flagsVisible: localStorage.getItem('study_flags_panel_visible'),
+    });
+    console.log('📋 [STATE] window flags:', {
+        __PREVIEW_MODE: window.__PREVIEW_MODE,
+        __TEST_MODE: window.__TEST_MODE,
+        __STUDY_MODE: window.__STUDY_MODE,
+        __EMIC_STUDY_MODE: window.__EMIC_STUDY_MODE,
+        __STUDY_SLUG: window.__STUDY_SLUG,
+    });
+    console.log('📋 [STATE] DOM:', {
+        permanentOverlay: !!document.getElementById('permanentOverlay'),
+        studyModal: !!document.getElementById('studyModal'),
+        dataAdvanced: document.documentElement.hasAttribute('data-advanced'),
+        dataAdmin: document.documentElement.hasAttribute('data-admin'),
+        modalManagerCurrent: modalManager.currentModal,
+    });
 
     // ── Reset Mode ───────────────────────────────────────────
     // &reset in URL clears ALL session state so everything runs fresh.
@@ -1044,7 +1023,7 @@ async function init() {
             }
         }
         currentStepIndex = 0;
-        if (window.pm?.study_flow) console.log('🧹 Reset mode — cleared session state (including condition)');
+        console.log('🧹 Reset mode — cleared session state (including condition)');
 
         // Prepend ♻️ to page title and tab
         document.title = '♻️ ' + document.title;
@@ -1064,7 +1043,7 @@ async function init() {
         if (hasTestSession) {
             // Resume existing test session
             window.__TEST_PARTICIPANT_ID = existingId;
-            if (window.pm?.study_flow) console.log(`🧪 Test mode — resuming session: ${existingId}`);
+            console.log(`🧪 Test mode — resuming session: ${existingId}`);
         } else {
             // First entry into test mode — generate new test ID and clear old session
             const testId = generateParticipantId('TEST');
@@ -1086,7 +1065,7 @@ async function init() {
                 }
             }
             currentStepIndex = 0;
-            if (window.pm?.study_flow) console.log(`🧪 Test mode — new session: ${testId}`);
+            console.log(`🧪 Test mode — new session: ${testId}`);
         }
 
         // Update page tab
@@ -1125,7 +1104,7 @@ async function init() {
         const favicon = document.querySelector('link[rel="icon"]');
         if (favicon) favicon.href = "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👁</text></svg>";
 
-        if (window.pm?.study_flow) console.log(`📋 Preview mode active — participant: ${previewId}`);
+        console.log(`📋 Preview mode active — participant: ${previewId}`);
 
         // Live-reload: listen for step updates from the study builder via localStorage
         window.addEventListener('storage', (e) => {
@@ -1150,7 +1129,7 @@ async function init() {
             for (let i = 0; i < stepIndex; i++) {
                 setStepFlag(i);
             }
-            if (window.pm?.study_flow) console.log(`📋 Jumped to step ${stepIndex} from URL`);
+            console.log(`📋 Jumped to step ${stepIndex} from URL`);
 
             // In preview mode jumping past registration, store the preview ID
             if (isPreview && window.__PREVIEW_PARTICIPANT_ID && stepIndex > 0) {
@@ -1337,7 +1316,7 @@ function applyAnalysisConfig(step) {
         }
         // streaming.js reads this select when startStreaming() is called,
         // and shows "Fetching {spacecraft} {dataset} from CDAWeb/Cloudflare..." in the status bar
-        if (window.pm?.study_flow) console.log(`📋 Data source set to: ${dataSourceEl.value}`);
+        console.log(`📋 Data source set to: ${dataSourceEl.value}`);
     }
 
     // Set display-on-load from step config (overrides any local setting)
@@ -1368,7 +1347,7 @@ function applyAnalysisConfig(step) {
         if (etEl) etEl.value = et.toISOString().slice(11, 23);
     }
 
-    if (window.pm?.study_flow) console.log(`📋 Analysis config applied: ${mapped.spacecraft} / ${mapped.dataset} / ${startTime} → ${endTime} / display=${step.displayOnLoad || 'all'}`);
+    console.log(`📋 Analysis config applied: ${mapped.spacecraft} / ${mapped.dataset} / ${startTime} → ${endTime} / display=${step.displayOnLoad || 'all'}`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1442,9 +1421,9 @@ function setStudyModalContent(html) {
 function openStudyModalIfNeeded() {
     const overlay = document.getElementById('permanentOverlay');
     if (overlay) { overlay.style.display = 'flex'; overlay.style.opacity = '1'; overlay.style.transition = ''; }
-    if (window.pm?.study_flow) console.log(`📋 openStudyModal: overlay=${overlay ? 'found' : 'MISSING'}, currentModal=${modalManager.currentModal}, studyModalEl=${studyModalEl ? 'exists' : 'MISSING'}, studyModalEl.id=${studyModalEl?.id}`);
+    console.log(`📋 openStudyModal: overlay=${overlay ? 'found' : 'MISSING'}, currentModal=${modalManager.currentModal}, studyModalEl=${studyModalEl ? 'exists' : 'MISSING'}, studyModalEl.id=${studyModalEl?.id}`);
     if (modalManager.currentModal === 'studyModal') {
-        if (window.pm?.study_flow) console.log('📋 openStudyModal: already open, skipping');
+        console.log('📋 openStudyModal: already open, skipping');
         return;
     }
     // Show modal — fade in on first appearance, instant on subsequent
@@ -1466,7 +1445,7 @@ function openStudyModalIfNeeded() {
     }
     modalManager.currentModal = 'studyModal';
     modalManager.disableBackgroundScroll();
-    if (window.pm?.study_flow) console.log('📋 openStudyModal: forced visible with fade, set currentModal=studyModal');
+    console.log('📋 openStudyModal: forced visible with fade, set currentModal=studyModal');
 }
 
 /**
@@ -1588,7 +1567,7 @@ async function runCurrentStep() {
     updateStepIndicator();
 
     const step = studyConfig.steps[currentStepIndex];
-    if (window.pm?.study_flow) console.log(`📋 Step ${currentStepIndex}: ${step.type}${step.contentType ? ' (' + step.contentType + ')' : ''}`);
+    console.log(`📋 Step ${currentStepIndex}: ${step.type}${step.contentType ? ' (' + step.contentType + ')' : ''}`);
 
     // Clear returning flag for non-analysis steps (welcome-back only applies to analysis)
     if (isReturningParticipant && step.type !== 'analysis') {
@@ -1649,9 +1628,9 @@ async function runCurrentStep() {
 async function runRegistration(step) {
     // Check if already registered — skip without showing overlay
     const existingId = getParticipantId();
-    if (window.pm?.study_flow) console.log(`📋 [REG] existingId=${existingId}, idMethod=${step.idMethod}, step=`, step);
+    console.log(`📋 [REG] existingId=${existingId}, idMethod=${step.idMethod}, step=`, step);
     if (existingId) {
-        if (window.pm?.study_flow) console.log(`📋 Already registered as ${existingId}, skipping registration`);
+        console.log(`📋 Already registered as ${existingId}, skipping registration`);
         startHeartbeat();
         if (step.showIdCorner !== false) updateParticipantDisplay(existingId);
         else hideParticipantDisplay();
@@ -1661,7 +1640,7 @@ async function runRegistration(step) {
 
     // Show overlay only when we actually need the registration modal
     const overlay = document.getElementById('permanentOverlay');
-    if (window.pm?.study_flow) console.log(`📋 [REG] showing overlay: ${overlay ? 'found' : 'MISSING'}`);
+    console.log(`📋 [REG] showing overlay: ${overlay ? 'found' : 'MISSING'}`);
     if (overlay) { overlay.style.display = 'flex'; overlay.style.opacity = '1'; }
 
     const isAuto = step.idMethod === 'auto' || step.idMethod === 'auto_generate';
@@ -1676,7 +1655,7 @@ async function runRegistration(step) {
         else hideParticipantDisplay();
         await initParticipant(pid, studySlug);
         startHeartbeat();
-        if (window.pm?.study_flow) console.log(`📋 Auto-registered (skip login): ${pid}`);
+        console.log(`📋 Auto-registered (skip login): ${pid}`);
         if (!assignedCondition) {
             assignedCondition = await assignCondition();
             if (assignedCondition) applyConditionOrder(assignedCondition);
@@ -1745,7 +1724,7 @@ function showLoginModal(step) {
             else hideParticipantDisplay();
             initParticipant(pid, studySlug);
             startHeartbeat();
-            if (window.pm?.study_flow) console.log(`📋 Registered: ${pid}`);
+            console.log(`📋 Registered: ${pid}`);
             // Assign condition after manual registration
             if (!assignedCondition) {
                 assignedCondition = await assignCondition();
@@ -1981,7 +1960,7 @@ async function runAnalysis(step) {
     studyConfig.steps.forEach((s, i) => { if (s.type === 'analysis') analysisIndices.push(i); });
     const analysisSession = analysisIndices.indexOf(currentStepIndex) + 1; // 1-based
     window.__currentAnalysisSession = analysisSession;
-    if (window.pm?.study_flow) console.log(`📋 Analysis step: entering drawing phase (session ${analysisSession})`);
+    console.log(`📋 Analysis step: entering drawing phase (session ${analysisSession})`);
 
     // Apply this step's analysis config (spacecraft, dates, display settings)
     applyAnalysisConfig(step);
@@ -2100,7 +2079,7 @@ async function runAnalysis(step) {
                     if (window.pm?.features) console.log(`%c[FEATURE] Proceed bulk-save d1Id=${feat.d1Id?.slice(0,8)} notes="${feat.notes}" conf=${feat.confidence}`, 'color: #f0a; font-weight: bold');
                     saveFeature(feat);
                 }
-                if (window.pm?.d1) console.log(`📋 Saved ${features.length} features to D1`);
+                console.log(`📋 Saved ${features.length} features to D1`);
 
                 // Confirmation modal if configured
                 if (step.confirmCompletion?.enabled) {
@@ -2375,7 +2354,7 @@ let _studyCompleted = false;
 function onStudyComplete() {
     if (_studyCompleted) return; // idempotent — may fire from final info modal + advanceStep
     _studyCompleted = true;
-    if (window.pm?.study_flow) console.log(`📋 Study complete!`);
+    console.log(`📋 Study complete!`);
     stopHeartbeat();
     markComplete();
 

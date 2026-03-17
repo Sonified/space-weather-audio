@@ -301,7 +301,7 @@ export function updateDatasetOptions() {
     // Sync the custom select wrapper (if active) with the new options
     refreshSelectById('dataType');
 
-    if (window.pm?.data) console.log(`📊 Updated dataset options for ${spacecraft}: ${datasets.length} datasets available`);
+    console.log(`📊 Updated dataset options for ${spacecraft}: ${datasets.length} datasets available`);
 }
 
 
