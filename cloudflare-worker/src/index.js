@@ -826,7 +826,7 @@ export default {
       if (sessionsListMatch && request.method === 'GET') {
         const studyId = sessionsListMatch[1];
         const { results } = await env.DB.prepare(
-          `SELECT session_id, started_at, ended_at, mode FROM assignment_sessions
+          `SELECT session_id, study_id, started_at, ended_at, mode FROM assignment_sessions
            WHERE study_id = ? ORDER BY started_at DESC LIMIT 50`
         ).bind(studyId).all();
         return json({ success: true, sessions: results || [] });
@@ -856,7 +856,7 @@ export default {
              WHERE study_id = ? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1`
           ).bind(studyId).first();
           if (!session || !session.assignment_state) {
-            return json({ error: 'No active session — start test first' }, 400);
+            return json({ success: false, noSession: true, message: 'No active session' });
           }
 
           const sessionId = session.session_id;
