@@ -4687,7 +4687,13 @@
 
   function cycleUrlMode(btn) {
     const cur = btn.dataset.mode || 'live';
-    const next = URL_MODES[(URL_MODES.indexOf(cur) + 1) % URL_MODES.length];
+    // Skip 'live' option when a test session is active (can't create live participants in test)
+    let modes = URL_MODES;
+    if (testModeActive && !liveModeActive) {
+      modes = ['test', 'preview'];
+    }
+    const idx = modes.indexOf(cur);
+    const next = modes[(idx + 1) % modes.length];
     btn.dataset.mode = next;
     btn.innerHTML = URL_MODE_ICONS[next];
     btn.dataset.tip = URL_MODE_TITLES[next];
@@ -6061,61 +6067,77 @@
 
     // For each card, figure out what fraction of it is visible (0–1),
     // then map that to the corresponding dot's position on the nav track.
-    const cards = document.querySelectorAll('.step-card');
-    if (cards.length === 0) return;
+    // All dots/buttons in nav order: header, numbered steps, "+", bottom utility
+    const allDots = [...vnav.querySelectorAll('.vnav-dot, .vnav-add')];
+    if (allDots.length === 0) return;
 
-    // Build array of dot centers (relative to vnav top)
-    const dotCenters = [];
-    for (const d of vdots) {
+    // All page elements in order: header area, step cards, add-step area, bottom cards
+    const stepCards = [...document.querySelectorAll('#stepList > .step-card')];
+    const addStepArea = document.querySelector('.add-step-area');
+    const bottomCardIds = ['experimentalDesignCard', 'studyLaunchCard', 'dataStreamCard', 'appSettingsCard'];
+    const bottomCards = bottomCardIds.map(id => document.getElementById(id)).filter(Boolean);
+
+    const dotCenters = allDots.map(d => {
       const r = d.getBoundingClientRect();
-      dotCenters.push(r.top + r.height / 2 - navRect.top);
+      return r.top + r.height / 2 - navRect.top;
+    });
+
+    // Build segments: one per dot, in matching order
+    const segments = [];
+    // Segment 0 = header: page top (0) to first card top
+    const firstEl = stepCards[0] || addStepArea || bottomCards[0];
+    segments.push({ pageTop: 0, pageBot: firstEl ? firstEl.offsetTop : 0 });
+    // Step card segments
+    for (const card of stepCards) {
+      segments.push({ pageTop: card.offsetTop, pageBot: card.offsetTop + card.offsetHeight });
+    }
+    // "+" add-step segment
+    if (addStepArea) {
+      segments.push({ pageTop: addStepArea.offsetTop, pageBot: addStepArea.offsetTop + addStepArea.offsetHeight });
+    }
+    // Bottom card segments
+    for (const card of bottomCards) {
+      segments.push({ pageTop: card.offsetTop, pageBot: card.offsetTop + card.offsetHeight });
     }
 
-    // Find first and last card that overlap the viewport
-    let firstVisIdx = -1, lastVisIdx = -1;
-    let firstVisFrac = 0, lastVisFrac = 0;
-    for (let i = 0; i < cards.length; i++) {
-      const ct = cards[i].offsetTop;
-      const cb = ct + cards[i].offsetHeight;
-      if (cb > viewTop && ct < viewBottom) {
-        const overlapTop = Math.max(ct, viewTop);
-        const overlapBot = Math.min(cb, viewBottom);
-        const cardH = cb - ct;
-        if (cardH <= 0) continue;
-        if (firstVisIdx === -1) {
-          firstVisIdx = i;
-          // How far into this card are we? 0 = top edge visible, 1 = bottom edge
-          firstVisFrac = (overlapTop - ct) / cardH;
-        }
-        lastVisIdx = i;
-        // How far through the last visible card does visibility extend?
-        lastVisFrac = (overlapBot - ct) / cardH;
-      }
+    // Trim to match dot count
+    while (segments.length > dotCenters.length) segments.pop();
+    while (dotCenters.length > segments.length) dotCenters.pop();
+
+    // Map viewport overlap with each segment to bar position
+    let thumbTopPos = null, thumbBotPos = null;
+    for (let i = 0; i < segments.length; i++) {
+      const s = segments[i];
+      const segH = s.pageBot - s.pageTop;
+      if (segH <= 0 || s.pageBot <= viewTop || s.pageTop >= viewBottom) continue;
+
+      const fracTop = Math.max(0, (viewTop - s.pageTop) / segH);
+      const fracBot = Math.min(1, (viewBottom - s.pageTop) / segH);
+
+      // This segment's bar region: its dot center to next dot center
+      // Header segment spans from top of bar (0) to first dot center;
+      // last segment spans from its dot center to bottom of bar.
+      // All others span dot center to next dot center.
+      const dotA = i === 0 ? 0 : dotCenters[i];
+      const dotB = i < dotCenters.length - 1
+        ? dotCenters[i + 1]
+        : navRect.height;
+
+      const barTop = dotA + fracTop * (dotB - dotA);
+      const barBot = dotA + fracBot * (dotB - dotA);
+
+      if (thumbTopPos === null) thumbTopPos = barTop;
+      thumbBotPos = barBot;
     }
-    if (firstVisIdx === -1) { vp.classList.remove('visible'); return; }
 
-    // Map card index + fractional position to dot track position
-    function idxToTrack(idx, frac) {
-      if (idx >= dotCenters.length - 1) return dotCenters[dotCenters.length - 1];
-      if (idx < 0) return dotCenters[0];
-      const a = dotCenters[idx], b = dotCenters[Math.min(idx + 1, dotCenters.length - 1)];
-      return a + frac * (b - a);
-    }
+    if (thumbTopPos === null) { vp.classList.remove('visible'); return; }
 
-    const thumbTop = idxToTrack(firstVisIdx, firstVisFrac);
-    const thumbBot = idxToTrack(lastVisIdx, lastVisFrac);
-
-    const dotRadius = vdots[0].getBoundingClientRect().height / 2;
-    const navTop = 0;
-    const navBot = navRect.height;
-
-    // Clamp to full nav bounds so indicator reaches edges when fully scrolled
-    const top = Math.max(navTop, thumbTop - dotRadius);
-    const bot = Math.min(navBot, thumbBot + dotRadius);
-    const thumbHeight = Math.max(14, bot - top);
+    const dotRadius = allDots[0].getBoundingClientRect().height / 2;
+    const top = Math.max(0, thumbTopPos - dotRadius);
+    const bot = Math.min(navRect.height, thumbBotPos + dotRadius);
 
     vp.style.top = top + 'px';
-    vp.style.height = thumbHeight + 'px';
+    vp.style.height = Math.max(14, bot - top) + 'px';
     vp.classList.add('visible');
   }
 
@@ -7501,6 +7523,11 @@
     }
 
     // ── Start live study ──
+    // Don't allow live while test session is running
+    if (!restore && testModeActive) {
+      alert('A test session is currently running. End it before launching a live study.');
+      return;
+    }
     if (!restore) {
       // Pre-flight checks
       const numConditions = document.querySelectorAll('#conditionsList .condition-row').length;
@@ -7765,6 +7792,13 @@
     else localStorage.removeItem('sb_testModeActive');
 
     if (testModeActive) {
+      // Flip any live-mode URL toggles to test (can't create live participants in test session)
+      document.querySelectorAll('.url-mode-cycle[data-mode="live"]').forEach(b => {
+        b.dataset.mode = 'test';
+        b.innerHTML = URL_MODE_ICONS.test;
+        b.dataset.tip = URL_MODE_TITLES.test;
+        updateUrlModsDisplay(b.dataset.row);
+      });
       btn.textContent = '■ End Test';
       btn.classList.add('active');
       label.textContent = 'Test session active — fresh participant pool';
