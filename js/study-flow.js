@@ -198,6 +198,12 @@ async function assignCondition() {
     const conditions = studyConfig.experimentalDesign?.conditions;
     if (!conditions || conditions.length === 0) return null;
 
+    // Preview mode — skip assignment entirely, just preview the step as-is
+    if (window.__PREVIEW_MODE) {
+        if (window.pm?.study_flow) console.log('%c[ASSIGN] Preview mode — skipping condition assignment', 'color: #aa77ff;');
+        return null;
+    }
+
     // Check for existing assignment
     const existing = loadSavedCondition(studySlug);
     if (existing) {

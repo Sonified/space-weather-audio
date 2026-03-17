@@ -338,7 +338,7 @@
     flex-shrink: 0;
   }
   .step-card:hover .step-actions { opacity: 1; }
-  .dup-btn-inline { opacity: 0; transition: opacity 0.15s; margin-left: -8px; }
+  .dup-btn-inline { opacity: 0; transition: opacity 0.15s; margin-right: -8px; }
   .step-card:hover .dup-btn-inline { opacity: 1; }
   .step-action-btn {
     width: 28px;
@@ -1038,6 +1038,24 @@
     z-index: 10;
   }
   .settings-preview-eye[data-tip]:hover::after { opacity: 1; }
+  .settings-copy-json {
+    position: absolute;
+    top: 7px;
+    right: 68px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 11px;
+    padding: 2px 8px;
+    z-index: 2;
+    line-height: 1.4;
+  }
+  .card-settings:hover .settings-copy-json { opacity: 1; }
+  .settings-copy-json:hover { color: var(--accent); border-color: var(--accent); }
   .card-settings-trigger {
     font-size: 13px;
     color: var(--text-muted);
@@ -2842,10 +2860,10 @@
       : '';
     const moveDel = type === 'registration' ? '' : `
       <button class="step-action-btn delete" data-tip="Delete step" onclick="event.stopPropagation(); confirmDeleteStep(this, event)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>`;
-    const copyBtn = `<button class="step-action-btn preview-btn" data-tip="Copy step info" onclick="event.stopPropagation(); copyStepInfo(this)">📋</button>`;
+    const dupBtn = `<button class="step-action-btn preview-btn dup-btn-inline" data-tip="Duplicate card" onclick="event.stopPropagation(); duplicateStep(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>`;
     const divider = `<span style="width:1px;height:16px;background:var(--border);margin:0 2px;flex-shrink:0;"></span>`;
     return `<div class="step-actions">
-      ${copyBtn}${divider}${previewBtns}${moveDel}
+      ${dupBtn}${divider}${previewBtns}${moveDel}
     </div>`;
   }
 
@@ -2857,7 +2875,7 @@
         <span class="lock-icon">🔒</span><span class="chevron">▶</span>
         <div class="step-number registration">${num}</div>
         <div class="step-title">Participant Registration</div>
-        <span class="step-type-badge badge-registration">Registration</span><button class="step-action-btn preview-btn dup-btn-inline" data-tip="Duplicate card" onclick="event.stopPropagation(); duplicateStep(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+        <span class="step-type-badge badge-registration">Registration</span>
         ${buildStepActions('registration')}
       </div>
       <div class="step-detail">
@@ -2882,6 +2900,7 @@
             <input type="checkbox" class="reg-skip-login" ${step.skipLogin ? 'checked' : ''} onchange="toggleSkipLogin(this)" />
             <span style="font-size:13px;">Skip login screen</span>
           </label>
+          <button type="button" style="margin-top:16px; font-size:12px; color:var(--text-muted); background:none; border:1px solid var(--border); border-radius:4px; padding:3px 8px; cursor:pointer;" onclick="event.stopPropagation(); copyStepInfo(this)">Copy JSON</button>
         </div>
         <div class="reg-manual-fields" style="${isAuto ? 'display:none' : ''}">
           <div class="field-group">
@@ -2966,7 +2985,7 @@
         <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
         <div class="step-number info">${num}</div>
         <div class="step-title">${escapeHtml(step.title || 'Information')}</div>
-        <span class="step-type-badge badge-info">Info</span><button class="step-action-btn preview-btn dup-btn-inline" data-tip="Duplicate card" onclick="event.stopPropagation(); duplicateStep(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+        <span class="step-type-badge badge-info">Info</span>
         ${buildStepActions('info')}
       </div>
       <div class="step-detail">
@@ -2987,14 +3006,10 @@
         </div>
         <div class="field-group info-button-group ${step.hideButton ? 'button-hidden' : ''}">
           <div class="field-label">Button Label</div>
-          <div style="display:flex; align-items:center; gap:8px;">
-            <input class="field-input dismiss-label-input" value="${escapeAttr(step.dismissLabel || 'OK')}" style="flex:1;" ${step.hideButton ? 'disabled' : ''} />
-            <div class="fs-bold ${step.dismissBold ? 'active' : ''} dismiss-font-bold" onclick="event.stopPropagation(); this.classList.toggle('active')" title="Bold">B</div>
-            ${buildColorPicker('dismiss-font-color', step.dismissColor || '#ffffff', 'Text Color', 'text')}
-            ${buildColorPicker('dismiss-bg-color', step.dismissBgColor || '#2196F3', 'Background', 'bg')}
-          </div>
+          <input class="field-input dismiss-label-input" value="${escapeAttr(step.dismissLabel || 'OK')}" ${step.hideButton ? 'disabled' : ''} />
         </div>
         <div class="card-settings" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open'); saveExpandedState()}">
+          <button class="settings-copy-json" type="button" onclick="event.stopPropagation(); copyStepInfo(this)">Copy JSON</button>
           <button class="settings-preview-eye" type="button" data-tip="Preview modal" onclick="event.stopPropagation(); openPreviewWindow(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
           <button class="card-settings-trigger" type="button">&#9881; Settings <span class="settings-chevron">&#9660;</span></button>
           <div class="card-settings-drawer"><div class="settings-body">
@@ -3009,6 +3024,18 @@
                 <div class="toggle toggle-hide-button ${step.hideButton ? 'on' : ''}" onclick="this.classList.toggle('on'); toggleInfoButton(this)"></div>
                 <span class="toggle-label">Enter Confirms</span>
                 <div class="toggle toggle-enter-confirms ${step.enterConfirms !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+              </div>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section-label" style="margin-bottom:-4px;">Button Style</div>
+            <div class="settings-rows">
+              <div class="settings-row" style="gap:12px;">
+                <span class="toggle-label">Bold</span>
+                <div class="toggle dismiss-font-bold ${step.dismissBold ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+                <span class="toggle-label">Text Color</span>
+                ${buildColorPicker('dismiss-font-color', step.dismissColor || '#ffffff', 'Text Color', 'text')}
+                <span class="toggle-label">Background</span>
+                ${buildColorPicker('dismiss-bg-color', step.dismissBgColor || '#2196F3', 'Background', 'bg')}
               </div>
             </div>
             <div class="settings-divider"></div>
@@ -3139,6 +3166,7 @@
     const lm = step.labelMode || (step.labelPrefixes === false ? 'hidden' : (step.boldLabelPrefixes === false ? 'visible' : 'bold'));
     contentHtml += `
       <div class="card-settings" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open'); saveExpandedState()}">
+        <button class="settings-copy-json" type="button" onclick="event.stopPropagation(); copyStepInfo(this)">Copy JSON</button>
         <button class="settings-preview-eye" type="button" data-tip="Preview modal" onclick="event.stopPropagation(); openPreviewWindow(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
         <button class="card-settings-trigger" type="button">&#9881; Settings <span class="settings-chevron">&#9660;</span></button>
         <div class="card-settings-drawer"><div class="settings-body">
@@ -3247,7 +3275,7 @@
         <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
         <div class="step-number question">${num}</div>
         <div class="step-title">${escapeHtml(step.title || step.text || 'New Question')}</div>
-        <span class="step-type-badge badge-question">Question</span><button class="step-action-btn preview-btn dup-btn-inline" data-tip="Duplicate card" onclick="event.stopPropagation(); duplicateStep(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+        <span class="step-type-badge badge-question">Question</span>
         ${buildStepActions('question')}
       </div>
       <div class="step-detail">
@@ -3396,7 +3424,7 @@
         <span class="drag-handle" title="Drag to reorder">⠿</span><span class="chevron">▶</span>
         <div class="step-number analysis">${num}</div>
         <div class="step-title">${escapeHtml(step.title || 'Analysis')}</div>
-        <span class="step-type-badge badge-analysis">Analysis</span><button class="step-action-btn preview-btn dup-btn-inline" data-tip="Duplicate card" onclick="event.stopPropagation(); duplicateStep(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+        <span class="step-type-badge badge-analysis">Analysis</span>
         ${buildStepActions('analysis')}
       </div>
       <div class="step-detail">
@@ -3444,6 +3472,7 @@
           <input class="field-input complete-btn-text-input" value="${escapeAttr(step.completeBtnText || '✓ Complete')}" />
         </div>
         <div class="card-settings" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open'); saveExpandedState()}">
+          <button class="settings-copy-json" type="button" onclick="event.stopPropagation(); copyStepInfo(this)">Copy JSON</button>
           <button class="card-settings-trigger" type="button">&#9881; Settings <span class="settings-chevron">&#9660;</span></button>
           <div class="card-settings-drawer"><div class="settings-body">
             <div class="settings-section-label">Data</div>
@@ -4126,7 +4155,7 @@
         if (card.dataset.editorHeight) step.editorHeight = card.dataset.editorHeight;
         const dismissInput = card.querySelector('.dismiss-label-input');
         step.dismissLabel = dismissInput?.value || 'OK';
-        step.dismissBold = card.querySelector('.dismiss-font-bold')?.classList.contains('active') || false;
+        step.dismissBold = card.querySelector('.dismiss-font-bold')?.classList.contains('on') || false;
         step.dismissColor = card.querySelector('.dismiss-font-color')?.dataset?.value || '#ffffff';
         step.dismissBgColor = card.querySelector('.dismiss-bg-color')?.dataset?.value || '#2196F3';
         step.hideButton = card.querySelector('.toggle-hide-button')?.classList.contains('on') || false;
@@ -6402,12 +6431,41 @@
         if (modal) { modal.style.opacity = '1'; modal.style.transform = 'scale(1)'; }
       });
 
-      // Wire radio buttons — selecting one enables Next
+      // Wire input validation — mirror live study behavior
       const nextBtn = overlay.querySelector('.modal-next');
       const radios = overlay.querySelectorAll('input[type="radio"]');
-      radios.forEach(r => r.addEventListener('change', () => {
-        if (nextBtn) nextBtn.disabled = false;
-      }));
+      const { question } = readQuestionFromCard(c);
+      const qType = question.questionType || question.type;
+      const isRequired = question.required !== false;
+
+      if (isRequired && nextBtn) {
+        if (qType === 'likert') {
+          const allRowNames = new Set();
+          radios.forEach(r => allRowNames.add(r.name));
+          const totalRows = allRowNames.size;
+          radios.forEach(r => r.addEventListener('change', () => {
+            const filled = new Set();
+            radios.forEach(r2 => { if (r2.checked) filled.add(r2.name); });
+            nextBtn.disabled = filled.size < totalRows;
+          }));
+        } else if (qType === 'radio') {
+          radios.forEach(r => r.addEventListener('change', () => {
+            nextBtn.disabled = false;
+          }));
+        } else if (qType === 'freetext') {
+          const textarea = overlay.querySelector('textarea');
+          if (textarea) {
+            textarea.addEventListener('input', () => {
+              nextBtn.disabled = !textarea.value.trim();
+            });
+          }
+        }
+      } else {
+        // Not required — any click enables
+        radios.forEach(r => r.addEventListener('change', () => {
+          if (nextBtn) nextBtn.disabled = false;
+        }));
+      }
 
       // Wire Next — advance to next card or close
       if (nextBtn) nextBtn.addEventListener('click', () => {
@@ -6462,10 +6520,47 @@
     preview.innerHTML = html;
     // Append to card (not step-detail) so preview can overflow horizontally
     card.appendChild(preview);
-    preview.querySelector('.modal-next')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      advancePreviewToNext(card);
-    });
+    const nextBtn = preview.querySelector('.modal-next');
+    if (nextBtn) {
+      nextBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        advancePreviewToNext(card);
+      });
+    }
+
+    // Wire validation for required questions — mirror live study behavior
+    const isRequired = question.required !== false;
+    const qType = question.questionType || question.type;
+    console.log(`🔍 Preview wiring: qType=${qType}, isRequired=${isRequired}, nextBtn=${!!nextBtn}, nextBtn.disabled=${nextBtn?.disabled}`);
+    if (isRequired && nextBtn) {
+      if (qType === 'likert') {
+        const allRadios = preview.querySelectorAll('input[type="radio"]');
+        const allRowNames = new Set();
+        allRadios.forEach(r => allRowNames.add(r.name));
+        const totalRows = allRowNames.size;
+        console.log(`🔍 Likert preview: ${allRadios.length} radios, ${totalRows} rows, disabled=${nextBtn.disabled}`);
+        allRadios.forEach(radio => {
+          radio.addEventListener('change', () => {
+            const filled = new Set();
+            allRadios.forEach(r => { if (r.checked) filled.add(r.name); });
+            console.log(`🔍 Likert change: filled=${filled.size}/${totalRows}, setting disabled=${filled.size < totalRows}`);
+            nextBtn.disabled = filled.size < totalRows;
+          });
+        });
+      } else if (qType === 'radio') {
+        const allRadios = preview.querySelectorAll('input[type="radio"]');
+        allRadios.forEach(radio => {
+          radio.addEventListener('change', () => { nextBtn.disabled = false; });
+        });
+      } else if (qType === 'freetext') {
+        const textarea = preview.querySelector('textarea');
+        if (textarea) {
+          textarea.addEventListener('input', () => {
+            nextBtn.disabled = !textarea.value.trim();
+          });
+        }
+      }
+    }
   }
 
   async function toggleFooterPreview(btn) {
@@ -6533,85 +6628,45 @@
       return renderQuestionPreview(card, detail);
     }
 
-    // Read current values from DOM (modal cards: info or questions)
+    // Modal cards: info or questions
     const pills = card.querySelectorAll('.pill-group .pill.active');
     const isInfo = (pills[0]?.textContent.trim().toLowerCase() || 'informational') === 'informational';
+
+    if (!isInfo) {
+      // Questions inside modal — use shared renderer (same path as standalone question cards)
+      return renderQuestionPreview(card, detail);
+    }
+
     const inputs = Array.from(card.querySelectorAll('.step-detail .field-input')).filter(el => !el.type.startsWith('date'));
     const title = inputs[0]?.value || '';
-
-    const preview = document.createElement('div');
-    preview.className = 'step-preview' + (isInfo ? ' info-preview' : '');
-
     const ulStyle = getPreviewUnderlineStyle(card);
     const titleFontSize = card.querySelector('.title-font-size')?.value || '20px';
     const titleFontColor = card.querySelector('.title-font-color')?.value || '#550000';
     const titleFontBold = card.querySelector('.title-font-bold')?.classList.contains('active');
     const titleStyle = `${ulStyle} font-size:${titleFontSize}; color:${titleFontColor}; font-weight:${titleFontBold ? '700' : 'normal'};`;
 
-    if (isInfo) {
-      const bodyInput = card.querySelector('.body-html-input');
-      const bodyHtml = bodyInput ? bodyInput.innerHTML : '';
-      const dismissInput = card.querySelector('.dismiss-label-input');
-      const dismissLabel = dismissInput?.value || 'OK';
-      const closable = card.querySelector('.toggle-closable')?.classList.contains('on') || false;
-      const hideButton = card.querySelector('.toggle-hide-button')?.classList.contains('on') || false;
-      const btnStyle = getDismissButtonStyle(card);
-      preview.innerHTML = `
-        ${closable ? '<button class="preview-close">&times;</button>' : ''}
-        <h3 style="${titleStyle}">${escapeHtml(title)}</h3>
-        <div>${styleBodyHtml(bodyHtml)}</div>
-        ${hideButton ? '' : `<button class="preview-submit" style="${btnStyle}">${escapeHtml(dismissLabel)}</button>`}
-      `;
-    } else {
-      // Questions preview (modal with multiple questions)
-      const questions = card.querySelectorAll('.question-item');
-      let qHtml = '';
-      const total = questions.length;
-      questions.forEach((q, i) => {
-        const qText = q.querySelector('.q-text')?.textContent || '';
-        const qType = (q.querySelector('.q-type')?.textContent.trim().toLowerCase() || '').replace('free text', 'freetext');
-        const optionsData = q.dataset.options;
-        let options = [];
-        if (optionsData) { try { options = JSON.parse(optionsData); } catch(e) {} }
+    const bodyInput = card.querySelector('.body-html-input');
+    const bodyHtml = bodyInput ? bodyInput.innerHTML : '';
+    const dismissInput = card.querySelector('.dismiss-label-input');
+    const dismissLabel = dismissInput?.value || 'OK';
+    const closable = card.querySelector('.toggle-closable')?.classList.contains('on') || false;
+    const hideButton = card.querySelector('.toggle-hide-button')?.classList.contains('on') || false;
+    const btnStyle = getDismissButtonStyle(card);
 
-        qHtml += `<div style="margin-bottom:20px;border-bottom:1px solid #eee;padding-bottom:16px;">`;
-        qHtml += `<div style="font-size:16px;color:#550000;font-weight:700;margin-bottom:10px;">${i+1}. ${escapeHtml(qText)}</div>`;
-        if (qType === 'radio' && options.length) {
-          qHtml += `<div class="preview-radio-group">`;
-          options.forEach(opt => {
-            qHtml += `<label class="preview-radio-choice">
-              <input type="radio" name="preview_q${i}" disabled>
-              <div><strong>${escapeHtml(opt.label)}:</strong> <span>${opt.description || ''}</span></div>
-            </label>`;
-          });
-          qHtml += `</div>`;
-        } else {
-          qHtml += `<textarea disabled placeholder="Type your response here..." style="opacity:0.7;"></textarea>`;
-        }
-        qHtml += `</div>`;
-      });
+    const preview = document.createElement('div');
+    preview.className = 'step-preview info-preview';
+    preview.innerHTML = `
+      ${closable ? '<button class="preview-close">&times;</button>' : ''}
+      <h3 style="${titleStyle}">${escapeHtml(title)}</h3>
+      <div>${styleBodyHtml(bodyHtml)}</div>
+      ${hideButton ? '' : `<button class="preview-submit" style="${btnStyle}">${escapeHtml(dismissLabel)}</button>`}
+    `;
 
-      preview.innerHTML = `
-        <div class="preview-progress">
-          <span class="preview-progress-text">1 / ${total}</span>
-          <div class="preview-progress-bar"><div class="preview-progress-fill" style="width:${total?Math.round(100/total):0}%"></div></div>
-        </div>
-        <h3 style="${ulStyle}">${escapeHtml(title)}</h3>
-        ${qHtml}
-        <div class="preview-nav">
-          <button class="back-btn">← Back</button>
-          <button class="next-btn">Next →</button>
-        </div>
-      `;
-    }
-
-    // Apply dimensions from width/height inputs
     const w = card.querySelector('.modal-width-input')?.value?.trim();
     const h = card.querySelector('.modal-height-input')?.value?.trim();
     if (w) preview.style.maxWidth = w;
     if (h && h !== 'auto') preview.style.height = h;
 
-    // Insert after .step-detail
     const footer = card.querySelector('.preview-bar-footer');
     if (footer) { detail.appendChild(preview); } else { detail.after(preview); }
 
@@ -6620,16 +6675,12 @@
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         if (btn.classList.contains('preview-close')) {
-          // Close just removes this preview
           preview.remove();
           return;
         }
         advancePreviewToNext(card);
       });
     });
-    // Question nav buttons
-    const nextBtn = preview.querySelector('.preview-nav .next-btn');
-    if (nextBtn) nextBtn.addEventListener('click', (e) => { e.stopPropagation(); advancePreviewToNext(card); });
   }
 
   /**
@@ -6692,7 +6743,7 @@
   }
 
   function getDismissButtonStyle(card) {
-    const bold = card.querySelector('.dismiss-font-bold')?.classList.contains('active');
+    const bold = card.querySelector('.dismiss-font-bold')?.classList.contains('on');
     const color = card.querySelector('.dismiss-font-color')?.dataset?.value || '#ffffff';
     const bg = card.querySelector('.dismiss-bg-color')?.dataset?.value || '#2196F3';
     return `color:${color}; background:${bg};${bold ? ' font-weight:700;' : ''}`;

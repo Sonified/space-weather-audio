@@ -73,24 +73,57 @@ An
 
 ### HOME STRETCH
 
-- [ ] **HS1.** Identify ideal settings for wavelet and Paul stretch algorithms
-- [ ] **HS2.** Generate wavelet-stretched audio at 1.25x speed for our two time regions and save to server — potentially use progressive chunking. Unique to our study, may not need full study builder integration. Must re-constitute audio perfectly locally.
-- [ ] **HS3.** Build deployment panel toward the bottom of study builder (above Data Stream) with settings like randomization for the two analysis sections
+#### ⚡ Quick wins (~4-6 hrs)
+- [ ] **HS15.** New post-analysis question comparing audio experience + preference ⏱ ~1-2 hrs ▶️ 17:32
+- [ ] **HS7.3.** Make sure test / study END bars appear correctly ⏱ ~30 min
+- [ ] **HS9.5.** Download batch data for entire tests and study runs (use horizontal bar) ⏱ ~1 hr
+- [ ] **HS9.4.** Option to download all data ⏱ ~1-2 hrs
+- [ ] **HS7.2.** Confirm study data presents well in data viewer ⏱ ~30 min
+- [ ] **HS20.** Update placement of copy card info to prevent accidental clicking ⏱ ~30 min
+
+#### 🎵 Stretch implementation (~3-5 hrs) — sequential chain
+- [ ] **HS1.** Identify ideal settings for wavelet and Paul stretch algorithms ⏱ ~1-2 hrs
+- [ ] **HS2.** Generate wavelet-stretched audio at 1.25x speed for our two time regions and save to server ⏱ ~1-2 hrs
+- [ ] **HS3.1.** Wire up randomization playback settings application for stretch modes ⏱ ~30 min
+- [ ] **HS3.2.** Double ensure analysis tasks appear in correct order based on condition, and correct stretch mode ⏱ ~30 min
+
+#### 🔨 Build tasks (~2-3 hrs)
+- [ ] **HS16.** Code for matching participant's audio score with processing type, time period, and order received ⏱ ~1-2 hrs
+- [ ] **HS9.6.** Create gitignored HTML page for nuking test and participant data on the server ⏱ ~1 hr
+
+#### 🧪 Testing & tuning (~1 hr)
+- [ ] **HS7.1.** Test study launch functionality ⏱ ~1 hr
+
+#### ✅ Completed
+- [x] **HS3.** Build deployment panel toward the bottom of study builder (above Data Stream) with settings like randomization for the two analysis sections
 - [x] **HS4.** Add experimental conditions panel — map out each condition: which dataset, which order, which algorithm
 - [x] **HS5.** Add participant randomization panel — options for random, block, and healing block. For healing block, include all settings from randomization-sim (algorithm settings only) using the preset from that page
 - [x] **HS6.** Test flow on non-test pages — does it always re-start in the correct place?
-- [ ] **HS7.** Add study launch panel — options: start immediately, start on date/time, end date/time, or keep open-ended (figure out go-live system)
+- [x] **HS7.** Add study launch panel — options: start immediately, start on date/time, end date/time, or keep open-ended (figure out go-live system)
 - [x] **HS8.** Option for doing a test round using data from test runs
 - [x] **HS9.** Build participant data explorer page — list all participant data, view question answers + feature metadata, view responses on page, visual for the blocks. Button in study builder to launch it.
-- [ ] **HS9.1.** Add access protection to data explorer page
-- [ ] **HS9.2.** Refine participant question/answer viewer in data explorer
-- [ ] **HS9.3.** Panel to launch page viewing a participant's analyses
-- [ ] **HS9.4.** Option to download all data
+- [x] **HS9.1.** Add access protection to data explorer page (client-side admin gate)
+- [x] **HS9.2.** Refine participant question/answer viewer in data explorer
+- [x] **HS9.3.** Panel to launch page viewing a participant's analyses (feature-viewer.html)
+- [x] **HS12.** Final polish round for self-healing block algorithm
+- [x] **HS13.** Implement live simultaneous participant tracking — heartbeat system + smart timeout estimation
+- [x] **HS14.** Confirm randomization-sim is correctly assigning participants end-to-end
+- [x] **HS19.** Add Likert scale question type to study builder
 - ~~**HS10.** Fill blocks with randomization-sim~~
 - ~~**HS11.** Test filling blocks live — hover over blocks for info, click to bring up data~~
-- [x] **HS12.** Final polish round for self-healing block algorithm — when a simultaneous batch interrupts a heal round (cap hit → spill to walking), the heal round is currently *terminated*. If any of the simultaneous assignments fail (dropout), those failures create new incompletes on a block that was already being healed. Fix: treat the heal round as *paused*, not terminated. After superposition resolves, check if any batch members on that block failed — if so, return the pointer to where it was in the heal round and continue healing instead of walking forward. The algorithm should never walk away from a block it knows is still broken.
-- [x] **HS13.** Implement live simultaneous participant tracking — heartbeat system + smart timeout estimation for concurrent participants (from randomization-sim logic into production)
-- [x] **HS14.** Confirm randomization-sim is correctly assigning participants end-to-end
-- [ ] **HS15.** New post-study question for comparing audio experience and choosing a preference
-- [ ] **HS16.** Code for matching participant's audio score with processing type, time period, and order received
-- [ ] **HS17.** Add new question step after second analysis section
+
+### IT'S GO TIME (IGT)
+
+- [ ] **IGT1.** Send links to Lauren and Lucy, requesting review and feedback
+
+### LOW PRIORITY IMPORTANT (LPI)
+
+- [ ] **LPI1.** Secure data API endpoints server-side — verify-admin returns HMAC-signed token, all /api/study/* routes require Bearer token, lock CORS to production domain
+- [ ] **LPI4.** Load features from D1 on study page resume — returning participants get their features back cross-device, not just from localStorage
+- [ ] **LPI2.** Regenerate admin key (current key is in committed JSON files in repo)
+- [ ] **LPI3.** Remove or .gitignore study JSON files containing admin keys
+
+---
+
+**Total estimated time: ~10-14 hrs**
+**Total elapsed time: 0 hrs**
