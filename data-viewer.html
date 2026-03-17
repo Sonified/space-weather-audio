@@ -370,6 +370,15 @@
     letter-spacing: 0.3px;
     text-transform: uppercase;
   }
+  .session-end td {
+    background: rgba(122, 133, 148, 0.04);
+    border-top: 1px dashed rgba(122, 133, 148, 0.2);
+    border-bottom: 1px dashed rgba(122, 133, 148, 0.2);
+  }
+  .session-end .session-label {
+    font-weight: 500;
+    opacity: 0.7;
+  }
 
   /* Detail panel (expandable row) */
   .detail-row td {
@@ -728,6 +737,7 @@
 
 <script>
   let allParticipants = [];
+  let sessionEndMap = {}; // session_id → ended_at
   let currentFilter = 'all';
   let currentSort = { key: 'registered_at', dir: 'desc' };
   let expandedPids = new Set(JSON.parse(localStorage.getItem('dv_expandedPids') || '[]'));
@@ -741,20 +751,33 @@
   function populateStudySelect(studies) {
     const select = document.getElementById('studySelect');
     let preselect = urlSlug || '';
+    console.log('[DV] populateStudySelect — urlSlug:', JSON.stringify(urlSlug), 'preselect so far:', JSON.stringify(preselect));
+    if (!preselect) {
+      preselect = localStorage.getItem('dv_last_study') || '';
+      console.log('[DV] no urlSlug, dv_last_study:', JSON.stringify(preselect));
+    }
     if (!preselect) {
       try {
         const draft = localStorage.getItem('sb_currentDraft');
         if (draft) preselect = JSON.parse(draft).slug || '';
+        console.log('[DV] no dv_last_study, sb_currentDraft slug:', JSON.stringify(preselect));
       } catch {}
     }
+    console.log('[DV] final preselect:', JSON.stringify(preselect), '| studies:', studies.map(s => s.id));
 
     select.innerHTML = '<option value="">Select a study...</option>' +
       studies.map(s => {
         const label = s.name || s.id;
         const count = s.participant_count || 0;
         const sel = s.id === preselect ? ' selected' : '';
+        if (sel) console.log('[DV] ✓ matched study:', s.id);
         return `<option value="${escHtml(s.id)}"${sel}>${escHtml(label)} (${count} participants)</option>`;
       }).join('');
+    console.log('[DV] select.value after populate:', JSON.stringify(select.value));
+    if (select.value) {
+      localStorage.setItem('dv_last_study', select.value);
+      console.log('[DV] saved dv_last_study from populate:', JSON.stringify(select.value));
+    }
   }
 
   async function fetchStudies() {
@@ -786,6 +809,7 @@
       const newUrl = new URL(window.location);
       newUrl.searchParams.set('study', slug);
       history.replaceState(null, '', newUrl);
+      localStorage.setItem('dv_last_study', slug);
       loadParticipants();
     }
   }
@@ -855,7 +879,10 @@
 
   async function loadParticipants() {
     const slug = document.getElementById('studySelect').value;
-    if (!slug) { stopPoll(); return; }
+    console.log('[DV] loadParticipants called — slug:', JSON.stringify(slug));
+    if (!slug) { console.log('[DV] no slug, stopping'); stopPoll(); return; }
+    localStorage.setItem('dv_last_study', slug);
+    console.log('[DV] saved dv_last_study:', JSON.stringify(slug));
 
     // Show loading only if we have no cached data on screen
     if (allParticipants.length === 0) {
@@ -867,7 +894,16 @@
 
     // Fetch fresh data — silently updates if cache was already showing
     try {
-      const data = await fetchParticipantData(slug);
+      const [data, sessData] = await Promise.all([
+        fetchParticipantData(slug),
+        fetchSessions(slug)
+      ]);
+      if (sessData?.sessions) {
+        sessionEndMap = {};
+        for (const s of sessData.sessions) {
+          if (s.ended_at) sessionEndMap[s.session_id] = s.ended_at;
+        }
+      }
       const newList = data.participants || [];
       // Preserve _features cache from previous data
       for (const np of newList) {
@@ -908,7 +944,16 @@
     isPolling = true;
 
     try {
-      const data = await fetchParticipantData(slug);
+      const [data, sessData] = await Promise.all([
+        fetchParticipantData(slug),
+        fetchSessions(slug)
+      ]);
+      if (sessData?.sessions) {
+        sessionEndMap = {};
+        for (const s of sessData.sessions) {
+          if (s.ended_at) sessionEndMap[s.session_id] = s.ended_at;
+        }
+      }
       const newList = data.participants || [];
 
       // Only re-render if server data actually changed (strip _features for comparison)
@@ -948,6 +993,14 @@
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Failed to load');
     return data;
+  }
+
+  async function fetchSessions(slug) {
+    try {
+      const baseUrl = detectApiBase();
+      const res = await fetch(`${baseUrl}/api/study/${encodeURIComponent(slug)}/sessions`);
+      return await res.json();
+    } catch { return null; }
   }
 
   function detectApiBase() {
@@ -1050,11 +1103,23 @@
     let lastSessionId = null;
     const rows = [];
     let rowIdx = 0;
+
+    function sessionEndBar(sid) {
+      const endedAt = sessionEndMap[sid];
+      if (!endedAt) return '';
+      const endLabel = formatTime(endedAt);
+      return `<tr class="session-separator session-end"><td colspan="9"><span class="session-label">Test ended ${endLabel}</span></td></tr>`;
+    }
+
     for (const p of sorted) {
       // Insert session separator when session_id changes
       if (p.session_id && p.session_id !== lastSessionId) {
+        // End bar for previous session (if it ended)
         if (lastSessionId !== null) {
-          // session_id format: 2026-03-15T07-04-57-620Z → parse to readable time
+          rows.push(sessionEndBar(lastSessionId));
+        }
+        // Start bar for new session
+        if (lastSessionId !== null) {
           const sid = p.session_id;
           const m = sid.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})/);
           const sessionLabel = m ? formatTime(`${m[1]} ${m[2]}:${m[3]}:${m[4]}`) : sid;
@@ -1082,6 +1147,8 @@
       </tr>
       ${expandedPids.has(p.participant_id) ? renderDetailRow(p) : ''}`);
     }
+    // End bar for the final session
+    if (lastSessionId) rows.push(sessionEndBar(lastSessionId));
     body.innerHTML = rows.join('');
     // Instant-open restored detail rows (no transition jump)
     body.querySelectorAll('.detail-wrapper').forEach(w => {
