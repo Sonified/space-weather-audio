@@ -1655,6 +1655,7 @@
       </div>
       <button class="btn" onclick="copyFullStudyJson()" title="Copy entire study config to clipboard">Copy Study JSON</button>
       <button class="btn" onclick="previewStudy()" title="Preview full study"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Preview</button>
+      <button class="btn" onclick="openDataExplorer()" title="Open full participant data viewer in a new tab">🔍 Data Viewer</button>
       <div class="save-indicator" id="saveIndicator"></div>
       <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="handleJsonFile(event)">
     </div>
@@ -1704,6 +1705,28 @@
       <span class="step-actions-spacer"></span>
     </div>
     <div class="step-detail" id="experimentalDesignDetail">
+
+      <!-- Data Playback & Presentation -->
+        <div class="card-settings" id="playbackSettings" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open'); saveExpandedState()}">
+          <button class="card-settings-trigger" type="button">🔊 Data Playback &amp; Presentation <span class="settings-chevron">&#9660;</span></button>
+          <div class="card-settings-drawer">
+            <div class="settings-body">
+              <div class="field-group" style="margin-top:0;">
+                <div class="field-label">Playback Speed</div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <div class="dim-input-wrap" style="width:70px;">
+                    <input class="field-input" id="pb_speed" type="text" value="1.00" style="text-align:center; padding:5px 4px; font-size:13px; border-radius:var(--radius) 0 0 var(--radius);" oninput="autoSave('playbackSpeed')" onclick="event.stopPropagation()" />
+                    <div class="dim-arrows">
+                      <button class="dim-arrow" onclick="event.stopPropagation(); stepSpeed(0.05)">▲</button>
+                      <button class="dim-arrow" onclick="event.stopPropagation(); stepSpeed(-0.05)">▼</button>
+                    </div>
+                  </div>
+                  <span style="font-size:11px; color:var(--text-muted);">×</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
       <!-- Conditions -->
       <div class="card-settings" id="conditionsSettings" onclick="if(event.target.closest('.card-settings-trigger')){this.classList.toggle('open'); saveExpandedState()}">
@@ -2058,30 +2081,54 @@
             <!-- Polling, Keepalive & Timeout settings -->
             <div style="display:flex; gap:28px; margin-bottom:16px; flex-wrap:wrap;">
               <div>
-                <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); display:block; margin-bottom:4px;" title="How often the study builder dashboard polls the server for participant updates. Lower values = more responsive but more server requests.">Dashboard Poll</label>
-                <div style="display:flex; align-items:center; gap:6px;">
-                  <input type="number" id="pollInterval" value="2" min="1" max="60" style="width:60px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:var(--radius); padding:6px 8px; font-size:var(--input-font-size);">
-                  <span style="font-size:12px; color:var(--text-muted);">sec</span>
-                </div>
-              </div>
-              <div>
-                <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); display:block; margin-bottom:4px;" title="How often the participant's browser pings the server to prove the page is still open. This is a background keepalive — real activity tracking uses the last action timestamp.">Keepalive Interval</label>
-                <div style="display:flex; align-items:center; gap:6px;">
-                  <input type="number" id="heartbeatInterval" value="1" min="1" max="30" style="width:60px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:var(--radius); padding:6px 8px; font-size:var(--input-font-size);">
-                  <span style="font-size:12px; color:var(--text-muted);">min</span>
-                </div>
-              </div>
-              <div>
                 <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); display:block; margin-bottom:4px;" title="Minutes since last action before a participant is shown as inactive on the dashboard. Actions include step changes, feature saves, and response submissions.">Inactive Timeout</label>
                 <div style="display:flex; align-items:center; gap:6px;">
-                  <input type="number" id="heartbeatTimeout" value="10" min="1" max="120" style="width:60px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:var(--radius); padding:6px 8px; font-size:var(--input-font-size);">
+                  <div class="dim-input-wrap" style="width:60px;">
+                    <input class="field-input" type="text" id="heartbeatTimeout" value="10" style="text-align:center; padding:5px 4px; font-size:13px; border-radius:var(--radius) 0 0 var(--radius);" onclick="event.stopPropagation()" />
+                    <div class="dim-arrows">
+                      <button class="dim-arrow" onclick="event.stopPropagation(); stepNumInput('heartbeatTimeout', 1, 1, 120)">▲</button>
+                      <button class="dim-arrow" onclick="event.stopPropagation(); stepNumInput('heartbeatTimeout', -1, 1, 120)">▼</button>
+                    </div>
+                  </div>
                   <span style="font-size:12px; color:var(--text-muted);">min</span>
                 </div>
               </div>
               <div>
                 <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); display:block; margin-bottom:4px;" title="Minutes of inactivity before a participant is considered a dropout. Dropouts become eligible for condition reassignment in the healing block algorithm.">Dropout Timeout</label>
                 <div style="display:flex; align-items:center; gap:6px;">
-                  <input type="number" id="dropoutTimeout" value="120" min="10" max="1440" style="width:60px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:var(--radius); padding:6px 8px; font-size:var(--input-font-size);">
+                  <div class="dim-input-wrap" style="width:60px;">
+                    <input class="field-input" type="text" id="dropoutTimeout" value="120" style="text-align:center; padding:5px 4px; font-size:13px; border-radius:var(--radius) 0 0 var(--radius);" onclick="event.stopPropagation()" />
+                    <div class="dim-arrows">
+                      <button class="dim-arrow" onclick="event.stopPropagation(); stepNumInput('dropoutTimeout', 10, 10, 1440)">▲</button>
+                      <button class="dim-arrow" onclick="event.stopPropagation(); stepNumInput('dropoutTimeout', -10, 10, 1440)">▼</button>
+                    </div>
+                  </div>
+                  <span style="font-size:12px; color:var(--text-muted);">min</span>
+                </div>
+              </div>
+              <div>
+                <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); display:block; margin-bottom:4px;" title="How often the study builder dashboard polls the server for participant updates. Lower values = more responsive but more server requests.">Dashboard Poll</label>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <div class="dim-input-wrap" style="width:60px;">
+                    <input class="field-input" type="text" id="pollInterval" value="2" style="text-align:center; padding:5px 4px; font-size:13px; border-radius:var(--radius) 0 0 var(--radius);" onclick="event.stopPropagation()" />
+                    <div class="dim-arrows">
+                      <button class="dim-arrow" onclick="event.stopPropagation(); stepNumInput('pollInterval', 1, 1, 60)">▲</button>
+                      <button class="dim-arrow" onclick="event.stopPropagation(); stepNumInput('pollInterval', -1, 1, 60)">▼</button>
+                    </div>
+                  </div>
+                  <span style="font-size:12px; color:var(--text-muted);">sec</span>
+                </div>
+              </div>
+              <div>
+                <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); display:block; margin-bottom:4px;" title="How often the participant's browser pings the server to prove the page is still open. This is a background keepalive — real activity tracking uses the last action timestamp.">Keepalive Interval</label>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <div class="dim-input-wrap" style="width:60px;">
+                    <input class="field-input" type="text" id="heartbeatInterval" value="1" style="text-align:center; padding:5px 4px; font-size:13px; border-radius:var(--radius) 0 0 var(--radius);" onclick="event.stopPropagation()" />
+                    <div class="dim-arrows">
+                      <button class="dim-arrow" onclick="event.stopPropagation(); stepNumInput('heartbeatInterval', 1, 1, 30)">▲</button>
+                      <button class="dim-arrow" onclick="event.stopPropagation(); stepNumInput('heartbeatInterval', -1, 1, 30)">▼</button>
+                    </div>
+                  </div>
                   <span style="font-size:12px; color:var(--text-muted);">min</span>
                 </div>
               </div>
@@ -4038,7 +4085,10 @@
       randomization.capResume = document.getElementById('rand_capResume')?.value || 'walk';
     }
 
-    return { conditions, returningParticipant, randomization };
+    // Playback
+    const playbackSpeed = parseFloat(document.getElementById('pb_speed')?.value) || 1;
+
+    return { conditions, returningParticipant, randomization, playbackSpeed };
   }
 
   function loadExperimentalDesign(design) {
@@ -4085,6 +4135,11 @@
         if (el('rand_capResume')) el('rand_capResume').value = r.capResume || 'walk';
       }
       toggleHealingBlockSettings();
+    }
+    // Playback
+    if (design.playbackSpeed != null) {
+      const el = document.getElementById('pb_speed');
+      if (el) el.value = parseFloat(design.playbackSpeed).toFixed(2);
     }
   }
 
@@ -6989,6 +7044,22 @@
     if (val === 'auto' || val === '') return val;
     if (/^\d+$/.test(val)) return val + 'px';
     return val;
+  }
+
+  function stepNumInput(id, delta, min, max) {
+    const input = document.getElementById(id);
+    let num = parseInt(input.value) || 0;
+    num = Math.max(min, Math.min(max, num + delta));
+    input.value = num;
+    autoSave(id);
+  }
+
+  function stepSpeed(delta) {
+    const input = document.getElementById('pb_speed');
+    let num = parseFloat(input.value) || 1;
+    num = Math.max(0.05, Math.round((num + delta) * 100) / 100);
+    input.value = num.toFixed(2);
+    autoSave('playbackSpeed');
   }
 
   function nudgeDimension(btn, delta) {
