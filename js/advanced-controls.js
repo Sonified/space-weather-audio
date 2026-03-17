@@ -104,6 +104,7 @@ export function initializeAdvancedControls() {
         { id: 'printStudy', key: 'emic_print_study', type: 'checkbox' },
         { id: 'printFeatures', key: 'emic_print_features', type: 'checkbox' },
         { id: 'printData', key: 'emic_print_data', type: 'checkbox' },
+        { id: 'printD1', key: 'emic_print_d1', type: 'checkbox' },
         { id: 'printInteraction', key: 'emic_print_interaction', type: 'checkbox' },
     ];
     // Page-specific localStorage: emic_study keeps 'emic_*' keys, index.html uses 'main_*'
@@ -149,7 +150,7 @@ export function initializeAdvancedControls() {
     }
 
     // Sync Prints checkboxes → pm flags (restore from localStorage + live toggle)
-    const printMap = { printInit: 'init', printGPU: 'gpu', printMemory: 'memory', printAudio: 'audio', printStudy: 'study_flow', printFeatures: 'features', printData: 'data', printInteraction: 'interaction' };
+    const printMap = { printInit: 'init', printGPU: 'gpu', printMemory: 'memory', printAudio: 'audio', printStudy: 'study_flow', printFeatures: 'features', printData: 'data', printD1: 'd1', printInteraction: 'interaction' };
     for (const [id, pmKey] of Object.entries(printMap)) {
         const el = document.getElementById(id);
         if (!el) continue;
