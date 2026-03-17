@@ -239,21 +239,27 @@
   .step-card[data-type="analysis"]     { background: color-mix(in srgb, #3d8b7a 15%, var(--surface)); }
   .step-card:hover { border-color: var(--border-hover); }
   .step-card.active { border-color: var(--accent); overflow: visible; }
-  .step-card.active.live { border-color: #fff; }
 
   /* Live study glow */
-  .step-card.live {
-    border-color: rgba(34, 197, 94, 0.3);
-    box-shadow: 0 0 12px rgba(34, 197, 94, 0.08), inset 0 0 12px rgba(34, 197, 94, 0.03);
+  .step-card.live,
+  .header-panel.live {
+    border-color: rgba(255, 255, 255, 0.3);
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.1), 0 0 6px rgba(255, 255, 255, 0.06), inset 0 0 14px rgba(255, 255, 255, 0.04);
+    animation: glow-pulse 3s ease-in-out infinite;
     position: relative;
   }
-  .step-card.live::before {
+  @keyframes glow-pulse {
+    0%, 100% { box-shadow: 0 0 20px rgba(255,255,255,0.1), 0 0 6px rgba(255,255,255,0.06), inset 0 0 14px rgba(255,255,255,0.04); }
+    50% { box-shadow: 0 0 28px rgba(255,255,255,0.18), 0 0 10px rgba(255,255,255,0.1), inset 0 0 18px rgba(255,255,255,0.06); }
+  }
+  .step-card.live::before,
+  .header-panel.live::before {
     content: '';
     position: absolute;
     inset: -1px;
     border-radius: inherit;
     padding: 1px;
-    background: conic-gradient(from var(--trace-angle, 0deg), transparent 0%, transparent 85%, rgba(34, 197, 94, 0.5) 92%, rgba(34, 197, 94, 0.8) 95%, transparent 100%);
+    background: conic-gradient(from var(--trace-angle, 0deg), transparent 0%, transparent 85%, rgba(255, 255, 255, 0.5) 92%, rgba(255, 255, 255, 0.8) 95%, transparent 100%);
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
@@ -1661,9 +1667,11 @@
     <!-- Row 3: Admin Key -->
     <div class="header-row" style="margin-top:4px;">
       <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:12px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Admin Key</span>
-        <input class="field-input" id="adminKeyInput" value="emic2026" placeholder="Access key..." style="width:140px;padding:4px 8px;font-family:'SF Mono','Fira Code',monospace;" class="field-input" />
-        <button class="btn" onclick="generateAdminKey()" style="padding:4px 10px;font-size:12px;">🎲 Generate Key</button>
+        <span style="font-size:13px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Admin Key</span>
+        <input class="field-input" id="adminKeyInput" value="emic2026" placeholder="Access key..." style="width:150px;padding:4px 8px;font-size:13px;font-family:'SF Mono','Fira Code',monospace;" class="field-input" />
+        <button title="Copy admin key" onclick="navigator.clipboard.writeText(document.getElementById('adminKeyInput').value);this.textContent='✓';setTimeout(()=>this.textContent='📋',1000)" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.5'" style="background:none;border:1px solid var(--border,#506078);color:var(--text-muted);cursor:pointer;padding:2px 6px;border-radius:3px;font-size:11px;opacity:0.5;transition:opacity 0.15s;">📋</button>
+        <span id="headerLiveStatus" style="display:none; margin-left:auto; font-size:13px; color:var(--green); white-space:nowrap;">Study is LIVE</span>
+        <span id="headerLiveSessionId" style="display:none;"></span>
       </div>
     </div>
     <!-- Row 3: Actions -->
@@ -2055,6 +2063,10 @@
                 if (b) { b.innerHTML = 'End Study'; b.style.background = 'transparent'; b.style.borderColor = 'var(--border, #506078)'; b.style.color = 'var(--text-muted, #888)'; }
                 if (l) { l.innerHTML = 'Study is LIVE'; l.style.color = 'var(--green)'; }
                 document.getElementById('studyLaunchCard')?.classList.add('live');
+                document.querySelector('.header-panel')?.classList.add('live');
+                const _hs = document.getElementById('headerLiveStatus');
+                if (_hs) _hs.style.display = '';
+                ['studyNameInput', 'urlTagInput'].forEach(function(id) { var el = document.getElementById(id); if (el) { el.disabled = true; el.style.opacity = '0.4'; } });
               }
             </script>
 
@@ -7638,7 +7650,17 @@
   }
 
   function groupIdHtml(sid) {
-    return `<span style="font-family:'SF Mono','Fira Code',monospace; font-size:10px; color:var(--text-muted,#888); user-select:all;">${sid}</span> <button onclick="navigator.clipboard.writeText('${sid}');this.textContent='✓';setTimeout(()=>this.textContent='📋',1000)" style="background:none;border:1px solid var(--border,#506078);color:var(--text-muted);cursor:pointer;padding:1px 5px;border-radius:3px;font-size:10px;vertical-align:middle;margin-left:2px;">📋</button>`;
+    return `<span style="font-family:'SF Mono','Fira Code',monospace; font-size:11px; color:var(--text-muted,#888); user-select:all;">${sid}</span> <button onclick="navigator.clipboard.writeText('${sid}');this.textContent='✓';setTimeout(()=>this.textContent='📋',1000)" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.5'" style="background:none;border:1px solid var(--border,#506078);color:var(--text-muted);cursor:pointer;padding:2px 6px;border-radius:3px;font-size:11px;vertical-align:middle;margin-left:2px;opacity:0.5;transition:opacity 0.15s;">📋</button>`;
+  }
+
+  function updateHeaderLiveStatus(sid) {
+    const hs = document.getElementById('headerLiveStatus');
+    const hid = document.getElementById('headerLiveSessionId');
+    if (hs) hs.style.display = sid ? '' : 'none';
+    if (hid) {
+      hid.style.display = sid ? '' : 'none';
+      hid.innerHTML = sid ? `&nbsp;${groupIdHtml(sid)}` : '';
+    }
   }
 
   async function launchStudy({ restore = false } = {}) {
@@ -7654,10 +7676,17 @@
       if (!confirm('End the live study? Participants currently in-progress can still finish, but no new assignments will be made.')) return;
       liveModeActive = false;
       localStorage.removeItem('sb_liveModeActive');
+      localStorage.removeItem('sb_liveSessionId');
       document.getElementById('studyLaunchCard')?.classList.remove('live');
+      document.querySelector('.header-panel')?.classList.remove('live');
+      updateHeaderLiveStatus(null);
       document.querySelectorAll('.url-mode-cycle[data-mode="test"]').forEach(b => b.dataset.tip = 'Test: full data flow');
 
-      // Re-enable launch timing controls
+      // Re-enable study name and URL tag
+      ['studyNameInput', 'urlTagInput'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.disabled = false; el.style.opacity = ''; }
+      });
       // Re-enable start timing controls
       document.querySelectorAll('input[name="launchStart"]').forEach(el => {
         el.disabled = false;
@@ -7735,7 +7764,14 @@
     liveModeActive = true;
     localStorage.setItem('sb_liveModeActive', '1');
     document.getElementById('studyLaunchCard')?.classList.add('live');
+    document.querySelector('.header-panel')?.classList.add('live');
     document.querySelectorAll('.url-mode-cycle[data-mode="test"]').forEach(b => b.dataset.tip = 'Test: no block assignment');
+
+    // Lock study name and URL tag while live
+    ['studyNameInput', 'urlTagInput'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.disabled = true; el.style.opacity = '0.4'; }
+    });
 
     // Disable start timing controls while live (end controls stay editable)
     document.querySelectorAll('input[name="launchStart"]').forEach(el => {
@@ -7749,14 +7785,14 @@
     btn.style.background = 'transparent';
     btn.style.borderColor = 'var(--border, #506078)';
     btn.style.color = 'var(--text-muted, #888)';
-    label.innerHTML = 'Study is LIVE — real participants are being assigned';
+    label.innerHTML = 'Study is LIVE';
     label.style.color = 'var(--green)';
     dashboard.style.maxHeight = dashboard.scrollHeight + 200 + 'px';
     dashboard.style.opacity = '1';
     if (dot) dot.classList.add('alive');
     if (statusEl) { statusEl.textContent = 'LIVE'; statusEl.style.color = 'var(--green)'; statusEl.style.fontWeight = '700'; }
     const deployLabel = document.getElementById('deployStatusLabel');
-    if (deployLabel) { deployLabel.textContent = 'Live'; deployLabel.style.color = 'var(--green)'; }
+    if (deployLabel) { deployLabel.textContent = 'LIVE'; deployLabel.style.color = 'var(--green)'; }
 
     if (restore) {
       console.log('[LIVE] Restoring live mode — resuming existing session');
@@ -7764,6 +7800,7 @@
       // Show session ID on restore too
       if (liveSessionId) {
         label.innerHTML = `Study is LIVE &nbsp;${groupIdHtml(liveSessionId)}`;
+        updateHeaderLiveStatus(liveSessionId);
       }
     } else {
       if (hbLabel) hbLabel.textContent = 'Uploading block table...';
@@ -7776,6 +7813,7 @@
       // Show session ID after launch
       if (liveSessionId) {
         label.innerHTML = `Study is LIVE &nbsp;${groupIdHtml(liveSessionId)}`;
+        updateHeaderLiveStatus(liveSessionId);
       }
       updateLiveDashboard({
         totalStarted: 0, activeParticipants: 0, completedCount: 0,
@@ -7821,6 +7859,14 @@
         const hb = document.getElementById('liveHeartbeatLabel');
         if (hb) hb.textContent = labelText;
       }
+      // Restore session ID into label
+      const sid = localStorage.getItem('sb_liveSessionId');
+      if (sid) {
+        liveSessionId = sid;
+        const lbl = document.getElementById('launchStudyLabel');
+        if (lbl) lbl.innerHTML = `Study is LIVE &nbsp;${groupIdHtml(sid)}`;
+        updateHeaderLiveStatus(sid);
+      }
     } catch {}
   })();
 
@@ -7849,8 +7895,10 @@
       const alg = data.algorithmState;
       if (data.sessionId && !liveSessionId) {
         liveSessionId = data.sessionId;
+        localStorage.setItem('sb_liveSessionId', liveSessionId);
         const lbl = document.getElementById('launchStudyLabel');
         if (lbl) lbl.innerHTML = `Study is LIVE &nbsp;${groupIdHtml(liveSessionId)}`;
+        updateHeaderLiveStatus(liveSessionId);
       }
       console.log(`[LIVE DASHBOARD] Poll (session: ${data.sessionId || 'none'}): ${data.totalStarted} started, ${data.activeParticipants} active, ${data.completedCount} completed`);
       updateLiveDashboard({
