@@ -1098,7 +1098,7 @@ function showFeaturePopup(box) {
             <span class="feature-popup-confidence-label">Is this an EMIC wave?</span>
             <div class="feature-popup-pills">
                 <button class="feature-popup-pill${feature.confidence === 'confirmed' ? ' active' : ''}" data-confidence="confirmed">Yes</button>
-                <button class="feature-popup-pill${feature.confidence === 'uncertain' ? ' active' : ''}" data-confidence="uncertain">Possibly</button>
+                <button class="feature-popup-pill${feature.confidence === 'possibly' ? ' active' : ''}" data-confidence="possibly">Possibly</button>
             </div>
         </div>
         <textarea class="feature-popup-notes" placeholder="Describe this feature...">${feature.notes || ''}</textarea>
@@ -1283,15 +1283,19 @@ function showFeaturePopup(box) {
     const pills = popup.querySelectorAll('.feature-popup-pill');
 
     // Wire confidence pills
+    if (window.pm?.interaction) console.log('%c[PILL] Wiring pills:', 'color: #f00; font-weight: bold', pills.length, 'pills found');
     pills.forEach(pill => {
         pill.addEventListener('click', (e) => {
+            if (window.pm?.interaction) console.log('%c[PILL] CLICKED!', 'color: #f00; font-weight: bold', pill.dataset.confidence);
             e.stopPropagation();
             pills.forEach(p => p.classList.remove('active'));
             pill.classList.add('active');
             // Write confidence immediately to feature object
             const features = getStandaloneFeatures();
             const f = features[box.featureIndex];
+            if (window.pm?.interaction) console.log('%c[PILL] feature:', 'color: #f00', f?.confidence, '→', pill.dataset.confidence);
             if (f) f.confidence = pill.dataset.confidence;
+            rebuildCanvasBoxesFromFeatures();
             updateSaveState();
         });
     });
@@ -2925,13 +2929,18 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
         ctx.lineWidth = 2;
         // Dashed borders by confidence level
         const conf = box.confidence;
-        if (conf === 'possibly' || conf === 'possible') {
+        if (conf === 'possibly') {
             ctx.setLineDash([6, 4]);
-        } else if (conf === 'unconfirmed') {
-            ctx.setLineDash([2, 4]);
+            ctx.lineDashOffset = 0;
+            // Each edge as its own path — dashes always start from the corner
+            ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + width, y); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x + width, y); ctx.lineTo(x + width, y + height); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x + width, y + height); ctx.lineTo(x, y + height); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x, y + height); ctx.lineTo(x, y); ctx.stroke();
+            ctx.setLineDash([]);
+        } else {
+            ctx.strokeRect(x, y, width, height);
         }
-        ctx.strokeRect(x, y, width, height);
-        ctx.setLineDash([]);
 
         ctx.fillStyle = isBoxHovered ? fbc.fillHover : fbc.fill;
         ctx.fillRect(x, y, width, height);

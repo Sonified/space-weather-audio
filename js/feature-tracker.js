@@ -229,6 +229,7 @@ export function updateFeature(featureIndex, updates) {
     Object.assign(f, updates);
     saveStandaloneFeatures();
     if (isStudyMode()) saveFeatureToD1(f);
+    if (updates.confidence) redrawAllCanvasFeatureBoxes();
     if (window.pm?.features) console.log(`%c[FEATURE] updateFeature #${featureIndex+1} d1Id=${f.d1Id?.slice(0,8)} notes="${f.notes}" conf=${f.confidence} → D1`, 'color: #f0a; font-weight: bold');
 }
 
@@ -689,8 +690,8 @@ export function renderStandaloneFeaturesList() {
             <span class="freq-display ${hasCoords ? 'completed' : ''}">${hasCoords ? formatFeatureButtonText(feature) : 'No selection'}</span>
             <label class="confidence-label" for="confidence-sa-${idx}">Confidence:</label>
             <select id="confidence-sa-${idx}">
-                <option value="confirmed" ${feature.confidence === 'confirmed' || !feature.confidence ? 'selected' : ''}>This is an EMIC event</option>
-                <option value="uncertain" ${feature.confidence === 'uncertain' ? 'selected' : ''}>This might be an EMIC event</option>
+                <option value="confirmed" ${feature.confidence === 'confirmed' || !feature.confidence ? 'selected' : ''}>Yes</option>
+                <option value="possibly" ${feature.confidence === 'possibly' ? 'selected' : ''}>Possibly</option>
             </select>
             <textarea class="freq-input notes-field"
                       placeholder="Add description..."
@@ -704,9 +705,12 @@ export function renderStandaloneFeaturesList() {
         const notesField = featureRow.querySelector(`#notes-sa-${idx}`);
 
         confidenceSelect.addEventListener('change', function() {
+            if (window.pm?.interaction) console.log(`%c[CONFIDENCE] idx=${idx} old=${standaloneFeatures[idx].confidence} new=${this.value}`, 'color: #f80; font-weight: bold');
             standaloneFeatures[idx].confidence = this.value;
             saveStandaloneFeatures();
+            if (window.pm?.interaction) console.log(`%c[CONFIDENCE] saved. Verify:`, 'color: #f80', standaloneFeatures[idx].confidence);
             if (isStudyMode()) saveFeatureToD1(standaloneFeatures[idx]);
+            redrawAllCanvasFeatureBoxes();
             this.blur();
         });
 
