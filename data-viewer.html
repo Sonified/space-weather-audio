@@ -108,7 +108,8 @@
     transition: all 0.15s;
   }
   .btn:hover { border-color: var(--border-hover); background: var(--surface2); }
-  .refresh-icon { padding: 6px 8px; line-height: 0; display: inline-flex; align-items: center; }
+  .refresh-icon { width: 30px; height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; line-height: 0; box-sizing: border-box; }
+  #copyAllBtn { height: 30px; padding: 0 12px; font-size: 12px; display: inline-flex; align-items: center; box-sizing: border-box; }
   .refresh-icon:hover svg { opacity: 1; }
   .refresh-icon svg { opacity: 0.5; }
   .refresh-icon.spinning svg { animation: refresh-spin 0.5s ease; opacity: 1; }
@@ -707,7 +708,7 @@
     <option value="">Loading studies...</option>
   </select>
   <button class="btn refresh-icon" onclick="spinRefreshIcon(); loadParticipants()" title="Refresh participant list"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>
-  <button class="btn" id="copyAllBtn" onclick="copyAllStudyData()" title="Copy all data as JSON" style="font-size:12px; padding:6px 8px; width:70px; text-align:center;">Copy All</button>
+  <button class="btn" id="copyAllBtn" onclick="copyAllStudyData()" title="Copy all data as JSON">Copy All</button>
   <div style="flex:1;"></div>
   <span class="summary-inline" id="summaryBar" style="display:none;"><span class="summary-stat total"><span class="value" id="sumTotal">0</span> <span class="label">total</span></span><span class="summary-div">·</span><span class="summary-stat active"><span class="value" id="sumActive">0</span> <span class="label">active</span></span><span class="summary-div">·</span><span class="summary-stat completed"><span class="value" id="sumCompleted">0</span> <span class="label">completed</span></span><span class="summary-div">·</span><span class="summary-stat features"><span class="value" id="sumFeatures">0</span> <span class="label">features</span></span></span>
   <div style="flex:1;"></div>
