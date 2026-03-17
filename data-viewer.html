@@ -448,30 +448,39 @@
   /* Detail panel (expandable row) */
   .detail-row td {
     padding: 0;
-    background: #0f1520;
   }
   .detail-wrapper {
     overflow: hidden;
     transition: height 0.35s cubic-bezier(0.22, 0.1, 0.05, 1.0);
   }
+  /* ── Card well: dark recessed backdrop ── */
+  .detail-well {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 6px 12px;
+  }
+  /* ── Card: bordered container inside the well ── */
   .detail-panel {
-    padding: 16px 20px;
-    margin-left: 8px;
-    margin-right: 8px;
     display: flex;
     flex-direction: column;
     gap: 0;
     font-size: calc(12px + var(--font-bump));
-    border-left: 3px solid #4a9aba;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    background: #0e1218;
+    overflow: hidden;
   }
-  /* ── Hero row: at-a-glance stats ── */
+  /* ── Card header: hero row ── */
   .detail-hero {
     display: flex;
     align-items: center;
     gap: 20px;
-    padding-bottom: 14px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  /* ── Card content ── */
+  .detail-content {
+    padding: 12px 16px;
   }
   .hero-pid {
     font-size: 13px;
@@ -822,6 +831,13 @@
   function cacheKey(slug) { return `dv_cache_${slug}`; }
   const STUDIES_CACHE_KEY = 'dv_studies_cache';
 
+  // Label lookups for radio questionnaire responses (value → label)
+  const RADIO_LABELS = {
+    background:         { 1: 'None', 2: 'Minimal', 3: 'Some', 4: 'Considerable', 5: 'Extensive' },
+    dataAnalysis:       { 1: 'Never', 2: 'Rarely', 3: 'Occasionally', 4: 'Frequently', 5: 'Extensively' },
+    musicalExperience:  { 1: 'None', 2: 'Minimal', 3: 'Some', 4: 'Considerable', 5: 'Extensive' }
+  };
+
   function populateStudySelect(studies) {
     const select = document.getElementById('studySelect');
     let preselect = urlSlug || '';
@@ -937,6 +953,7 @@
   const isPageRefresh = performance.getEntriesByType('navigation')[0]?.type === 'reload';
   if (isPageRefresh && allParticipants.length > 0) {
     console.log('%c[DV] Refresh detected — using cached data, skipping initial fetch', 'color: #8b8; font-weight: bold');
+    showData();
     startPoll();
     setTimeout(fetchStudies, 2000);
   } else {
@@ -1311,13 +1328,6 @@
     return label.charAt(0).toUpperCase() + label.slice(1);
   }
 
-  // Label lookups for radio questionnaire responses (value → label)
-  const RADIO_LABELS = {
-    background:         { 1: 'None', 2: 'Minimal', 3: 'Some', 4: 'Considerable', 5: 'Extensive' },
-    dataAnalysis:       { 1: 'Never', 2: 'Rarely', 3: 'Occasionally', 4: 'Frequently', 5: 'Extensively' },
-    musicalExperience:  { 1: 'None', 2: 'Minimal', 3: 'Some', 4: 'Considerable', 5: 'Extensive' }
-  };
-
   function formatResponseValue(v, key) {
     if (v == null) return '—';
     // For radio questions, show "N - Label"
@@ -1466,9 +1476,10 @@
 
     return `<tr class="detail-row" id="detail-${escHtml(p.participant_id)}"><td colspan="9">
       <div class="detail-wrapper">
+      <div class="detail-well">
       <div class="detail-panel">
 
-        <!-- Hero: at-a-glance -->
+        <!-- Hero: at-a-glance (card header) -->
         <div class="detail-hero">
           <div class="hero-pid">${escHtml(p.participant_id)}</div>
           <div class="hero-condition">${condLabel}</div>
@@ -1494,6 +1505,7 @@
           </div>
         </div>
 
+        <div class="detail-content">
         <!-- Timestamps: compact grid -->
         <div class="detail-timestamps">
           <div class="ts-item"><span class="k">Registered</span><span class="v">${formatTimeFull(p.registered_at)}</span></div>
@@ -1531,8 +1543,10 @@
           }</div>
         </div>` : ''}
 
-      </div>
-      </div>
+      </div><!-- .detail-content -->
+      </div><!-- .detail-panel -->
+      </div><!-- .detail-well -->
+      </div><!-- .detail-wrapper -->
     </td></tr>`;
   }
 
