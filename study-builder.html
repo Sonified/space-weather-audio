@@ -6104,12 +6104,18 @@
 
     const thumbTop = idxToTrack(firstVisIdx, firstVisFrac);
     const thumbBot = idxToTrack(lastVisIdx, lastVisFrac);
-    const thumbHeight = Math.max(14, thumbBot - thumbTop);
 
-    // Center the thumb around the midpoint so it doesn't exceed the first dot
     const dotRadius = vdots[0].getBoundingClientRect().height / 2;
-    vp.style.top = (thumbTop - dotRadius) + 'px';
-    vp.style.height = (thumbHeight + dotRadius * 2) + 'px';
+    const navTop = 0;
+    const navBot = navRect.height;
+
+    // Clamp to full nav bounds so indicator reaches edges when fully scrolled
+    const top = Math.max(navTop, thumbTop - dotRadius);
+    const bot = Math.min(navBot, thumbBot + dotRadius);
+    const thumbHeight = Math.max(14, bot - top);
+
+    vp.style.top = top + 'px';
+    vp.style.height = thumbHeight + 'px';
     vp.classList.add('visible');
   }
 
