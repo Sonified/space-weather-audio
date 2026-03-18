@@ -947,7 +947,7 @@ export default {
             const dropoutMin = state.dropoutTimeoutMin || 120;
             const { results: dropouts } = await env.DB.prepare(
               `SELECT assigned_condition, assignment_mode FROM participants
-               WHERE study_id = ? AND session_id = ? AND completed_at IS NULL AND assigned_condition IS NOT NULL
+               WHERE study_id = ? AND group_id = ? AND completed_at IS NULL AND assigned_condition IS NOT NULL
                AND REPLACE(REPLACE(updated_at, 'T', ' '), 'Z', '') < datetime('now', '-' || ? || ' minutes')`
             ).bind(studyId, sessionId, dropoutMin).all();
 
@@ -994,12 +994,12 @@ export default {
             continue; // retry
           }
 
-          // Write assignment to participant row (include session_id + block)
+          // Write assignment to participant row (include group_id + block)
           const assignedBlock = state.currentBlock != null ? state.currentBlock + 1 : null;
           const now = nowISO();
           await env.DB.prepare(
             `UPDATE participants SET assigned_condition = ?, assignment_mode = ?, assigned_block = ?, assigned_at = ?,
-             session_id = ?, updated_at = ? WHERE participant_id = ? AND study_id = ?`
+             group_id = ?, updated_at = ? WHERE participant_id = ? AND study_id = ?`
           ).bind(assignedCondition, assignmentMode, assignedBlock, now, sessionId, now, pid, studyId).run();
 
           const conditionDetails = conditions[assignedCondition - 1] || {};
@@ -1126,7 +1126,7 @@ export default {
         const { results } = await env.DB.prepare(
           `SELECT p.participant_id, p.current_step, p.registered_at, p.completed_at,
                   p.assigned_condition, p.assignment_mode, p.assigned_block, p.assigned_at,
-                  p.updated_at, p.responses, p.flags, p.session_id,
+                  p.updated_at, p.responses, p.flags, p.group_id,
                   COUNT(f.id) as feature_count,
                   CASE WHEN REPLACE(REPLACE(p.updated_at, 'T', ' '), 'Z', '') > datetime('now', '-' || ? || ' minutes') THEN 1 ELSE 0 END as is_active
            FROM participants p
@@ -1193,7 +1193,7 @@ export default {
            WHERE study_id = ? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1`
         ).bind(studyId).first();
         const sessionId = activeSession?.session_id;
-        const sessionFilter = sessionId ? ' AND session_id = ?' : '';
+        const sessionFilter = sessionId ? ' AND group_id = ?' : '';
         const sessionBinds = sessionId ? [sessionId] : [];
 
         const [totalRow, activeRow, assignedRow, completedRow, participantRows] = await Promise.all([

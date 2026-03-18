@@ -1666,7 +1666,7 @@
 
   function getParticipantNumber(p) {
     const sameSession = allParticipants
-      .filter(x => x.session_id === p.session_id)
+      .filter(x => x.group_id === p.group_id)
       .sort((a, b) => (a.registered_at || '').localeCompare(b.registered_at || ''));
     return sameSession.findIndex(x => x.participant_id === p.participant_id) + 1;
   }
@@ -1674,7 +1674,7 @@
   function formatParticipantExport(p) {
     const meta = getStudyMeta();
     const isTest = isTestParticipant(p);
-    const session = allSessions.find(s => s.session_id === p.session_id);
+    const session = allSessions.find(s => s.session_id === p.group_id);
     const rawSessionStart = session ? (session.started_at || session.session_id) : null;
     const sessionStarted = rawSessionStart ? toISO(rawSessionStart) : null;
 
@@ -1699,7 +1699,7 @@
       participant_number: getParticipantNumber(p),
 
       // Timeline
-      group_id: p.session_id || null,
+      group_id: p.group_id || null,
       group_started_at: sessionStarted,
       registered_at: p.registered_at,
 
@@ -1728,7 +1728,7 @@
 
   // ── Copy / export functions ─────────────────────────────────────────────
   async function copySessionData(sessionId, btn) {
-    const participants = allParticipants.filter(p => p.session_id === sessionId);
+    const participants = allParticipants.filter(p => p.group_id === sessionId);
     const session = allSessions.find(s => s.session_id === sessionId);
 
     // Fetch features for all participants in this session
