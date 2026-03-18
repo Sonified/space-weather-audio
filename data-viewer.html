@@ -544,26 +544,35 @@
   }
   /* ── Response rows ── */
   .response-grid {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: auto 1fr;
     gap: 0;
   }
-  .response-row {
-    display: grid;
-    grid-template-columns: 2fr 3fr;
-    gap: 0 16px;
-    align-items: baseline;
+  .response-row { display: contents; }
+  .response-row > span {
     padding: 4px 8px;
-    border-radius: 4px;
-  }
-  .response-row:nth-child(odd) { background: rgba(255,255,255,0.03); }
-  .response-row:nth-child(even) { background: rgba(255,255,255,0.06); }
-  .response-grid .q { color: var(--text-muted); font-size: calc(11px + var(--font-bump)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .response-grid .a {
     color: var(--text-muted);
-    font-weight: 500;
     font-size: calc(11px + var(--font-bump));
   }
+  .response-row .q { white-space: nowrap; position: relative; cursor: default; }
+  .response-row .q[data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: 0; bottom: 100%;
+    background: var(--surface, #1a1e2e);
+    border: 1px solid var(--border, #506078);
+    color: var(--text, #ddd);
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 13px;
+    white-space: normal;
+    max-width: 450px;
+    z-index: 100;
+    pointer-events: none;
+  }
+  .response-row .a { font-weight: 500; }
+  .response-row:nth-child(odd) > span { background: rgba(255,255,255,0.03); }
+  .response-row:nth-child(even) > span { background: rgba(255,255,255,0.06); }
   /* ── Analysis session block ── */
   .analysis-block {
     display: flex;
@@ -619,7 +628,7 @@
     white-space: normal;
     word-break: break-word;
     line-height: 1.4;
-    max-height: 3.6em;
+    max-height: 7em;
     overflow: hidden;
     position: relative;
     color: var(--text-muted);
@@ -1542,8 +1551,9 @@
           <div class="response-grid">
             ${qaKeys.map(k => {
               const resp = responses[k];
-              const label = (resp && typeof resp === 'object' && resp.question) ? resp.question : formatResponseKey(k);
-              return `<div class="response-row"><span class="q">${escHtml(label)}:</span><span class="a">${escHtml(formatResponseValue(resp))}</span></div>`;
+              const shortLabel = formatResponseKey(k);
+              const fullQuestion = (resp && typeof resp === 'object' && resp.question) ? resp.question : '';
+              return `<div class="response-row"><span class="q" ${fullQuestion ? `data-tip="${escHtml(fullQuestion)}"` : ''}>${escHtml(shortLabel)}:</span><span class="a">${escHtml(formatResponseValue(resp))}</span></div>`;
             }).join('')}
           </div>
         </div>` : ''}

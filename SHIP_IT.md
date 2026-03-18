@@ -119,16 +119,14 @@ An
 - [x] ~~**HS9.6.** Create gitignored HTML page for nuking test and participant data on the server~~ — REMOVED, not needed
 
 #### 🐛 Bugs & fixes
-- [ ] **HS22.** Reset analysis completion flag for section #2 → [`homestretch/HS22.md`](homestretch/HS22.md)
-  - Root cause: `updateCompleteButtonState()` fires at `data-fetcher.js:706` before features are cleared at line 747
-  - Fix: call `clearStandaloneFeatures()` at start of `runAnalysis()` — ~15 min
-- [ ] **HS23.** Data viewer `[object Object]` bug → [`homestretch/HS23.md`](homestretch/HS23.md)
-  - Root cause: responses stored as envelope objects `{questionId, question, answer, ...}` but `formatResponseValue()` doesn't unwrap
-  - Fix: detect envelope pattern, extract `answer`, render as `{number} - {label}` — ~30 min
-- [ ] **HS24.** Free response "Submit on Return" + "Can close" toggles → [`homestretch/HS24.md`](homestretch/HS24.md)
-  - Follow existing toggle pattern: `toggle-label` + `toggle toggle-{class}` with `classList.toggle('on')`
-  - Add `freetext-settings-block`, wire Enter key on textarea, default both toggles ON
-  - ~1.5 hrs
+- [x] **HS22.** Reset analysis completion flag for section #2 ✅
+  - Fix: per-section feature counters + cancel lingering fill:forwards animation + keep button visible between sections
+- [x] **HS23.** Data viewer `[object Object]` bug ✅
+  - Fix: unwrap d1-sync response envelope, render radio/likert/freetext as readable text, questions 40% with ellipsis
+- [ ] **HS24.** Free response "Enter confirms" toggle → [`homestretch/HS24.md`](homestretch/HS24.md)
+  - Add toggle beneath Required in settings drawer, only for freetext question type
+  - Copy exact template from info button "Enter confirms" toggle
+  - Wire Enter key on textarea to click Next when toggle is ON
 
 #### ⚡ Performance
 - [ ] **HS25.** Pre-render spectrogram pyramids during welcome modals → [`homestretch/HS25.md`](homestretch/HS25.md)
