@@ -86,7 +86,16 @@
   .study-name-input:hover { border-color: var(--border); }
   .study-name-input:focus { border-color: var(--accent); }
 
-  .header-actions { display: flex; gap: 8px; align-items: center; width: 100%; padding-top: 6px; }
+  .header-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .header-actions-left { display: flex; align-items: center; gap: 0; }
+  .header-actions-right { display: flex; align-items: center; gap: 0; }
   .btn {
     padding: 8px 16px;
     border-radius: var(--radius);
@@ -137,17 +146,17 @@
     pointer-events: none;
   }
 
-  /* Study picker — prominent custom dropdown */
-  .study-picker-wrap { position: relative; flex-shrink: 0; min-width: 180px; max-width: 320px; }
+  /* Study picker — heaviest element, solid dark fill */
+  .study-picker-wrap { position: relative; flex-shrink: 0; min-width: 240px; max-width: 360px; }
   .study-picker-btn {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     width: 100%;
-    padding: 8px 12px;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    background: var(--surface);
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: #0e1218;
     color: var(--text);
     font-size: 14px;
     font-weight: 600;
@@ -155,11 +164,57 @@
     transition: all 0.15s;
     text-align: left;
   }
-  .study-picker-btn:hover { border-color: var(--accent); background: var(--surface2); }
+  .study-picker-btn:hover { border-color: rgba(255,255,255,0.22); background: #121820; }
   .study-picker-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-  .study-picker-chevron { flex-shrink: 0; opacity: 0.5; transition: transform 0.15s, opacity 0.15s; }
-  .study-picker-btn:hover .study-picker-chevron { opacity: 0.8; }
-  .study-picker-wrap.open .study-picker-chevron { transform: rotate(180deg); opacity: 0.8; }
+  .study-picker-chevron { flex-shrink: 0; opacity: 0.4; transition: transform 0.15s, opacity 0.15s; }
+  .study-picker-btn:hover .study-picker-chevron { opacity: 0.7; }
+  .study-picker-wrap.open .study-picker-chevron { transform: rotate(180deg); opacity: 0.7; }
+
+  /* File menu trigger — ghost text, no border/fill */
+  .file-menu-trigger {
+    background: none;
+    border: none;
+    color: #8899aa;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 6px 8px;
+    margin-left: 12px;
+    transition: color 0.15s;
+  }
+  .file-menu-trigger:hover { color: #ccccdd; }
+
+  /* Preview button — filled accent */
+  .btn-preview {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 20px;
+    border-radius: 6px;
+    border: none;
+    background: var(--accent);
+    color: #000;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-preview:hover { background: var(--accent-hover); }
+
+  /* Data Viewer link — ghost text, no fill */
+  .btn-ghost-link {
+    background: none;
+    border: none;
+    color: #8899aa;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 6px 8px;
+    margin-left: 12px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: color 0.15s;
+  }
+  .btn-ghost-link:hover { color: #ccccdd; }
   .study-picker-menu {
     display: none;
     position: absolute;
@@ -281,8 +336,9 @@
   .save-indicator {
     font-size: 11px;
     color: var(--text-muted);
-    min-width: 80px;
     text-align: right;
+    min-width: 0;
+    margin-left: 8px;
   }
 
   /* Step list */
@@ -1138,7 +1194,7 @@
   }
   .settings-preview-eye[data-tip]:hover::after { opacity: 1; }
   .speed-tip-wrap { position: relative; display: inline-block; width: 100%; }
-  .info-tip { position: relative; cursor: help; font-size: 13px; opacity: 0.45; }
+  .info-tip { position: relative; }
   .info-tip[data-tip]::after {
     content: attr(data-tip);
     position: absolute;
@@ -1741,42 +1797,46 @@
   <div class="header-panel">
     <!-- Row 0: Actions -->
     <div class="header-actions">
-      <!-- LEFT: Study Picker -->
-      <div class="study-picker-wrap dropdown-wrap">
-        <button class="study-picker-btn" id="studyPickerBtn" onclick="toggleStudyPicker(this)">
-          <span class="study-picker-name" id="studyPickerName">No study loaded</span>
-          <svg class="study-picker-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-        </button>
-        <div class="study-picker-menu" id="studyPickerMenu">
-          <div class="study-picker-list" id="studyPickerList"></div>
+      <div class="header-actions-left">
+        <!-- Study Picker — heavy, solid dark fill -->
+        <div class="study-picker-wrap dropdown-wrap">
+          <button class="study-picker-btn" id="studyPickerBtn" onclick="toggleStudyPicker(this)">
+            <span class="study-picker-name" id="studyPickerName">No study loaded</span>
+            <svg class="study-picker-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="study-picker-menu" id="studyPickerMenu">
+            <div class="study-picker-list" id="studyPickerList"></div>
+          </div>
+        </div>
+        <!-- File — ghost text, lightweight -->
+        <div class="dropdown-wrap">
+          <button class="file-menu-trigger" onclick="toggleFileMenu(this)">File ▾</button>
+          <div class="file-menu" id="fileMenu">
+            <div class="file-menu-header">New Study</div>
+            <div class="dropdown-item" onclick="newStudyFresh()">📄 Create New</div>
+            <div class="dropdown-item" onclick="newStudyClone()">📋 Duplicate Current</div>
+            <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
+            <div class="file-menu-header">Open</div>
+            <div class="dropdown-item" onclick="loadFromJson()">📄 Load from JSON file</div>
+            <div class="dropdown-item" onclick="loadFromServer()">☁️ Load from server</div>
+            <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
+            <div class="file-menu-header">Save</div>
+            <div class="dropdown-item" onclick="exportToJson()">💾 Save as JSON file</div>
+            <div class="dropdown-item" onclick="saveAsJson()">💾 Save as NEW JSON file...</div>
+            <div class="dropdown-item" onclick="saveDraft()">☁️ Save to server</div>
+            <div class="dropdown-item" onclick="saveAsToServer()">☁️ Save as NEW to server...</div>
+            <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
+            <div class="dropdown-item" onclick="copyFullStudyJson()">📋 Copy Study JSON</div>
+          </div>
         </div>
       </div>
-      <div style="flex:1;"></div>
-      <!-- MIDDLE: File operations -->
-      <div class="dropdown-wrap">
-        <button class="btn" onclick="toggleFileMenu(this)">📁 File ▾</button>
-        <div class="file-menu" id="fileMenu">
-          <div class="file-menu-header">New Study</div>
-          <div class="dropdown-item" onclick="newStudyFresh()">📄 Create New</div>
-          <div class="dropdown-item" onclick="newStudyClone()">📋 Duplicate Current</div>
-          <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
-          <div class="file-menu-header">Open</div>
-          <div class="dropdown-item" onclick="loadFromJson()">📄 Load from JSON file</div>
-          <div class="dropdown-item" onclick="loadFromServer()">☁️ Load from server</div>
-          <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
-          <div class="file-menu-header">Save</div>
-          <div class="dropdown-item" onclick="exportToJson()">💾 Save as JSON file</div>
-          <div class="dropdown-item" onclick="saveAsJson()">💾 Save as NEW JSON file...</div>
-          <div class="dropdown-item" onclick="saveDraft()">☁️ Save to server</div>
-          <div class="dropdown-item" onclick="saveAsToServer()">☁️ Save as NEW to server...</div>
-          <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
-          <div class="dropdown-item" onclick="copyFullStudyJson()">📋 Copy Study JSON</div>
-        </div>
+      <div class="header-actions-right">
+        <!-- Preview — filled accent button -->
+        <button class="btn-preview" onclick="previewStudy()" title="Preview full study"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Preview</button>
+        <!-- Data Viewer — ghost text link -->
+        <button class="btn-ghost-link" onclick="openDataExplorer()" title="Open participant data viewer">🔍 Data Viewer →</button>
+        <div class="save-indicator" id="saveIndicator"></div>
       </div>
-      <!-- RIGHT: Actions -->
-      <button class="btn" onclick="previewStudy()" title="Preview full study"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Preview</button>
-      <button class="btn" onclick="openDataExplorer()" title="Open full participant data viewer in a new tab">🔍 Data Viewer</button>
-      <div class="save-indicator" id="saveIndicator"></div>
       <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="handleJsonFile(event)">
     </div>
     <!-- Row 1: Study name -->
@@ -7365,15 +7425,21 @@
 
   function updateStudyPickerLabel(name) {
     const el = document.getElementById('studyPickerName');
-    if (el) el.textContent = name || 'No study loaded';
+    if (!el) return;
+    const slug = document.getElementById('slugValue')?.textContent?.trim();
+    const count = slug ? _studyParticipantCounts[slug] : null;
+    const countStr = count != null ? ` (${count})` : '';
+    el.innerHTML = escHtml(name || 'No study loaded') + (countStr ? `<span style="color:var(--text-muted);font-weight:400;font-size:12px;">${countStr}</span>` : '');
   }
 
   function toggleStudyPicker(btn) {
     const wrap = btn.closest('.study-picker-wrap');
     const isOpen = wrap.classList.contains('open');
     if (isOpen) { wrap.classList.remove('open'); return; }
-    renderStudyPickerList();
+    renderStudyPickerList(); // render immediately with cached counts
     wrap.classList.add('open');
+    // Fetch fresh participant counts in background, re-render when ready
+    fetchStudyParticipantCounts().then(() => renderStudyPickerList());
     setTimeout(() => {
       document.addEventListener('click', function close(e) {
         if (!wrap.contains(e.target)) {
@@ -7382,6 +7448,21 @@
         }
       });
     }, 0);
+  }
+
+  let _studyParticipantCounts = {}; // { slug: count } — cached from /api/studies
+
+  async function fetchStudyParticipantCounts() {
+    try {
+      const base = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+        ? 'https://spaceweather.now.audio' : location.origin;
+      const resp = await fetch(`${base}/api/studies`);
+      const data = await resp.json();
+      if (data.studies) {
+        _studyParticipantCounts = {};
+        for (const s of data.studies) _studyParticipantCounts[s.id] = s.participant_count || 0;
+      }
+    } catch (e) { console.warn('[PICKER] Could not fetch participant counts:', e); }
   }
 
   function renderStudyPickerList() {
@@ -7410,8 +7491,10 @@
     listEl.innerHTML = merged.map(s => {
       const isActive = s.slug === currentSlug;
       const timeStr = s.lastOpened ? relativeTime(s.lastOpened) : '';
+      const count = _studyParticipantCounts[s.slug];
+      const countStr = count != null ? ` (${count})` : '';
       return `<div class="study-picker-item${isActive ? ' active' : ''}" onclick="switchStudy('${escHtml(s.slug)}')">
-        <div class="study-picker-item-name">${escHtml(s.name || s.slug)}</div>
+        <div class="study-picker-item-name">${escHtml(s.name || s.slug)}<span style="color:var(--text-muted);font-weight:400;font-size:12px;">${countStr}</span></div>
         <div class="study-picker-item-meta">
           <span style="font-family:monospace;opacity:0.7;">${escHtml(s.slug)}</span>
           ${timeStr ? `<span>${timeStr}</span>` : ''}
@@ -7686,6 +7769,12 @@
       refreshStudyPicker();
     });
   })();
+  // Fetch participant counts in background so picker button shows count on first render
+  fetchStudyParticipantCounts().then(() => {
+    const slug = document.getElementById('slugValue')?.textContent?.trim();
+    const current = _pickerCache?.find(s => s.slug === slug);
+    if (current) updateStudyPickerLabel(current.name || slug);
+  });
   // ── Data Explorer launcher ──
   function openDataExplorer() {
     const slug = (document.getElementById('urlTagInput')?.value || document.getElementById('slugValue')?.textContent || '').trim();
