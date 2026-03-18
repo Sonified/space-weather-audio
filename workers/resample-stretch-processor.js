@@ -1,7 +1,7 @@
 /**
  * ResampleStretchProcessor
  *
- * Normal mode: reads samples at 1/stretchFactor rate.
+ * Normal mode: reads samples at the given speed.
  *
  * Scrub mode: Two cascaded one-pole LPFs (simulates mass/inertia).
  *   - Velocity is always continuous (no pitch jumps)
@@ -20,7 +20,7 @@ class ResampleStretchProcessor extends AudioWorkletProcessor {
     constructor(options) {
         super();
 
-        this.stretchFactor = options.processorOptions?.stretchFactor || 8.0;
+        this.speed = options.processorOptions?.speed || 1.0;
 
         // Audio source
         this.sourceBuffer = null;
@@ -110,8 +110,8 @@ class ResampleStretchProcessor extends AudioWorkletProcessor {
                     }
                     break;
 
-                case 'set-stretch':
-                    this.stretchFactor = data.factor;
+                case 'set-speed':
+                    this.speed = data.speed;
                     break;
 
                 case 'set-window-size':
@@ -269,7 +269,7 @@ class ResampleStretchProcessor extends AudioWorkletProcessor {
         }
 
         // ===== NORMAL STRETCH PLAYBACK =====
-        const readRate = 1 / this.stretchFactor;
+        const readRate = this.speed;
 
         for (let i = 0; i < channel.length; i++) {
             const pos = this.sourcePosition;

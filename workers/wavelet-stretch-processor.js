@@ -5,7 +5,7 @@
  * This processor just plays the resulting buffer at 1:1 rate.
  * No FFT, no wavelet math — just sequential sample playback with fade handling.
  *
- * When the stretch factor changes, the GPU re-computes the buffer and sends
+ * When the speed changes, the GPU re-computes the buffer and sends
  * it here via 'load-audio'. Crossfade is handled by the audio-player gain nodes.
  */
 
@@ -25,9 +25,9 @@ class WaveletStretchProcessor extends AudioWorkletProcessor {
         this.pendingSeekPosition = null;
         this.pendingPause = false;
 
-        // stretchFactor is stored for position reporting but doesn't affect playback rate
-        // (the buffer is already stretched)
-        this.stretchFactor = options.processorOptions?.stretchFactor || 2.0;
+        // speed is stored for position reporting but doesn't affect playback rate
+        // (the buffer is already processed by GPU at the target speed)
+        this.speed = options.processorOptions?.speed || 1.0;
 
         this.setupMessageHandler();
     }
@@ -79,10 +79,10 @@ class WaveletStretchProcessor extends AudioWorkletProcessor {
                     }
                     break;
 
-                case 'set-stretch':
+                case 'set-speed':
                     // Store for position tracking; doesn't change playback rate
-                    // (the buffer itself is re-computed by GPU when stretch changes)
-                    this.stretchFactor = data.factor;
+                    // (the buffer itself is re-computed by GPU when speed changes)
+                    this.speed = data.speed;
                     break;
 
                 // No-ops for compatibility with shared message protocol

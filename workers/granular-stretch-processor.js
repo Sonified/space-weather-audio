@@ -20,7 +20,7 @@ class GranularStretchProcessor extends AudioWorkletProcessor {
         if (DEBUG_AUDIO) console.log('🌾 GranularStretchProcessor constructor called');
 
         // Parameters
-        this.stretchFactor = options.processorOptions?.stretchFactor || 8.0;
+        this.speed = options.processorOptions?.speed || 1.0;
         this.grainSize = options.processorOptions?.grainSize || 2048; // ~46ms at 44.1kHz
         this.overlap = options.processorOptions?.overlap || 0.75; // 75% overlap = 4 grains playing at once
         this.scatter = options.processorOptions?.scatter || 0.1; // Random position jitter (0-1)
@@ -115,8 +115,8 @@ class GranularStretchProcessor extends AudioWorkletProcessor {
                     }
                     break;
 
-                case 'set-stretch':
-                    this.stretchFactor = data.factor;
+                case 'set-speed':
+                    this.speed = data.speed;
                     break;
 
                 case 'set-grain-size':
@@ -193,9 +193,9 @@ class GranularStretchProcessor extends AudioWorkletProcessor {
             this.outputBuffer[outIdx] += sample;
         }
 
-        // Advance source position (slowly for stretching)
-        // grainInterval samples of output = grainInterval/stretchFactor samples of input
-        const inputAdvance = this.grainInterval / this.stretchFactor;
+        // Advance source position based on speed
+        // grainInterval samples of output = grainInterval * speed samples of input
+        const inputAdvance = this.grainInterval * this.speed;
         this.sourcePosition += inputAdvance;
 
         // Advance output write position

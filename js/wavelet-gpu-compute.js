@@ -1725,13 +1725,14 @@ export class WaveletGPUCompute {
      * Uses cached CWT coefficients from Pass 1.
      * Fast path: re-run when stretch factor changes (~1-5ms).
      *
-     * @param {number} stretchFactor - Time stretch ratio (e.g., 2.0 for 2x slower)
+     * @param {number} speed - Playback speed (e.g., 0.5 = half speed, 2.0 = double speed)
      * @param {object} [options]
      * @param {number} [options.phaseRand=0] - Phase randomization (0=vocoder, 1=full random)
      * @param {boolean} [options.useUnwrapped=false] - Use GPU-unwrapped phase for pitch accuracy
      * @returns {Float32Array} Stretched audio samples
      */
-    async stretchAudio(stretchFactor, { phaseRand = 0, interpMode = 0, useUnwrapped = false } = {}) {
+    async stretchAudio(speed, { phaseRand = 0, interpMode = 0, useUnwrapped = false } = {}) {
+        const stretchFactor = 1 / speed;
         if (!this.cachedCwtBuffer) throw new Error('No cached CWT — call computeCWT first');
 
         const t0 = performance.now();
@@ -1837,11 +1838,12 @@ export class WaveletGPUCompute {
      * synthesis on CPU. Avoids the harmonic distortion of cos(phase*stretchFactor)
      * by accumulating phase from instantaneous frequency estimates.
      *
-     * @param {number} stretchFactor
+     * @param {number} speed - Playback speed (e.g., 0.5 = half speed, 2.0 = double speed)
      * @param {object} [options]
      * @returns {Float32Array}
      */
-    async stretchAudioCPU(stretchFactor, { phaseRand = 0 } = {}) {
+    async stretchAudioCPU(speed, { phaseRand = 0 } = {}) {
+        const stretchFactor = 1 / speed;
         if (!this.cachedCwtBuffer) throw new Error('No cached CWT — call computeCWT first');
 
         const t0 = performance.now();
@@ -1926,13 +1928,13 @@ export class WaveletGPUCompute {
     /**
      * Convenience: full pipeline (CWT + stretch) in one call.
      */
-    async waveletStretch(audioData, stretchFactor, params) {
+    async waveletStretch(audioData, speed, params) {
         if (params.transform === 'nsgt') {
-            return this.nsgtStretch(audioData, stretchFactor, params);
+            return this.nsgtStretch(audioData, speed, params);
         }
         await this.computeCWT(audioData, params);
         const useUnwrapped = params.phaseMode === 'accumulate';
-        return this.stretchAudio(stretchFactor, {
+        return this.stretchAudio(speed, {
             phaseRand: params.phaseRand || 0,
             interpMode: params.interpMode || 0,
             useUnwrapped
@@ -1947,11 +1949,12 @@ export class WaveletGPUCompute {
      * CPU handles extract/fold, scatter-add, and phase vocoder (all O(N) or smaller).
      *
      * @param {Float32Array} audioData - Input audio (mono)
-     * @param {number} stretchFactor - Time stretch ratio
+     * @param {number} speed - Playback speed (e.g., 0.5 = half speed, 2.0 = double speed)
      * @param {object} params - { dt, binsPerOctave, fMin }
      * @returns {Float32Array} Stretched audio
      */
-    async nsgtStretch(audioData, stretchFactor, { dt, binsPerOctave = 12, fMin = 20 } = {}) {
+    async nsgtStretch(audioData, speed, { dt, binsPerOctave = 12, fMin = 20 } = {}) {
+        const stretchFactor = 1 / speed;
         if (!this.initialized) throw new Error('WaveletGPUCompute not initialized');
 
         const t0 = performance.now();
@@ -2253,7 +2256,7 @@ export class WaveletGPUCompute {
      * Splits audio into overlapping chunks, CWT+stretches each, crossfades output.
      *
      * @param {Float32Array} audioData - Input audio samples (mono)
-     * @param {number} stretchFactor - Time stretch ratio (e.g., 2.0)
+     * @param {number} speed - Playback speed (e.g., 0.5 = half speed, 2.0 = double speed)
      * @param {object} params
      * @param {number} params.dt - Sample spacing (1/sampleRate)
      * @param {number} [params.w0=6] - Morlet frequency parameter
@@ -2263,7 +2266,7 @@ export class WaveletGPUCompute {
      * @param {function} [params.onChunkDone] - Progress callback(chunkIdx, numChunks, elapsedMs)
      * @returns {Float32Array} Stretched audio
      */
-    async waveletStretchChunked(audioData, stretchFactor, {
+    async waveletStretchChunked(audioData, speed, {
         dt, w0 = 6, dj = 0.1,
         transform = 'cwt', binsPerOctave = 12, fMin = 20, minBW = 0,
         phaseRand = 0,
@@ -2275,6 +2278,7 @@ export class WaveletGPUCompute {
     } = {}) {
         if (!this.initialized) throw new Error('WaveletGPUCompute not initialized');
 
+        const stretchFactor = 1 / speed;
         const t0 = performance.now();
 
         // Auto-calculate chunk size if not provided
@@ -2289,7 +2293,7 @@ export class WaveletGPUCompute {
 
         // If signal fits in one chunk, use the fast path
         if (audioData.length <= maxChunkSamples) {
-            const result = await this.waveletStretch(audioData, stretchFactor, { dt, w0, dj, transform, binsPerOctave, fMin, minBW, phaseRand, interpMode, phaseMode });
+            const result = await this.waveletStretch(audioData, speed, { dt, w0, dj, transform, binsPerOctave, fMin, minBW, phaseRand, interpMode, phaseMode });
             // Trim to exact expected output length (remove padding)
             const expectedLen = Math.round(audioData.length * stretchFactor);
             if (onChunkDone) onChunkDone(0, 1, performance.now() - t0);
@@ -2319,7 +2323,7 @@ export class WaveletGPUCompute {
             // CWT + stretch this chunk
             await this.computeCWT(chunk, { dt, w0, dj, transform, binsPerOctave, fMin, minBW });
             const useUnwrapped = phaseMode === 'accumulate';
-            const stretched = await this.stretchAudio(stretchFactor, {
+            const stretched = await this.stretchAudio(speed, {
                 phaseRand, interpMode, useUnwrapped
             });
 

@@ -67,7 +67,7 @@ const RTPGHI_WINDOW_MAP = { gauss: 0, hann: 1 };
 /**
  * Stretch audio using RTPGHI WASM.
  * @param {Float32Array} source - Input audio samples
- * @param {number} stretchFactor - Time stretch factor (e.g. 2.0 = 2x slower)
+ * @param {number} speed - Playback speed (e.g. 0.5 = half speed, 2.0 = double speed)
  * @param {Object} opts - Algorithm parameters
  * @param {number} [opts.M=2048] - FFT size
  * @param {number} [opts.hopDiv=8] - Hop divisor
@@ -77,8 +77,11 @@ const RTPGHI_WINDOW_MAP = { gauss: 0, hann: 1 };
  * @param {string} [opts.windowType='gauss'] - Window: 'gauss' or 'hann'
  * @returns {Float32Array} Stretched audio samples
  */
-function rtpghiStretchWASM(source, stretchFactor, opts = {}) {
+function rtpghiStretchWASM(source, speed, opts = {}) {
     if (!rtpghiWasmReady) throw new Error('RTPGHI WASM not initialized');
+
+    // WASM binary speaks stretch factor internally (1/speed)
+    const wasmFactor = 1 / speed;
 
     const ex = rtpghiWasmExports;
     const M        = opts.M || 2048;
@@ -93,7 +96,7 @@ function rtpghiStretchWASM(source, stretchFactor, opts = {}) {
     if (!plan) throw new Error('RTPGHI WASM: failed to create plan');
 
     // Query output length
-    const outLen = ex.rtpghi_output_length(source.length, M, hopDiv, stretchFactor);
+    const outLen = ex.rtpghi_output_length(source.length, M, hopDiv, wasmFactor);
     if (outLen <= 0) {
         ex.rtpghi_free(plan);
         return new Float32Array(0);
@@ -116,7 +119,7 @@ function rtpghiStretchWASM(source, stretchFactor, opts = {}) {
     // Run the stretch
     const t0 = performance.now();
     const actualLen = ex.rtpghi_stretch_block(
-        plan, inputPtr, source.length, outputPtr, outLen, stretchFactor
+        plan, inputPtr, source.length, outputPtr, outLen, wasmFactor
     );
     const elapsed = performance.now() - t0;
 
@@ -135,7 +138,7 @@ function rtpghiStretchWASM(source, stretchFactor, opts = {}) {
     const speedup = (source.length / 44100) / (elapsed / 1000);
     console.log(
         `%c[RTPGHI WASM] ${source.length.toLocaleString()} → ${actualLen.toLocaleString()} samples ` +
-        `(${stretchFactor.toFixed(2)}x) in ${elapsed.toFixed(0)}ms (${speedup.toFixed(1)}x realtime)`,
+        `(${speed.toFixed(2)}x speed) in ${elapsed.toFixed(0)}ms (${speedup.toFixed(1)}x realtime)`,
         'color: #9C27B0; font-weight: bold'
     );
 
@@ -145,14 +148,17 @@ function rtpghiStretchWASM(source, stretchFactor, opts = {}) {
 /**
  * Async stretch using chunked WASM API — allows progress updates between batches.
  * @param {Float32Array} source - Input audio samples
- * @param {number} stretchFactor - Time stretch factor
+ * @param {number} speed - Playback speed (e.g. 0.5 = half speed, 2.0 = double speed)
  * @param {Object} opts - Same as rtpghiStretchWASM, plus:
  * @param {function} [opts.onProgress] - Callback(fraction) called between batches
  * @param {number} [opts.batchSize=128] - Frames per batch (higher = fewer yields, lower = smoother progress)
  * @returns {Promise<Float32Array>} Stretched audio samples
  */
-async function rtpghiStretchWASMAsync(source, stretchFactor, opts = {}) {
+async function rtpghiStretchWASMAsync(source, speed, opts = {}) {
     if (!rtpghiWasmReady) throw new Error('RTPGHI WASM not initialized');
+
+    // WASM binary speaks stretch factor internally (1/speed)
+    const wasmFactor = 1 / speed;
 
     const ex = rtpghiWasmExports;
     const M        = opts.M || 2048;
@@ -167,7 +173,7 @@ async function rtpghiStretchWASMAsync(source, stretchFactor, opts = {}) {
     const plan = ex.rtpghi_init(M, hopDiv, gamma, tol, phaseMode, windowType);
     if (!plan) throw new Error('RTPGHI WASM: failed to create plan');
 
-    const outLen = ex.rtpghi_output_length(source.length, M, hopDiv, stretchFactor);
+    const outLen = ex.rtpghi_output_length(source.length, M, hopDiv, wasmFactor);
     if (outLen <= 0) {
         ex.rtpghi_free(plan);
         return new Float32Array(0);
@@ -189,7 +195,7 @@ async function rtpghiStretchWASMAsync(source, stretchFactor, opts = {}) {
 
     // Begin streaming stretch — returns total number of frames
     const totalFrames = ex.rtpghi_begin_stretch(
-        plan, inputPtr, source.length, outputPtr, outLen, stretchFactor
+        plan, inputPtr, source.length, outputPtr, outLen, wasmFactor
     );
 
     // Process in batches, yielding between each for UI updates
@@ -216,7 +222,7 @@ async function rtpghiStretchWASMAsync(source, stretchFactor, opts = {}) {
     const speedup = (source.length / 44100) / (elapsed / 1000);
     console.log(
         `%c[RTPGHI WASM] ${source.length.toLocaleString()} → ${actualLen.toLocaleString()} samples ` +
-        `(${stretchFactor.toFixed(2)}x) in ${elapsed.toFixed(0)}ms (${speedup.toFixed(1)}x realtime) [async]`,
+        `(${speed.toFixed(2)}x speed) in ${elapsed.toFixed(0)}ms (${speedup.toFixed(1)}x realtime) [async]`,
         'color: #9C27B0; font-weight: bold'
     );
 

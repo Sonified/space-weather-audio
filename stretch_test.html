@@ -1164,10 +1164,10 @@
             return out;
         }
 
-        async stretch(source, stretchFactor, onProgress = null) {
+        async stretch(source, speed, onProgress = null) {
             const M = this.M;
             const aSyn = this.aSyn;
-            const aAna = aSyn / stretchFactor;
+            const aAna = aSyn * speed;
             const bins = this.bins;
 
             const numInputFrames = Math.floor((source.length - M) / aAna) + 1;
@@ -1402,6 +1402,7 @@
             this.wrapper.classList.remove('open');
             this.trigger.setAttribute('aria-expanded', 'false');
             this.highlightedIndex = -1;
+            this.trigger.blur();
         }
 
         _highlight(index) {
@@ -1598,7 +1599,7 @@
         let gpuSource = null;           // AudioBufferSourceNode for GPU playback
         let gpuGain = null;             // GainNode for GPU playback
         let gpuIsProcessing = false;
-        let gpuPlayingStretch = null;   // stretch factor of currently-playing GPU buffer
+        let gpuPlayingSpeed = null;   // speed of currently-playing GPU buffer
 
         // Oscilloscope
         let oscAnalyser = null;
@@ -1651,10 +1652,7 @@
         function sliderToSpeed(sliderValue) {
             return 0.05 * Math.pow(200, sliderValue / 1000);
         }
-        // Stretch factor is inverse of speed (speed 2x = stretch 0.5x)
-        function sliderToStretch(sliderValue) {
-            return 1 / sliderToSpeed(sliderValue);
-        }
+        // Everything uses speed internally. No stretchFactor concept.
 
 
         // Slider fill gradient
@@ -1782,10 +1780,10 @@
 
         function updateStats(opts = {}) {
             if (!sourceBuffer) return;
-            const stretchFactor = opts.stretchFactor || sliderToStretch(parseFloat(stretchSlider.value));
+            const speed = opts.speed || sliderToSpeed(parseFloat(stretchSlider.value));
             const inputDuration = sourceBuffer.length / sourceSampleRate;
-            const outputDuration = inputDuration * stretchFactor;
-            const wavSize = 44 + Math.ceil(sourceBuffer.length * stretchFactor) * 2;
+            const outputDuration = inputDuration / speed;
+            const wavSize = 44 + Math.ceil(sourceBuffer.length / speed) * 2;
 
             if (opts.processingMs != null) {
                 lastProcessingMs = opts.processingMs;
@@ -1834,18 +1832,17 @@
             }
 
             currentAlgorithm = algorithmSelect.value;
+            const speed = sliderToSpeed(parseFloat(stretchSlider.value));
 
             if (currentAlgorithm === 'resample') {
                 stretchNode = new AudioWorkletNode(audioContext, 'resample-stretch-processor', {
-                    processorOptions: {
-                        stretchFactor: sliderToStretch(parseFloat(stretchSlider.value))
-                    }
+                    processorOptions: { speed }
                 });
             } else if (currentAlgorithm === 'spectral') {
                 stretchNode = new AudioWorkletNode(audioContext, 'spectral-stretch-processor', {
                     processorOptions: {
                         windowSize: parseInt(windowSelect.value),
-                        stretchFactor: sliderToStretch(parseFloat(stretchSlider.value)),
+                        speed,
                         overlap: parseFloat(overlapSlider.value) / 100
                     }
                 });
@@ -1853,13 +1850,13 @@
                 stretchNode = new AudioWorkletNode(audioContext, 'paul-stretch-processor', {
                     processorOptions: {
                         windowSize: parseInt(windowSelect.value),
-                        stretchFactor: sliderToStretch(parseFloat(stretchSlider.value))
+                        speed
                     }
                 });
             } else {
                 stretchNode = new AudioWorkletNode(audioContext, 'granular-stretch-processor', {
                     processorOptions: {
-                        stretchFactor: sliderToStretch(parseFloat(stretchSlider.value)),
+                        speed,
                         grainSize: parseInt(windowSelect.value),
                         overlap: parseFloat(overlapSlider.value) / 100,
                         scatter: 0.1
@@ -2027,7 +2024,7 @@
 
                 // Reset playhead and clear any pending resume from algorithm switch
                 playStartPosition = 0;
-                gpuPlayingStretch = null;
+                gpuPlayingSpeed = null;
                 playStartTime = audioContext ? audioContext.currentTime : 0;
                 playhead.style.left = '0%';
                 pendingResume = null;
@@ -2141,9 +2138,9 @@
                 stretchNode.port.postMessage({ type: 'pause' });
                 playBtn.textContent = '▶';
                 stopPlayheadAnimation();
-                const stretchFactor = sliderToStretch(parseFloat(stretchSlider.value));
+                const speed = sliderToSpeed(parseFloat(stretchSlider.value));
                 const elapsed = audioContext.currentTime - playStartTime;
-                playStartPosition += elapsed / stretchFactor;
+                playStartPosition += elapsed * speed;
                 setStatus('Paused.', 'active');
             } else {
                 stretchNode.port.postMessage({ type: 'play' });
@@ -2194,7 +2191,6 @@
             if (!sourceBuffer || gpuIsProcessing) return null;
             gpuIsProcessing = true;
 
-            const stretchFactor = sliderToStretch(parseFloat(stretchSlider.value));
             const speed = sliderToSpeed(parseFloat(stretchSlider.value));
             const speedLabel = speed < 10 ? speed.toFixed(2) : Math.round(speed);
             const algo = currentAlgorithm; // 'cwt', 'cqt', or 'rtpghi'
@@ -2218,7 +2214,7 @@
                         // WASM async path — chunked for progress updates
                         setStatus(`Processing RTPGHI at ${speedLabel}x speed...`, 'active');
                         showProgress(0);
-                        stretched = await rtpghiStretchWASMAsync(sourceBuffer, stretchFactor,
+                        stretched = await rtpghiStretchWASMAsync(sourceBuffer, speed,
                             { M, hopDiv, windowType, phaseMode, tol, gamma,
                               onProgress: (frac) => showProgress(frac) });
                     } else {
@@ -2227,7 +2223,7 @@
                         showProgress(0);
                         await new Promise(r => requestAnimationFrame(r));
                         const stretcher = new RTPGHIStretcher({ M, hopDiv, windowType, phaseMode, tol, gamma });
-                        stretched = await stretcher.stretch(sourceBuffer, stretchFactor, (frame, total) => {
+                        stretched = await stretcher.stretch(sourceBuffer, speed, (frame, total) => {
                             showProgress(frame / total);
                         });
                     }
@@ -2259,7 +2255,7 @@
                         showProgress((ci + 1) / total);
                     };
                     stretched = await waveletGPU.waveletStretchChunked(
-                        sourceBuffer, stretchFactor, opts
+                        sourceBuffer, speed, opts
                     );
                 }
 
@@ -2340,14 +2336,14 @@
             };
 
             // All position tracking in source-time
-            const stretchFactor = sliderToStretch(parseFloat(stretchSlider.value));
+            const speed = sliderToSpeed(parseFloat(stretchSlider.value));
             const sourceDuration = sourceBuffer.length / audioContext.sampleRate;
             playStartPosition = Math.max(0, Math.min(sourceOffset, sourceDuration - 0.01));
             playStartTime = audioContext.currentTime;
-            gpuPlayingStretch = stretchFactor;
+            gpuPlayingSpeed = speed;
 
             // Convert source position → output position for buffer seek
-            const outputOffset = Math.min(playStartPosition * stretchFactor, buffer.duration - 0.01);
+            const outputOffset = Math.min(playStartPosition / speed, buffer.duration - 0.01);
 
             if (fadeIn) {
                 gpuGain.gain.setValueAtTime(0, audioContext.currentTime);
@@ -2407,12 +2403,12 @@
         }
 
         // Get current playback position in source-seconds (unified for both modes)
-        // For GPU: optionally pass the stretch factor of the currently-playing buffer
-        function getCurrentSourcePosition(overrideStretch) {
+        // For GPU: optionally pass the speed of the currently-playing buffer
+        function getCurrentSourcePosition(overrideSpeed) {
             if (!audioContext) return 0;
             const elapsed = audioContext.currentTime - playStartTime;
-            const rate = overrideStretch || sliderToStretch(parseFloat(stretchSlider.value));
-            return playStartPosition + elapsed / rate;
+            const speed = overrideSpeed || sliderToSpeed(parseFloat(stretchSlider.value));
+            return playStartPosition + elapsed * speed;
         }
 
         async function togglePlayGPU() {
@@ -2421,9 +2417,9 @@
 
             if (isPlaying) {
                 // Pause — lock in source-time position
-                const stretchFactor = gpuPlayingStretch || sliderToStretch(parseFloat(stretchSlider.value));
+                const speed = gpuPlayingSpeed || sliderToSpeed(parseFloat(stretchSlider.value));
                 const elapsed = audioContext.currentTime - playStartTime;
-                playStartPosition += elapsed / stretchFactor;
+                playStartPosition += elapsed * speed;
                 stopGPUSource();
                 isPlaying = false;
                 playBtn.textContent = '▶';
@@ -2454,8 +2450,8 @@
         }
 
         // Process GPU stretch in background, then crossfade from whatever is currently playing.
-        // playbackStretch: the stretch factor of the currently-playing audio (for correct position calc during await)
-        async function processAndCrossfadeGPU(playbackStretch) {
+        // playbackSpeed: the speed of the currently-playing audio (for correct position calc during await)
+        async function processAndCrossfadeGPU(playbackSpeed) {
             if (!sourceBuffer) return;
 
             const buf = await runOfflineStretch();
@@ -2471,8 +2467,8 @@
             }
 
             // Calculate current source position
-            // Use playbackStretch if provided (old buffer plays at different rate than current slider)
-            const sourcePos = getCurrentSourcePosition(playbackStretch);
+            // Use playbackSpeed if provided (old buffer plays at different rate than current slider)
+            const sourcePos = getCurrentSourcePosition(playbackSpeed);
 
             // Fade out whatever is currently playing
             if (gpuSource) {
@@ -2504,7 +2500,7 @@
 
             if (isOffline) {
                 stopGPUSource();
-                gpuPlayingStretch = null;
+                gpuPlayingSpeed = null;
             } else if (stretchNode) {
                 stretchNode.port.postMessage({ type: 'pause' });
                 stretchNode.port.postMessage({ type: 'seek', data: { position: 0 } });
@@ -2542,11 +2538,11 @@
         function updatePlayhead() {
             if (!isPlaying || !sourceBuffer || !audioContext) return;
 
-            const stretchFactor = sliderToStretch(parseFloat(stretchSlider.value));
+            const speed = sliderToSpeed(parseFloat(stretchSlider.value));
             const elapsed = audioContext.currentTime - playStartTime;
 
-            // In stretched time, we advance through source at 1/stretchFactor rate
-            const sourceElapsed = elapsed / stretchFactor;
+            // We advance through source at the current speed
+            const sourceElapsed = elapsed * speed;
             const currentSourcePosition = playStartPosition + sourceElapsed;
 
             const sourceDuration = sourceBuffer.length / audioContext.sampleRate;
@@ -2836,52 +2832,76 @@
             saveSettings();
         });
 
-        // Stretch slider
-        // Track last stretch value for playhead calculation
-        let lastStretchFactor = sliderToStretch(parseFloat(stretchSlider.value));
+        // Speed slider
+        // Track last speed for playhead calculation
+        let lastSpeed = sliderToSpeed(parseFloat(stretchSlider.value));
 
         let gpuRestretchTimeout = null;
 
         stretchSlider.addEventListener('input', (e) => {
             const sliderValue = parseFloat(e.target.value);
-            const stretch = sliderToStretch(sliderValue);
             const speed = sliderToSpeed(sliderValue);
             stretchValue.textContent = (speed < 10 ? speed.toFixed(2) : Math.round(speed)) + 'x';
-            updateStats({ stretchFactor: stretch });
+            updateStats({ speed });
 
             if (isPlaying) setStatus(playingStatus(), 'active');
 
             const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
             if (isOffline) {
-                // Lock in source position using the PLAYING buffer's stretch rate
+                // Lock in source position using the PLAYING buffer's speed
                 if (isPlaying && audioContext) {
-                    const rate = gpuPlayingStretch || lastStretchFactor;
+                    const rate = gpuPlayingSpeed || lastSpeed;
                     const elapsed = audioContext.currentTime - playStartTime;
-                    playStartPosition += elapsed / rate;
+                    playStartPosition += elapsed * rate;
                     playStartTime = audioContext.currentTime;
                 }
-                lastStretchFactor = stretch;
+                lastSpeed = speed;
                 gpuProcessedBuffer = null; // invalidate — needs re-processing
-                if (isPlaying) {
-                    // Debounce: wait for slider to settle before GPU re-processing
+                if (sourceBuffer) {
+                    // Debounce: wait for slider to settle, then auto-render and play
                     clearTimeout(gpuRestretchTimeout);
-                    gpuRestretchTimeout = setTimeout(() => {
-                        processAndCrossfadeGPU(gpuPlayingStretch);
+                    gpuRestretchTimeout = setTimeout(async () => {
+                        if (!isPlaying) {
+                            // Auto-render and start playback
+                            playStartPosition = 0;
+                            const buf = await runOfflineStretch();
+                            if (buf && (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi')) {
+                                if (!audioContext) audioContext = new AudioContext();
+                                playGPUBuffer(buf, 0, true);
+                                isPlaying = true;
+                                playBtn.textContent = '⏸';
+                                startPlayheadAnimation();
+                                setStatus(playingStatus(), 'active');
+                            }
+                        } else {
+                            processAndCrossfadeGPU(gpuPlayingSpeed);
+                        }
                     }, 300);
                 }
                 return;
             }
 
-            // Lock in current position before changing stretch factor
+            // Lock in current position before changing speed
             if (isPlaying && audioContext) {
                 const elapsed = audioContext.currentTime - playStartTime;
-                playStartPosition += elapsed / lastStretchFactor;
+                playStartPosition += elapsed * lastSpeed;
                 playStartTime = audioContext.currentTime;
             }
-            lastStretchFactor = stretch;
+            lastSpeed = speed;
 
             if (stretchNode) {
-                stretchNode.port.postMessage({ type: 'set-stretch', data: { factor: stretch } });
+                stretchNode.port.postMessage({ type: 'set-speed', data: { speed } });
+            }
+
+            // Auto-play realtime algorithms on speed change if audio is loaded
+            if (!isPlaying && sourceBuffer && stretchNode) {
+                stretchNode.port.postMessage({ type: 'play' });
+                isPlaying = true;
+                playBtn.textContent = '⏸';
+                if (!audioContext) audioContext = new AudioContext();
+                playStartTime = audioContext.currentTime;
+                startPlayheadAnimation();
+                setStatus(playingStatus(), 'active');
             }
             saveSettings();
         });
@@ -2965,7 +2985,7 @@
                     return;
                 }
                 if (isPlaying) {
-                    await processAndCrossfadeGPU(gpuPlayingStretch);
+                    await processAndCrossfadeGPU(gpuPlayingSpeed);
                 } else {
                     await runOfflineStretch();
                 }
@@ -2974,7 +2994,7 @@
                     gpuParamChangePending = false;
                     gpuProcessedBuffer = null;
                     if (isPlaying) {
-                        processAndCrossfadeGPU(gpuPlayingStretch);
+                        processAndCrossfadeGPU(gpuPlayingSpeed);
                     } else {
                         runOfflineStretch();
                     }
@@ -3084,7 +3104,7 @@
                 gpuProcessedBuffer = null; // new algorithm = needs re-processing
 
                 // Lock in source position (unified — works from any mode)
-                const currentStretch = wasOffline ? gpuPlayingStretch : null;
+                const currentStretch = wasOffline ? gpuPlayingSpeed : null;
                 const sourcePos = wasPlaying ? getCurrentSourcePosition(currentStretch) : playStartPosition;
 
                 if (wasPlaying) {
@@ -3095,7 +3115,7 @@
                     const algoNames = { cwt: 'CWT (Original Morlet Wavelet)', cqt: 'CQT (Constant-Q)', rtpghi: 'RTPGHI (Phase Gradient)' };
                     setStatus(`Processing ${algoNames[algo]}...`, 'active');
                     // Old audio keeps playing, crossfade when GPU is ready
-                    processAndCrossfadeGPU(wasOffline ? gpuPlayingStretch : sliderToStretch(parseFloat(stretchSlider.value)));
+                    processAndCrossfadeGPU(wasOffline ? gpuPlayingSpeed : sliderToSpeed(parseFloat(stretchSlider.value)));
                 } else {
                     currentAlgorithm = algo;
                     // Auto-render in background so it's ready when they press Play
@@ -3104,7 +3124,7 @@
             } else if (!isOffline && audioContext) {
                 // Switching TO a worklet algorithm
                 // Get source position (unified — same calculation for both GPU and worklet source)
-                const currentStretch = wasOffline ? gpuPlayingStretch : null;
+                const currentStretch = wasOffline ? gpuPlayingSpeed : null;
                 const currentPosition = wasPlaying ? getCurrentSourcePosition(currentStretch) : playStartPosition;
 
                 currentAlgorithm = algo;
@@ -3113,7 +3133,7 @@
                 // Free GPU buffer when leaving GPU mode
                 if (wasOffline) {
                     gpuProcessedBuffer = null;
-                    gpuPlayingStretch = null;
+                    gpuPlayingSpeed = null;
                     // Redraw waveform with source audio (GPU mode drew the stretched output)
                     if (sourceBuffer) drawWaveform(sourceBuffer, { crossfade: true });
                 }
@@ -3411,11 +3431,10 @@
         async function renderAndDownload() {
             if (!sourceBuffer) return;
 
-            const stretchFactor = sliderToStretch(parseFloat(stretchSlider.value));
             const speed = sliderToSpeed(parseFloat(stretchSlider.value));
             const speedLabel = speed < 10 ? speed.toFixed(2) : Math.round(speed);
             const sampleRate = audioContext ? audioContext.sampleRate : 48000;
-            const outputLength = Math.ceil(sourceBuffer.length * stretchFactor);
+            const outputLength = Math.ceil(sourceBuffer.length / speed);
             const algo = algorithmSelect.value;
 
             downloadBtn.disabled = true;
@@ -3429,13 +3448,13 @@
                 if (algo === 'resample') {
                     await offlineCtx.audioWorklet.addModule('workers/resample-stretch-processor.js');
                     processorName = 'resample-stretch-processor';
-                    processorOptions = { stretchFactor };
+                    processorOptions = { speed };
                 } else if (algo === 'spectral') {
                     await offlineCtx.audioWorklet.addModule('workers/spectral-stretch-processor.js');
                     processorName = 'spectral-stretch-processor';
                     processorOptions = {
                         windowSize: parseInt(windowSelect.value),
-                        stretchFactor,
+                        speed,
                         overlap: parseFloat(overlapSlider.value) / 100
                     };
                 } else if (algo === 'paul') {
@@ -3443,13 +3462,13 @@
                     processorName = 'paul-stretch-processor';
                     processorOptions = {
                         windowSize: parseInt(windowSelect.value),
-                        stretchFactor
+                        speed
                     };
                 } else if (algo === 'granular') {
                     await offlineCtx.audioWorklet.addModule('workers/granular-stretch-processor.js');
                     processorName = 'granular-stretch-processor';
                     processorOptions = {
-                        stretchFactor,
+                        speed,
                         grainSize: parseInt(windowSelect.value),
                         overlap: parseFloat(overlapSlider.value) / 100,
                         scatter: 0.1

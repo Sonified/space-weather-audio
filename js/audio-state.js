@@ -26,7 +26,7 @@ export let sourceGainNode = null;      // GainNode for source path crossfade
 export let stretchAlgorithm = 'resample';  // 'resample' | 'paul' | 'granular' | 'wavelet'
 export let stretchNodes = {};          // Pre-primed nodes: { paul: node, granular: node, resample: node }
 export let stretchActive = false;      // Whether stretch path is currently the active output
-export let stretchFactor = 1.0;        // Current stretch factor (1/baseSpeed)
+export let stretchSpeed = 1.0;         // Current stretch speed (same unit as baseSpeed)
 export let stretchStartTime = 0;       // audioContext.currentTime when stretch playback started
 export let stretchStartPosition = 0;   // Source position (seconds) when stretch started
 
@@ -153,7 +153,7 @@ export function setStretchGainNode(value) { stretchGainNode = value; }
 export function setSourceGainNode(value) { sourceGainNode = value; }
 export function setStretchAlgorithm(value) { stretchAlgorithm = value; }
 export function setStretchActive(value) { stretchActive = value; }
-export function setStretchFactor(value) { stretchFactor = value; }
+export function setStretchSpeed(value) { stretchSpeed = value; }
 export function setStretchStartTime(value) { stretchStartTime = value; }
 export function setStretchStartPosition(value) { stretchStartPosition = value; }
 export function setPlaybackState(value) {

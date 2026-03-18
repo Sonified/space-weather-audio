@@ -22,17 +22,17 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
 
         // Default parameters
         this.windowSize = options.processorOptions?.windowSize || 4096;
-        this.stretchFactor = options.processorOptions?.stretchFactor || 8.0;
+        this.speed = options.processorOptions?.speed || 1.0;
         this.overlap = options.processorOptions?.overlap || 0.9; // 90% overlap for smooth output
 
-        if (DEBUG_AUDIO) console.log(`🎛️ Window size: ${this.windowSize}, Stretch factor: ${this.stretchFactor}, Overlap: ${this.overlap}`);
+        if (DEBUG_AUDIO) console.log(`🎛️ Window size: ${this.windowSize}, Speed: ${this.speed}, Overlap: ${this.overlap}`);
 
         // Derived values
         // For time-stretching: read input SLOWLY, write output at normal rate
         // Higher overlap = smoother output (less pulsing from random phases)
         this.halfWindow = this.windowSize / 2;
         this.outputHop = Math.max(1, Math.floor(this.windowSize * (1 - this.overlap))); // e.g., 87.5% overlap = hop of windowSize/8
-        this.inputHop = Math.max(1, Math.floor(this.outputHop / this.stretchFactor)); // Read input even slower
+        this.inputHop = Math.max(1, Math.floor(this.outputHop * this.speed)); // Read input at speed
 
         if (DEBUG_AUDIO) console.log(`🎛️ inputHop: ${this.inputHop}, outputHop: ${this.outputHop}`);
 
@@ -147,10 +147,10 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                     }
                     break;
 
-                case 'set-stretch':
-                    this.stretchFactor = data.factor;
-                    this.inputHop = Math.max(1, Math.floor(this.outputHop / this.stretchFactor));
-                    if (DEBUG_AUDIO) console.log(`🔄 Stretch factor: ${this.stretchFactor}, inputHop: ${this.inputHop}, outputHop: ${this.outputHop}`);
+                case 'set-speed':
+                    this.speed = data.speed;
+                    this.inputHop = Math.max(1, Math.floor(this.outputHop * this.speed));
+                    if (DEBUG_AUDIO) console.log(`🔄 Speed: ${this.speed}, inputHop: ${this.inputHop}, outputHop: ${this.outputHop}`);
                     break;
 
                 case 'set-window-size':
@@ -158,7 +158,7 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                     this.windowSize = data.size;
                     this.halfWindow = this.windowSize / 2;
                     this.outputHop = Math.max(1, Math.floor(this.windowSize * (1 - this.overlap)));
-                    this.inputHop = Math.max(1, Math.floor(this.outputHop / this.stretchFactor));
+                    this.inputHop = Math.max(1, Math.floor(this.outputHop * this.speed));
                     this.reinitializeBuffers();
                     if (DEBUG_AUDIO) console.log(`📐 Window size: ${this.windowSize}, inputHop: ${this.inputHop}, outputHop: ${this.outputHop}`);
                     break;
@@ -166,7 +166,7 @@ class SpectralStretchProcessor extends AudioWorkletProcessor {
                 case 'set-overlap':
                     this.overlap = data.overlap;
                     this.outputHop = Math.max(1, Math.floor(this.windowSize * (1 - this.overlap)));
-                    this.inputHop = Math.max(1, Math.floor(this.outputHop / this.stretchFactor));
+                    this.inputHop = Math.max(1, Math.floor(this.outputHop * this.speed));
                     if (DEBUG_AUDIO) console.log(`🔀 Overlap: ${this.overlap}, outputHop: ${this.outputHop}`);
                     break;
 

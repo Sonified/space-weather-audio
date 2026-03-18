@@ -320,40 +320,38 @@ export function updatePlaybackSpeed() {
 
     // Stretch algorithm dropdown is always visible in standard mode
 
-    // Stretch switching: sub-1x speed uses stretch processor (unless algorithm is 'resample')
-    const useStretch = baseSpeed < 1.0 && State.getCompleteSamplesLength() > 0 && State.stretchAlgorithm !== 'resample';
+    // Stretch switching: non-resample algorithms use stretch processor at ANY speed
+    const useStretch = State.stretchAlgorithm !== 'resample' && State.getCompleteSamplesLength() > 0;
 
     if (useStretch) {
-        const stretchFactor = 1 / baseSpeed;
-
         if (!State.stretchActive) {
             // Engage stretch processor
-            engageStretch(stretchFactor);
+            engageStretch(baseSpeed);
         } else {
-            // Already stretching — lock in position using OLD factor, then update
+            // Already stretching — lock in position using OLD speed, then update
             if (State.playbackState === PlaybackState.PLAYING && State.audioContext) {
-                const lockedPosition = getCurrentPosition(); // Uses State.stretchFactor (old value)
+                const lockedPosition = getCurrentPosition(); // Uses State.stretchSpeed (old value)
                 State.setStretchStartPosition(lockedPosition);
                 State.setStretchStartTime(State.audioContext.currentTime);
             }
-            // Now update the factor in state and worklet
-            State.setStretchFactor(stretchFactor);
+            // Now update speed in state and worklet
+            State.setStretchSpeed(baseSpeed);
             if (State.stretchNode) {
-                State.stretchNode.port.postMessage({ type: 'set-stretch', data: { factor: stretchFactor } });
+                State.stretchNode.port.postMessage({ type: 'set-speed', data: { speed: baseSpeed } });
             }
 
-            // Wavelet: re-run GPU stretch pass with new factor (CWT is cached)
+            // Wavelet: re-run GPU stretch pass with new speed (CWT is cached)
             if (State.stretchAlgorithm === 'wavelet') {
-                waveletStretchAndLoad(stretchFactor).catch(err => {
+                waveletStretchAndLoad(baseSpeed).catch(err => {
                     console.error('🎛️ Wavelet re-stretch failed:', err);
                 });
             }
         }
     } else if (State.stretchActive) {
-        // Disengage stretch (speed >= 1.0, or switched to resample)
+        // Disengage stretch (switched to resample or no audio data)
         disengageStretch(finalSpeed);
     } else {
-        // Normal source path (resample or speed >= 1.0)
+        // Normal source path (resample)
         if (State.workletNode) {
             State.workletNode.port.postMessage({
                 type: 'set-speed',
@@ -441,7 +439,7 @@ async function waveletComputeCWT(samples) {
  * Run GPU stretch pass and load result into wavelet AudioWorklet.
  * Fast path: only re-runs Pass 2 (CWT coefficients are cached from Pass 1).
  */
-async function waveletStretchAndLoad(stretchFactor) {
+async function waveletStretchAndLoad(speed) {
     if (!waveletGPU) {
         console.warn('[Wavelet GPU] Not initialized — cannot stretch');
         return false;
@@ -454,11 +452,11 @@ async function waveletStretchAndLoad(stretchFactor) {
 
     if (waveletCWTReady) {
         // Fast path: CWT is cached on GPU, just re-run the stretch pass
-        stretched = await waveletGPU.stretchAudio(stretchFactor);
+        stretched = await waveletGPU.stretchAudio(speed);
     } else if (waveletAudioSamples) {
         // Chunked path: file too large for single CWT — process in chunks
         console.log(`%c[Wavelet GPU] Using chunked processing for ${waveletAudioSamples.length} samples...`, 'color: #E040FB');
-        stretched = await waveletGPU.waveletStretchChunked(waveletAudioSamples, stretchFactor, {
+        stretched = await waveletGPU.waveletStretchChunked(waveletAudioSamples, speed, {
             dt, w0: 6, dj: 0.1,
             onChunkDone(chunkIdx, numChunks, elapsedMs) {
                 console.log(`%c[Wavelet GPU] Chunk ${chunkIdx + 1}/${numChunks} done (${elapsedMs.toFixed(0)}ms)`, 'color: #E040FB');
@@ -505,11 +503,11 @@ function createStretchNode(algorithm) {
 
     let options;
     if (algorithm === 'resample' || algorithm === 'wavelet') {
-        options = { processorOptions: { stretchFactor: 1.0 } };
+        options = { processorOptions: { speed: 1.0 } };
     } else if (algorithm === 'paul') {
-        options = { processorOptions: { windowSize, stretchFactor: 1.0 } };
+        options = { processorOptions: { windowSize, speed: 1.0 } };
     } else {
-        options = { processorOptions: { stretchFactor: 1.0, grainSize: windowSize, overlap: 0.75, scatter: 0.1 } };
+        options = { processorOptions: { speed: 1.0, grainSize: windowSize, overlap: 0.75, scatter: 0.1 } };
     }
 
     const node = new AudioWorkletNode(State.audioContext, processorName, options);
@@ -709,26 +707,26 @@ function audioSecondsToRealWorld(audioSeconds) {
 export function getCurrentPosition() {
     if (State.stretchActive && State.audioContext) {
         const elapsed = State.audioContext.currentTime - State.stretchStartTime;
-        // Stretch processor consumes (1/stretchFactor) audio-seconds per wall-clock second.
+        // Stretch processor consumes (speed) audio-seconds per wall-clock second.
         // Convert consumed audio-seconds back to real-world seconds.
-        const audioSecondsConsumed = elapsed / State.stretchFactor;
+        const audioSecondsConsumed = elapsed * State.stretchSpeed;
         return State.stretchStartPosition + audioSecondsToRealWorld(audioSecondsConsumed);
     }
     return State.currentAudioPosition;
 }
 
 /**
- * Engage stretch processor (speed dropped below 1.0).
+ * Engage stretch processor for the current algorithm.
  * Uses pre-primed node — just seek, play, and crossfade.
  */
-function engageStretch(stretchFactor) {
+function engageStretch(speed) {
     if (!State.audioContext || State.getCompleteSamplesLength() === 0) return;
 
     const wasPlaying = State.playbackState === PlaybackState.PLAYING;
     const currentPosition = State.currentAudioPosition;
     const algorithm = State.stretchAlgorithm;
 
-    console.log(`🎛️ Engaging stretch [${algorithm}]: factor=${stretchFactor.toFixed(1)}x, position=${currentPosition.toFixed(2)}s, playing=${wasPlaying}`);
+    console.log(`🎛️ Engaging stretch [${algorithm}]: speed=${speed.toFixed(2)}x, position=${currentPosition.toFixed(2)}s, playing=${wasPlaying}`);
 
     // Get pre-primed node
     const node = State.stretchNodes[algorithm];
@@ -739,17 +737,17 @@ function engageStretch(stretchFactor) {
 
     State.setStretchNode(node);
     State.setStretchActive(true);
-    State.setStretchFactor(stretchFactor);
+    State.setStretchSpeed(speed);
     State.setStretchStartPosition(currentPosition);
     State.setStretchStartTime(State.audioContext.currentTime);
 
-    // Set stretch factor on the processor
-    node.port.postMessage({ type: 'set-stretch', data: { factor: stretchFactor } });
+    // Set speed on the processor
+    node.port.postMessage({ type: 'set-speed', data: { speed } });
 
     if (algorithm === 'wavelet') {
         // Wavelet: run GPU stretch pass, then load result and engage
         node._pendingResume = { position: currentPosition, shouldPlay: wasPlaying, doCrossfade: true };
-        waveletStretchAndLoad(stretchFactor).then(ok => {
+        waveletStretchAndLoad(speed).then(ok => {
             if (!ok) return;
             // node._ready will be set by the 'loaded' message handler
         }).catch(err => {
@@ -815,9 +813,9 @@ export function switchStretchAlgorithm(algorithm) {
         return;
     }
 
-    // If switching to a real stretch algorithm while speed < 1.0 and stretch is NOT active, engage
-    if (algorithm !== 'resample' && baseSpeed < 1.0 && !State.stretchActive && State.getCompleteSamplesLength() > 0) {
-        engageStretch(1 / baseSpeed);
+    // If switching to a real stretch algorithm and stretch is NOT active, engage
+    if (algorithm !== 'resample' && !State.stretchActive && State.getCompleteSamplesLength() > 0) {
+        engageStretch(baseSpeed);
         return;
     }
 
@@ -825,7 +823,6 @@ export function switchStretchAlgorithm(algorithm) {
     if (State.stretchActive && State.audioContext) {
         const currentPosition = getCurrentPosition();
         const wasPlaying = State.playbackState === PlaybackState.PLAYING;
-        const stretchFactor = 1 / baseSpeed;
         const newNode = State.stretchNodes[algorithm];
 
         if (!newNode) {
@@ -844,7 +841,7 @@ export function switchStretchAlgorithm(algorithm) {
         State.stretchGainNode.gain.linearRampToValueAtTime(0, now + SWITCH_FADE);
 
         // Prepare new node during fade-out (messages are queued, won't produce audio until 'play')
-        newNode.port.postMessage({ type: 'set-stretch', data: { factor: stretchFactor } });
+        newNode.port.postMessage({ type: 'set-speed', data: { speed: baseSpeed } });
         const audioPos = realWorldToAudioSeconds(currentPosition);
         newNode.port.postMessage({ type: 'seek', data: { position: audioPos } });
 
@@ -862,7 +859,7 @@ export function switchStretchAlgorithm(algorithm) {
             State.stretchGainNode.gain.linearRampToValueAtTime(1, swapTime + SWITCH_FADE);
         }, SWITCH_FADE * 1000 + 5); // +5ms safety margin
 
-        State.setStretchFactor(stretchFactor);
+        State.setStretchSpeed(baseSpeed);
         State.setStretchStartPosition(currentPosition);
         State.setStretchStartTime(State.audioContext.currentTime);
     }

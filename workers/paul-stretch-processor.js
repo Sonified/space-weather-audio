@@ -37,7 +37,7 @@ class PaulStretchProcessor extends AudioWorkletProcessor {
 
         // Parameters
         this.winSize = options.processorOptions?.windowSize || 4096;
-        this.ratio = options.processorOptions?.stretchFactor || 8.0;
+        this.speed = options.processorOptions?.speed || 1.0;
 
         // Derived
         this.halfWinSize = this.winSize / 2;
@@ -50,7 +50,7 @@ class PaulStretchProcessor extends AudioWorkletProcessor {
         this.samplesOut = this.createSamplesQueue();
 
         // Set initial displacePos for input queue
-        this.samplesIn.setDisplacePos((this.winSize * 0.5) / this.ratio);
+        this.samplesIn.setDisplacePos((this.winSize * 0.5) * this.speed);
 
         // Working buffers for process()
         this.blockIn = new Float32Array(this.winSize);
@@ -357,10 +357,10 @@ class PaulStretchProcessor extends AudioWorkletProcessor {
                     }
                     break;
 
-                case 'set-stretch':
-                    this.ratio = data.factor;
-                    this.samplesIn.setDisplacePos((this.winSize * 0.5) / this.ratio);
-                    if (DEBUG_AUDIO) console.log(`🔄 Paul: Stretch factor: ${this.ratio}`);
+                case 'set-speed':
+                    this.speed = data.speed;
+                    this.samplesIn.setDisplacePos((this.winSize * 0.5) * this.speed);
+                    if (DEBUG_AUDIO) console.log(`🔄 Paul: Speed: ${this.speed}`);
                     break;
 
                 case 'set-window-size':
@@ -413,7 +413,7 @@ class PaulStretchProcessor extends AudioWorkletProcessor {
         this.re = new Array(winSize).fill(0);
         this.im = new Array(winSize).fill(0);
         this.amplitudes = new Float32Array(this.halfWinSize + 1);
-        this.samplesIn.setDisplacePos((this.winSize * 0.5) / this.ratio);
+        this.samplesIn.setDisplacePos((this.winSize * 0.5) * this.speed);
         this.resetBuffers();
     }
 
