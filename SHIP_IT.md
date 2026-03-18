@@ -88,25 +88,43 @@ An
   - Listening/tuning task, not code — use `stretch_test.html` with GOES data
   - Determine: Paul (window size, overlap %), Wavelet (w0, dj, phase mode, interpolation)
   - Save chosen params as defaults in study config
+  - **Feeds into HS44** — chosen wavelet params used to generate pre-rendered audio files
 - [ ] **HS3.1.** Wire up stretch algorithm assignment from randomized conditions → [`homestretch/HS3.1.md`](homestretch/HS3.1.md)
   - ✅ Playback speed done — `step.playbackSpeed` applied in study-flow.js + feature-viewer.js
   - ✅ Global speed toggle in study builder syncs to all per-card inputs
   - **Remaining:** stretch algorithm from condition (`_assignedProcessing` → wavelet) not yet integrated
-- [ ] **HS3.2.** Double ensure analysis tasks appear in correct order based on condition, and correct stretch mode → [`homestretch/HS3.2.md`](homestretch/HS3.2.md)
-  - Manual verification task — run through as different participants, check console `[ASSIGN]` logs
+- [x] **HS3.2a.** Verify correct data (dates/spacecraft) assigned per condition and section ✅
+  - Confirmed end-to-end: study config → `applyAnalysisConfig` → `__STUDY_CONFIG` → `startStreaming` → `setCurrentMetadata` → x-axis dates correct
+  - Works with randomization swapping date ranges between sections
+  - Verified on fresh load, resume/refresh, and bypass-cache paths
+- [ ] **HS3.2b.** Verify correct stretch algorithm applied per condition → [`homestretch/HS3.2.md`](homestretch/HS3.2.md)
+  - Manual verification: run as different participants, check `[ASSIGN]` logs for processing assignment
+  - Confirm `_assignedProcessing` maps to correct stretch mode per section
   - ~30 min
 
-#### 🌊 Real-time client-side wavelet stretch (replaces pre-baked HS2)
-- [ ] **HS26.** Process wavelet stretch in chunks as data arrives — integrated into study flow → [`homestretch/HS26.md`](homestretch/HS26.md)
-  - `waveletStretchChunked()` in `wavelet-gpu-compute.js` — production chunked pipeline exists
-- [ ] **HS27.** Background render ahead of the playhead — integrated into study flow → [`homestretch/HS27.md`](homestretch/HS27.md)
-  - `processAndCrossfadeGPU()` + `waveletStretchAndLoad()` already handle this
-- [ ] **HS28.** Crossfade between chunks — integrated into study flow → [`homestretch/HS28.md`](homestretch/HS28.md)
-  - 150ms crossfade built into both stretch_test.html and main app
-- [ ] **HS29.** Handle playhead jumps with an opacity fade while the stretch catches up → [`homestretch/HS29.md`](homestretch/HS29.md)
-  - Partially done in stretch_test.html, may need wiring in main app
-  - CSS opacity transition on spectrogram container, skip if cached
-  - ~30 min
+#### 🌊 Wavelet stretch — pre-rendered from server (replaces client-side GPU HS26-29)
+> **Insight:** Wavelet-stretched audio is ~4 MB per region/speed. Pre-render locally via `stretch_test.html`, upload to R2, serve to participants. No WebGPU needed on client. Paul stretch remains real-time (already works in worklet). The GPU streaming pipeline (`stretch_test.html`) is the *tool* for generating these files.
+
+- [ ] **HS43.** Determine de-trended audio role in study flow
+  - How does de-trended data incorporate? Is it a condition variable, a default, or user-toggled?
+  - Decide: serve raw vs de-trended vs both per condition
+- [ ] **HS44.** Generate pre-rendered wavelet audio files for all study conditions
+  - Use `stretch_test.html` to render each GOES region × wavelet speed (e.g. 1.25x)
+  - Tune wavelet params (w0, dj, phase mode) — this is the HS1 listening task
+  - Verify gain/balance sounds good, normalize appropriately
+  - Export as WAV files
+- [ ] **HS45.** Upload pre-rendered wavelet audio to R2 and wire download into study flow
+  - Store in R2 at e.g. `emic-data/wavelet/{region}_{speed}.wav`
+  - Study config maps condition → R2 URL
+  - Client: fetch WAV → `decodeAudioData()` → `load-audio` to wavelet worklet
+  - Speed metadata (e.g. 1.25) used for playhead math only — worklet plays at 1x sample rate
+- [ ] **HS3.1.** Wire up stretch algorithm assignment from randomized conditions → [`homestretch/HS3.1.md`](homestretch/HS3.1.md)
+  - ✅ Playback speed done — `step.playbackSpeed` applied in study-flow.js + feature-viewer.js
+  - ✅ Global speed toggle in study builder syncs to all per-card inputs
+  - **Remaining:** stretch algorithm from condition (`_assignedProcessing` → wavelet) — for wavelet conditions, fetch pre-rendered audio from R2 instead of local GPU compute
+- [x] ~~**HS26-29.**~~ Real-time client-side wavelet stretch — superseded by pre-rendered server approach
+  - Streaming render-ahead prototype complete in `stretch_test.html` (ChunkScheduler, healing-block priority, crossfade)
+  - Kept as the rendering tool + future portal feature, not needed for study participants
 - [x] **HS30.** Fixed at 1.25x speed for now (the study's stretch condition)
 - [x] **HS31.** Add spectrogram shift on speed change option in Data Playback panel on study builder ✅
   - "Lock spectrogram to 1× view" toggle in Data Playback panel, saved to config as `lockSpectrogramTo1x`
@@ -118,13 +136,23 @@ An
 - [ ] **HS39.** Add de-trend (DC offset removal) toggle to Data Playback panel in study builder → [`homestretch/HS39.md`](homestretch/HS39.md)
   - Config option to pre-set the de-trend checkbox state on the study interface
   - Wire into study config, apply on analysis start
-- [ ] **HS40.** Spectrogram gain slider — build on study.html first, then wire into builder → [`homestretch/HS40.md`](homestretch/HS40.md)
-  - **Phase 1:** Add gain slider to study.html bottom bar (far right), advanced mode — controls spectrogram brightness/contrast
-  - **Phase 2:** Add gain config option to study builder Data Playback panel (set initial value for participants)
-- [ ] **HS41.** Determine ideal gain integration strategy — auto-gain? → [`homestretch/HS41.md`](homestretch/HS41.md)
-  - Investigate: fixed gain vs auto-gain (normalize to data range) vs participant-adjustable
-  - How should gain interact with different datasets, stretch algorithms, and playback speeds?
-  - Design decision + implementation
+- [ ] **HS40.** Spectrogram gain & contrast sliders — build on study.html first, then wire into builder → [`homestretch/HS40.md`](homestretch/HS40.md)
+  - **Phase 1:** Add gain (brightness) + contrast sliders to study.html bottom bar (far right), advanced mode
+  - **Phase 2:** Add config options to study builder Data Playback panel (set initial values for participants)
+  - **Architecture:** Zero recomputation — both map to existing TSL uniforms:
+    - **Gain** = shift `uDbFloor` → slides dB window up/down (lower floor = fainter signals visible)
+    - **Contrast** = adjust `uDbRange` → narrow/widen dB window (smaller range = more contrast)
+    - **Tile path (u8):** `(normalized * contrast) + brightness` before colormap lookup — one uniform each
+    - Both paths GPU-interactive, instant re-render, no FFT recompute
+- [ ] **HS41.** Auto-gain normalization system → [`homestretch/HS41.md`](homestretch/HS41.md)
+  - Dropdown: **None / Outliers / RMS / Both**
+    - **None** — raw dB values, manual gain/contrast only
+    - **Outliers** (percentile) — ignore top/bottom 2%, stretch remaining range to fill colormap. Makes each dataset look good independently.
+    - **RMS** — compute mean energy per dataset, offset dB window so all datasets appear equally bright. Good for cross-dataset consistency.
+    - **Both** — percentile first (set dB window), then RMS offset (level-match across datasets)
+  - Compute: piggyback on FFT pass — accumulate sum-of-squares (RMS) and/or histogram (percentile) with minimal overhead
+  - Manual gain/contrast sliders (HS40) layer on top of auto-gain baseline
+  - Config option in study builder Data Playback panel (set normalization mode for participants)
 
 #### 🔨 Build tasks (~2-3 hrs)
 - [x] **HS16.** Code for matching participant's audio score with processing type, time period, and order received ✅
@@ -145,12 +173,15 @@ An
   - Client: `If-Modified-Since` header on all polls, `visibilitychange` pauses polling when tab hidden
   - Client heartbeat disabled (`last_heartbeat` column never read)
   - Result: ~150x reduction in D1 reads (47M/day → projected <50k/day)
-- [ ] **HS25.** Pre-render spectrogram pyramids during welcome modals → [`homestretch/HS25.md`](homestretch/HS25.md)
-  - Data preloading exists but GPU pyramid computation still triggers at analysis start
-  - Suppression hooks exist: `setSuppressPyramidReady()`, `setOnTileReady(null)`
-  - Hook after `data-preload-complete` event, compute tiles in background, show on analysis start
-  - Only pre-render current section's tiles (not both)
-  - ~2-3 days, main risk is race conditions if users click through modals fast
+- [x] **HS25.** Auto-trigger GPU pyramid computation → [`homestretch/HS25.md`](homestretch/HS25.md) ✅
+  - Compute pipeline runs during welcome modals: `computeSpectrogramTiles()` → FFT → tiles → pyramid cache (no display)
+  - Present pipeline at analysis start: detects pre-computed tiles → viewport + waveform/minimap → instant `renderFrame()`
+  - Config toggle: `experimentalDesign.preRenderPyramid` in study builder Data Playback panel
+  - Cache key validation (`spacecraft:dataset:startTime:endTime`) prevents stale tiles
+  - Resume/refresh: preloads current step first, pre-renders correct section (respects randomized date assignments)
+  - Section 2: pre-renders during between-section modal after section 1 completes
+  - Clean visual reset between sections (spectrogram, minimap, axes, feature boxes, playhead)
+  - Fallback: if download still in progress or compute not done, progressive path kicks in — zero degradation
 
 #### 👁️ Feature Viewer
 - [x] **HS32.** Feature viewer section switching bug (2→1 hangs on "loading") ✅
@@ -200,6 +231,10 @@ An
 - [x] **HS21.** Complete data format refactoring and audit — D1 schema rebuild (session_id→group_id, dead column cleanup), R2 config snapshots on launch, participant ID prefix system (P_/TEST_/PREVIEW_), verified full export pipeline end-to-end with 71-feature stress test
 - ~~**HS10.** Fill blocks with randomization-sim~~
 - ~~**HS11.** Test filling blocks live — hover over blocks for info, click to bring up data~~
+
+#### 🎧 Stretch Test Page
+- [x] **ST1.** Add GOES Region 1 & 2 audio presets (raw + detrended) to stretch_test.html ✅
+- [x] **ST2.** Fix speed slider persistence across sessions (was saved but not restored) ✅
 
 ### IT'S GO TIME (IGT)
 

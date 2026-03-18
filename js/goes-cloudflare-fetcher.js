@@ -415,8 +415,9 @@ async function runDownloadSession(session) {
                 // Missing chunk — zeros
                 rawSamples = new Float32Array(chunk.samples);
             } else {
-                // Check IndexedDB cache first
-                const cached = await getChunk(satellite, component, chunk.date, chunk.type, chunk.startTime);
+                // Check IndexedDB cache first (unless bypass is enabled)
+                const bypassCache = document.getElementById('drawerBypassCache')?.checked;
+                const cached = !bypassCache ? await getChunk(satellite, component, chunk.date, chunk.type, chunk.startTime) : null;
                 if (cached) {
                     rawSamples = cached;
                     if (window.pm?.data) console.log(`💾 [CACHE HIT] chunk ${i + 1}/${chunkSchedule.length} [${chunk.type}]`);

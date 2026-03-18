@@ -86,7 +86,7 @@ export function setTileDuration(mode, dataDurationSec, totalSamples) {
         const tileCount = Math.max(1, Math.round(totalSamples / TARGET_SAMPLES_PER_TILE));
         const rawDuration = dataDurationSec / tileCount;
         baseTileDurationSec = snapToNiceBoundary(rawDuration, dataDurationSec);
-        if (window.pm?.gpu) console.log(`🧩 Adaptive tile: ${rawDuration.toFixed(1)}s raw → ${baseTileDurationSec}s snapped (${(baseTileDurationSec/60).toFixed(1)} min)`);
+        if (window.pm?.rendering) console.log(`🧩 Adaptive tile: ${rawDuration.toFixed(1)}s raw → ${baseTileDurationSec}s snapped (${(baseTileDurationSec/60).toFixed(1)} min)`);
     } else {
         baseTileDurationSec = Number(mode);
     }
@@ -184,7 +184,7 @@ export function initPyramid(dataDurationSec, sampleRate) {
     }
 
     const totalTiles = pyramidLevels.reduce((sum, lvl) => sum + lvl.length, 0);
-    if (window.pm?.gpu) {
+    if (window.pm?.rendering) {
         console.log(`🔺 Pyramid initialized: ${pyramidLevels.length} levels, ${totalTiles} total tiles, base=${baseTileDurationSec.toFixed(1)}s (${(baseTileDurationSec/60).toFixed(1)}min)`);
         for (let i = 0; i < pyramidLevels.length; i++) {
             const lvl = pyramidLevels[i];
@@ -356,7 +356,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
                 await gpuCompute.initialize(sharedDevice);
                 computeBackend = 'gpu';
             } catch (e) {
-                if (window.pm?.gpu) console.warn('[Pyramid] WebGPU init failed, falling back to CPU workers:', e.message);
+                if (window.pm?.rendering) console.warn('[Pyramid] WebGPU init failed, falling back to CPU workers:', e.message);
                 gpuCompute = null;
                 computeBackend = 'cpu';
             }
@@ -368,7 +368,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
             await workerPool.initialize();
         }
         const zeroCopy = computeBackend === 'gpu' && isWebGPURenderer();
-        if (window.pm?.gpu) console.log(`[Pyramid] Compute backend: ${computeBackend === 'gpu' ? 'WebGPU' : `CPU worker pool (${workerPool?.numWorkers} workers)`}${zeroCopy ? ' (zero-readback)' : ''}`);
+        if (window.pm?.rendering) console.log(`[Pyramid] Compute backend: ${computeBackend === 'gpu' ? 'WebGPU' : `CPU worker pool (${workerPool?.numWorkers} workers)`}${zeroCopy ? ' (zero-readback)' : ''}`);
     }
 
     const halfFFT = Math.floor(fftSize / 2);
@@ -437,7 +437,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
 
         // Diagnostic: flag tiles rendered with incomplete data
         const dataCompleteness = expectedTileLen > 0 ? tileSamples.length / expectedTileLen : 1;
-        if (dataCompleteness < 0.999 && window.pm?.gpu) {
+        if (dataCompleteness < 0.999 && window.pm?.rendering) {
             console.warn(`⚠️ PARTIAL TILE ${tileIdx}: ${(dataCompleteness*100).toFixed(1)}% data (${tileSamples.length}/${expectedTileLen} samples), startSec=${tile.startSec}, endSec=${tile.endSec}`);
         }
 
@@ -471,7 +471,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
 
     if (tileJobs.length === 0) {
         pyramidReady = true;
-        if (window.pm?.gpu) console.log(`🔺 All ${baseTiles.length} tiles already ready`);
+        if (window.pm?.rendering) console.log(`🔺 All ${baseTiles.length} tiles already ready`);
         if (!suppressPyramidReadyEvent) window.dispatchEvent(new Event('pyramid-ready'));
         return;
     }
@@ -479,7 +479,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
     const useZeroCopy = computeBackend === 'gpu' && isWebGPURenderer();
     const processor = computeBackend === 'gpu' ? gpuCompute : workerPool;
     const backendLabel = useZeroCopy ? 'GPU zero-copy' : (computeBackend === 'gpu' ? 'GPU' : `${workerPool?.numWorkers} workers`);
-    if (window.pm?.gpu) console.log(`🔺 Dispatching ${tileJobs.length} tiles via ${backendLabel}`);
+    if (window.pm?.rendering) console.log(`🔺 Dispatching ${tileJobs.length} tiles via ${backendLabel}`);
     const startTime = performance.now();
     let tilesComplete = alreadyReady;
     const totalTiles = baseTiles.length;
@@ -497,7 +497,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         tile.actualLastColSec = tileOriginSec + ((meta.numTimeSlices - 1) * meta.exactHop + halfFFT) * secPerResampledSample;
 
         // Diagnostic: sample one boundary in the middle
-        if (window.pm?.gpu && tileIdx === Math.floor(baseTiles.length / 2)) {
+        if (window.pm?.rendering && tileIdx === Math.floor(baseTiles.length / 2)) {
             const prev = tileIdx > 0 ? baseTiles[tileIdx - 1] : null;
             console.log(`🔍 TILE BOUNDARY (tiles ${tileIdx-1}/${tileIdx}, fft=${fftSize}, sr=${sampleRate})`);
             if (prev) console.log(`  prev: endSec=${prev.endSec} actualLast=${prev.actualLastColSec?.toFixed(6)}`);
@@ -511,7 +511,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         tilesComplete++;
         const step = Math.max(1, Math.floor(totalTiles / 10));
         if (tilesComplete % step === 0 || tilesComplete === totalTiles) {
-            if (window.pm?.gpu) console.log(`🔺 Tiles: ${tilesComplete}/${totalTiles} (${((tilesComplete / totalTiles) * 100).toFixed(0)}%)`);
+            if (window.pm?.rendering) console.log(`🔺 Tiles: ${tilesComplete}/${totalTiles} (${((tilesComplete / totalTiles) * 100).toFixed(0)}%)`);
         }
         if (onProgress) onProgress(tilesComplete, totalTiles);
         if (onTileReady) onTileReady(0, tileIdx);
@@ -525,7 +525,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         // Reset cascade timing accumulators
         for (const k in cascadeLevelTime) delete cascadeLevelTime[k];
         for (const k in cascadeLevelBuilt) delete cascadeLevelBuilt[k];
-        gpuCompute.processTilesZeroCopy(tileJobs,
+        await gpuCompute.processTilesZeroCopy(tileJobs,
             (tileIdx, gpuTexture, width, height) => {
                 const tile = baseTiles[tileIdx];
                 finalizeTileMeta(tileIdx, width, height);
@@ -547,7 +547,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
             const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
             const cascadeMs = (performance.now() - cascadeStartTime).toFixed(1);
             const builtLevels = pyramidLevels.filter(lvl => lvl.some(t => t.ready)).length;
-            if (window.pm?.gpu) console.log(`🔺 All ${tileJobs.length} base tiles + ${builtLevels} pyramid levels in ${elapsed}s (${backendLabel}, cascade: ${cascadeMs}ms)`);
+            if (window.pm?.rendering) console.log(`🔺 All ${tileJobs.length} base tiles + ${builtLevels} pyramid levels in ${elapsed}s (${backendLabel}, cascade: ${cascadeMs}ms)`);
             if (!suppressPyramidReadyEvent) window.dispatchEvent(new Event('pyramid-ready'));
         }
     } else {
@@ -565,7 +565,7 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
         if (!signal.aborted) {
             pyramidReady = true;
             const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
-            if (window.pm?.gpu) console.log(`🔺 All ${tileJobs.length} base tiles rendered in ${elapsed}s (${backendLabel})`);
+            if (window.pm?.rendering) console.log(`🔺 All ${tileJobs.length} base tiles rendered in ${elapsed}s (${backendLabel})`);
             if (!suppressPyramidReadyEvent) window.dispatchEvent(new Event('pyramid-ready'));
         }
     }
@@ -643,7 +643,7 @@ function cascadeUpwardGPU(level, tileIndex) {
     const totalInLevel = parentTiles.length;
     const readyInLevel = cascadeLevelBuilt[nextLevel];
     if (readyInLevel >= totalInLevel) {
-        if (window.pm?.gpu) console.log(`🔺 L${nextLevel} complete: ${totalInLevel} tiles, ${parent.width}×${freqBins}, ${cascadeLevelTime[nextLevel].toFixed(2)}ms`);
+        if (window.pm?.rendering) console.log(`🔺 L${nextLevel} complete: ${totalInLevel} tiles, ${parent.width}×${freqBins}, ${cascadeLevelTime[nextLevel].toFixed(2)}ms`);
     }
 
     if (onTileReady) {
@@ -738,7 +738,7 @@ function cascadeUpwardCPU(level, tileIndex) {
 
     parent.ready = true;
 
-    if (window.pm?.gpu) console.log(`🔺 Built L${nextLevel} tile ${parentIndex}: ${parent.width} cols, ${(parent.duration / 60).toFixed(1)}min`);
+    if (window.pm?.rendering) console.log(`🔺 Built L${nextLevel} tile ${parentIndex}: ${parent.width} cols, ${(parent.duration / 60).toFixed(1)}min`);
 
     if (onTileReady) {
         onTileReady(nextLevel, parentIndex);
@@ -829,6 +829,29 @@ export function updateAllTileTextureFilters(minFilter) {
     }
 }
 
+/**
+ * Pre-populate the tile texture cache for ALL ready tiles across all levels.
+ * Called after renderBaseTiles() during the pre-render compute pipeline (HS25).
+ * Creates Three.js textures (shell for GPU path) and queues GPU swaps.
+ * @returns {number} Number of tiles cached
+ */
+export function preCacheAllTileTextures() {
+    let cached = 0;
+    for (let level = 0; level < pyramidLevels.length; level++) {
+        const tiles = pyramidLevels[level];
+        for (let i = 0; i < tiles.length; i++) {
+            const tile = tiles[i];
+            if (tile.ready) {
+                const key = tileKey(level, i);
+                getTileTexture(tile, key);
+                cached++;
+            }
+        }
+    }
+    if (window.pm?.rendering) console.log(`%c🎨 [PRE-CACHE] ${cached} tile textures cached across ${pyramidLevels.length} levels`, 'color: #d29922;');
+    return cached;
+}
+
 // ─── Event Hooks ────────────────────────────────────────────────────────────
 
 /**
@@ -895,7 +918,7 @@ export function disposePyramid() {
     }
     computeBackend = null;
 
-    if (window.pm?.gpu) console.log('🔺 Pyramid disposed');
+    console.log('🔺 Pyramid disposed');
 }
 
 /**
@@ -942,7 +965,7 @@ export function rebuildUpperLevels() {
     }
 
     onTileReady = savedCallback;
-    if (window.pm?.gpu) console.log(`🔺 Rebuilt upper levels (mode: ${pyramidReduceMode})`);
+    if (window.pm?.rendering) console.log(`🔺 Rebuilt upper levels (mode: ${pyramidReduceMode})`);
 }
 
 /**

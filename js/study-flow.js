@@ -813,9 +813,38 @@ async function processPreloadQueue() {
         if (window.pm?.data) console.log(`📦 [PRELOAD] Starting prefetch for step ${stepIndex} ("${step.title || 'Analysis'}") — ${mapped.spacecraft}/${mapped.dataset} ${startTime} → ${endTime}`);
 
         try {
-            const { prefetchCloudflareData } = await import('./goes-cloudflare-fetcher.js');
+            const { prefetchCloudflareData, getSessionAudioBuffer } = await import('./goes-cloudflare-fetcher.js');
             await prefetchCloudflareData(mapped.spacecraft, mapped.dataset, startTime, endTime);
             if (window.pm?.data) console.log(`📦 [PRELOAD] Prefetch complete for step ${stepIndex}`);
+
+            // HS25: Pre-render GPU pyramid tiles for the NEXT analysis step only
+            // (only one pyramid can exist at a time — pre-rendering a second would destroy the first)
+            // Only pre-render the step the user is about to enter, not future steps
+            const nextAnalysisIdx = studyConfig.steps.findIndex((s, i) => i >= currentStepIndex && s.type === 'analysis');
+            const isNextAnalysis = stepIndex === nextAnalysisIdx;
+            const { isPreRenderDone } = await import('./main-window-renderer.js');
+            const alreadyPreRendered = isPreRenderDone();
+            console.log(`%c🎨 [HS25] Prefetch done step=${stepIndex}. preRenderPyramid=${studyConfig?.experimentalDesign?.preRenderPyramid}, alreadyPreRendered=${alreadyPreRendered}, isNextAnalysis=${isNextAnalysis} (nextAnalysisIdx=${nextAnalysisIdx})`, 'color: #d29922; font-weight: bold;');
+            if (studyConfig?.experimentalDesign?.preRenderPyramid && !alreadyPreRendered && isNextAnalysis) {
+                try {
+                    const sessionData = getSessionAudioBuffer(mapped.spacecraft, mapped.dataset, startTime, endTime);
+                    console.log(`%c🎨 [HS25] sessionData: buffer=${sessionData?.buffer?.length}, metadata=${!!sessionData?.metadata}`, 'color: #d29922;');
+                    if (sessionData?.buffer && sessionData.metadata) {
+                        const { computeSpectrogramTiles } = await import('./main-window-renderer.js');
+                        const cacheKey = `${mapped.spacecraft}:${mapped.dataset}:${startTime}:${endTime}`;
+                        console.log(`%c🎨 [HS25] Starting compute pipeline: ${cacheKey}`, 'color: #d29922; font-weight: bold;');
+                        await computeSpectrogramTiles(sessionData.buffer, {
+                            dataDurationSec: sessionData.metadata.realWorldSpanSeconds,
+                            sampleRate: sessionData.metadata.playbackSamplesPerRealSecond,
+                            totalExpectedSamples: sessionData.metadata.totalExpectedSamples,
+                            cacheKey,
+                        });
+                        console.log(`%c🎨 [HS25] Compute pipeline DONE`, 'color: #3fb950; font-weight: bold;');
+                    }
+                } catch (preRenderErr) {
+                    console.warn(`🎨 [HS25] Pre-render failed:`, preRenderErr);
+                }
+            }
         } catch (err) {
             if (window.pm?.data) console.log(`📦 [PRELOAD] Prefetch failed for step ${stepIndex}:`, err.message);
         }
@@ -1269,6 +1298,14 @@ async function init() {
 
     // Set up data preloading AFTER condition order is applied (correct step order)
     if (window.pm?.study_flow) console.log(`%c[INIT] ⑤ Initializing data preload (condition order applied)`, 'color: #58a6ff; font-weight: bold;');
+    // HS25: On resume, preload the CURRENT step first so it's first in the compute queue
+    // (initDataPreload skips steps <= currentStepIndex, which would miss the step we're about to enter)
+    if (currentStepIndex > 0) {
+        const currentStep = studyConfig.steps[currentStepIndex];
+        if (currentStep?.type === 'analysis' && currentStep.dataPreload) {
+            triggerPreloadForStep(currentStepIndex);
+        }
+    }
     initDataPreload(studyConfig);
 
     // Start the flow
@@ -1618,6 +1655,10 @@ async function runCurrentStep() {
         case 'analysis':
             // Show welcome-back modal for returning participants
             if (isReturningParticipant) {
+                // HS25: Pre-render tiles while welcome-back modal is showing (fire-and-forget)
+                if (studyConfig?.experimentalDesign?.preRenderPyramid) {
+                    triggerPreloadForStep(currentStepIndex);
+                }
                 const rpConfig = studyConfig.experimentalDesign?.returningParticipant;
                 if (rpConfig) {
                     const priorAnalysisCount = studyConfig.steps
@@ -2152,6 +2193,37 @@ async function runAnalysis(step) {
     // Don't hide the button — modal overlay covers it on non-analysis steps,
     // and initCompleteButton resets it cleanly for the next analysis section.
     completeBtnActive = false;
+
+    // Clean visual slate between sections — black spectrogram, clear minimap/axes/overlays
+    import('./main-window-renderer.js').then(({ clearDisplayForSectionTransition }) => {
+        clearDisplayForSectionTransition();
+    });
+    import('./minimap-window-renderer.js').then(({ clearMinimapDisplay }) => {
+        clearMinimapDisplay();
+    });
+    import('./day-markers.js').then(({ clearDayMarkers }) => clearDayMarkers());
+    import('./spectrogram-renderer.js').then(({ clearAllCanvasFeatureBoxes }) => clearAllCanvasFeatureBoxes());
+    // Clear 2D overlay canvases (playhead, frequency axis)
+    for (const id of ['spectrogram-playhead-overlay', 'spectrogram-axis']) {
+        const c = document.getElementById(id);
+        if (c) { const ctx = c.getContext('2d'); if (ctx) ctx.clearRect(0, 0, c.width, c.height); }
+    }
+
+    // HS25: Trigger pre-render for the NEXT analysis section (fire-and-forget).
+    // Data is already cached from initial prefetch — compute tiles in background
+    // while between-section modals/questionnaires are showing.
+    if (studyConfig?.experimentalDesign?.preRenderPyramid) {
+        const nextAnalysisIdx = studyConfig.steps.findIndex((s, i) => i > currentStepIndex && s.type === 'analysis');
+        if (nextAnalysisIdx !== -1) {
+            import('./main-window-renderer.js').then(({ resetPreRender }) => {
+                resetPreRender();
+                preloadTriggered[nextAnalysisIdx] = false; // allow re-trigger
+                triggerPreloadForStep(nextAnalysisIdx);
+                console.log(`%c🎨 [HS25] Section complete — queued pre-render for next analysis step ${nextAnalysisIdx}`, 'color: #d29922; font-weight: bold;');
+            });
+        }
+    }
+
     advanceStep();
 }
 

@@ -645,6 +645,28 @@ export function rebuildWaveformColormapTexture() {
  * Dispose all waveform Three.js resources (textures, material, geometry, observers)
  * Called during dataset switch to prevent memory leaks.
  */
+/**
+ * Visual-only clear — hide meshes and render one black frame.
+ * Does NOT dispose textures or scene objects. Used for section transitions.
+ */
+export async function clearMinimapDisplay() {
+    if (wfMesh) wfMesh.visible = false;
+    if (wfSpectroMesh) wfSpectroMesh.visible = false;
+    if (wfRenderer && wfScene && wfCamera) {
+        await wfRenderer.renderAsync(wfScene, wfCamera);
+    }
+    // Clear overlay canvases (viewport box, day markers, x-axis ticks)
+    if (wfOverlayCanvas) {
+        const ctx = wfOverlayCanvas.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, wfOverlayCanvas.width, wfOverlayCanvas.height);
+    }
+    const overlayIds = ['minimap-buttons', 'minimap-x-axis', 'minimap-axis'];
+    for (const id of overlayIds) {
+        const c = document.getElementById(id);
+        if (c) { const ctx = c.getContext('2d'); if (ctx) ctx.clearRect(0, 0, c.width, c.height); }
+    }
+}
+
 export function clearWaveformRenderer() {
     // Dispose textures
     if (wfSampleTexture) { wfSampleTexture.dispose(); wfSampleTexture = null; }

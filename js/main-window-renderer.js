@@ -19,7 +19,7 @@ import { zoomState } from './zoom-state.js';
 import { getInterpolatedTimeRange, getZoomDirection, getZoomTransitionProgress, getOldTimeRange, isZoomTransitionInProgress, getRegionOpacityProgress } from './minimap-x-axis-renderer.js';
 import { isStudyMode } from './master-modes.js';
 import { getColorLUT } from './colormaps.js';
-import { initPyramid, renderBaseTiles, pickLevel, pickContinuousLevel, getVisibleTiles as getPyramidVisibleTiles, getTileTexture, setOnTileReady, disposePyramid, tilesReady, TILE_COLS, detectBC4Support, setCompressionMode, getCompressionMode, isBC4Supported, throttleWorkers, resumeWorkers, updateAllTileTextureFilters, setPyramidReduceMode, setTileDuration, getBaseTileDuration, setSuppressPyramidReady } from './spectrogram-pyramid.js';
+import { initPyramid, renderBaseTiles, pickLevel, pickContinuousLevel, getVisibleTiles as getPyramidVisibleTiles, getTileTexture, getTile, setOnTileReady, disposePyramid, tilesReady, TILE_COLS, detectBC4Support, setCompressionMode, getCompressionMode, isBC4Supported, throttleWorkers, resumeWorkers, updateAllTileTextureFilters, setPyramidReduceMode, setTileDuration, getBaseTileDuration, setSuppressPyramidReady, preCacheAllTileTextures } from './spectrogram-pyramid.js';
 import { initScrollZoom } from './scroll-zoom.js';
 import { uploadWaveformSamples, drawWaveformFromMinMax } from './minimap-window-renderer.js';
 
@@ -171,7 +171,7 @@ function processPendingGPUTextureSwaps() {
 
     if (copied > 0) {
         device.queue.submit([encoder.finish()]);
-        if (window.pm?.gpu) console.log(`%c[GPU Copy] ${copied} textures filled from compute GPUTextures`, 'color: #4CAF50');
+        if (window.pm?.rendering) console.log(`%c[GPU Copy] ${copied} textures filled from compute GPUTextures`, 'color: #4CAF50');
     }
 
     pendingGPUTextureSwaps = remaining;
@@ -844,11 +844,11 @@ async function initThreeScene() {
     // WebGPU device loss handler
     if (threeRenderer.backend?.device) {
         threeRenderer.backend.device.lost.then((info) => {
-            if (window.pm?.gpu) console.warn(`WebGPU device lost: ${info.message} (reason: ${info.reason})`);
+            if (window.pm?.rendering) console.warn(`WebGPU device lost: ${info.message} (reason: ${info.reason})`);
         });
     }
 
-    if (window.pm?.gpu) console.log(`Three.js WebGPU spectrogram renderer initialized (${canvas.width}x${canvas.height})`);
+    if (window.pm?.rendering) console.log(`Three.js WebGPU spectrogram renderer initialized (${canvas.width}x${canvas.height})`);
 }
 
 function buildColormapTexture() {
@@ -1279,7 +1279,7 @@ function uploadMainWaveformSamples(expectedTotalSamples = 0) {
     wfUMipTexHeight.value = parseFloat(wfMipTextureHeight);
     wfUMipTotalBins.value = parseFloat(numBins);
 
-    if (window.pm?.gpu) console.log(`Main waveform uploaded: ${wfTotalSamples.toLocaleString()} samples, mip: ${numBins.toLocaleString()} bins (${WF_MIP_BIN_SIZE} samples/bin)`);
+    if (window.pm?.rendering) console.log(`Main waveform uploaded: ${wfTotalSamples.toLocaleString()} samples, mip: ${numBins.toLocaleString()} bins (${WF_MIP_BIN_SIZE} samples/bin)`);
 }
 
 // ─── Diagnostic functions ───────────────────────────────────────────────────
@@ -1539,7 +1539,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
             const sr = zoomState.sampleRate;
             fullTextureFirstColSec = (fftSize / 2) / sr;
             fullTextureLastColSec = ((numTimeSlices - 1) * hopSize + fftSize / 2) / sr;
-            if (window.pm?.gpu) console.log(`🎯 [RENDER] fullTex: ${fullTextureFirstColSec.toFixed(3)}s → ${fullTextureLastColSec.toFixed(3)}s | sr: ${sr} | fft: ${fftSize} | hop: ${hopSize} | slices: ${numTimeSlices} | canvas: ${width}x${height} | totalSamples: ${totalSamples}`);
+            if (window.pm?.rendering) console.log(`🎯 [RENDER] fullTex: ${fullTextureFirstColSec.toFixed(3)}s → ${fullTextureLastColSec.toFixed(3)}s | sr: ${sr} | fft: ${fftSize} | hop: ${hopSize} | slices: ${numTimeSlices} | canvas: ${width}x${height} | totalSamples: ${totalSamples}`);
 
             if (fullMagnitudeTexture) fullMagnitudeTexture.dispose();
             fullMagnitudeTexture = createMagnitudeTexture(result.data, result.width, result.height);
@@ -1576,7 +1576,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
             renderBaseTiles(State.completeSamplesArray, pyramidSampleRate, fftSize, viewCenterSec, (done, total) => {
                 if (done === total) {
                     const elapsed = ((performance.now() - tileStartTime) / 1000).toFixed(1);
-                    if (window.pm?.gpu) console.log(`🔺 All ${total} base tiles rendered in ${elapsed}s`);
+                    if (window.pm?.rendering) console.log(`🔺 All ${total} base tiles rendered in ${elapsed}s`);
                     (window.requestIdleCallback || (cb => setTimeout(cb, 200)))(() => {
                         State.compressSamplesArray();
                     });
@@ -1622,7 +1622,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
             finalizeRender();
             startPyramid();
 
-            if (window.pm?.gpu) console.log(`🔺 Pyramid-only mode: pyramid started, computing full FFT for mini-map...`);
+            if (window.pm?.rendering) console.log(`🔺 Pyramid-only mode: pyramid started, computing full FFT for mini-map...`);
             const elapsed = performance.now() - startTime;
             if (!isStudyMode()) {
                 console.log(`Spectrogram (pyramid init) in ${elapsed.toFixed(0)}ms`);
@@ -1631,7 +1631,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
             // Compute full FFT in background for the mini-map
             computeFullFFT().then(ok => {
                 if (ok) {
-                    if (window.pm?.gpu) console.log(`🔺 Pyramid-only: mini-map FFT ready`);
+                    if (window.pm?.rendering) console.log(`🔺 Pyramid-only: mini-map FFT ready`);
                     window.dispatchEvent(new Event('spectrogram-ready'));
                 }
             });
@@ -1810,7 +1810,7 @@ function updateTileMeshPositions(visibleTiles) {
     }
 
     // Diagnostic: log mesh positions to check abutment
-    if (window.pm?.gpu && !window._tileMeshDiagDone && visibleTiles.length >= 2) {
+    if (window.pm?.rendering && !window._tileMeshDiagDone && visibleTiles.length >= 2) {
         window._tileMeshDiagDone = true;
         for (let i = 0; i < Math.min(visibleTiles.length, 4); i++) {
             const vt = visibleTiles[i];
@@ -2189,6 +2189,10 @@ export function updateSpectrogramViewportFromZoom() {
  * - renderFrame() never overrides these visibility decisions.
  */
 function tryUseTiles(viewStartSec, viewEndSec) {
+    // Don't display tiles before viewport is initialized (prevents premature
+    // display from resize events during pre-render modal phase)
+    if (!progressiveInitDone && !completeSpectrogramRendered) return false;
+
     const canvasWidth = threeRenderer?.domElement?.width || 1200;
     const maxSlots = tileMeshes.length; // 32
 
@@ -2310,7 +2314,7 @@ function tryUseTiles(viewStartSec, viewEndSec) {
 
     const newActiveTexture = visibleTiles.length > 0 ? 'tiles' : 'full';
     // Diagnostic: log display mode transitions
-    if (window.pm?.gpu && newActiveTexture !== activeTexture) {
+    if (window.pm?.rendering && newActiveTexture !== activeTexture) {
         console.log(`🖼️ Display: ${activeTexture} → ${newActiveTexture} | mesh.visible=${mesh?.visible} | pyramidOnly=${pyramidOnlyMode} | tiles=${visibleTiles.length} level=${usedLevel}`);
     }
     activeTexture = newActiveTexture;
@@ -2374,7 +2378,35 @@ export function restoreInfiniteCanvasFromCache() {
     State.setSpectrogramInitialized(true);
 }
 
+/**
+ * Visual-only clear for section transitions (HS25). Hides all meshes and renders
+ * one black frame. Does NOT destroy textures, pyramid, or pre-render cache.
+ * Called when user confirms section completion — gives a clean black slate
+ * before the next section fades in.
+ */
+export async function clearDisplayForSectionTransition() {
+    // Hide all spectrogram tiles
+    for (const tm of tileMeshes) tm.mesh.visible = false;
+    // Hide full-texture mesh
+    if (mesh) mesh.visible = false;
+    // Hide waveform
+    if (waveformMesh) waveformMesh.visible = false;
+    if (wfCenterLineMesh) wfCenterLineMesh.visible = false;
+    if (frozenWF.quad) frozenWF.quad.visible = false;
+    // Render one black frame
+    if (threeRenderer && scene && camera) {
+        await threeRenderer.renderAsync(scene, camera);
+    }
+    if (window.pm?.rendering) console.log('%c🎨 [TRANSITION] Display cleared for section transition', 'color: #8b949e;');
+}
+
 export function clearCompleteSpectrogram() {
+    // If pre-render computed (or is computing) tiles for the upcoming analysis step, preserve everything
+    if (preRenderComplete || preRenderInProgress) {
+        if (window.pm?.rendering) console.log(`%c🎨 [CLEANUP] Skipped — pre-render ${preRenderInProgress ? 'in progress' : 'complete'}, preserving scene + pyramid`, 'color: #3fb950;');
+        return;
+    }
+
     if (!isStudyMode()) {
         console.groupCollapsed('[CLEANUP] Three.js Spectrogram');
     }
@@ -2455,8 +2487,10 @@ export function clearCompleteSpectrogram() {
         modeAtRender: null, dirty: true, lastRenderTime: 0,
     };
 
-    // Dispose pyramid and tile meshes
-    disposePyramid();
+    // Dispose pyramid and tile meshes — BUT preserve pre-rendered tiles
+    if (!preRenderComplete) {
+        disposePyramid();
+    }
     tileReadyTimes.clear();
     lastDisplayedLevel = -1;
     for (const tm of tileMeshes) {
@@ -2725,7 +2759,7 @@ export async function startCompleteVisualization() {
         return;
     }
 
-    if (window.pm?.gpu) console.log('Starting Three.js spectrogram visualization');
+    if (window.pm?.rendering) console.log('Starting Three.js spectrogram visualization');
     await renderCompleteSpectrogram();
 }
 
@@ -2739,6 +2773,232 @@ export async function startCompleteVisualization() {
 let progressiveInitDone = false;
 let progressiveLastRenderedSamples = 0; // track to avoid reprocessing same data
 
+// ─── Pre-render state (HS25: compute/present separation) ────────────────────
+let preRenderCacheKey = null;   // e.g. "GOES:DN_MAGN-L2-HIRES_G16:2024-01-15T00:00:00Z:2024-01-16T00:00:00Z"
+let preRenderComplete = false;
+let preRenderInProgress = false;
+let preRenderAudioData = null;  // stashed for present pipeline (reference, not copy)
+let preRenderSampleRate = 0;
+let preRenderDurationSec = 0;
+let preRenderExpectedSamples = 0;
+
+export function isPreRenderDone() { return preRenderComplete; }
+
+function buildPreRenderCacheKey() {
+    const meta = State.currentMetadata;
+    if (!meta) return null;
+    return `${meta.spacecraft || ''}:${meta.dataset || ''}:${meta.startTime || ''}:${meta.endTime || ''}`;
+}
+
+export function resetPreRender() {
+    preRenderCacheKey = null;
+    preRenderComplete = false;
+    preRenderInProgress = false;
+    preRenderAudioData = null;
+    preRenderSampleRate = 0;
+    preRenderDurationSec = 0;
+    preRenderExpectedSamples = 0;
+}
+
+/**
+ * Compute Pipeline (HS25): GPU FFT → tiles → pyramid cache. No display side effects.
+ * Safe to call during data prefetch while modals are visible.
+ *
+ * @param {Float32Array} audioData - Complete audio buffer for this section
+ * @param {Object} opts
+ * @param {number} opts.dataDurationSec - Total data duration in seconds
+ * @param {number} opts.sampleRate - playback_samples_per_real_second
+ * @param {number} opts.totalExpectedSamples - Total expected sample count
+ * @param {string} opts.cacheKey - Section identifier for cache validation
+ * @returns {Promise<boolean>} true if tiles computed, false if aborted/failed
+ */
+export async function computeSpectrogramTiles(audioData, { dataDurationSec, sampleRate, totalExpectedSamples, cacheKey }) {
+    if (preRenderInProgress) return false;
+    preRenderInProgress = true;
+    preRenderComplete = false;
+    preRenderCacheKey = cacheKey;
+
+    try {
+        const fftSize = State.fftSize || 2048;
+
+        // Scene init (idempotent — safe if already initialized)
+        await initThreeScene();
+        if (!threeRenderer?.domElement) { preRenderInProgress = false; return false; }
+
+        // Pre-cache callback: populate texture cache per-tile without display updates
+        setOnTileReady((level, tileIndex) => {
+            if (level < 0) return; // batch-done signal, ignore
+            const tile = getTile(level, tileIndex);
+            if (tile) getTileTexture(tile, `L${level}:${tileIndex}`);
+        });
+        setSuppressPyramidReady(true);
+
+        // Pyramid structure
+        const zoomOutEl = document.getElementById('mainWindowZoomOut');
+        if (zoomOutEl) setPyramidReduceMode(zoomOutEl.value);
+        const chunkEl = document.getElementById('tileChunkSize');
+        const chunkMode = chunkEl?.value || 'adaptive';
+        setTileDuration(chunkMode === 'adaptive' ? 'adaptive' : parseInt(chunkMode), dataDurationSec, totalExpectedSamples);
+        initPyramid(dataDurationSec, sampleRate);
+
+        // THE HEAVY LIFT — GPU FFT for all tiles
+        await renderBaseTiles(audioData, sampleRate, fftSize, 0);
+
+        // Pre-populate texture cache: create Three.js textures for all tiles
+        // and queue GPU-to-GPU copies so shells get filled before present.
+        const cachedCount = preCacheAllTileTextures();
+
+        // Upload shell DataTextures to GPU (Three.js creates internal GPUTextures during render)
+        if (cachedCount > 0) {
+            await threeRenderer.renderAsync(scene, camera);
+            // Now copy compute GPUTextures into the Three.js-owned shells
+            processPendingGPUTextureSwaps();
+            if (window.pm?.rendering) console.log(`%c🎨 [PRE-RENDER] GPU texture swaps complete — tiles fully baked`, 'color: #3fb950;');
+        }
+
+        // Stash for present pipeline
+        preRenderAudioData = audioData;
+        preRenderSampleRate = sampleRate;
+        preRenderDurationSec = dataDurationSec;
+        preRenderExpectedSamples = totalExpectedSamples;
+        preRenderComplete = true;
+        preRenderInProgress = false;
+
+        if (window.pm?.rendering) console.log(`%c🎨 [PRE-RENDER] Tiles computed: ${cacheKey}`, 'color: #3fb950; font-weight: bold;');
+        window.dispatchEvent(new CustomEvent('prerender-complete', { detail: { cacheKey } }));
+        return true;
+    } catch (e) {
+        console.warn('[PRE-RENDER] Failed:', e.message);
+        preRenderInProgress = false;
+        preRenderComplete = false;
+        return false;
+    }
+}
+
+/**
+ * Present Pipeline (HS25): display pre-computed tiles instantly.
+ * Runs the same display setup as renderProgressiveSpectrogram's INIT block,
+ * then shows all tiles in a single frame. Milliseconds, not seconds.
+ *
+ * @param {string} cacheKey - Must match the key used for computeSpectrogramTiles
+ * @returns {Promise<boolean>} true if presented from cache, false if cache miss
+ */
+async function presentPrecomputedSpectrogram(cacheKey) {
+    if (!preRenderComplete || preRenderCacheKey !== cacheKey) return false;
+
+    const audioData = preRenderAudioData;
+    if (!audioData || audioData.length === 0) return false;
+
+    const fftSize = State.fftSize || 2048;
+    const totalSamples = audioData.length;
+    const dataDurationSec = preRenderDurationSec;
+    const sr = preRenderSampleRate;
+    const expectedSamples = preRenderExpectedSamples;
+
+    // ── Display state setup (mirrors the INIT block of renderProgressiveSpectrogram) ──
+    fullTextureFirstColSec = 0;
+    fullTextureLastColSec = dataDurationSec;
+    pyramidOnlyMode = true;
+    if (mesh) mesh.visible = false;
+
+    updateFrequencyUniforms();
+    renderContext = {
+        startSample: 0,
+        endSample: expectedSamples,
+        frequencyScale: State.frequencyScale,
+    };
+    completeSpectrogramRendered = true;
+    State.setSpectrogramInitialized(true);
+    startMemoryMonitoring();
+
+    zoomState.initialize(expectedSamples);
+    zoomState.applyInitialViewport();
+
+    // Axes
+    positionAxisCanvas();
+    initializeAxisPlaybackRate();
+    drawFrequencyAxis();
+
+    // Viewport
+    updateSpectrogramViewportFromZoom();
+    createSpectrogramOverlay();
+    const progress = getZoomTransitionProgress();
+    updateSpectrogramOverlay(progress);
+
+    // Wire display callbacks NOW (tiles are already computed)
+    setOnTileReady((level, tileIndex) => {
+        const key = `L${level}:${tileIndex}`;
+        if (!tileReadyTimes.has(key)) tileReadyTimes.set(key, performance.now());
+        if (interactionActive) { pendingTileUpdates = true; return; }
+        updateSpectrogramViewportFromZoom();
+        renderFrame();
+    });
+
+    // Enable scroll-zoom
+    initScrollZoom();
+
+    // Lock out re-entrant renderProgressiveSpectrogram calls BEFORE async work below.
+    // Without this, data loading callbacks can trigger a second init that destroys the pyramid.
+    progressiveInitDone = true;
+
+    // Set audio state + apply normalization so tiles map to correct colors
+    State.setCompleteSamplesArraySilent(audioData);
+    const normalizeSelect = document.getElementById('normalizeSpectrogram');
+    if (normalizeSelect?.value && normalizeSelect.value !== 'none') {
+        setNormalizationMode(normalizeSelect.value);
+    }
+    reapplyGainContrast();
+
+    // Waveform + minimap (cheap, on-demand)
+    uploadMainWaveformSamples(expectedSamples);
+    await uploadWaveformSamples(audioData, expectedSamples);
+    await drawWaveformFromMinMax();
+
+    // Minimap FFT — single complete pass
+    const canvas = threeRenderer.domElement;
+    const width = canvas.width;
+    const maxTimeSlices = width;
+    const hopSize = Math.max(1, Math.floor((expectedSamples - fftSize) / maxTimeSlices));
+    const numTimeSlices = Math.min(maxTimeSlices, Math.floor((totalSamples - fftSize) / hopSize));
+    if (numTimeSlices > 0) {
+        const result = await computeFFTToTexture(audioData, fftSize, numTimeSlices, hopSize);
+        if (result) {
+            const freqBins = result.height;
+            const fullData = new Float32Array(maxTimeSlices * freqBins);
+            for (let bin = 0; bin < freqBins; bin++) {
+                const srcOffset = bin * result.width;
+                const dstOffset = bin * maxTimeSlices;
+                fullData.set(result.data.subarray(srcOffset, srcOffset + result.width), dstOffset);
+            }
+            fullMagnitudeWidth = maxTimeSlices;
+            fullMagnitudeHeight = freqBins;
+            if (fullMagnitudeTexture) fullMagnitudeTexture.dispose();
+            fullMagnitudeTexture = createMagnitudeTexture(fullData, maxTimeSlices, freqBins);
+        }
+    }
+
+    // Unmute events and render
+    setSuppressPyramidReady(false);
+    renderFrame();
+
+    // Signal completion
+    window.dispatchEvent(new Event('spectrogram-ready'));
+    window.dispatchEvent(new Event('pyramid-ready'));
+
+    progressiveLastRenderedSamples = totalSamples;
+
+    // Compress in idle
+    (window.requestIdleCallback || (cb => setTimeout(cb, 200)))(() => {
+        State.compressSamplesArray();
+    });
+
+    // Free stashed data (tiles are self-contained in GPU memory)
+    preRenderAudioData = null;
+
+    if (window.pm?.rendering) console.log(`%c🎨 [PRESENT] Pre-computed spectrogram displayed instantly`, 'color: #58a6ff; font-weight: bold;');
+    return true;
+}
+
 /**
  * Render spectrogram progressively as audio data streams in.
  * Handles its own initialization — caller just passes growing audio buffer.
@@ -2749,6 +3009,19 @@ let progressiveLastRenderedSamples = 0; // track to avoid reprocessing same data
  */
 export async function renderProgressiveSpectrogram(audioData, { isComplete = false, skipMinimapFFT = false } = {}) {
     if (!audioData || audioData.length === 0) return;
+
+    // ── Pre-render cache hit? Present instantly and return ──
+    if (!progressiveInitDone && preRenderComplete) {
+        const cacheKey = buildPreRenderCacheKey();
+        if (cacheKey && cacheKey === preRenderCacheKey) {
+            if (window.pm?.rendering) console.log(`%c🎨 [CACHE-HIT] Pre-render match — presenting instantly`, 'color: #3fb950; font-weight: bold;');
+            const presented = await presentPrecomputedSpectrogram(cacheKey);
+            if (presented) return;
+            // Fall through to normal path if present failed
+        } else if (window.pm?.rendering) {
+            console.log(`%c🎨 [CACHE-MISS] cacheKey=${cacheKey} preRenderCacheKey=${preRenderCacheKey}`, 'color: #d29922;');
+        }
+    }
 
     const fftSize = State.fftSize || 2048;
     const totalSamples = audioData.length;
@@ -2898,6 +3171,9 @@ export async function renderProgressiveSpectrogram(audioData, { isComplete = fal
 export function resetProgressiveSpectrogram() {
     progressiveInitDone = false;
     progressiveLastRenderedSamples = 0;
+    // NOTE: do NOT call resetPreRender() here — pre-render cache must survive
+    // so the present pipeline can use it when renderProgressiveSpectrogram runs.
+    // Pre-render cache is invalidated by cache key mismatch instead.
 }
 
 // ─── Minimap spectrogram access ─────────────────────────────────────────────

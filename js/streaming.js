@@ -242,7 +242,7 @@ export async function startStreaming(event, config = null) {
 
 
         if (window.pm?.init) console.log(`🎉 ${logTime()} Complete!`);
-        if (window.pm?.gpu) {
+        if (window.pm?.rendering) {
             console.log('════════════════════');
             console.log('📌 v2.0 (2026-02-12) Three.js GPU-accelerated rendering');
             console.log('════════════════════');

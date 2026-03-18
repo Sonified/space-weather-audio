@@ -1960,6 +1960,10 @@
                 <span class="toggle-label">Lock spectrogram to 1× view</span>
                 <span class="info-tip" data-tip="Spectrogram stays at 1× regardless of playback speed"><div class="toggle" id="pb_lockSpectrogram" onclick="this.classList.toggle('on'); autoSave('playbackSpeed')"></div></span>
               </div>
+              <div class="settings-row" style="margin-top:12px;">
+                <span class="toggle-label">Auto-trigger GPU pyramid computation</span>
+                <span class="info-tip" data-tip="Compute spectrogram tiles as data streams in — spectrogram appears instantly when analysis begins"><div class="toggle on" id="pb_preRenderPyramid" onclick="this.classList.toggle('on'); autoSave('playbackSpeed')"></div></span>
+              </div>
             </div>
           </div>
         </div>
@@ -2666,6 +2670,20 @@
         // Set header fields synchronously before any paint
         if (_config.name) document.getElementById('studyNameInput').value = _config.name;
         if (_config.slug) document.getElementById('slugValue').textContent = _config.slug;
+        // Restore Data Playback toggles synchronously (prevent flash from default → saved)
+        const _ed = _config.experimentalDesign;
+        if (_ed) {
+          const _g = document.getElementById('pb_useGlobal');
+          if (_g) _g.classList.toggle('on', !!_ed.useGlobalSpeed);
+          const _s = document.getElementById('pb_speed');
+          if (_s && _ed.playbackSpeed != null) _s.value = parseFloat(_ed.playbackSpeed).toFixed(2);
+          const _l = document.getElementById('pb_lockSpectrogram');
+          if (_l) _l.classList.toggle('on', !!_ed.lockSpectrogramTo1x);
+          const _p = document.getElementById('pb_preRenderPyramid');
+          if (_p) _p.classList.toggle('on', !!_ed.preRenderPyramid);
+          // Enable/disable speed input to match toggle state
+          if (_s && _ed.useGlobalSpeed) { _s.disabled = false; _s.style.opacity = ''; }
+        }
         // Full config load happens below once all functions are defined
         window._pendingConfig = _config;
       } catch (e) {
@@ -4408,8 +4426,9 @@
     const playbackSpeed = parseFloat(document.getElementById('pb_speed')?.value) || 1;
     const useGlobalSpeed = document.getElementById('pb_useGlobal')?.classList.contains('on') || false;
     const lockSpectrogramTo1x = document.getElementById('pb_lockSpectrogram')?.classList.contains('on') || false;
+    const preRenderPyramid = document.getElementById('pb_preRenderPyramid')?.classList.contains('on') || false;
 
-    return { conditions, returningParticipant, randomization, playbackSpeed, useGlobalSpeed, lockSpectrogramTo1x };
+    return { conditions, returningParticipant, randomization, playbackSpeed, useGlobalSpeed, lockSpectrogramTo1x, preRenderPyramid };
   }
 
   function loadExperimentalDesign(design) {
@@ -4469,6 +4488,8 @@
     }
     const lockToggle = document.getElementById('pb_lockSpectrogram');
     if (lockToggle) lockToggle.classList.toggle('on', !!design.lockSpectrogramTo1x);
+    const preRenderToggle = document.getElementById('pb_preRenderPyramid');
+    if (preRenderToggle) preRenderToggle.classList.toggle('on', !!design.preRenderPyramid);
   }
 
   function toggleHealingBlockSettings() {
