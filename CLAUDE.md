@@ -3,6 +3,23 @@
 ## What This Is
 A browser-based tool that sonifies NASA space weather data (magnetometer readings from GOES, PSP, Wind, MMS, THEMIS, Solar Orbiter) into audible frequencies. Users see spectrograms, waveforms, and can annotate features. The **EMIC Wave Analysis Study** (Lauren Blum's research) uses this tool — participants identify electromagnetic ion cyclotron waves in GOES magnetometer data.
 
+## Homestretch — Task-Specific Architecture Docs
+
+The `homestretch/` folder contains **per-task architectural investigation documents** for all remaining items on the SHIP_IT.md TODO list. Each file is self-contained with:
+- Task description from SHIP_IT.md
+- Relevant file paths and line numbers
+- Root cause analysis (for bugs)
+- Proposed fixes and implementation plans
+
+**Before working on any HS item, read its `homestretch/HSxx.md` file first.** It will give you the full architectural context so you can start coding immediately.
+
+Files: `HS1.md`, `HS3.1.md`, `HS3.2.md`, `HS7.1.md`, `HS16.md`, `HS22.md`, `HS23.md`, `HS24.md`, `HS25.md`, `HS26.md`, `HS27.md`, `HS28.md`, `HS29.md`, `HS31.md`, `HS32.md`, `HS33.md`, `HS34.md`, `HS35.md`
+
+**Key reference files:**
+- `SHIP_IT.md` — canonical TODO list (the homestretch task tracker)
+- `TODO-study.md` — additional study TODOs
+- `stretch_test.html` — working stretch algorithm comparison page (3500+ lines, proof of concept for chunked wavelet pipeline)
+
 ## Architecture at a Glance
 
 **No bundler.** Vanilla ES6 modules loaded directly by the browser. Three.js via CDN (`three@0.170.0/build/three.webgpu.js`). No npm, no webpack, no build step.

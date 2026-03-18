@@ -81,18 +81,88 @@ An
 - [x] **HS7.2.** Confirm study data presents well in data viewer ⏱ ~30 min ✅
 - [x] **HS20.** Update placement of copy card info to prevent accidental clicking ⏱ ~30 min ▶️ 00:35 ✅ 00:50
 
-#### 🎵 Stretch implementation (~3-5 hrs) — sequential chain
-- [ ] **HS1.** Identify ideal settings for wavelet and Paul stretch algorithms ⏱ ~1-2 hrs
-- [ ] **HS2.** Generate wavelet-stretched audio at 1.25x speed for our two time regions and save to server ⏱ ~1-2 hrs
-- [ ] **HS3.1.** Wire up randomization playback settings application for stretch modes ⏱ ~30 min
-- [ ] **HS3.2.** Double ensure analysis tasks appear in correct order based on condition, and correct stretch mode ⏱ ~30 min
+#### 🎵 Stretch implementation — sequential chain
+> 📄 Per-item architecture docs in `homestretch/HSxx.md` — read before starting work.
+
+- [ ] **HS1.** Identify ideal settings for wavelet and Paul stretch algorithms → [`homestretch/HS1.md`](homestretch/HS1.md)
+  - Listening/tuning task, not code — use `stretch_test.html` with GOES data
+  - Determine: Paul (window size, overlap %), Wavelet (w0, dj, phase mode, interpolation)
+  - Save chosen params as defaults in study config
+- [ ] **HS3.1.** Wire up randomization playback settings application for stretch modes → [`homestretch/HS3.1.md`](homestretch/HS3.1.md)
+  - **Critical gap:** `playbackSpeed` from study config is never applied (~10 lines, 30 min)
+  - `_assignedProcessing` works but speed is skipped in `applyAnalysisConfig()`
+  - Fix in `study-flow.js` ~line 1988
+- [ ] **HS3.2.** Double ensure analysis tasks appear in correct order based on condition, and correct stretch mode → [`homestretch/HS3.2.md`](homestretch/HS3.2.md)
+  - Manual verification task — run through as different participants, check console `[ASSIGN]` logs
+  - ~30 min
+
+#### 🌊 Real-time client-side wavelet stretch (replaces pre-baked HS2)
+- [x] **HS26.** Process wavelet stretch in chunks as data arrives ✅ DONE → [`homestretch/HS26.md`](homestretch/HS26.md)
+  - `waveletStretchChunked()` in `wavelet-gpu-compute.js` — production chunked pipeline exists
+- [x] **HS27.** Background render ahead of the playhead ✅ DONE → [`homestretch/HS27.md`](homestretch/HS27.md)
+  - `processAndCrossfadeGPU()` + `waveletStretchAndLoad()` already handle this
+- [x] **HS28.** Crossfade between chunks ✅ DONE → [`homestretch/HS28.md`](homestretch/HS28.md)
+  - 150ms crossfade built into both stretch_test.html and main app
+- [ ] **HS29.** Handle playhead jumps with an opacity fade while the stretch catches up → [`homestretch/HS29.md`](homestretch/HS29.md)
+  - Partially done in stretch_test.html, may need wiring in main app
+  - CSS opacity transition on spectrogram container, skip if cached
+  - ~30 min
+- [x] **HS30.** Fixed at 1.25x speed for now (the study's stretch condition)
+- [ ] **HS31.** Add spectrogram shift on speed change option in Data Playback panel on study builder → [`homestretch/HS31.md`](homestretch/HS31.md)
+  - New toggle in Data Playback panel + viewport scaling by speed factor
+  - ~1-2 hrs, no dependencies
 
 #### 🔨 Build tasks (~2-3 hrs)
-- [ ] **HS16.** Code for matching participant's audio score with processing type, time period, and order received ⏱ ~1-2 hrs
-- [ ] **HS9.6.** Create gitignored HTML page for nuking test and participant data on the server ⏱ ~1 hr
+- [ ] **HS16.** Code for matching participant's audio score with processing type, time period, and order received ⏱ ~1-2 hrs → [`homestretch/HS16.md`](homestretch/HS16.md)
+  - All data already exists in D1: `assigned_condition`, `responses.analysis_session`, features table
+  - Need assembly into summary view/export in data-viewer.html
+- [x] ~~**HS9.6.** Create gitignored HTML page for nuking test and participant data on the server~~ — REMOVED, not needed
+
+#### 🐛 Bugs & fixes
+- [ ] **HS22.** Reset analysis completion flag for section #2 → [`homestretch/HS22.md`](homestretch/HS22.md)
+  - Root cause: `updateCompleteButtonState()` fires at `data-fetcher.js:706` before features are cleared at line 747
+  - Fix: call `clearStandaloneFeatures()` at start of `runAnalysis()` — ~15 min
+- [ ] **HS23.** Data viewer `[object Object]` bug → [`homestretch/HS23.md`](homestretch/HS23.md)
+  - Root cause: responses stored as envelope objects `{questionId, question, answer, ...}` but `formatResponseValue()` doesn't unwrap
+  - Fix: detect envelope pattern, extract `answer`, render as `{number} - {label}` — ~30 min
+- [ ] **HS24.** Free response "Submit on Return" + "Can close" toggles → [`homestretch/HS24.md`](homestretch/HS24.md)
+  - Follow existing toggle pattern: `toggle-label` + `toggle toggle-{class}` with `classList.toggle('on')`
+  - Add `freetext-settings-block`, wire Enter key on textarea, default both toggles ON
+  - ~1.5 hrs
+
+#### ⚡ Performance
+- [ ] **HS25.** Pre-render spectrogram pyramids during welcome modals → [`homestretch/HS25.md`](homestretch/HS25.md)
+  - Data preloading exists but GPU pyramid computation still triggers at analysis start
+  - Suppression hooks exist: `setSuppressPyramidReady()`, `setOnTileReady(null)`
+  - Hook after `data-preload-complete` event, compute tiles in background, show on analysis start
+  - Only pre-render current section's tiles (not both)
+  - ~2-3 days, main risk is race conditions if users click through modals fast
+
+#### 👁️ Feature Viewer
+- [ ] **HS32.** Feature viewer section switching bug (2→1 hangs on "loading") → [`homestretch/HS32.md`](homestretch/HS32.md)
+  - `review-session-change` handler has no error handling — if `startStreaming()` throws, hangs forever
+  - Missing `#dataSource` element so fetches default to CDAWeb instead of Cloudflare R2
+  - `dataRendering` not re-forced to `progressive` on switch
+  - Fix: add try-catch, hidden `#dataSource`, re-force rendering mode
+- [ ] **HS33.** Feature viewer participant dropdown → [`homestretch/HS33.md`](homestretch/HS33.md)
+  - API already exists: `GET /api/study/:id/participants` returns list with feature counts
+  - Add `<select>` in header bar, populate on init, navigate via URL change on selection
+
+#### 🧭 Study Builder Navigation
+- [ ] **HS34.** Recently viewed studies dropdown → [`homestretch/HS34.md`](homestretch/HS34.md)
+  - `#studyPicker` select already exists (hidden by default), populated from IndexedDB
+  - Upgrade to show recent studies with last-edited timestamps
+  - `GET /api/studies` already lists all studies with participant counts
+- [ ] **HS35.** "New Study" flow (Start Fresh / Clone / Template) → [`homestretch/HS35.md`](homestretch/HS35.md)
+  - `saveAsToServer()` already does 90% of clone — prompts for name, generates slug, saves
+  - No template concept exists yet — add `isTemplate` flag on IndexedDB configs
+  - ~6-7 hrs total for both HS34+HS35
 
 #### 🧪 Testing & tuning (~1 hr)
-- [ ] **HS7.1.** Test study launch functionality ⏱ ~1 hr
+- [ ] **HS7.1.** Test study launch functionality ⏱ ~1 hr → [`homestretch/HS7.1.md`](homestretch/HS7.1.md)
+  - 11-phase end-to-end checklist covering all 3 modes (preview/test/live)
+  - Edge cases: dropout/resume, healing block, simultaneous participants
+  - Data verification steps + reset procedures
 
 #### ✅ Completed
 - [x] **HS3.** Build deployment panel toward the bottom of study builder (above Data Stream) with settings like randomization for the two analysis sections
