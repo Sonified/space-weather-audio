@@ -11,7 +11,8 @@ import {
     setLevelTransitionMode,
     setCrossfadePower,
     setCatmullSettings,
-    setWaveformPanMode
+    setWaveformPanMode,
+    setSpectrogramGainContrast
 } from './main-window-renderer.js';
 import { setPyramidReduceMode, rebuildUpperLevels } from './spectrogram-pyramid.js';
 import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas } from './spectrogram-x-axis-renderer.js';
@@ -510,6 +511,23 @@ export function initializeAdvancedControls() {
             if (isNaN(v) || v < 8) return;
             localStorage.setItem('annotationFontSize', v);
         });
+    }
+
+    // --- Spectrogram gain & contrast sliders ---
+    const gainSlider = document.getElementById('spectrogramGain');
+    const contrastSlider = document.getElementById('spectrogramContrast');
+    if (gainSlider && contrastSlider) {
+        const gainLabel = document.getElementById('spectrogramGainValue');
+        const contrastLabel = document.getElementById('spectrogramContrastValue');
+        const updateGainContrast = () => {
+            const g = parseFloat(gainSlider.value);
+            const c = parseFloat(contrastSlider.value);
+            if (gainLabel) gainLabel.textContent = `${g > 0 ? '+' : ''}${g} dB`;
+            if (contrastLabel) contrastLabel.textContent = c;
+            setSpectrogramGainContrast(g, c);
+        };
+        gainSlider.addEventListener('input', updateGainContrast);
+        contrastSlider.addEventListener('input', updateGainContrast);
     }
 
     // --- Custom spinner buttons for number inputs ---

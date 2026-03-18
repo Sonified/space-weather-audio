@@ -95,6 +95,8 @@ let uMinFreq = null;
 let uMaxFreq = null;
 let uDbFloor = null;
 let uDbRange = null;
+let uTileGainOffset = null;     // additive gain for u8 tile path (0 = neutral)
+let uTileContrastScale = null;  // multiplicative contrast for u8 tile path (1.0 = neutral)
 let uBgR = null, uBgG = null, uBgB = null;  // background color components
 
 // Per-material swappable texture node references
@@ -228,6 +230,26 @@ let crossfadePower = 1.0;             // 1=linear (trilinear), 2=S-curve, 4+=sha
 
 export function setLevelTransitionMode(mode) { levelTransitionMode = mode; }
 export function setCrossfadePower(power) { crossfadePower = power; }
+
+/**
+ * Adjust spectrogram gain (brightness) and contrast in real time.
+ * @param {number} gainDb   dB offset (-60 to +60, 0 = neutral)
+ * @param {number} contrastPct  percentage (10–200, 100 = neutral)
+ */
+export function setSpectrogramGainContrast(gainDb, contrastPct) {
+    if (!uDbFloor || !uDbRange) return;
+    const gainFactor = Math.pow(10, gainDb / 60);
+    const contrastScale = contrastPct / 100;
+    const scale = gainFactor * contrastScale;
+    // Main material: shrink dB range = multiply normalized output
+    uDbFloor.value = -100;
+    uDbRange.value = 100 / scale;
+    // Tile material: just multiply
+    if (uTileContrastScale) uTileContrastScale.value = scale;
+    if (uTileGainOffset) uTileGainOffset.value = 0;
+    if (window.pm?.gpu) console.log(`🎚️ [GPU] Gain: ×${gainFactor.toFixed(2)}, Contrast: ${contrastPct}% → range=${uDbRange.value.toFixed(1)} | Tile: scale=${scale.toFixed(2)}`);
+    renderFrame();
+}
 // Pending catmull settings (applied when uniforms are created)
 let pendingCatmull = { enabled: false, threshold: 128, core: 1.0, feather: 1.0 };
 export function setCatmullSettings({ enabled, threshold, core, feather }) {
@@ -426,6 +448,8 @@ async function initThreeScene() {
     uMaxFreq = uniform(50.0);
     uDbFloor = uniform(-100.0);
     uDbRange = uniform(100.0);
+    uTileGainOffset = uniform(0.0);
+    uTileContrastScale = uniform(1.0);
     uBgR = uniform(0.0);
     uBgG = uniform(0.0);
     uBgB = uniform(0.0);
@@ -704,8 +728,8 @@ async function initThreeScene() {
         tilePlaceholder.needsUpdate = true;
         const tileMagTex = tslTexture(tilePlaceholder, tileMagUV);
 
-        // Uint8 tiles: R channel IS the normalized value → direct colormap
-        const tileNormalized = tileMagTex.r;
+        // Uint8 tiles: R channel IS the normalized value → apply gain/contrast → colormap
+        const tileNormalized = tileMagTex.r.mul(uTileContrastScale).add(uTileGainOffset).clamp(0, 1);
         const tileCmapTex = tslTexture(colormapTexture, vec2(tileNormalized, float(0.5)));
 
         const tileBgColor = vec4(uBgR, uBgG, uBgB, tileOpacity);
@@ -2304,6 +2328,8 @@ export function clearCompleteSpectrogram() {
     uMaxFreq = null;
     uDbFloor = null;
     uDbRange = null;
+    uTileGainOffset = null;
+    uTileContrastScale = null;
     uBgR = null; uBgG = null; uBgB = null;
     mainMagTexNode = null;
     cmapTexNode = null;
