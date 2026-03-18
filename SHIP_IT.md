@@ -152,15 +152,14 @@ An
   - Persistent annotations default, animated details open/close, brighter detail text
 
 #### 🧭 Study Builder Navigation
-- [ ] **HS34.** Recently viewed studies dropdown → [`homestretch/HS34.md`](homestretch/HS34.md)
-  - `#studyPicker` select already exists (hidden by default), populated from IndexedDB
-  - Upgrade to show recent studies with last-edited timestamps
-  - `GET /api/studies` already lists all studies with participant counts
+- [x] **HS34.** Recently viewed studies dropdown ✅
+  - Custom dropdown replacing native select, recency-sorted with participant counts + relative timestamps
+  - History tracking in localStorage (capped at 20), counts fetched from `/api/studies`
 - [x] **HS36.** Switching studies must update full UI state ✅
-- [ ] **HS35.** "New Study" flow (Start Fresh / Clone / Template) → [`homestretch/HS35.md`](homestretch/HS35.md)
-  - `saveAsToServer()` already does 90% of clone — prompts for name, generates slug, saves
-  - No template concept exists yet — add `isTemplate` flag on IndexedDB configs
-  - ~6-7 hrs total for both HS34+HS35
+- [x] **HS35.** "New Study" flow (Start Fresh / Clone / Template) ✅
+  - File menu: Create New, Duplicate Current, Delete This Study (with confirmation)
+  - Header redesign: four distinct treatments (heavy picker, ghost File, accent Preview, outlined Data Viewer)
+  - Panels collapse + vnav rebuilds on new/switch study. Template system deferred.
 
 #### 🧪 Testing & tuning (~1 hr)
 - [ ] **HS7.1.** Test study launch functionality ⏱ ~1 hr → [`homestretch/HS7.1.md`](homestretch/HS7.1.md)
