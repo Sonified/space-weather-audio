@@ -1996,9 +1996,11 @@ async function runAnalysis(step) {
     }
 
     // Save analysis session metadata to D1 (data config for this session)
-    saveResponse('analysis_session', {
+    const sessionDataset = window.__STUDY_CONFIG?.dataset || null;
+    saveResponse(`analysis_session_${analysisSession}`, {
         session: analysisSession,
         spacecraft: step.spacecraft,
+        dataset: sessionDataset,
         startDate: step.startDate || step.startTime,
         endDate: step.endDate || step.endTime,
         processing: step._assignedProcessing || null,
@@ -2210,6 +2212,7 @@ async function runQuestionnaire(step) {
             likertColAlign: step.likertColAlign,
             likertRowFontSize: step.likertRowFontSize,
             likertRowAlign: step.likertRowAlign,
+            enterConfirms: step.enterConfirms,
         }];
     }
     if (!questions.length) { advanceStep(); return; }
@@ -2341,6 +2344,19 @@ function showQuestionModal(question, index, total, progressPct, previousAnswer, 
             if (textarea) {
                 textarea.addEventListener('input', () => {
                     nextBtn.disabled = !textarea.value.trim();
+                });
+            }
+        }
+
+        // Enter confirms for freetext questions (study builder toggle, default ON)
+        if (qType === 'freetext' && question.enterConfirms !== false) {
+            const textarea = studyModalInner.querySelector('textarea');
+            if (textarea) {
+                textarea.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (!nextBtn.disabled) nextBtn.click();
+                    }
                 });
             }
         }

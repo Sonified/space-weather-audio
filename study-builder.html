@@ -3326,6 +3326,10 @@
               <div class="toggle toggle-question-id ${step.id ? 'on' : ''}" onclick="this.classList.toggle('on'); const inp = this.closest('.settings-row').querySelector('.question-id-input'); inp.style.visibility = this.classList.contains('on') ? 'visible' : 'hidden';"></div>
               <input class="field-input question-id-input" value="${escapeAttr(qid)}" style="visibility: ${_qidVis}; flex: 1; min-width: 80px; font-size: 12px; font-family: monospace; padding: 3px 6px;" />
             </div>
+            <div class="settings-row freetext-settings-block" style="display:${isFreetext ? '' : 'none'};">
+              <span class="toggle-label">Enter Confirms</span>
+              <div class="toggle toggle-enter-confirms ${step.enterConfirms !== false ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+            </div>
           </div>
           <div class="likert-settings-block" style="display:${isLikert ? '' : 'none'};">
             <div class="settings-divider" style="margin-top:12px;"></div>
@@ -4375,6 +4379,9 @@
         step.required = reqToggle?.classList.contains('on') || false;
         const goBackToggle = card.querySelector('.toggle-can-go-back');
         step.canGoBack = goBackToggle?.classList.contains('on') ?? true;
+        if (step.questionType === 'freetext') {
+          step.enterConfirms = card.querySelector('.toggle-enter-confirms')?.classList.contains('on') ?? true;
+        }
         const mw = normalizeDimValue(card.querySelector('.modal-width-input')?.value || '');
         const mh = normalizeDimValue(card.querySelector('.modal-height-input')?.value || '');
         if (mw) step.modalWidth = mw;
@@ -5419,6 +5426,10 @@
       // Show/hide likert settings sections
       card.querySelectorAll('.likert-settings-block').forEach(el => {
         el.style.display = isLikert ? '' : 'none';
+      });
+      // Show/hide freetext settings
+      card.querySelectorAll('.freetext-settings-block').forEach(el => {
+        el.style.display = isFreeText ? '' : 'none';
       });
 
       const answerTypeGroup = group.closest('.field-group');

@@ -55,7 +55,8 @@ export function renderRadioOptions({ options, labelMode, inputName, previousAnsw
                         ? `<strong>${opt.label}${opt.description ? ':' : ''}</strong> `
                         : `<span style="color:#333;">${opt.label}${opt.description ? ':' : ''}</span> `;
                 }
-                const checked = previousAnswer === opt.value ? ' checked' : '';
+                const prevValue = previousAnswer && typeof previousAnswer === 'object' ? previousAnswer.value : previousAnswer;
+                const checked = prevValue === opt.value ? ' checked' : '';
                 return `
                 <label class="radio-choice">
                     <input type="radio" name="${name}" value="${opt.value}"${checked}${disabled}>
