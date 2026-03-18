@@ -1061,13 +1061,15 @@
         fetchParticipantData(slug),
         fetchSessions(slug)
       ]);
-      let sessionEnded = false;
+      let sessionsChanged = false;
       if (sessData?.sessions) {
+        // Detect any change: new sessions (starts) or newly ended sessions
+        if (sessData.sessions.length !== allSessions.length) sessionsChanged = true;
         allSessions = sessData.sessions;
         const newMap = {};
         for (const s of sessData.sessions) {
           if (s.ended_at) {
-            if (!sessionEndMap[s.session_id]) sessionEnded = true;
+            if (!sessionEndMap[s.session_id]) sessionsChanged = true;
             newMap[s.session_id] = s.ended_at;
           }
         }
@@ -1075,9 +1077,9 @@
       }
       const newList = data.participants || [];
 
-      // Only re-render if participant data changed or a session just ended
+      // Only re-render if participant data changed or sessions changed
       const strip = list => JSON.stringify(list.map(({ _features, ...rest }) => rest));
-      if (strip(newList) !== strip(allParticipants) || sessionEnded) {
+      if (strip(newList) !== strip(allParticipants) || sessionsChanged) {
         // Preserve _features cache from previous data
         for (const np of newList) {
           const old = allParticipants.find(o => o.participant_id === np.participant_id);
