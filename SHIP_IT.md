@@ -113,9 +113,9 @@ An
   - ~1-2 hrs, no dependencies
 
 #### 🔨 Build tasks (~2-3 hrs)
-- [ ] **HS16.** Code for matching participant's audio score with processing type, time period, and order received ⏱ ~1-2 hrs → [`homestretch/HS16.md`](homestretch/HS16.md)
-  - All data already exists in D1: `assigned_condition`, `responses.analysis_session`, features table
-  - Need assembly into summary view/export in data-viewer.html
+- [x] **HS16.** Code for matching participant's audio score with processing type, time period, and order received ✅
+  - Likert perception responses decoded with algorithm names (Wavelet/Paul Stretch) based on session ordering
+  - Displayed as first 4 response rows in data viewer detail cards
 - [x] ~~**HS9.6.** Create gitignored HTML page for nuking test and participant data on the server~~ — REMOVED, not needed
 
 #### 🐛 Bugs & fixes
@@ -123,10 +123,7 @@ An
   - Fix: per-section feature counters + cancel lingering fill:forwards animation + keep button visible between sections
 - [x] **HS23.** Data viewer `[object Object]` bug ✅
   - Fix: unwrap d1-sync response envelope, render radio/likert/freetext as readable text, questions 40% with ellipsis
-- [ ] **HS24.** Free response "Enter confirms" toggle → [`homestretch/HS24.md`](homestretch/HS24.md)
-  - Add toggle beneath Required in settings drawer, only for freetext question type
-  - Copy exact template from info button "Enter confirms" toggle
-  - Wire Enter key on textarea to click Next when toggle is ON
+- [x] **HS24.** Free response "Enter confirms" toggle ✅
 
 #### ⚡ Performance
 - [ ] **HS25.** Pre-render spectrogram pyramids during welcome modals → [`homestretch/HS25.md`](homestretch/HS25.md)
@@ -151,6 +148,7 @@ An
   - `#studyPicker` select already exists (hidden by default), populated from IndexedDB
   - Upgrade to show recent studies with last-edited timestamps
   - `GET /api/studies` already lists all studies with participant counts
+- [ ] **HS36.** Switching studies must update full UI state — live mode highlights, input disablings, dashboard visibility, border trace, header status, URL mode tooltips
 - [ ] **HS35.** "New Study" flow (Start Fresh / Clone / Template) → [`homestretch/HS35.md`](homestretch/HS35.md)
   - `saveAsToServer()` already does 90% of clone — prompts for name, generates slug, saves
   - No template concept exists yet — add `isTemplate` flag on IndexedDB configs
@@ -195,6 +193,7 @@ An
 - [ ] **LPI6.** Polish vnav scroll indicator — close but not perfect, edge cases with open cards and bar extremes could be tighter
 - [ ] **LPI7.** Some elements still flash on study builder refresh — chevron/card state restore race condition not fully eliminated
 - [ ] **LPI8.** Defensively clean study slug as it's written — sanitize special chars, emoji, spaces to prevent malformed session IDs and URLs
+- [ ] **LPI9.** Confirmation modal at end of analysis section 1 was not clickable — core bug never identified
 
 ---
 

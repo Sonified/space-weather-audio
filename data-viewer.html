@@ -1333,6 +1333,40 @@
     });
   }
 
+  // Map processing key to friendly name
+  function algoName(p) {
+    const names = { wavelet: 'Wavelet', paulStretch: 'Paul Stretch', paul: 'Paul Stretch' };
+    return names[p] || p || '?';
+  }
+
+  // Decode Likert 1-5 into plain English preference
+  function decodeLikertPreference(val, algo1, algo2) {
+    const v = parseInt(val);
+    const labels = {
+      1: `Strongly preferred ${algo1}`,
+      2: `Preferred ${algo1}`,
+      3: 'No preference',
+      4: `Preferred ${algo2}`,
+      5: `Strongly preferred ${algo2}`,
+    };
+    return labels[v] || val;
+  }
+
+  // Render stretch_algo_perception Likert with decoded preferences
+  function renderAlgoPerception(likertResp, responses) {
+    const a = likertResp?.answer;
+    if (!a || typeof a !== 'object') return '';
+    // Look up which algorithm was used in each session
+    const s1 = responses.analysis_session_1 || responses.analysis_session;
+    const s2 = responses.analysis_session_2;
+    const algo1 = algoName(s1?.processing);
+    const algo2 = algoName(s2?.processing);
+    return Object.entries(a).map(([question, val]) => {
+      const decoded = decodeLikertPreference(val, algo1, algo2);
+      return `<div class="response-row"><span class="q">${escHtml(question)}:</span><span class="a">${escHtml(decoded)}</span></div>`;
+    }).join('');
+  }
+
   function formatResponseKey(k) {
     // Strip q_ prefix, replace underscores with spaces, title-case
     let label = k.replace(/^q_/, '').replace(/_/g, ' ');
@@ -1554,7 +1588,8 @@
         <div class="detail-section">
           <h4>Responses</h4>
           <div class="response-grid">
-            ${qaKeys.map(k => {
+            ${responses.stretch_algo_perception ? renderAlgoPerception(responses.stretch_algo_perception, responses) : ''}
+            ${qaKeys.filter(k => k !== 'stretch_algo_perception').map(k => {
               const resp = responses[k];
               const shortLabel = formatResponseKey(k);
               const fullQuestion = (resp && typeof resp === 'object' && resp.question) ? resp.question : '';
