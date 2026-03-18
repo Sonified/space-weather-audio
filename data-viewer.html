@@ -954,7 +954,7 @@
   // Start 5-second auto-poll when a study is selected
   function startPoll() {
     stopPoll();
-    pollTimer = setInterval(() => silentRefresh(), 5000);
+    pollTimer = setInterval(() => silentRefresh(), 2000);
   }
   function stopPoll() {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
@@ -1134,7 +1134,7 @@
     if (_dvLastModified) headers['If-Modified-Since'] = _dvLastModified;
     const res = await fetch(`${baseUrl}/api/study/${encodeURIComponent(slug)}/participants?filter=${currentFilter}&timeout=10`, { headers });
     if (res.status === 304) {
-      console.log('%c[DV] ⏸ 304 Not Modified — skipping (1 row read saved)', 'color: #8b949e;');
+      console.log('%c[DV] ⏸ 304 Not Modified — 1 row read instead of full JOIN', 'color: #8b949e;');
       return null;
     }
     const lm = res.headers.get('Last-Modified');
