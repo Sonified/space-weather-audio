@@ -81,78 +81,53 @@ An
 - [x] **HS7.2.** Confirm study data presents well in data viewer ⏱ ~30 min ✅
 - [x] **HS20.** Update placement of copy card info to prevent accidental clicking ⏱ ~30 min ▶️ 00:35 ✅ 00:50
 
-#### 🎵 Stretch implementation — sequential chain
-> 📄 Per-item architecture docs in `homestretch/HSxx.md` — read before starting work.
-
-- [ ] **HS1.** Identify ideal settings for wavelet and Paul stretch algorithms → [`homestretch/HS1.md`](homestretch/HS1.md)
-  - Listening/tuning task, not code — use `stretch_test.html` with GOES data
+#### 🎧 Listening & Content (you + headphones)
+- [ ] **HS1.** Tune wavelet + Paul stretch params → [`homestretch/HS1.md`](homestretch/HS1.md)
+  - Use `stretch_test.html` with GOES Region 1 & 2 data (raw + de-trended)
   - Determine: Paul (window size, overlap %), Wavelet (w0, dj, phase mode, interpolation)
-  - Save chosen params as defaults in study config
-  - **Feeds into HS44** — chosen wavelet params used to generate pre-rendered audio files
-- [ ] **HS3.1.** Wire up stretch algorithm assignment from randomized conditions → [`homestretch/HS3.1.md`](homestretch/HS3.1.md)
-  - ✅ Playback speed done — `step.playbackSpeed` applied in study-flow.js + feature-viewer.js
-  - ✅ Global speed toggle in study builder syncs to all per-card inputs
-  - **Remaining:** stretch algorithm from condition (`_assignedProcessing` → wavelet) not yet integrated
-- [x] **HS3.2a.** Verify correct data (dates/spacecraft) assigned per condition and section ✅
-  - Confirmed end-to-end: study config → `applyAnalysisConfig` → `__STUDY_CONFIG` → `startStreaming` → `setCurrentMetadata` → x-axis dates correct
-  - Works with randomization swapping date ranges between sections
-  - Verified on fresh load, resume/refresh, and bypass-cache paths
-- [ ] **HS3.2b.** Verify correct stretch algorithm applied per condition → [`homestretch/HS3.2.md`](homestretch/HS3.2.md)
-  - Manual verification: run as different participants, check `[ASSIGN]` logs for processing assignment
-  - Confirm `_assignedProcessing` maps to correct stretch mode per section
-  - ~30 min
+  - **Feeds into HS44** — chosen params used to generate pre-rendered wavelet audio
+- [ ] **HS43.** Figure out how de-trended audio incorporates into the study flow
+  - Currently not using de-trended audio — need to determine where it fits
 
-#### 🌊 Wavelet stretch — pre-rendered from server (replaces client-side GPU HS26-29)
-> **Insight:** Wavelet-stretched audio is ~4 MB per region/speed. Pre-render locally via `stretch_test.html`, upload to R2, serve to participants. No WebGPU needed on client. Paul stretch remains real-time (already works in worklet). The GPU streaming pipeline (`stretch_test.html`) is the *tool* for generating these files.
+#### 🌊 Pre-rendered wavelet audio pipeline
+> **Key insight:** Wavelet-stretched audio is ~4 MB per file. Pre-render locally via `stretch_test.html`, upload to R2, serve to participants. No WebGPU needed on client. Paul stretch remains real-time in the worklet — only wavelet needs pre-rendering.
 
-- [ ] **HS43.** Determine de-trended audio role in study flow
-  - How does de-trended data incorporate? Is it a condition variable, a default, or user-toggled?
-  - Decide: serve raw vs de-trended vs both per condition
-- [ ] **HS44.** Generate pre-rendered wavelet audio files for all study conditions
-  - Use `stretch_test.html` to render each GOES region × wavelet speed (e.g. 1.25x)
-  - Tune wavelet params (w0, dj, phase mode) — this is the HS1 listening task
-  - Verify gain/balance sounds good, normalize appropriately
-  - Export as WAV files
-- [ ] **HS45.** Upload pre-rendered wavelet audio to R2 and wire download into study flow
-  - Store in R2 at e.g. `emic-data/wavelet/{region}_{speed}.wav`
-  - Study config maps condition → R2 URL
+- [ ] **HS44.** Generate pre-rendered wavelet-stretched audio for all study conditions
+  - Render each GOES region × wavelet speed (e.g. 1.25x) using tuned params from HS1
+  - Verify gain/balance, normalize, export as WAV
+- [ ] **HS45.** Upload wavelet audio to R2 and wire into study flow
+  - Store in R2: `emic-data/wavelet/{region}_{detrend}_{speed}.wav`
+  - Study config maps condition → R2 URL for wavelet audio
   - Client: fetch WAV → `decodeAudioData()` → `load-audio` to wavelet worklet
-  - Speed metadata (e.g. 1.25) used for playhead math only — worklet plays at 1x sample rate
-- [ ] **HS3.1.** Wire up stretch algorithm assignment from randomized conditions → [`homestretch/HS3.1.md`](homestretch/HS3.1.md)
+  - Speed metadata (e.g. 1.25) for playhead math only — worklet plays at 1x sample rate
+- [x] ~~**HS26-29.**~~ Client-side GPU wavelet stretch — superseded by pre-rendered approach
+  - Streaming prototype complete in `stretch_test.html` (kept as rendering tool + future portal feature)
+
+#### 🔌 Wiring & Integration
+- [ ] **HS3.1.** Wire stretch algorithm assignment from randomized conditions → [`homestretch/HS3.1.md`](homestretch/HS3.1.md)
   - ✅ Playback speed done — `step.playbackSpeed` applied in study-flow.js + feature-viewer.js
   - ✅ Global speed toggle in study builder syncs to all per-card inputs
-  - **Remaining:** stretch algorithm from condition (`_assignedProcessing` → wavelet) — for wavelet conditions, fetch pre-rendered audio from R2 instead of local GPU compute
-- [x] ~~**HS26-29.**~~ Real-time client-side wavelet stretch — superseded by pre-rendered server approach
-  - Streaming render-ahead prototype complete in `stretch_test.html` (ChunkScheduler, healing-block priority, crossfade)
-  - Kept as the rendering tool + future portal feature, not needed for study participants
-- [x] **HS30.** Fixed at 1.25x speed for now (the study's stretch condition)
-- [x] **HS31.** Add spectrogram shift on speed change option in Data Playback panel on study builder ✅
-  - "Lock spectrogram to 1× view" toggle in Data Playback panel, saved to config as `lockSpectrogramTo1x`
-  - `State.getPlaybackRate()` accessor replaces all direct `currentPlaybackRate` reads (21 call sites, 9 files)
-  - When enabled: spectrogram, axis, and feature boxes render at 1× while audio plays at configured speed
-- [x] **HS37.** "Use global speed" toggle next to global `pb_speed` input (default off). When on, disable per-card playback speed dropdowns and sync from global. When off, per-card speeds are independent
-  - New toggle in Data Playback panel + viewport scaling by speed factor
-  - ~1-2 hrs, no dependencies
-- [ ] **HS39.** Add de-trend (DC offset removal) toggle to Data Playback panel in study builder → [`homestretch/HS39.md`](homestretch/HS39.md)
-  - Config option to pre-set the de-trend checkbox state on the study interface
+  - **Remaining:** `_assignedProcessing` → wavelet conditions fetch pre-rendered audio from R2; Paul conditions use real-time worklet
+- [ ] **HS39.** De-trend toggle in study builder Data Playback panel → [`homestretch/HS39.md`](homestretch/HS39.md)
+  - Config option to pre-set the de-trend checkbox state on study interface
   - Wire into study config, apply on analysis start
-- [ ] **HS40.** Spectrogram gain & contrast sliders — build on study.html first, then wire into builder → [`homestretch/HS40.md`](homestretch/HS40.md)
-  - **Phase 1:** Add gain (brightness) + contrast sliders to study.html bottom bar (far right), advanced mode
-  - **Phase 2:** Add config options to study builder Data Playback panel (set initial values for participants)
-  - **Architecture:** Zero recomputation — both map to existing TSL uniforms:
-    - **Gain** = shift `uDbFloor` → slides dB window up/down (lower floor = fainter signals visible)
-    - **Contrast** = adjust `uDbRange` → narrow/widen dB window (smaller range = more contrast)
-    - **Tile path (u8):** `(normalized * contrast) + brightness` before colormap lookup — one uniform each
-    - Both paths GPU-interactive, instant re-render, no FFT recompute
+
+#### 📊 Spectrogram visual tuning
+- [x] **HS40.** Spectrogram gain & contrast sliders ✅
 - [ ] **HS41.** Auto-gain normalization system → [`homestretch/HS41.md`](homestretch/HS41.md)
   - Dropdown: **None / Outliers / RMS / Both**
-    - **None** — raw dB values, manual gain/contrast only
-    - **Outliers** (percentile) — ignore top/bottom 2%, stretch remaining range to fill colormap. Makes each dataset look good independently.
-    - **RMS** — compute mean energy per dataset, offset dB window so all datasets appear equally bright. Good for cross-dataset consistency.
-    - **Both** — percentile first (set dB window), then RMS offset (level-match across datasets)
-  - Compute: piggyback on FFT pass — accumulate sum-of-squares (RMS) and/or histogram (percentile) with minimal overhead
-  - Manual gain/contrast sliders (HS40) layer on top of auto-gain baseline
-  - Config option in study builder Data Playback panel (set normalization mode for participants)
+  - Piggybacks on FFT pass — minimal overhead
+  - Config option in study builder Data Playback panel
+
+#### ✅ Verification
+- [x] **HS3.2a.** Verify correct data (dates/spacecraft) per condition ✅
+- [ ] **HS3.2b.** Verify correct stretch algorithm per condition → [`homestretch/HS3.2.md`](homestretch/HS3.2.md)
+  - Manual: run as different participants, check `[ASSIGN]` logs — ~30 min
+
+#### 🎵 Completed stretch work
+- [x] **HS30.** Fixed at 1.25x speed ✅
+- [x] **HS31.** Spectrogram lock to 1x view ✅
+- [x] **HS37.** Global speed toggle ✅
 
 #### 🔨 Build tasks (~2-3 hrs)
 - [x] **HS16.** Code for matching participant's audio score with processing type, time period, and order received ✅
