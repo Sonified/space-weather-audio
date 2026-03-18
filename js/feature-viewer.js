@@ -228,15 +228,13 @@ async function populateParticipantSelector(slug, currentPid) {
 
         const selector = document.createElement('select');
         selector.id = 'participantSelector';
-        selector.style.cssText = 'font-size: 12px; padding: 3px 6px; background: #1a1e28; color: #aab4c0; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; cursor: pointer; max-width: 260px;';
+        selector.className = 'gear-select';
+        selector.style.cssText = 'min-width: 320px; flex: none; appearance: none; -webkit-appearance: none; padding-right: 22px; background-image: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2710%27 height=%276%27%3E%3Cpath d=%27M0 0l5 6 5-6z%27 fill=%27%23aaa%27/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 6px center;';
 
         selector.innerHTML = participants.map((p, i) => {
-            const shortId = p.participant_id.split('_').pop();
-            const prefix = p.participant_id.startsWith('TEST_') ? 'T' : p.participant_id.startsWith('PREVIEW_') ? 'Pv' : '';
-            const tag = prefix ? `[${prefix}] ` : '';
             const features = p.feature_count > 0 ? ` (${p.feature_count} feat)` : '';
             const sel = p.participant_id === currentPid ? ' selected' : '';
-            return `<option value="${p.participant_id}"${sel}>${tag}${i + 1}. ${shortId}${features}</option>`;
+            return `<option value="${p.participant_id}"${sel}>${i + 1}. ${p.participant_id}${features}</option>`;
         }).join('');
 
         slot.replaceWith(selector);

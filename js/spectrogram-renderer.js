@@ -500,16 +500,22 @@ function getBoxInteraction(cssX, cssY) {
         const nearBottom = Math.abs(dy - (y + h)) <= cornerTol;
 
         let mode;
-        if (nearLeft && nearTop) mode = 'corner-tl';
-        else if (nearRight && nearTop) mode = 'corner-tr';
-        else if (nearLeft && nearBottom) mode = 'corner-bl';
-        else if (nearRight && nearBottom) mode = 'corner-br';
-        else if (nearLeft && dy > y && dy < y + h) mode = 'edge-left';
-        else if (nearRight && dy > y && dy < y + h) mode = 'edge-right';
-        else if (nearTop && dx > x && dx < x + w) mode = 'edge-top';
-        else if (nearBottom && dx > x && dx < x + w) mode = 'edge-bottom';
-        else if (dx >= x && dx <= x + w && dy >= y && dy <= y + h) mode = 'move';
-        else continue;
+        // Review mode: no edge/corner interactions — boxes are view-only
+        if (window.__REVIEW_MODE) {
+            if (dx >= x && dx <= x + w && dy >= y && dy <= y + h) mode = 'move';
+            else continue;
+        } else {
+            if (nearLeft && nearTop) mode = 'corner-tl';
+            else if (nearRight && nearTop) mode = 'corner-tr';
+            else if (nearLeft && nearBottom) mode = 'corner-bl';
+            else if (nearRight && nearBottom) mode = 'corner-br';
+            else if (nearLeft && dy > y && dy < y + h) mode = 'edge-left';
+            else if (nearRight && dy > y && dy < y + h) mode = 'edge-right';
+            else if (nearTop && dx > x && dx < x + w) mode = 'edge-top';
+            else if (nearBottom && dx > x && dx < x + w) mode = 'edge-bottom';
+            else if (dx >= x && dx <= x + w && dy >= y && dy <= y + h) mode = 'move';
+            else continue;
+        }
 
         const canvasRect = canvas.getBoundingClientRect();
         return {
@@ -655,8 +661,9 @@ function handleBoxDragMove(e, canvas) {
     const mouseX = e.clientX - canvasRect.left;
     const mouseY = e.clientY - canvasRect.top;
 
-    // Active drag — apply movement
+    // Active drag — apply movement (disabled in review mode)
     if (boxDragState) {
+        if (window.__REVIEW_MODE) { boxDragState = null; return false; }
         if (!boxDragWasDrag) {
             const ddx = Math.abs(mouseX - boxDragStartX);
             const ddy = Math.abs(mouseY - boxDragStartY);
@@ -1102,7 +1109,7 @@ function showFeaturePopup(box) {
             </div>
         </div>
         <textarea class="feature-popup-notes" placeholder="Describe this feature...">${feature.notes || ''}</textarea>
-        <details class="feature-popup-details">
+        <details class="feature-popup-details"${reviewMode ? ' open' : ''}>
             <summary>Details</summary>
             <div class="feature-popup-row">
                 <div class="feature-popup-field">
