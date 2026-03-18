@@ -109,6 +109,7 @@ An
   - ~30 min
 - [x] **HS30.** Fixed at 1.25x speed for now (the study's stretch condition)
 - [ ] **HS31.** Add spectrogram shift on speed change option in Data Playback panel on study builder → [`homestretch/HS31.md`](homestretch/HS31.md)
+- [ ] **HS37.** "Use global speed" toggle next to global `pb_speed` input (default off). When on, disable per-card playback speed dropdowns and sync from global. When off, per-card speeds are independent
   - New toggle in Data Playback panel + viewport scaling by speed factor
   - ~1-2 hrs, no dependencies
 

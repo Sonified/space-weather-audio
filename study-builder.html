@@ -1073,6 +1073,26 @@
     z-index: 10;
   }
   .settings-preview-eye[data-tip]:hover::after { opacity: 1; }
+  .speed-tip-wrap { position: relative; display: inline-block; width: 100%; }
+  .speed-tip-wrap[data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1c2028;
+    color: #c9d1d9;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.1s;
+    border: 1px solid var(--border);
+    z-index: 10;
+  }
+  .speed-tip-wrap[data-tip]:hover::after { opacity: 1; }
   .settings-copy-json {
     position: absolute;
     top: 7px;
@@ -1747,18 +1767,17 @@
           <button class="card-settings-trigger" type="button">🔊 Data Playback &amp; Presentation <span class="settings-chevron">&#9660;</span></button>
           <div class="card-settings-drawer">
             <div class="settings-body">
-              <div class="field-group" style="margin-top:0;">
-                <div class="field-label">Playback Speed</div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                  <div class="dim-input-wrap" style="width:70px;">
-                    <input class="field-input" id="pb_speed" type="text" value="1.00" style="text-align:center; padding:5px 4px; font-size:13px; border-radius:var(--radius) 0 0 var(--radius);" oninput="autoSave('playbackSpeed')" onclick="event.stopPropagation()" />
-                    <div class="dim-arrows">
-                      <button class="dim-arrow" onclick="event.stopPropagation(); stepSpeed(0.05)">▲</button>
-                      <button class="dim-arrow" onclick="event.stopPropagation(); stepSpeed(-0.05)">▼</button>
-                    </div>
+              <div class="settings-row" style="margin-top:0;">
+                <span class="toggle-label">Enable Global Speed</span>
+                <div class="toggle" id="pb_useGlobal" onclick="this.classList.toggle('on'); toggleGlobalSpeed(this.classList.contains('on')); autoSave('playbackSpeed')"></div>
+                <div class="dim-input-wrap" style="width:70px; margin-left:4px;">
+                  <input class="field-input" id="pb_speed" type="text" value="1.00" disabled style="text-align:center; padding:5px 4px; font-size:13px; border-radius:var(--radius) 0 0 var(--radius); opacity:0.5;" oninput="if(document.getElementById('pb_useGlobal')?.classList.contains('on')) syncGlobalSpeedToCards(); autoSave('playbackSpeed')" onclick="event.stopPropagation()" />
+                  <div class="dim-arrows">
+                    <button class="dim-arrow" onclick="event.stopPropagation(); stepSpeed(0.05)">▲</button>
+                    <button class="dim-arrow" onclick="event.stopPropagation(); stepSpeed(-0.05)">▼</button>
                   </div>
-                  <span style="font-size:11px; color:var(--text-muted);">×</span>
                 </div>
+                <span style="font-size:11px; color:var(--text-muted);">×</span>
               </div>
             </div>
           </div>
@@ -3561,7 +3580,7 @@
     const confirm = step.confirmCompletion || {};
     const spacecraft = step.spacecraft || 'GOES';
     const ds = step.dataset || 'DN_MAGN-L2-HIRES_G16';
-    const speed = step.playbackSpeed || '1x';
+    const speed = parseFloat(String(step.playbackSpeed || '1').replace(/x$/i, '')) || 1;
     const src = (step.dataSource || '').includes('cdaweb') ? 'cdaweb' : 'r2';
 
     const spacecraftOpts = Object.keys(SPACECRAFT_DATASETS).map(s =>
@@ -3611,9 +3630,18 @@
           </div>
           <div class="field-group">
             <div class="field-label">Playback Speed</div>
-            <select class="field-input" data-setting="playbackSpeed">
-              ${['0.5x','1x','1.25x','2x'].map(s => `<option ${s===speed?'selected':''}>${s}</option>`).join('')}
-            </select>
+            <span class="speed-tip-wrap">
+              <div style="display:flex; align-items:center; gap:4px;">
+                <div class="dim-input-wrap" style="width:70px;">
+                  <input class="field-input" data-setting="playbackSpeed" type="text" value="${escapeAttr(speed.toFixed(2))}" style="text-align:center; padding:5px 4px; font-size:13px; border-radius:var(--radius) 0 0 var(--radius);" oninput="autoSave('steps')" onclick="event.stopPropagation()" />
+                  <div class="dim-arrows">
+                    <button class="dim-arrow" onclick="event.stopPropagation(); stepCardSpeed(this, 0.05)">▲</button>
+                    <button class="dim-arrow" onclick="event.stopPropagation(); stepCardSpeed(this, -0.05)">▼</button>
+                  </div>
+                </div>
+                <span style="font-size:11px; color:var(--text-muted);">×</span>
+              </div>
+            </span>
           </div>
         </div>
         <div class="field-group" style="width: calc(50% - 6px);">
@@ -4132,8 +4160,9 @@
 
     // Playback
     const playbackSpeed = parseFloat(document.getElementById('pb_speed')?.value) || 1;
+    const useGlobalSpeed = document.getElementById('pb_useGlobal')?.classList.contains('on') || false;
 
-    return { conditions, returningParticipant, randomization, playbackSpeed };
+    return { conditions, returningParticipant, randomization, playbackSpeed, useGlobalSpeed };
   }
 
   function loadExperimentalDesign(design) {
@@ -4185,6 +4214,11 @@
     if (design.playbackSpeed != null) {
       const el = document.getElementById('pb_speed');
       if (el) el.value = parseFloat(design.playbackSpeed).toFixed(2);
+    }
+    const globalToggle = document.getElementById('pb_useGlobal');
+    if (globalToggle) {
+      globalToggle.classList.toggle('on', !!design.useGlobalSpeed);
+      toggleGlobalSpeed(!!design.useGlobalSpeed);
     }
   }
 
@@ -4402,7 +4436,7 @@
         if (btnText && btnText !== '✓ Complete') step.completeBtnText = btnText;
         step.spacecraft = card.querySelector('.spacecraft-select')?.value || 'GOES';
         step.dataset = card.querySelector('.dataset-select')?.value || 'DN_MAGN-L2-HIRES_G16';
-        step.playbackSpeed = card.querySelector('[data-setting="playbackSpeed"]')?.value || '1x';
+        step.playbackSpeed = (parseFloat(card.querySelector('[data-setting="playbackSpeed"]')?.value) || 1) + 'x';
         const startInput = card.querySelector('.analysis-start');
         const endInput = card.querySelector('.analysis-end');
         step.startTime = toISOTime(startInput?.value || '');
@@ -7111,7 +7145,54 @@
     let num = parseFloat(input.value) || 1;
     num = Math.max(0.05, Math.round((num + delta) * 100) / 100);
     input.value = num.toFixed(2);
+    if (document.getElementById('pb_useGlobal')?.classList.contains('on')) syncGlobalSpeedToCards();
     autoSave('playbackSpeed');
+  }
+
+  function stepCardSpeed(btn, delta) {
+    const input = btn.closest('.dim-input-wrap').querySelector('input');
+    let num = parseFloat(input.value) || 1;
+    num = Math.max(0.05, Math.round((num + delta) * 100) / 100);
+    input.value = num.toFixed(2);
+    autoSave('steps');
+  }
+
+  function toggleGlobalSpeed(on) {
+    // Enable/disable the global speed input + its arrows
+    const globalInput = document.getElementById('pb_speed');
+    const globalWrap = globalInput?.closest('.dim-input-wrap');
+    if (globalInput) {
+      globalInput.disabled = !on;
+      if (globalWrap) globalWrap.style.opacity = on ? '' : '0.5';
+      globalWrap?.querySelectorAll('.dim-arrow').forEach(btn => btn.disabled = !on);
+    }
+
+    // Sync per-card speed inputs
+    const speedVal = parseFloat(globalInput?.value || '1').toFixed(2);
+    document.querySelectorAll('[data-setting="playbackSpeed"]').forEach(input => {
+      const wrap = input.closest('.speed-tip-wrap');
+      const dimWrap = input.closest('.dim-input-wrap');
+      if (on) {
+        input.value = speedVal;
+        input.disabled = true;
+        if (dimWrap) dimWrap.style.opacity = '0.5';
+        dimWrap?.querySelectorAll('.dim-arrow').forEach(b => b.disabled = true);
+        if (wrap) wrap.dataset.tip = 'Speed is set globally in Experimental Design → Data Playback & Presentation';
+      } else {
+        input.disabled = false;
+        if (dimWrap) dimWrap.style.opacity = '';
+        dimWrap?.querySelectorAll('.dim-arrow').forEach(b => b.disabled = false);
+        if (wrap) delete wrap.dataset.tip;
+      }
+    });
+  }
+
+  function syncGlobalSpeedToCards() {
+    const speedVal = document.getElementById('pb_speed')?.value || '1.00';
+    const formatted = parseFloat(speedVal).toFixed(2);
+    document.querySelectorAll('[data-setting="playbackSpeed"]').forEach(input => {
+      input.value = formatted;
+    });
   }
 
   function nudgeDimension(btn, delta) {

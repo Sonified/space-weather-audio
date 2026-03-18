@@ -1995,16 +1995,16 @@ async function runAnalysis(step) {
         }
     }
 
-    // Apply playback speed from study config (per-step or global)
-    const rawSpeed = step.playbackSpeed || studyConfig?.experimentalDesign?.playbackSpeed;
-    const targetSpeed = parseFloat(String(rawSpeed).replace(/x$/i, '')) || 1.0;
+    // Apply playback speed from step config (global toggle syncs into per-step values at save time)
+    const rawSpeed = step.playbackSpeed;
+    const targetSpeed = parseFloat(String(rawSpeed || '1').replace(/x$/i, '')) || 1.0;
     if (targetSpeed !== 1.0) {
         const { calculateSliderForSpeed, updatePlaybackSpeed } = await import('./audio-player.js');
         const slider = document.getElementById('playbackSpeed');
         if (slider) {
             slider.value = calculateSliderForSpeed(targetSpeed);
             updatePlaybackSpeed();
-            if (window.pm?.study_flow) console.log(`🧪 Applied playback speed: ${targetSpeed}x (slider=${slider.value})`);
+            if (window.pm?.audio || window.pm?.init) console.log(`🔊 Setting playback speed to ${targetSpeed}x (slider=${slider.value})`);
         }
     }
 
