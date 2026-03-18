@@ -97,18 +97,21 @@ An
   - ~30 min
 
 #### 🌊 Real-time client-side wavelet stretch (replaces pre-baked HS2)
-- [x] **HS26.** Process wavelet stretch in chunks as data arrives ✅ DONE → [`homestretch/HS26.md`](homestretch/HS26.md)
+- [ ] **HS26.** Process wavelet stretch in chunks as data arrives — integrated into study flow → [`homestretch/HS26.md`](homestretch/HS26.md)
   - `waveletStretchChunked()` in `wavelet-gpu-compute.js` — production chunked pipeline exists
-- [x] **HS27.** Background render ahead of the playhead ✅ DONE → [`homestretch/HS27.md`](homestretch/HS27.md)
+- [ ] **HS27.** Background render ahead of the playhead — integrated into study flow → [`homestretch/HS27.md`](homestretch/HS27.md)
   - `processAndCrossfadeGPU()` + `waveletStretchAndLoad()` already handle this
-- [x] **HS28.** Crossfade between chunks ✅ DONE → [`homestretch/HS28.md`](homestretch/HS28.md)
+- [ ] **HS28.** Crossfade between chunks — integrated into study flow → [`homestretch/HS28.md`](homestretch/HS28.md)
   - 150ms crossfade built into both stretch_test.html and main app
 - [ ] **HS29.** Handle playhead jumps with an opacity fade while the stretch catches up → [`homestretch/HS29.md`](homestretch/HS29.md)
   - Partially done in stretch_test.html, may need wiring in main app
   - CSS opacity transition on spectrogram container, skip if cached
   - ~30 min
 - [x] **HS30.** Fixed at 1.25x speed for now (the study's stretch condition)
-- [ ] **HS31.** Add spectrogram shift on speed change option in Data Playback panel on study builder → [`homestretch/HS31.md`](homestretch/HS31.md)
+- [x] **HS31.** Add spectrogram shift on speed change option in Data Playback panel on study builder ✅
+  - "Lock spectrogram to 1× view" toggle in Data Playback panel, saved to config as `lockSpectrogramTo1x`
+  - `State.getPlaybackRate()` accessor replaces all direct `currentPlaybackRate` reads (21 call sites, 9 files)
+  - When enabled: spectrogram, axis, and feature boxes render at 1× while audio plays at configured speed
 - [x] **HS37.** "Use global speed" toggle next to global `pb_speed` input (default off). When on, disable per-card playback speed dropdowns and sync from global. When off, per-card speeds are independent
   - New toggle in Data Playback panel + viewport scaling by speed factor
   - ~1-2 hrs, no dependencies
@@ -127,6 +130,11 @@ An
 - [x] **HS24.** Free response "Enter confirms" toggle ✅
 
 #### ⚡ Performance
+- [x] **HS38.** D1 read optimization — If-Modified-Since polling + background tab pause ✅
+  - Server: `touchStudy()` bumps `studies.updated_at` on all write endpoints; `/participants` and `/dashboard` return 304 if unchanged (1 row read vs full JOIN)
+  - Client: `If-Modified-Since` header on all polls, `visibilitychange` pauses polling when tab hidden
+  - Client heartbeat disabled (`last_heartbeat` column never read)
+  - Result: ~150x reduction in D1 reads (47M/day → projected <50k/day)
 - [ ] **HS25.** Pre-render spectrogram pyramids during welcome modals → [`homestretch/HS25.md`](homestretch/HS25.md)
   - Data preloading exists but GPU pyramid computation still triggers at analysis start
   - Suppression hooks exist: `setSuppressPyramidReady()`, `setOnTileReady(null)`
