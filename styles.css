@@ -4617,7 +4617,7 @@ select.csel-native {
     align-items: center;
     gap: 12px 30px;
     margin-top: 8px;
-    padding: 4px 40px 0 8px;
+    padding: 4px 0 0 8px;
     flex-wrap: wrap;
 }
 .controls-bar-bottom label {
@@ -4820,7 +4820,7 @@ html:not([data-advanced]) .study-page .spectrogram-controls {
 
 /* Study page viz-controls — compact styling override */
 .emic-page .viz-controls, .study-page .viz-controls {
-    gap: 18px !important;
+    gap: 10px !important;
 }
 .emic-page .viz-controls label, .study-page .viz-controls label {
     font-size: 12px !important;

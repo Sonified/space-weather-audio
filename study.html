@@ -277,15 +277,24 @@
                             <option value="linear">Linear</option>
                         </select>
                     </div>
-                    <div class="dev-control" style="display: flex; align-items: center; gap: 8px;">
+                    <div class="dev-control" style="display: flex; align-items: center; gap: 4px;">
                         <label for="spectrogramGain" id="spectrogramGainLabel" style="cursor: pointer;">Gain:</label>
-                        <input type="range" id="spectrogramGain" min="-60" max="60" value="0" step="1" style="width: 80px;">
-                        <span id="spectrogramGainValue" style="min-width: 40px; width: 40px; font-size: 11px; color: #fff; text-align: right;">0 dB</span>
+                        <input type="range" id="spectrogramGain" min="-60" max="60" value="0" step="1" style="width: 120px;">
+                        <span id="spectrogramGainValue" style="min-width: 30px; width: 30px; font-size: 11px; color: #fff; text-align: right;">0 dB</span>
                     </div>
-                    <div class="dev-control" style="display: flex; align-items: center; gap: 8px;">
+                    <div class="dev-control" style="display: flex; align-items: center; gap: 4px;">
                         <label for="spectrogramContrast" id="spectrogramContrastLabel" style="cursor: pointer;">Contrast:</label>
-                        <input type="range" id="spectrogramContrast" min="10" max="200" value="100" step="1" style="width: 80px;">
-                        <span id="spectrogramContrastValue" style="min-width: 40px; width: 40px; font-size: 11px; color: #fff; text-align: right;">100</span>
+                        <input type="range" id="spectrogramContrast" min="10" max="200" value="100" step="1" style="width: 120px;">
+                        <span id="spectrogramContrastValue" style="min-width: 24px; width: 24px; font-size: 11px; color: #fff; text-align: right;">100</span>
+                    </div>
+                    <div class="dev-control" style="display: flex; align-items: center; gap: 4px;">
+                        <label for="spectrogramNormalize">Normalize:</label>
+                        <select id="spectrogramNormalize" style="width: 80px;">
+                            <option value="none" selected>None</option>
+                            <option value="outliers">Outliers</option>
+                            <option value="rms">RMS</option>
+                            <option value="both">Both</option>
+                        </select>
                     </div>
                     <div style="display: none;">
                         <input type="number" id="minFreqMultiplier" value="3.8" step="0.1" min="0.1" max="20">

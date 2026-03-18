@@ -753,6 +753,19 @@
                     <input type="checkbox" id="normalizeCheckbox" checked>
                     <span style="color:#B89870; font-weight:600;">Normalize</span>
                 </label>
+                <label id="throttleToggle" style="display:none; align-items:center; gap:4px; font-size:0.75em; color:#888; user-select:none;">
+                    <span style="color:#E8A838; font-weight:600;">Throttle</span>
+                    <select id="throttleSelect" style="font-size:11px; background:#1A1B1E; color:#ccc; border:1px solid #333; border-radius:3px; padding:1px 4px;">
+                        <option value="0">Off</option>
+                        <option value="75">75%</option>
+                        <option value="50">50%</option>
+                        <option value="25">25%</option>
+                        <option value="10">10%</option>
+                        <option value="5">5%</option>
+                        <option value="2">2%</option>
+                        <option value="1">1%</option>
+                    </select>
+                </label>
             </div>
 
             <!-- Primary: Speed — the big fader -->
@@ -1808,8 +1821,15 @@
                         this.onProgress(completed, this.numChunks);
                     }
 
-                    // Yield to event loop so UI updates and seeks can reprioritize
-                    await new Promise(r => setTimeout(r, 0));
+                    // Yield to event loop so UI updates and seeks can reprioritize.
+                    // Throttle: simulate reduced GPU budget by adding delay between chunks.
+                    // At X% throttle, we sleep (chunkTime * (100/X - 1)) ms — so at 10%,
+                    // a 200ms chunk gets a 1800ms pause, making total time 10x longer.
+                    const throttlePct = parseInt(document.getElementById('throttleSelect').value);
+                    const yieldMs = (throttlePct > 0)
+                        ? Math.round(parseFloat(elapsed) * (100 / throttlePct - 1))
+                        : 0;
+                    await new Promise(r => setTimeout(r, yieldMs));
                 }
 
                 this.isRunning = false;
@@ -3737,10 +3757,11 @@
                 gpuBadge.style.display = 'none';
             }
 
-            // Streaming + normalize toggles: only for GPU wavelet algorithms
+            // Streaming + normalize + throttle toggles: only for GPU wavelet algorithms
             const isGPUWavelet = (algo === 'cwt' || algo === 'cqt');
             document.getElementById('streamingToggle').style.display = isGPUWavelet ? 'flex' : 'none';
             document.getElementById('normalizeToggle').style.display = isGPUWavelet ? 'flex' : 'none';
+            document.getElementById('throttleToggle').style.display = isGPUWavelet ? 'flex' : 'none';
         }
 
         algorithmSelect.addEventListener('change', (e) => {
