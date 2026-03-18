@@ -95,7 +95,7 @@ async function renderHiResViewport() {
     const canvasWidth = document.getElementById('spectrogram')?.width || 1200;
     const baseTileColsInView = (viewDurationSec / getBaseTileDuration()) * TILE_COLS;
     if (baseTileColsInView >= canvasWidth * 0.8) {
-        if (window.pm?.gpu) console.log(`🔺 Pyramid handles this zoom level — skipping hi-res render`);
+        if (window.pm?.rendering) console.log(`🔺 Pyramid handles this zoom level — skipping hi-res render`);
         return;
     }
 

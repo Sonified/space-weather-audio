@@ -36,7 +36,7 @@ export function getMinDisplayFrequency() {
 
         // Log when value changes (avoid spam)
         if (minFreq !== lastLoggedMinFreq) {
-            if (window.pm?.gpu) console.log(`📊 Y-axis min frequency: ${minFreq.toFixed(4)} Hz (samplingRate=${samplingRate.toFixed(2)}, fftSize=${fftSize}, multiplier=${minFreqMultiplier})`);
+            if (window.pm?.rendering) console.log(`📊 Y-axis min frequency: ${minFreq.toFixed(4)} Hz (samplingRate=${samplingRate.toFixed(2)}, fftSize=${fftSize}, multiplier=${minFreqMultiplier})`);
             lastLoggedMinFreq = minFreq;
         }
 

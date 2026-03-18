@@ -1529,9 +1529,9 @@ export function redrawAllCanvasFeatureBoxes() {
         if (window.pm?.features) console.log(`📦 [FEAT-BOX] redrawAll called but NOT ready (pending=${featureBoxPendingUntilSpectrogram})`);
         if (!featureBoxPendingUntilSpectrogram) {
             featureBoxPendingUntilSpectrogram = true;
-            if (window.pm?.gpu) console.log(`📦 [FEAT-BOX] Registering pyramid-ready listener`);
+            if (window.pm?.rendering) console.log(`📦 [FEAT-BOX] Registering pyramid-ready listener`);
             window.addEventListener('pyramid-ready', () => {
-                if (window.pm?.gpu) console.log(`📦 [FEAT-BOX] pyramid-ready FIRED! Starting fade-in`);
+                if (window.pm?.rendering) console.log(`📦 [FEAT-BOX] pyramid-ready FIRED! Starting fade-in`);
                 featureBoxPendingUntilSpectrogram = false;
                 featureBoxReadyToShow = true;
                 featureBoxOpacity = 1; // show immediately — no rAF loop to drive a fade
@@ -1554,7 +1554,7 @@ export function updateCanvasAnnotations() {
 
     // DEBUG: Print once to verify function is running
     if (debugFrameCounter === 1) {
-        if (window.pm?.gpu) console.log(`🎬 updateCanvasAnnotations() IS RUNNING! First call.`);
+        if (window.pm?.rendering) console.log(`🎬 updateCanvasAnnotations() IS RUNNING! First call.`);
     }
 
 

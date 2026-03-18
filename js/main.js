@@ -43,7 +43,7 @@ async function initializeMainApp() {
     // Capture wheel events on canvases immediately to prevent page scroll before data loads
     initScrollZoom();
 
-    if (window.pm?.gpu) {
+    if (window.pm?.rendering) {
         console.log('════════════════════');
         console.log('☀️ SOLAR AUDIFICATION PORTAL - INITIALIZING!');
         console.log('════════════════════');

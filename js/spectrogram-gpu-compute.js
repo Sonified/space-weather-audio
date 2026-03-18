@@ -566,7 +566,7 @@ export class SpectrogramGPUCompute {
                     256 * 1024 * 1024
                 );
             } else {
-                if (window.pm?.gpu) console.warn(`[GPU Compute] Shared device workgroup storage too small ` +
+                if (window.pm?.rendering) console.warn(`[GPU Compute] Shared device workgroup storage too small ` +
                     `(${externalDevice.limits.maxComputeWorkgroupStorageSize} < ${minNeeded}), creating own device`);
                 externalDevice = null; // fall through to create own device
             }
@@ -603,7 +603,7 @@ export class SpectrogramGPUCompute {
         }
 
         this.device.lost.then((info) => {
-            if (window.pm?.gpu) console.warn(`[GPU Compute] Device lost: ${info.message}`);
+            if (window.pm?.rendering) console.warn(`[GPU Compute] Device lost: ${info.message}`);
             this.initialized = false;
         });
 
@@ -617,7 +617,7 @@ export class SpectrogramGPUCompute {
             if (message.type === 'error') {
                 throw new Error(`WGSL compile error: ${message.message} (line ${message.lineNum})`);
             }
-            if (message.type === 'warning' && window.pm?.gpu) {
+            if (message.type === 'warning' && window.pm?.rendering) {
                 console.warn(`[GPU Compute] WGSL warning: ${message.message}`);
             }
         }
@@ -657,7 +657,7 @@ export class SpectrogramGPUCompute {
 
         this.initialized = true;
 
-        if (!isStudyMode() && window.pm?.gpu) {
+        if (!isStudyMode() && window.pm?.rendering) {
             if (externalDevice) {
                 console.log(
                     `%c[GPU Compute] Initialized (shared device from renderer)`,
@@ -759,7 +759,7 @@ export class SpectrogramGPUCompute {
 
         const elapsed = (performance.now() - t0).toFixed(1);
         const numBatches = Math.ceil(tiles.length / maxTilesPerBatch);
-        if (window.pm?.gpu) console.log(
+        if (window.pm?.rendering) console.log(
             `%c[GPU Compute] ${tiles.length} tiles in ${elapsed}ms ` +
             `(${numBatches} batches of ≤${maxTilesPerBatch}, ` +
             `${(tiles.length * numSlices * freqBins / 1024 / 1024).toFixed(1)}M values)`,
@@ -898,7 +898,7 @@ export class SpectrogramGPUCompute {
         const splitMs = (tSplitDone - tSplitStart).toFixed(1);
         const audioMB = (megaAudio.byteLength / 1024 / 1024).toFixed(1);
         const outputMB = (outputByteSize / 1024 / 1024).toFixed(1);
-        if (window.pm?.gpu) console.log(
+        if (window.pm?.rendering) console.log(
             `%c  [GPU batch] ${numTiles} tiles: ` +
             `${concatMs}ms concat (${audioMB}MB) + ` +
             `${uploadMs}ms upload + ` +
@@ -1056,7 +1056,7 @@ export class SpectrogramGPUCompute {
         outputBuffer.destroy();
         stagingBuffer.destroy();
 
-        if (window.pm?.gpu) console.log(
+        if (window.pm?.rendering) console.log(
             `%c  [GPU two-pass batch] ${numTiles} tiles in ${(performance.now() - tBatch).toFixed(1)}ms`,
             'color: #FF9800'
         );
@@ -1432,7 +1432,7 @@ export class SpectrogramGPUCompute {
         outputBuffer.destroy();
         stagingBuffer.destroy();
 
-        if (window.pm?.gpu) console.log(
+        if (window.pm?.rendering) console.log(
             `%c  [GPU multi-pass batch] ${numTiles} tiles in ${(performance.now() - tBatch).toFixed(1)}ms`,
             'color: #FF9800'
         );
@@ -1731,7 +1731,7 @@ export class SpectrogramGPUCompute {
         let batchCount = 0;
 
         const numBatches = Math.ceil(tiles.length / maxTilesPerBatch);
-        if (window.pm?.gpu) console.log(
+        if (window.pm?.rendering) console.log(
             `%c[GPU Zero-Copy] ${tiles.length} tiles → ${numBatches} batches (${maxTilesPerBatch}/batch)`,
             'color: #FF9800; font-weight: bold'
         );
@@ -1770,7 +1770,7 @@ export class SpectrogramGPUCompute {
 
         const submitElapsed = (performance.now() - t0).toFixed(1);
         const totalEncodeMs = batchEncodeTimes.reduce((a, b) => a + b, 0).toFixed(1);
-        if (window.pm?.gpu) console.log(
+        if (window.pm?.rendering) console.log(
             `%c[GPU Zero-Copy] All ${batchCount} batches submitted in ${submitElapsed}ms ` +
             `(encode: ${totalEncodeMs}ms) — GPUTextures ready, cascade via GPU render passes`,
             'color: #FF9800; font-weight: bold'
@@ -1780,7 +1780,7 @@ export class SpectrogramGPUCompute {
         return Promise.all(allGpuDonePromises).then(gpuTimes => {
             const maxGpu = Math.max(...gpuTimes).toFixed(1);
             const minGpu = Math.min(...gpuTimes).toFixed(1);
-            if (window.pm?.gpu) console.log(
+            if (window.pm?.rendering) console.log(
                 `%c[GPU Zero-Copy] GPU compute done: ${maxGpu}ms (range: ${minGpu}–${maxGpu}ms across ${batchCount} batches)`,
                 'color: #80d0ff; font-weight: bold'
             );
@@ -1954,7 +1954,7 @@ export class SpectrogramGPUCompute {
                 compute: { module: shaderModule, entryPoint: 'fft_main' }
             });
 
-            if (window.pm?.gpu) console.log(`[GPU Compute] Single-pass pipeline for FFT ${fftSize} (${neededBytes}B workgroup storage)`);
+            if (window.pm?.rendering) console.log(`[GPU Compute] Single-pass pipeline for FFT ${fftSize} (${neededBytes}B workgroup storage)`);
             return fftSize;
         }
 
@@ -2064,7 +2064,7 @@ export class SpectrogramGPUCompute {
         });
 
         const passLabel = numLevels === 1 ? 'Two-pass' : `${numLevels + 1}-pass`;
-        if (window.pm?.gpu) console.log(
+        if (window.pm?.rendering) console.log(
             `[GPU Compute] ${passLabel} pipeline for FFT ${fftSize}: ` +
             `${numSubFFTs}×${maxBaseSize} sub-FFTs, ${numLevels} combine level(s)`
         );
@@ -2248,7 +2248,7 @@ export class SpectrogramGPUCompute {
         this.initialized = false;
         this.hannUploaded = false;
 
-        if (!isStudyMode() && window.pm?.gpu) {
+        if (!isStudyMode() && window.pm?.rendering) {
             console.log('[GPU Compute] Terminated');
         }
     }

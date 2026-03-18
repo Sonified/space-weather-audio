@@ -23,7 +23,7 @@ export async function detectGPUCapability() {
                 const useGPU = maxBuf >= 512 * 1024 * 1024 && !(integrated && ram < 8);
 
                 const tier = useGPU ? '🟢 GPU' : '🟡 CPU (GPU available but constrained)';
-                if (window.pm?.gpu) {
+                if (window.pm?.rendering) {
                     console.log(
                         `%c⚡ ${tier} | ${vendor} ${arch} | maxBuffer: ${maxBufMB}MB | RAM: ${ram}GB | cores: ${cores}`,
                         'color: #4CAF50; font-weight: bold; font-size: 13px'
