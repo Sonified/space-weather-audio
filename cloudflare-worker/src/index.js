@@ -1056,16 +1056,18 @@ export default {
         return json({ success: true, conditionIndex: body.conditionIndex });
       }
 
-      // POST /api/study/:studyId/participants/:pid/heartbeat — keepalive only (NOT updated_at)
+      // POST /api/study/:studyId/participants/:pid/heartbeat — DISABLED (last_heartbeat never read)
+      // Returns 200 so old cached clients don't error, but does zero DB work
       const heartbeatStudyMatch = path.match(/^\/api\/study\/([^/]+)\/participants\/([^/]+)\/heartbeat$/);
       if (heartbeatStudyMatch && request.method === 'POST') {
-        const [, studyId, pid] = heartbeatStudyMatch;
-        const decodedPid = decodeURIComponent(pid);
-        await env.DB.prepare(
-          `UPDATE participants SET last_heartbeat = ?
-           WHERE participant_id = ? AND study_id = ?`
-        ).bind(nowISO(), decodedPid, studyId).run();
         return json({ success: true });
+        // const [, studyId, pid] = heartbeatStudyMatch;
+        // const decodedPid = decodeURIComponent(pid);
+        // await env.DB.prepare(
+        //   `UPDATE participants SET last_heartbeat = ?
+        //    WHERE participant_id = ? AND study_id = ?`
+        // ).bind(nowISO(), decodedPid, studyId).run();
+        // return json({ success: true });
       }
 
       // POST /api/study/:studyId/responses — save feature or survey response
