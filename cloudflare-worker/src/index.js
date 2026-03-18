@@ -791,10 +791,11 @@ export default {
         return json({ success: true, participant_id: pid, mode });
       }
 
-      // GET /api/study/:studyId/participants/:pid/progress — fetch progress
-      const progressMatch = path.match(/^\/api\/study\/([^/]+)\/participants\/([^/]+)\/progress$/);
-      if (progressMatch && request.method === 'GET') {
-        const [, studyId, pid] = progressMatch;
+      // GET /api/study/:studyId/participants/:pid/data — fetch participant data
+      // (also responds to /progress for backwards compat)
+      const dataMatch = path.match(/^\/api\/study\/([^/]+)\/participants\/([^/]+)\/(data|progress)$/);
+      if (dataMatch && request.method === 'GET') {
+        const [, studyId, pid] = dataMatch;
         const row = await env.DB.prepare(
           'SELECT current_step, responses, flags, step_history, completed_at FROM participants WHERE participant_id = ? AND study_id = ?'
         ).bind(decodeURIComponent(pid), studyId).first();

@@ -54,7 +54,7 @@ CREATE INDEX idx_features_lookup
 1. **Delete** `dataTable()` helper
 2. **Rewrite** `POST /api/study/:studyId/participants` → UPSERT into `participants` table
 3. **Rewrite** `POST /api/study/:studyId/responses` → INSERT into `features` (for type=feature) or UPDATE `participants.responses` JSON (for surveys/milestones)
-4. **Add** `GET /api/study/:studyId/participants/:pid/progress` → return `current_step`, `responses`, `flags`
+4. **Add** `GET /api/study/:studyId/participants/:pid/data` → return `current_step`, `responses`, `flags`
 5. **Add** `PUT /api/study/:studyId/participants/:pid/step` → update `current_step`
 
 Mode detection stays the same — just read the prefix from `participant_id` when needed for logging. No separate tables.
@@ -67,7 +67,7 @@ Mode detection stays the same — just read the prefix from `participant_id` whe
 
 1. **Add** `d1Put(path, body)` — same pattern as `d1Post` but PUT method
 2. **Add** `syncStep(step)` — fire-and-forget PUT to update `current_step`
-3. **Add** `fetchProgress(participantId, studyId)` → GET progress, return `{ current_step, responses, flags }`
+3. **Add** `fetchParticipantData(participantId, studyId)` → GET data, return `{ current_step, responses, flags }`
 4. **Update** `saveFeature()` to post to a features-specific endpoint (or keep generic — features go into `features` table server-side)
 
 ---
@@ -77,7 +77,7 @@ Mode detection stays the same — just read the prefix from `participant_id` whe
 **File:** `js/study-flow.js`
 
 1. On step completion, call `syncStep(stepIndex)` (fire-and-forget)
-2. On page load (after participant ID known), call `fetchProgress()` and use `Math.max(localStep, serverStep)` to determine where to resume
+2. On page load (after participant ID known), call `fetchParticipantData()` and use `Math.max(localStep, serverStep)` to determine where to resume
 3. Save survey answers to D1 as they're completed (already partially works via `saveResponse`)
 
 ---

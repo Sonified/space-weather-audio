@@ -297,21 +297,24 @@ export function syncCondition(conditionData) {
 }
 
 /**
- * Fetch participant progress from D1.
+ * Fetch participant data from D1.
  * Returns { current_step, responses, flags, completed_at } or null.
  */
-export async function fetchProgress(participantId, studyId) {
+export async function fetchParticipantData(participantId, studyId) {
     const pid = participantId || getParticipantId();
     const sid = studyId || getStudyId();
-    if (!pid) { log('⚠️', 'no participantId — skipping progress fetch'); return null; }
+    if (!pid) { log('⚠️', 'no participantId — skipping data fetch'); return null; }
 
-    const data = await d1Get(`/api/study/${sid}/participants/${encodeURIComponent(pid)}/progress`);
+    const data = await d1Get(`/api/study/${sid}/participants/${encodeURIComponent(pid)}/data`);
     if (data?.success) {
-        log('✅', `fetched progress: step ${data.current_step}`);
+        log('✅', `fetched participant data: step ${data.current_step}`);
         return data;
     }
     return null;
 }
+
+/** @deprecated Use fetchParticipantData instead */
+export const fetchProgress = fetchParticipantData;
 
 /**
  * Fetch all features for a participant from D1.

@@ -88,7 +88,7 @@ An
   - Listening/tuning task, not code — use `stretch_test.html` with GOES data
   - Determine: Paul (window size, overlap %), Wavelet (w0, dj, phase mode, interpolation)
   - Save chosen params as defaults in study config
-- [ ] **HS3.1.** Wire up randomization playback settings application for stretch modes → [`homestretch/HS3.1.md`](homestretch/HS3.1.md)
+- [ ] **HS3.1.** Wire up randomization playback settings for stretch modes + connect playback speed from study builder into the study → [`homestretch/HS3.1.md`](homestretch/HS3.1.md)
   - **Critical gap:** `playbackSpeed` from study config is never applied (~10 lines, 30 min)
   - `_assignedProcessing` works but speed is skipped in `applyAnalysisConfig()`
   - Fix in `study-flow.js` ~line 1988
@@ -134,11 +134,9 @@ An
   - ~2-3 days, main risk is race conditions if users click through modals fast
 
 #### 👁️ Feature Viewer
-- [ ] **HS32.** Feature viewer section switching bug (2→1 hangs on "loading") → [`homestretch/HS32.md`](homestretch/HS32.md)
-  - `review-session-change` handler has no error handling — if `startStreaming()` throws, hangs forever
-  - Missing `#dataSource` element so fetches default to CDAWeb instead of Cloudflare R2
-  - `dataRendering` not re-forced to `progressive` on switch
-  - Fix: add try-catch, hidden `#dataSource`, re-force rendering mode
+- [x] **HS32.** Feature viewer section switching bug (2→1 hangs on "loading") ✅
+  - Root cause: completed sessions had processedChunks nulled by onComplete cleanup, reuse replayed empty data
+  - Fix: detect freed sessions, create fresh ones from IndexedDB cache; added #dataSource/#dataRendering, try-catch, progressive re-force, read-only feature boxes
 - [ ] **HS33.** Feature viewer participant dropdown → [`homestretch/HS33.md`](homestretch/HS33.md)
   - API already exists: `GET /api/study/:id/participants` returns list with feature counts
   - Add `<select>` in header bar, populate on init, navigate via URL change on selection

@@ -1180,8 +1180,8 @@ async function init() {
 
     // Try to fetch server-side progress (non-blocking — if it fails, use local)
     try {
-        const { fetchProgress } = await import('./d1-sync.js');
-        const progress = await fetchProgress();
+        const { fetchParticipantData } = await import('./d1-sync.js');
+        const progress = await fetchParticipantData();
         if (progress && progress.current_step > bestStep && progress.current_step < studyConfig.steps.length) {
             bestStep = progress.current_step;
             if (window.pm?.study_flow) console.log(`%c[INIT] D1 progress ahead of local: bestStep=${bestStep}`, 'color: #58a6ff; font-weight: bold;');
@@ -1995,6 +1995,19 @@ async function runAnalysis(step) {
         }
     }
 
+    // Apply playback speed from study config (per-step or global)
+    const rawSpeed = step.playbackSpeed || studyConfig?.experimentalDesign?.playbackSpeed;
+    const targetSpeed = parseFloat(String(rawSpeed).replace(/x$/i, '')) || 1.0;
+    if (targetSpeed !== 1.0) {
+        const { calculateSliderForSpeed, updatePlaybackSpeed } = await import('./audio-player.js');
+        const slider = document.getElementById('playbackSpeed');
+        if (slider) {
+            slider.value = calculateSliderForSpeed(targetSpeed);
+            updatePlaybackSpeed();
+            if (window.pm?.study_flow) console.log(`🧪 Applied playback speed: ${targetSpeed}x (slider=${slider.value})`);
+        }
+    }
+
     // Save analysis session metadata to D1 (data config for this session)
     const sessionDataset = window.__STUDY_CONFIG?.dataset || null;
     saveResponse(`analysis_session_${analysisSession}`, {
@@ -2004,6 +2017,7 @@ async function runAnalysis(step) {
         startDate: step.startDate || step.startTime,
         endDate: step.endDate || step.endTime,
         processing: step._assignedProcessing || null,
+        playbackSpeed: targetSpeed,
         stepIndex: currentStepIndex,
         enteredAt: new Date().toISOString(),
     });
