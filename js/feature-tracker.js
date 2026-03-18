@@ -120,6 +120,19 @@ export function getStandaloneFeatures() {
 }
 
 /**
+ * Per-section feature counts. The study builder tells us which section we're in.
+ * Each section gets its own counter. The button checks the current section's count.
+ */
+let _currentSection = 0;
+let _sectionFeatureCounts = {};
+
+export function setCurrentSection(n) {
+    _currentSection = n;
+    _sectionFeatureCounts[n] = 0;
+    if (window.pm?.features) console.log(`[SECTION] Entering analysis section ${n} — feature count reset to 0`);
+}
+
+/**
  * Save standalone features and persist to localStorage
  */
 export function saveStandaloneFeatures() {
@@ -209,10 +222,11 @@ function addStandaloneFeature(featureData) {
             });
     }
     standaloneFeatures.push(featureData);
+    _sectionFeatureCounts[_currentSection] = (_sectionFeatureCounts[_currentSection] || 0) + 1;
     saveStandaloneFeatures();
 
     // Real-time sync to D1
-    if (window.pm?.features) console.log(`%c[FEATURE] created #${standaloneFeatures.length} d1Id=${featureData.d1Id?.slice(0,8)} notes="${featureData.notes}"`, 'color: #f0a');
+    if (window.pm?.features) console.log(`%c[FEATURE] created #${standaloneFeatures.length} d1Id=${featureData.d1Id?.slice(0,8)} notes="${featureData.notes}" (section ${_currentSection} count: ${_sectionFeatureCounts[_currentSection]})`, 'color: #f0a');
     if (isStudyMode()) saveFeatureToD1(featureData);
 
     return standaloneFeatures.length - 1;
@@ -242,6 +256,7 @@ export function deleteStandaloneFeature(featureIndex) {
     const removed = standaloneFeatures[featureIndex];
     closeFeaturePopup();
     standaloneFeatures.splice(featureIndex, 1);
+    _sectionFeatureCounts[_currentSection] = Math.max(0, (_sectionFeatureCounts[_currentSection] || 0) - 1);
     saveStandaloneFeatures();
     notifyFeatureChange();
 
@@ -782,12 +797,9 @@ export function drawSpectrogramSelection(ctx, canvasWidth, canvasHeight) {
  * Check if at least one standalone feature has been identified (has all required fields)
  */
 export function hasIdentifiedFeature() {
-    for (const feature of standaloneFeatures) {
-        if (feature.lowFreq && feature.highFreq && feature.startTime && feature.endTime) {
-            return true;
-        }
-    }
-    return false;
+    const count = _sectionFeatureCounts[_currentSection] || 0;
+    if (window.pm?.features) console.log(`[BUTTON] section ${_currentSection} feature count: ${count}`);
+    return count > 0;
 }
 
 // ── Feature Change Notification ──────────────────────────────────────────
@@ -799,8 +811,9 @@ export function hasIdentifiedFeature() {
 let _lastFeatureCount = 0;
 export function notifyFeatureChange() {
     const count = getStandaloneFeatures().length;
+    const hasFeature = hasIdentifiedFeature();
     document.dispatchEvent(new CustomEvent('featurechange', {
-        detail: { hasFeature: hasIdentifiedFeature(), count }
+        detail: { hasFeature, count }
     }));
     // Fire featureCreated when a new feature is added (count increased)
     if (count > _lastFeatureCount) {

@@ -11,7 +11,7 @@
 
 import { fetchStudyConfig, setStudyId, initParticipant, saveSurveyAnswer, saveFeature, saveResponse, markComplete, getParticipantId as d1GetParticipantId, startHeartbeat, stopHeartbeat, getApiBase } from './d1-sync.js';
 import { modalManager } from './modal-manager.js';
-import { getStandaloneFeatures } from './feature-tracker.js';
+import { getStandaloneFeatures, setCurrentSection } from './feature-tracker.js';
 import { getParticipantId, storeParticipantId, clearParticipantId, generateParticipantId } from './participant-id.js';
 import { styleBodyHtml } from './study-builder/utils.js';
 import { pausePlayback } from './audio-player.js';
@@ -41,6 +41,9 @@ function initCompleteButton(step) {
     btn.textContent = step.completeBtnText || '✓ Complete';
     btn.disabled = false;          // never disabled — .ready controls everything
     btn.classList.remove('ready');
+    btn.style.cursor = '';
+    // Kill any lingering animation from previous section (fill: 'forwards' persists visuals)
+    if (completeBtnAnim) { completeBtnAnim.cancel(); completeBtnAnim = null; }
     btn.style.setProperty('display', 'block', 'important');
     completeBtnActive = true;
 }
@@ -48,6 +51,7 @@ function initCompleteButton(step) {
 let completeBtnAnim = null;
 
 function updateCompleteButton(detail) {
+    if (window.pm?.features) console.log(`[COMPLETE-BTN] hasFeature=${detail.hasFeature} active=${completeBtnActive}`);
     if (!completeBtnActive) return;
     const btn = document.getElementById('completeBtn');
     if (!btn) return;
@@ -74,12 +78,6 @@ function updateCompleteButton(detail) {
     }
 }
 
-function hideCompleteButton() {
-    const btn = document.getElementById('completeBtn');
-    if (!btn) return;
-    completeBtnActive = false;
-    btn.style.display = 'none';
-}
 
 // Listen for feature changes from feature-tracker.js
 document.addEventListener('featurechange', (e) => updateCompleteButton(e.detail));
@@ -1981,6 +1979,9 @@ async function runAnalysis(step) {
     window.__currentAnalysisSession = analysisSession;
     if (window.pm?.study_flow) console.log(`📋 Analysis step: entering drawing phase (session ${analysisSession})`);
 
+    // Tell feature tracker which section we're in — button uses per-section feature count
+    setCurrentSection(analysisSession);
+
     // Apply this step's analysis config (spacecraft, dates, display settings)
     applyAnalysisConfig(step);
 
@@ -2122,7 +2123,9 @@ async function runAnalysis(step) {
         });
     }
 
-    hideCompleteButton();
+    // Don't hide the button — modal overlay covers it on non-analysis steps,
+    // and initCompleteButton resets it cleanly for the next analysis section.
+    completeBtnActive = false;
     advanceStep();
 }
 

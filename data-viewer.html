@@ -544,16 +544,25 @@
   }
   /* ── Response rows ── */
   .response-grid {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 2px 16px;
-    align-items: baseline;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
   }
-  .response-grid .q { color: var(--text); opacity: 0.7; white-space: nowrap; font-size: 12px; }
+  .response-row {
+    display: grid;
+    grid-template-columns: 2fr 3fr;
+    gap: 0 16px;
+    align-items: baseline;
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+  .response-row:nth-child(odd) { background: rgba(255,255,255,0.03); }
+  .response-row:nth-child(even) { background: rgba(255,255,255,0.06); }
+  .response-grid .q { color: var(--text-muted); font-size: calc(11px + var(--font-bump)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .response-grid .a {
-    color: var(--text);
+    color: var(--text-muted);
     font-weight: 500;
-    font-size: 12px;
+    font-size: calc(11px + var(--font-bump));
   }
   /* ── Analysis session block ── */
   .analysis-block {
@@ -1327,11 +1336,27 @@
     if (typeof v === 'number' || typeof v === 'boolean') return String(v);
     if (Array.isArray(v)) return v.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(', ');
     if (typeof v === 'object') {
-      // Radio answers stored as { value, label }
+      // Response envelope from d1-sync: { questionId, question, questionType, answer, answered_at }
+      if ('answer' in v && ('questionId' in v || 'questionType' in v)) {
+        const a = v.answer;
+        if (a == null) return '—';
+        if (typeof a === 'string') return a || '—';
+        if (typeof a === 'number') return String(a);
+        // Radio: { value, label }
+        if (a.value != null && a.label) return `${a.value} - ${a.label}`;
+        if (a.label) return String(a.label);
+        if (a.value != null) return String(a.value);
+        // Likert: { "Row label": "column_value", ... }
+        if (typeof a === 'object' && !Array.isArray(a)) {
+          const entries = Object.entries(a).filter(([,val]) => val != null && val !== '');
+          return entries.map(([k, val]) => `${k}: ${val}`).join(', ');
+        }
+        return String(a);
+      }
+      // Direct radio answer (legacy): { value, label }
       if (v.value != null && v.label) return `${v.value} - ${v.label}`;
       if (v.label) return String(v.label);
       if (v.value != null) return String(v.value);
-      if (v.answer != null) return String(v.answer);
       // Summarize object — show up to 3 key:value pairs
       const entries = Object.entries(v).filter(([,val]) => val != null && val !== '');
       if (entries.length <= 3) return entries.map(([k,val]) => `${k}: ${truncate(String(val), 20)}`).join(', ');
@@ -1515,7 +1540,11 @@
         <div class="detail-section">
           <h4>Responses</h4>
           <div class="response-grid">
-            ${qaKeys.map(k => `<span class="q">${escHtml(formatResponseKey(k))}:</span><span class="a">${escHtml(truncate(formatResponseValue(responses[k]), 80))}</span>`).join('')}
+            ${qaKeys.map(k => {
+              const resp = responses[k];
+              const label = (resp && typeof resp === 'object' && resp.question) ? resp.question : formatResponseKey(k);
+              return `<div class="response-row"><span class="q">${escHtml(label)}:</span><span class="a">${escHtml(formatResponseValue(resp))}</span></div>`;
+            }).join('')}
           </div>
         </div>` : ''}
 
