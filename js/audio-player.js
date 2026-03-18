@@ -499,7 +499,7 @@ const PROCESSOR_NAMES = {
  */
 function createStretchNode(algorithm) {
     const processorName = PROCESSOR_NAMES[algorithm] || 'paul-stretch-processor';
-    const windowSize = 4096;
+    const windowSize = window.__STUDY_CONFIG?.experimentalDesign?.paulWindowSize || 1024;
 
     let options;
     if (algorithm === 'resample' || algorithm === 'wavelet') {

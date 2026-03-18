@@ -24,7 +24,7 @@
         }
 
         .container {
-            max-width: 720px;
+            max-width: 1080px;
             margin: 0 auto;
         }
 
@@ -807,6 +807,8 @@
                     <div class="slider-group" id="windowGroup" style="flex: none; min-width: auto;">
                         <label><span id="windowLabel">Window Size</span></label>
                         <select id="windowSelect">
+                            <option value="256">256 (sharpest)</option>
+                            <option value="512">512</option>
                             <option value="1024">1024 (crisp)</option>
                             <option value="2048">2048</option>
                             <option value="4096" selected>4096 (balanced)</option>
@@ -1354,7 +1356,6 @@
                     e.stopPropagation();
                     this._selectIndex(idx);
                     this._close();
-                    this.trigger.focus();
                 });
 
                 this.menu.appendChild(div);
@@ -2767,15 +2768,8 @@
 
             // Streaming mode: use ChunkScheduler + progressive worklet
             if (useStreaming) {
-                // If we don't have a scheduler yet (or speed changed), start fresh
-                if (!chunkScheduler || gpuProcessedBuffer === null) {
-                    // Init GPU if needed
-                    if (!waveletGPU) {
-                        waveletGPU = new WaveletGPUCompute();
-                        await waveletGPU.initialize();
-                    }
-                    await startStreamingPlayback(playStartPosition);
-                } else {
+                // Resume if we have an active streaming session (scheduler + worklet exist)
+                if (chunkScheduler && streamingWorklet) {
                     // Resume existing streaming session
                     streamingWorklet.port.postMessage({ type: 'play' });
                     playStartTime = audioContext.currentTime;
@@ -2784,6 +2778,13 @@
                     playBtn.textContent = '⏸';
                     startPlayheadAnimation();
                     setStatus(playingStatus(), 'active');
+                } else {
+                    // Start fresh streaming computation
+                    if (!waveletGPU) {
+                        waveletGPU = new WaveletGPUCompute();
+                        await waveletGPU.initialize();
+                    }
+                    await startStreamingPlayback(playStartPosition);
                 }
                 return;
             }
@@ -3006,30 +3007,36 @@
 
                     // Now it's safe to swap: fade out old → init new buffer → send chunks → fade in
                     await initStreamingWorklet(scheduler.totalOutputLen);
+                    console.log(`%c[Streaming] Worklet initialized, buffer size: ${scheduler.totalOutputLen}`, 'color: #7EB8B0');
 
                     // Send all chunks computed so far
+                    let chunksSent = 0;
                     for (let i = 0; i < scheduler.numChunks; i++) {
                         if (scheduler.chunkStatus[i] === 2) {
                             const range = scheduler.chunkOutputRange(i);
                             sendChunkToWorklet(scheduler, i, range);
+                            chunksSent++;
                         }
                     }
+                    console.log(`%c[Streaming] Sent ${chunksSent} initial chunks to worklet`, 'color: #7EB8B0');
 
                     // Crossfade: fade out → seek → play → fade in
                     const now = audioContext.currentTime;
                     const fadeDur = CROSSFADE_DURATION;
 
                     if (oldWasPlaying && streamingGain) {
-                        // Gain was already at 1 from old playback — fade out
+                        console.log(`%c[Streaming] Fading out old audio (gain=${streamingGain.gain.value})`, 'color: #E8A838');
                         streamingGain.gain.setValueAtTime(streamingGain.gain.value, now);
                         streamingGain.gain.linearRampToValueAtTime(0, now + fadeDur * 0.5);
                     }
 
                     // After fade-out completes, seek and start new buffer, fade in
                     const swapDelay = oldWasPlaying ? fadeDur * 0.5 : 0;
+                    console.log(`%c[Streaming] oldWasPlaying=${oldWasPlaying}, swapDelay=${swapDelay}s`, 'color: #7EB8B0');
                     setTimeout(() => {
                         if (chunkScheduler !== scheduler) return; // stale
                         const seekPos = sourceOffset / speed;
+                        console.log(`%c[Streaming] PLAY: seekPos=${seekPos.toFixed(3)}s, sourceOffset=${sourceOffset}, speed=${speed}`, 'color: #7EB8B0; font-weight: bold');
                         streamingWorklet.port.postMessage({
                             type: 'seek', data: { position: seekPos }
                         });
@@ -3039,6 +3046,15 @@
                         const t = audioContext.currentTime;
                         streamingGain.gain.setValueAtTime(0, t);
                         streamingGain.gain.linearRampToValueAtTime(1, t + fadeDur);
+                        console.log(`%c[Streaming] Gain: 0 → 1 over ${fadeDur}s`, 'color: #7EB8B0');
+
+                        // Stop any batch-mode audio that might be playing
+                        stopGPUSource();
+                        if (stretchNode && stretchGain) {
+                            stretchNode.port.postMessage({ type: 'pause' });
+                            stretchGain.gain.value = 0;
+                            console.log(`%c[Streaming] Silenced real-time worklet`, 'color: #E8A838');
+                        }
 
                         // Update UI state
                         playStartPosition = sourceOffset;
@@ -3054,6 +3070,8 @@
                     // Subsequent chunks — just send to worklet
                     sendChunkToWorklet(scheduler, ci, outputRange);
                 }
+                // Progressively update waveform as chunks arrive
+                drawWaveform(scheduler.output, { crossfade: false });
             };
 
             scheduler.onProgress = (completed, total) => {
@@ -3066,8 +3084,8 @@
                 gpuIsProcessing = false;
                 const totalMs = performance.now() - startTime;
 
-                // Normalize to peak if checkbox is checked
-                if (document.getElementById('normalizeCheckbox').checked) {
+                // Normalize: ramp gain node instead of re-sending samples (smooth, no glitch)
+                if (document.getElementById('normalizeCheckbox').checked && streamingGain) {
                     let peak = 0;
                     for (let i = 0; i < scheduler.output.length; i++) {
                         const abs = Math.abs(scheduler.output[i]);
@@ -3075,24 +3093,14 @@
                     }
                     if (peak > 0 && peak !== 1) {
                         const scale = 1.0 / peak;
+                        const t = audioContext.currentTime;
+                        streamingGain.gain.setValueAtTime(streamingGain.gain.value, t);
+                        streamingGain.gain.linearRampToValueAtTime(scale, t + 0.3);
+                        // Also scale the output array for waveform display + batch cache
                         for (let i = 0; i < scheduler.output.length; i++) {
                             scheduler.output[i] *= scale;
                         }
-                        // Re-send normalized buffer to worklet
-                        streamingWorklet.port.postMessage({
-                            type: 'load-audio',
-                            data: { samples: scheduler.output }
-                        });
-                        // Seek back to current position (load-audio resets to 0)
-                        if (isPlaying && audioContext) {
-                            const elapsed = audioContext.currentTime - playStartTime;
-                            const currentPos = playStartPosition + elapsed * speed;
-                            const seekPos = currentPos / speed;
-                            streamingWorklet.port.postMessage({
-                                type: 'seek', data: { position: seekPos }
-                            });
-                            streamingWorklet.port.postMessage({ type: 'play' });
-                        }
+                        console.log(`%c[Streaming] Normalize: peak=${peak.toFixed(4)}, gain ramping to ${scale.toFixed(4)} over 300ms`, 'color: #B89870');
                     }
                 }
 
@@ -3498,6 +3506,12 @@
             saveSettings();
         });
 
+        document.getElementById('normalizeCheckbox').addEventListener('change', saveSettings);
+        document.getElementById('throttleSelect').addEventListener('change', (e) => {
+            saveSettings();
+            e.target.blur();
+        });
+
         // Speed slider
         // Track last speed for playhead calculation
         let lastSpeed = sliderToSpeed(parseFloat(stretchSlider.value));
@@ -3591,6 +3605,7 @@
 
         // Window size / Grain size
         windowSelect.addEventListener('change', (e) => {
+            e.target.blur();
             const value = parseInt(e.target.value);
             if (windowValue) windowValue.textContent = value;
             if (stretchNode) {
@@ -3808,7 +3823,12 @@
                 } else {
                     currentAlgorithm = algo;
                     // Auto-render in background so it's ready when they press Play
-                    runOfflineStretch();
+                    // (skip if streaming mode — let the play button trigger streaming instead)
+                    const useStreaming = document.getElementById('streamingCheckbox').checked
+                        && (algo === 'cwt' || algo === 'cqt');
+                    if (!useStreaming) {
+                        runOfflineStretch();
+                    }
                 }
             } else if (!isOffline && audioContext) {
                 // Switching TO a worklet algorithm

@@ -1964,6 +1964,22 @@
                 <span class="toggle-label">Auto-trigger GPU pyramid computation</span>
                 <span class="info-tip" data-tip="Compute spectrogram tiles as data streams in — spectrogram appears instantly when analysis begins"><div class="toggle on" id="pb_preRenderPyramid" onclick="this.classList.toggle('on'); autoSave('playbackSpeed')"></div></span>
               </div>
+              <div class="settings-row" style="margin-top:12px;">
+                <span class="toggle-label">De-trend (remove DC offset)</span>
+                <span class="info-tip" data-tip="Apply forward-backward EMA high-pass filter to remove slow trends from magnetometer data"><div class="toggle" id="pb_detrend" onclick="this.classList.toggle('on'); autoSave('playbackSpeed')"></div></span>
+              </div>
+              <div class="settings-row" style="margin-top:12px;">
+                <span class="toggle-label">Paul Stretch Window Size</span>
+                <select id="pb_paulWindowSize" onchange="autoSave('playbackSpeed')" style="padding:4px 8px; font-size:12px; border-radius:var(--radius); border:1px solid var(--border); background:var(--bg); color:var(--text);">
+                  <option value="256">256</option>
+                  <option value="512">512</option>
+                  <option value="1024" selected>1024</option>
+                  <option value="2048">2048</option>
+                  <option value="4096">4096</option>
+                  <option value="8192">8192</option>
+                  <option value="16384">16384</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>
@@ -2681,6 +2697,10 @@
           if (_l) _l.classList.toggle('on', !!_ed.lockSpectrogramTo1x);
           const _p = document.getElementById('pb_preRenderPyramid');
           if (_p) _p.classList.toggle('on', !!_ed.preRenderPyramid);
+          const _d = document.getElementById('pb_detrend');
+          if (_d) _d.classList.toggle('on', !!_ed.detrend);
+          const _pw = document.getElementById('pb_paulWindowSize');
+          if (_pw && _ed.paulWindowSize) _pw.value = String(_ed.paulWindowSize);
           // Enable/disable speed input to match toggle state
           if (_s && _ed.useGlobalSpeed) { _s.disabled = false; _s.style.opacity = ''; }
         }
@@ -4427,8 +4447,10 @@
     const useGlobalSpeed = document.getElementById('pb_useGlobal')?.classList.contains('on') || false;
     const lockSpectrogramTo1x = document.getElementById('pb_lockSpectrogram')?.classList.contains('on') || false;
     const preRenderPyramid = document.getElementById('pb_preRenderPyramid')?.classList.contains('on') || false;
+    const detrend = document.getElementById('pb_detrend')?.classList.contains('on') || false;
+    const paulWindowSize = parseInt(document.getElementById('pb_paulWindowSize')?.value) || 1024;
 
-    return { conditions, returningParticipant, randomization, playbackSpeed, useGlobalSpeed, lockSpectrogramTo1x, preRenderPyramid };
+    return { conditions, returningParticipant, randomization, playbackSpeed, useGlobalSpeed, lockSpectrogramTo1x, preRenderPyramid, detrend, paulWindowSize };
   }
 
   function loadExperimentalDesign(design) {
@@ -4490,6 +4512,10 @@
     if (lockToggle) lockToggle.classList.toggle('on', !!design.lockSpectrogramTo1x);
     const preRenderToggle = document.getElementById('pb_preRenderPyramid');
     if (preRenderToggle) preRenderToggle.classList.toggle('on', !!design.preRenderPyramid);
+    const detrendToggle = document.getElementById('pb_detrend');
+    if (detrendToggle) detrendToggle.classList.toggle('on', !!design.detrend);
+    const paulWindowSelect = document.getElementById('pb_paulWindowSize');
+    if (paulWindowSelect && design.paulWindowSize) paulWindowSelect.value = String(design.paulWindowSize);
   }
 
   function toggleHealingBlockSettings() {
