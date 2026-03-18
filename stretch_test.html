@@ -753,7 +753,7 @@
                     <input type="checkbox" id="normalizeCheckbox" checked>
                     <span style="color:#B89870; font-weight:600;">Normalize</span>
                 </label>
-                <label id="throttleToggle" style="display:none; align-items:center; gap:4px; font-size:0.75em; color:#888; user-select:none;">
+                <div id="throttleToggle" style="display:none; align-items:center; gap:4px; font-size:0.75em; color:#888; user-select:none;">
                     <span style="color:#E8A838; font-weight:600;">Throttle</span>
                     <select id="throttleSelect" style="font-size:11px; background:#1A1B1E; color:#ccc; border:1px solid #333; border-radius:3px; padding:1px 4px;">
                         <option value="0">Off</option>
@@ -765,7 +765,7 @@
                         <option value="2">2%</option>
                         <option value="1">1%</option>
                     </select>
-                </label>
+                </div>
             </div>
 
             <!-- Primary: Speed — the big fader -->
@@ -2014,6 +2014,8 @@
             const saSliderEl = document.getElementById('scrubAdaptSlider');
             if (saSliderEl) settings.scrubAdaptSlider = saSliderEl.value;
             settings.lastTrackFile = lastLoadedTrackFile;
+            settings.normalize = document.getElementById('normalizeCheckbox').checked;
+            settings.throttle = document.getElementById('throttleSelect').value;
             try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch {}
         }
 
@@ -2078,6 +2080,14 @@
             if (settings.loop) {
                 isLooping = true;
                 loopBtn.classList.add('active');
+            }
+
+            // Restore normalize + throttle
+            if (settings.normalize !== undefined) {
+                document.getElementById('normalizeCheckbox').checked = settings.normalize;
+            }
+            if (settings.throttle !== undefined) {
+                document.getElementById('throttleSelect').value = settings.throttle;
             }
 
             // Restore algorithm state
