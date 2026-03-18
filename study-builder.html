@@ -341,10 +341,14 @@
   /* Save indicator */
   .save-indicator {
     font-size: 11px;
-    color: var(--text-muted);
-    text-align: right;
+    color: #3fb950;
     min-width: 0;
-    margin-left: 8px;
+    margin-right: 8px;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .save-indicator.visible {
+    opacity: 1;
   }
 
   /* Step list */
@@ -1841,11 +1845,11 @@
         </div>
       </div>
       <div class="header-actions-right">
+        <div class="save-indicator" id="saveIndicator"></div>
         <!-- Preview — filled accent button -->
         <button class="btn-preview" onclick="previewStudy()" title="Preview full study"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Preview</button>
         <!-- Data Viewer — ghost text link -->
         <button class="btn-ghost-link" onclick="openDataExplorer()" title="Open participant data viewer">🔍 Data Viewer →</button>
-        <div class="save-indicator" id="saveIndicator"></div>
       </div>
       <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="handleJsonFile(event)">
     </div>
@@ -2782,8 +2786,7 @@
       const data = await resp.json();
       if (data.success) {
         console.log(`%c[BACKUP] ✅ Saved: ${data.label}`, 'color: #3fb950; font-weight: bold;');
-        const indicator = document.getElementById('saveIndicator');
-        if (indicator) { indicator.textContent = '📦 Backup saved'; setTimeout(() => indicator.textContent = '', 3000); }
+        showSaveIndicator('📦 Backup saved');
       } else {
         alert('Backup failed: ' + (data.error || 'unknown error'));
       }
@@ -4852,6 +4855,17 @@
     });
   }
 
+  // ── Save indicator (fade up / fade down) ────────────────────
+  let _saveIndicatorTimer = null;
+  function showSaveIndicator(text, duration = 1500) {
+    const el = document.getElementById('saveIndicator');
+    if (!el) return;
+    clearTimeout(_saveIndicatorTimer);
+    el.textContent = text;
+    el.classList.add('visible');
+    _saveIndicatorTimer = setTimeout(() => el.classList.remove('visible'), duration);
+  }
+
   // Save draft: IndexedDB (instant) + D1 (fire-and-forget)
   let _lastSavedJSON = null;
   async function saveDraft() {
@@ -6207,12 +6221,7 @@
     const config = collectStudyConfig();
     const json = JSON.stringify(config, null, 2);
     navigator.clipboard.writeText(json).then(() => {
-      const indicator = document.getElementById('saveIndicator');
-      if (indicator) {
-        indicator.textContent = '✓ Copied';
-        indicator.style.opacity = '1';
-        setTimeout(() => { indicator.style.opacity = '0'; }, 1500);
-      }
+      showSaveIndicator('✓ Copied');
     });
   }
 
