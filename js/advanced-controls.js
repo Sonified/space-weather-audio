@@ -523,11 +523,18 @@ export function initializeAdvancedControls() {
     if (gainSlider && contrastSlider) {
         const gainLabel = document.getElementById('spectrogramGainValue');
         const contrastLabel = document.getElementById('spectrogramContrastValue');
+        // Restore saved values
+        const savedGain = localStorage.getItem(`${settingsPrefix}spectrogram_gain`);
+        const savedContrast = localStorage.getItem(`${settingsPrefix}spectrogram_contrast`);
+        if (savedGain !== null) gainSlider.value = savedGain;
+        if (savedContrast !== null) contrastSlider.value = savedContrast;
         const updateGainContrast = () => {
             const g = parseFloat(gainSlider.value);
             const c = parseFloat(contrastSlider.value);
             if (gainLabel) gainLabel.textContent = `${g > 0 ? '+' : ''}${g} dB`;
             if (contrastLabel) contrastLabel.textContent = c;
+            localStorage.setItem(`${settingsPrefix}spectrogram_gain`, g);
+            localStorage.setItem(`${settingsPrefix}spectrogram_contrast`, c);
             setSpectrogramGainContrast(g, c);
         };
         gainSlider.addEventListener('input', updateGainContrast);
@@ -551,12 +558,17 @@ export function initializeAdvancedControls() {
         contrastSlider.addEventListener('click', (e) => {
             if (e.altKey) { contrastSlider.value = 100; updateGainContrast(); }
         });
+        // Apply restored values on init
+        if (savedGain !== null || savedContrast !== null) updateGainContrast();
     }
 
     // --- Spectrogram normalization dropdown ---
     const normalizeSelect = document.getElementById('spectrogramNormalize');
     if (normalizeSelect) {
+        const savedNorm = localStorage.getItem(`${settingsPrefix}spectrogram_normalize`);
+        if (savedNorm !== null) normalizeSelect.value = savedNorm;
         normalizeSelect.addEventListener('change', () => {
+            localStorage.setItem(`${settingsPrefix}spectrogram_normalize`, normalizeSelect.value);
             setNormalizationMode(normalizeSelect.value);
         });
     }
