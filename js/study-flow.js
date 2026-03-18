@@ -1097,10 +1097,8 @@ async function init() {
 
     if (isPreview) {
         window.__PREVIEW_MODE = true;
-        // Generate a preview participant ID — server will silently drop data for Preview_ users
-        const previewChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-        const previewSuffix = Array.from({ length: 6 }, () => previewChars[Math.floor(Math.random() * 26)]).join('');
-        const previewId = `Preview_${previewSuffix}`;
+        // Generate a preview participant ID — server will silently drop data for preview_ users
+        const previewId = generateParticipantId('PREVIEW');
         // Don't set participantId yet — let registration run so it's visible in preview
         clearParticipantId();
         window.__PREVIEW_PARTICIPANT_ID = previewId;
