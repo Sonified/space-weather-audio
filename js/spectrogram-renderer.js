@@ -1111,24 +1111,28 @@ function showFeaturePopup(box) {
         <textarea class="feature-popup-notes" placeholder="Describe this feature...">${feature.notes || ''}</textarea>
         <details class="feature-popup-details"${reviewMode ? ' open' : ''}>
             <summary>Details</summary>
-            <div class="feature-popup-row">
-                <div class="feature-popup-field">
-                    <label>Start Time (UTC)</label>
-                    <input type="text" data-key="startTime" data-original="${feature.startTime || ''}" value="${formatTimeForPopup(feature.startTime)}" />
-                </div>
-                <div class="feature-popup-field">
-                    <label>End Time (UTC)</label>
-                    <input type="text" data-key="endTime" data-original="${feature.endTime || ''}" value="${formatTimeForPopup(feature.endTime)}" />
-                </div>
-            </div>
-            <div class="feature-popup-row">
-                <div class="feature-popup-field">
-                    <label>Low Freq (Hz)</label>
-                    <input type="text" data-key="lowFreq" value="${feature.lowFreq ? parseFloat(feature.lowFreq).toFixed(3) : ''}" />
-                </div>
-                <div class="feature-popup-field">
-                    <label>High Freq (Hz)</label>
-                    <input type="text" data-key="highFreq" value="${feature.highFreq ? parseFloat(feature.highFreq).toFixed(3) : ''}" />
+            <div class="feature-popup-details-content">
+                <div class="feature-popup-details-inner">
+                    <div class="feature-popup-row">
+                        <div class="feature-popup-field">
+                            <label>Start Time (UTC)</label>
+                            <input type="text" data-key="startTime" data-original="${feature.startTime || ''}" value="${formatTimeForPopup(feature.startTime)}" />
+                        </div>
+                        <div class="feature-popup-field">
+                            <label>End Time (UTC)</label>
+                            <input type="text" data-key="endTime" data-original="${feature.endTime || ''}" value="${formatTimeForPopup(feature.endTime)}" />
+                        </div>
+                    </div>
+                    <div class="feature-popup-row">
+                        <div class="feature-popup-field">
+                            <label>Low Freq (Hz)</label>
+                            <input type="text" data-key="lowFreq" value="${feature.lowFreq ? parseFloat(feature.lowFreq).toFixed(3) : ''}" />
+                        </div>
+                        <div class="feature-popup-field">
+                            <label>High Freq (Hz)</label>
+                            <input type="text" data-key="highFreq" value="${feature.highFreq ? parseFloat(feature.highFreq).toFixed(3) : ''}" />
+                        </div>
+                    </div>
                 </div>
             </div>
         </details>
@@ -1221,6 +1225,25 @@ function showFeaturePopup(box) {
 
     // Close button
     popup.querySelector('.feature-popup-close').addEventListener('click', closeFeaturePopup);
+
+    // Animated details open/close
+    const detailsEl = popup.querySelector('.feature-popup-details');
+    if (detailsEl) {
+        detailsEl.querySelector('summary').addEventListener('click', (e) => {
+            if (detailsEl.open) {
+                // Closing: animate first, then remove open attribute
+                e.preventDefault();
+                const content = detailsEl.querySelector('.feature-popup-details-content');
+                content.style.gridTemplateRows = '0fr';
+                content.style.opacity = '0';
+                content.addEventListener('transitionend', () => {
+                    detailsEl.removeAttribute('open');
+                    content.style.gridTemplateRows = '';
+                    content.style.opacity = '';
+                }, { once: true });
+            }
+        });
+    }
 
     // Play button
     popup.querySelector('.feature-popup-play').addEventListener('click', (e) => {

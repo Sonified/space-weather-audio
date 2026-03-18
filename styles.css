@@ -3886,14 +3886,14 @@ select.csel-native {
 .feature-popup-field label {
     font-size: 9px;
     text-transform: uppercase;
-    color: rgba(128, 128, 128, 0.65);
+    color: rgba(160, 170, 180, 0.8);
     letter-spacing: 0.5px;
 }
 .feature-popup-field input {
     background: rgba(128, 128, 128, 0.06);
     border: 1px solid rgba(128, 128, 128, 0.15);
     border-radius: 4px;
-    color: rgba(255, 255, 255, 0.45);
+    color: rgba(255, 255, 255, 0.7);
     padding: 5px 8px;
     font-size: 13px;
     font-family: 'SF Mono', 'Consolas', monospace;
@@ -3998,7 +3998,7 @@ select.csel-native {
 .feature-popup-details summary {
     cursor: pointer;
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.45);
+    color: rgba(255, 255, 255, 0.65);
     user-select: none;
     padding: 4px 0;
     list-style: none;
@@ -4007,13 +4007,26 @@ select.csel-native {
     content: '▶ ';
     font-size: 9px;
     display: inline-block;
-    transition: transform 150ms;
+    transition: transform 200ms ease;
 }
 .feature-popup-details[open] summary::before {
     transform: rotate(90deg);
 }
 .feature-popup-details summary::-webkit-details-marker {
     display: none;
+}
+.feature-popup-details .feature-popup-details-content {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 250ms ease, opacity 250ms ease;
+    opacity: 0;
+}
+.feature-popup-details[open] .feature-popup-details-content {
+    grid-template-rows: 1fr;
+    opacity: 1;
+}
+.feature-popup-details .feature-popup-details-inner {
+    overflow: hidden;
 }
 .feature-popup-details[open] .feature-popup-row {
     margin-top: 8px;

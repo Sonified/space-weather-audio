@@ -5,7 +5,7 @@
  * and lets the feature-tracker load features from D1 in review mode.
  */
 
-import { fetchStudyConfig, setStudyId } from './d1-sync.js';
+import { fetchStudyConfig, setStudyId, fetchParticipantData } from './d1-sync.js';
 import { startStreaming } from './streaming.js';
 
 // ── Analysis config (duplicated from study-flow.js to avoid importing the full module) ──
@@ -20,9 +20,12 @@ const spacecraftMap = {
 };
 
 function applyAnalysisConfig(step) {
-    const mapped = spacecraftMap[step.spacecraft] || { spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16' };
-    const startTime = step.startTime || (step.startDate ? step.startDate + 'T00:00:00.000Z' : null);
-    const endTime = step.endTime || (step.endDate ? step.endDate + 'T00:00:00.000Z' : null);
+    // Participant session data has `dataset` directly; generic study config needs spacecraftMap lookup
+    const mapped = step.dataset
+        ? { spacecraft: spacecraftMap[step.spacecraft]?.spacecraft || step.spacecraft, dataset: step.dataset }
+        : spacecraftMap[step.spacecraft] || { spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16' };
+    const startTime = step.startTime || (step.startDate ? (step.startDate.includes('T') ? step.startDate : step.startDate + 'T00:00:00.000Z') : null);
+    const endTime = step.endTime || (step.endDate ? (step.endDate.includes('T') ? step.endDate : step.endDate + 'T00:00:00.000Z') : null);
 
     window.__STUDY_CONFIG = {
         spacecraft: mapped.spacecraft,
@@ -53,6 +56,20 @@ function applyAnalysisConfig(step) {
         if (hoursEl) hoursEl.value = String(step.initialHours);
     }
 
+    // Apply playback speed from step config (global toggle syncs into per-step values at save time)
+    const rawSpeed = step.playbackSpeed;
+    const targetSpeed = parseFloat(String(rawSpeed || '1').replace(/x$/i, '')) || 1.0;
+    if (targetSpeed !== 1.0) {
+        import('./audio-player.js').then(({ calculateSliderForSpeed, updatePlaybackSpeed }) => {
+            const slider = document.getElementById('playbackSpeed');
+            if (slider) {
+                slider.value = calculateSliderForSpeed(targetSpeed);
+                updatePlaybackSpeed();
+                if (window.pm?.audio || window.pm?.init) console.log(`🔊 Setting playback speed to ${targetSpeed}x (slider=${slider.value})`);
+            }
+        });
+    }
+
     console.log(`🔎 [Review] Config: ${mapped.spacecraft} / ${mapped.dataset} / ${startTime} → ${endTime}`);
 }
 
@@ -61,6 +78,23 @@ function applyAnalysisConfig(step) {
 function findAnalysisStep(steps, sessionNumber) {
     const analysisSteps = steps.filter(s => s.type === 'analysis');
     return analysisSteps[sessionNumber - 1] || analysisSteps[0] || null;
+}
+
+// ── Per-participant session configs (from their actual responses) ──
+
+let participantSessions = {}; // { 1: { spacecraft, dataset, startDate, endDate, ... }, 2: { ... } }
+
+/**
+ * Get the analysis config for a session — uses participant's actual data if available,
+ * falls back to generic study config steps.
+ */
+function getSessionConfig(sessionNumber) {
+    // Prefer participant's actual session data (respects their condition/ordering)
+    if (participantSessions[sessionNumber]) {
+        return participantSessions[sessionNumber];
+    }
+    // Fallback: generic study config (same for all participants — wrong for randomized studies)
+    return findAnalysisStep(studyConfig?.steps || [], sessionNumber);
 }
 
 // ── Init ──
@@ -115,6 +149,30 @@ async function init() {
     if (pidDisplay) pidDisplay.classList.add('sf-pid-visible');
     if (pidValue) pidValue.textContent = pid;
 
+    // Fetch participant's actual session data (what spacecraft/dates THEY saw)
+    try {
+        const pData = await fetchParticipantData(pid, slug);
+        if (pData?.responses) {
+            const r = pData.responses;
+            // Numbered keys (analysis_session_1, analysis_session_2, ...)
+            for (let i = 1; i <= 4; i++) {
+                const sKey = `analysis_session_${i}`;
+                if (r[sKey]) {
+                    participantSessions[i] = r[sKey];
+                    console.log(`🔎 [Review] Session ${i}: ${r[sKey].spacecraft} / ${r[sKey].dataset || '(no dataset)'} (${r[sKey].startDate} → ${r[sKey].endDate})`);
+                }
+            }
+            // Legacy key (analysis_session without number) — map to its .session field, or default to 1
+            if (r.analysis_session && !participantSessions[r.analysis_session.session || 1]) {
+                const s = r.analysis_session.session || 1;
+                participantSessions[s] = r.analysis_session;
+                console.log(`🔎 [Review] Session ${s} (legacy): ${r.analysis_session.spacecraft} / ${r.analysis_session.dataset || '(no dataset)'} (${r.analysis_session.startDate} → ${r.analysis_session.endDate})`);
+            }
+        }
+    } catch (err) {
+        console.warn('🔎 [Review] Could not fetch participant data, using generic config:', err);
+    }
+
     // Populate participant dropdown (non-blocking)
     populateParticipantSelector(slug, pid);
 
@@ -145,10 +203,10 @@ async function init() {
         }
     }
 
-    // Find and apply the analysis step for this session
-    const analysisStep = findAnalysisStep(studyConfig.steps, session);
+    // Find and apply the analysis config for this session (per-participant if available)
+    const analysisStep = getSessionConfig(session);
     if (!analysisStep) {
-        console.warn(`🔎 [Review] No analysis step found for session ${session}`);
+        console.warn(`🔎 [Review] No analysis config found for session ${session}`);
         return;
     }
     applyAnalysisConfig(analysisStep);
@@ -177,9 +235,9 @@ async function init() {
         }
         switchingSession = true;
         window.__REVIEW_SESSION = newSession;
-        const step = findAnalysisStep(studyConfig.steps, newSession);
+        const step = getSessionConfig(newSession);
         if (!step) {
-            console.warn(`🔎 [Review] No analysis step for session ${newSession}`);
+            console.warn(`🔎 [Review] No analysis config for session ${newSession}`);
             switchingSession = false;
             return;
         }
