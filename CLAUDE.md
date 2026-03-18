@@ -21,6 +21,53 @@ streaming.js → data-fetcher.js → audio-state.js → audio-player.js → Audi
                               waveform-worker.js → minimap-window-renderer.js (Three.js WebGPU)
 ```
 
+## Server Infrastructure (Cloudflare)
+
+**Worker:** `cloudflare-worker/src/index.js` — single Worker handles all API routes
+- **Deploy:** `cd cloudflare-worker && npx wrangler@4 deploy` (use wrangler@4, not v3 — v3 has auth issues with D1)
+- **Migrations:** `npx wrangler@4 d1 migrations apply study-db --remote` (migrations live in `cloudflare-worker/migrations/`)
+- **Config:** `cloudflare-worker/wrangler.toml`
+- **Secrets:** admin keys set via `wrangler secret put` — NOT in wrangler.toml
+
+**Production domain:** `https://spaceweather.now.audio` — serves both static site and API routes
+- API calls from the app use `spaceweather.now.audio` as base URL (not a separate API subdomain)
+- There is NO `api.spaceweather.now.audio` — don't try it, DNS won't resolve
+- The workers.dev domain exists but the app uses the custom domain
+
+**D1 Database** (binding: `DB`, name: `study-db`, id: `11e25f65-bd80-4a0d-a0e2-6d774ee11e8b`):
+- `studies` — study configs (id, name, config JSON, admin_key). Preserved across data nukes.
+- `participants` — participant state (participant_id + study_id = composite PK, group_id links to session, responses stored as JSON string, step_history as JSON array)
+- `features` — drawn feature annotations (UUID id, participant_id, study_id, analysis_session integer, start/end time, low/high freq, confidence, notes, speed_factor)
+- `assignment_sessions` — test/live session tracking (session_id PK, study_id, mode `test`|`live`, assignment_state JSON holds the block table + algorithm state)
+- Column `group_id` on participants = which assignment_session they belong to (renamed from session_id in migration 0010)
+- **Schema is canonical in migration 0010** (`0010_clean_rebuild.sql`) — if in doubt about column names, read that file
+
+**R2 Buckets:**
+- `space-weather-audio` (binding: `BUCKET`) — general storage, config snapshots at `study_snapshots/{slug}/{sessionId}.json`
+- `emic-data` (binding: `EMIC_DATA`) — EMIC study participant data uploads (submissions, feature JSONs)
+
+**Participant ID prefixes:** `P_` (live), `TEST_` (test), `PREVIEW_` (preview) — all use format `{PREFIX}_{YYYYMMDD}_{HHMM}_{5chars}` via `generateParticipantId()` in `js/participant-id.js`
+**Session ID prefixes:** `STUDY_` (live), `TEST_` (test) — format `{PREFIX}_{slug}_{YYYYMMDD}_{HHMM}_{5chars}`
+
+**Key API routes:**
+- `POST /api/study/:id/config` — save study config
+- `GET /api/study/:id/config` — load study config
+- `POST /api/study/:id/assign` — assign participant to condition (healing block algorithm)
+- `GET /api/study/:id/participants` — list all participants with features joined. Supports `?session=SESSION_ID` filter
+- `GET /api/study/:id/dashboard` — live session stats, algorithm state, active/inactive/completed counts
+- `POST /api/study/:id/snapshot` — save frozen config snapshot to R2 (fires on study launch)
+- `GET /api/study/:id/snapshot` — list all snapshots for a study
+- `POST /api/study/:id/assignment-state` — upload pre-computed block table (from study builder)
+- `POST /api/study/:id/heartbeat` — participant heartbeat for dropout detection
+- `POST /api/verify-admin` — admin key verification with exponential backoff lockout
+- `POST /api/study/:id/start-session` — create new test or live session
+- `POST /api/study/:id/end-session` — end a session
+
+**Debugging the server:**
+- `curl -s "https://spaceweather.now.audio/api/study/SLUG/participants" | python3 -m json.tool` — quick data check
+- `curl -s "https://spaceweather.now.audio/api/study/SLUG/snapshot"` — verify snapshots exist
+- D1 console: `npx wrangler@4 d1 execute study-db --remote --command "SELECT COUNT(*) FROM participants"`
+
 ## Key Directories
 
 ```
@@ -48,6 +95,10 @@ docs/            # Architecture docs — read these for deep dives
 | `js/modal-templates.js` | Modal HTML templates |
 | `js/streaming.js` | Data fetch orchestration, spacecraft dropdown labels |
 | `js/status-text.js` | Status bar typing animations, setStatusText, cancelTyping |
+| `js/participant-id.js` | Participant ID generation (`generateParticipantId(prefix)`) |
+| `study-builder.html` | Study config builder — conditions, randomization, launch/end, data panel |
+| `data-viewer.html` | Participant data explorer — responses, features, export |
+| `cloudflare-worker/src/index.js` | Cloudflare Worker — all API endpoints, assignment algorithm |
 
 ## Mode System (`master-modes.js`)
 
@@ -63,7 +114,11 @@ Two modes, determined by which page loads:
 
 **Key modules:**
 - `data-uploader.js` — Uploads submissions to R2
-- `participant-id.js` — ID from URL params or localStorage
+- `participant-id.js` — `generateParticipantId(prefix)` creates `{PREFIX}_{YYYYMMDD}_{HHMM}_{5chars}`. ID from URL params or localStorage
+- `study-builder.html` — Monolithic admin page: study config, conditions, randomization, launch/end, data panel. All JS is inline (not in `js/`)
+- `data-viewer.html` — Participant data explorer with admin gate, also monolithic inline JS
+
+**Study builder pages:** `study-builder.html` and `data-viewer.html` are large self-contained HTML files with all JS inline — they do NOT use the `js/` module system. When editing these, you're working in `<script>` tags inside HTML.
 
 ## GPU Rendering Stack
 

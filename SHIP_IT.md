@@ -109,6 +109,7 @@ An
 - [x] **HS13.** Implement live simultaneous participant tracking — heartbeat system + smart timeout estimation
 - [x] **HS14.** Confirm randomization-sim is correctly assigning participants end-to-end
 - [x] **HS19.** Add Likert scale question type to study builder
+- [x] **HS21.** Complete data format refactoring and audit — D1 schema rebuild (session_id→group_id, dead column cleanup), R2 config snapshots on launch, participant ID prefix system (P_/TEST_/PREVIEW_), verified full export pipeline end-to-end with 71-feature stress test
 - ~~**HS10.** Fill blocks with randomization-sim~~
 - ~~**HS11.** Test filling blocks live — hover over blocks for info, click to bring up data~~
 
