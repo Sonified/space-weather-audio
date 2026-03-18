@@ -1831,6 +1831,8 @@
             <div class="dropdown-item" onclick="saveAsJson()">💾 Save as NEW JSON file...</div>
             <div class="dropdown-item" onclick="saveDraft()">☁️ Save to server</div>
             <div class="dropdown-item" onclick="saveAsToServer()">☁️ Save as NEW to server...</div>
+            <div class="dropdown-item" onclick="saveBackup()">📦 Save Backup</div>
+            <div class="dropdown-item" onclick="restoreFromBackup()">📦 Restore from Backup...</div>
             <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
             <div class="dropdown-item" onclick="copyFullStudyJson()">📋 Copy Study JSON</div>
             <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
@@ -2762,6 +2764,69 @@
     updateSlug();
     // Save to server with new slug
     await saveDraft();
+  }
+
+  async function saveBackup() {
+    document.getElementById('fileMenu').classList.remove('show');
+    const config = collectStudyConfig();
+    const slug = config.slug;
+    if (!slug) { alert('No study loaded.'); return; }
+    const base = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+      ? 'https://spaceweather.now.audio' : location.origin;
+    try {
+      const resp = await fetch(`${base}/api/study/${encodeURIComponent(slug)}/backup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config }),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        console.log(`%c[BACKUP] ✅ Saved: ${data.label}`, 'color: #3fb950; font-weight: bold;');
+        const indicator = document.getElementById('saveIndicator');
+        if (indicator) { indicator.textContent = '📦 Backup saved'; setTimeout(() => indicator.textContent = '', 3000); }
+      } else {
+        alert('Backup failed: ' + (data.error || 'unknown error'));
+      }
+    } catch (e) {
+      console.error('[BACKUP] Failed:', e);
+      alert('Backup failed: ' + e.message);
+    }
+  }
+
+  async function restoreFromBackup() {
+    document.getElementById('fileMenu').classList.remove('show');
+    const slug = document.getElementById('slugValue')?.textContent?.trim();
+    if (!slug) { alert('No study loaded.'); return; }
+    const base = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+      ? 'https://spaceweather.now.audio' : location.origin;
+    try {
+      const resp = await fetch(`${base}/api/study/${encodeURIComponent(slug)}/backup`);
+      const data = await resp.json();
+      if (!data.success || !data.backups?.length) { alert('No backups found for this study.'); return; }
+      // Build a simple picker
+      const labels = data.backups.map((b, i) => {
+        const d = new Date(b.uploaded);
+        const size = b.size > 1024 ? `${(b.size / 1024).toFixed(1)}KB` : `${b.size}B`;
+        return `${i + 1}. ${d.toLocaleDateString()} ${d.toLocaleTimeString()} (${size})`;
+      });
+      const choice = prompt('Choose a backup to restore:\n\n' + labels.join('\n') + '\n\nEnter number:');
+      if (!choice) return;
+      const idx = parseInt(choice, 10) - 1;
+      if (isNaN(idx) || idx < 0 || idx >= data.backups.length) { alert('Invalid selection.'); return; }
+      const backup = data.backups[idx];
+      // Fetch the backup config
+      const configResp = await fetch(`${base}/api/study/${encodeURIComponent(slug)}/backup/${encodeURIComponent(backup.label)}`);
+      const configData = await configResp.json();
+      if (!configData.success || !configData.config) { alert('Could not load backup.'); return; }
+      if (!confirm(`Restore backup from ${new Date(backup.uploaded).toLocaleString()}?\n\nThis will replace your current study config.`)) return;
+      collapseFixedPanels();
+      loadConfigIntoBuilder(configData.config);
+      saveDraft();
+      console.log(`%c[BACKUP] 🔄 Restored: ${backup.label}`, 'color: #d29922; font-weight: bold;');
+    } catch (e) {
+      console.error('[BACKUP] Restore failed:', e);
+      alert('Restore failed: ' + e.message);
+    }
   }
 
   function downloadJson(config, filename) {

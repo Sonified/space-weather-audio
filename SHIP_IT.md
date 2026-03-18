@@ -115,6 +115,16 @@ An
 - [x] **HS37.** "Use global speed" toggle next to global `pb_speed` input (default off). When on, disable per-card playback speed dropdowns and sync from global. When off, per-card speeds are independent
   - New toggle in Data Playback panel + viewport scaling by speed factor
   - ~1-2 hrs, no dependencies
+- [ ] **HS39.** Add de-trend (DC offset removal) toggle to Data Playback panel in study builder → [`homestretch/HS39.md`](homestretch/HS39.md)
+  - Config option to pre-set the de-trend checkbox state on the study interface
+  - Wire into study config, apply on analysis start
+- [ ] **HS40.** Spectrogram gain slider — build on study.html first, then wire into builder → [`homestretch/HS40.md`](homestretch/HS40.md)
+  - **Phase 1:** Add gain slider to study.html bottom bar (far right), advanced mode — controls spectrogram brightness/contrast
+  - **Phase 2:** Add gain config option to study builder Data Playback panel (set initial value for participants)
+- [ ] **HS41.** Determine ideal gain integration strategy — auto-gain? → [`homestretch/HS41.md`](homestretch/HS41.md)
+  - Investigate: fixed gain vs auto-gain (normalize to data range) vs participant-adjustable
+  - How should gain interact with different datasets, stretch algorithms, and playback speeds?
+  - Design decision + implementation
 
 #### 🔨 Build tasks (~2-3 hrs)
 - [x] **HS16.** Code for matching participant's audio score with processing type, time period, and order received ✅
@@ -160,6 +170,11 @@ An
   - File menu: Create New, Duplicate Current, Delete This Study (with confirmation)
   - Header redesign: four distinct treatments (heavy picker, ghost File, accent Preview, outlined Data Viewer)
   - Panels collapse + vnav rebuilds on new/switch study. Template system deferred.
+- [x] **HS42.** Save/restore study config backups to server (R2) ✅
+  - File menu: Save Backup + Restore from Backup in Save section
+  - R2 storage at `study_backups/{slug}/{timestamp}.json` in BUCKET binding
+  - Worker endpoints: POST (save), GET (list), GET/:label (download)
+  - Restore flow: list backups → pick from numbered list → confirm → load into builder
 
 #### 🧪 Testing & tuning (~1 hr)
 - [ ] **HS7.1.** Test study launch functionality ⏱ ~1 hr → [`homestretch/HS7.1.md`](homestretch/HS7.1.md)

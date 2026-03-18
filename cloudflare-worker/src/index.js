@@ -719,6 +719,53 @@ export default {
         return json({ error: 'Method not allowed' }, 405);
       }
 
+      // POST /api/study/:studyId/backup — save config backup to R2
+      // GET  /api/study/:studyId/backup — list all backups
+      // GET  /api/study/:studyId/backup/:label — download a specific backup
+      const backupMatch = path.match(/^\/api\/study\/([^/]+)\/backup(?:\/(.+))?$/);
+      if (backupMatch) {
+        const studyId = backupMatch[1];
+        const backupLabel = backupMatch[2] ? decodeURIComponent(backupMatch[2]) : null;
+
+        if (request.method === 'POST') {
+          const body = await request.json();
+          const config = typeof body.config === 'string' ? body.config : JSON.stringify(body.config, null, 2);
+          if (!config) return json({ error: 'config required' }, 400);
+          const now = new Date();
+          const label = `${now.getUTCFullYear()}${String(now.getUTCMonth()+1).padStart(2,'0')}${String(now.getUTCDate()).padStart(2,'0')}_${String(now.getUTCHours()).padStart(2,'0')}${String(now.getUTCMinutes()).padStart(2,'0')}${String(now.getUTCSeconds()).padStart(2,'0')}`;
+          const key = `study_backups/${studyId}/${label}.json`;
+          await env.BUCKET.put(key, config, {
+            customMetadata: { study_id: studyId, label, created_at: nowISO(), note: body.note || '' },
+          });
+          console.log(`[BACKUP] ${studyId} → ${key}`);
+          return json({ success: true, key, label });
+        }
+
+        if (request.method === 'GET' && backupLabel) {
+          const key = `study_backups/${studyId}/${backupLabel}.json`;
+          const obj = await env.BUCKET.get(key);
+          if (!obj) return json({ error: 'Backup not found' }, 404);
+          const config = await obj.text();
+          return json({ success: true, label: backupLabel, config: JSON.parse(config), metadata: obj.customMetadata });
+        }
+
+        if (request.method === 'GET') {
+          const prefix = `study_backups/${studyId}/`;
+          const listed = await env.BUCKET.list({ prefix });
+          const backups = listed.objects.map(obj => ({
+            key: obj.key,
+            label: obj.key.replace(prefix, '').replace('.json', ''),
+            size: obj.size,
+            uploaded: obj.uploaded,
+          }));
+          // Most recent first
+          backups.sort((a, b) => (b.uploaded || '').toString().localeCompare((a.uploaded || '').toString()));
+          return json({ success: true, backups });
+        }
+
+        return json({ error: 'Method not allowed' }, 405);
+      }
+
       // POST /api/verify-admin — verify admin key with exponential backoff
       // Single endpoint: check lockout → try key → success or increment fails
       if (path === '/api/verify-admin' && request.method === 'POST') {
