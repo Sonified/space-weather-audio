@@ -5,6 +5,13 @@
  * This processor just plays the resulting buffer at 1:1 rate.
  * No FFT, no wavelet math — just sequential sample playback with fade handling.
  *
+ * Supports two modes:
+ * 1. Batch mode: 'load-audio' replaces entire buffer (existing behavior)
+ * 2. Streaming mode: 'init-buffer' + 'append-chunk' fills buffer progressively
+ *    - Chunks arrive in healing-block order (forward from playhead, then backward)
+ *    - Playback starts after first chunk, continues through computed regions
+ *    - Uncomputed regions produce silence with automatic fade out/in
+ *
  * When the speed changes, the GPU re-computes the buffer and sends
  * it here via 'load-audio'. Crossfade is handled by the audio-player gain nodes.
  */
@@ -25,6 +32,13 @@ class WaveletStretchProcessor extends AudioWorkletProcessor {
         this.pendingSeekPosition = null;
         this.pendingPause = false;
 
+        // Streaming mode state
+        this.isStreaming = false;
+        this.readyRanges = [];  // sorted [{start, end}] of computed regions
+        this.underrunFading = false;  // true when fading out due to buffer underrun
+        this.underrunFadeRemaining = 0;
+        this.underrunFadeLength = 882; // ~20ms fade for underrun transitions
+
         // speed is stored for position reporting but doesn't affect playback rate
         // (the buffer is already processed by GPU at the target speed)
         this.speed = options.processorOptions?.speed || 1.0;
@@ -42,6 +56,9 @@ class WaveletStretchProcessor extends AudioWorkletProcessor {
                         ? data.samples
                         : new Float32Array(data.samples);
                     this.sourcePosition = 0;
+                    this.isStreaming = false; // batch mode — full buffer loaded
+                    this.readyRanges = [];
+                    this.underrunFading = false;
                     this.port.postMessage({
                         type: 'loaded',
                         duration: this.sourceBuffer.length / sampleRate
@@ -85,6 +102,39 @@ class WaveletStretchProcessor extends AudioWorkletProcessor {
                     this.speed = data.speed;
                     break;
 
+                // --- Streaming mode messages ---
+
+                case 'init-buffer':
+                    // Pre-allocate buffer for progressive chunk filling
+                    this.sourceBuffer = new Float32Array(data.totalLength);
+                    this.sourcePosition = 0;
+                    this.isStreaming = true;
+                    this.readyRanges = [];
+                    this.underrunFading = false;
+                    this.underrunFadeRemaining = 0;
+                    this.port.postMessage({
+                        type: 'buffer-initialized',
+                        totalLength: data.totalLength
+                    });
+                    break;
+
+                case 'append-chunk':
+                    // Copy crossfaded chunk data into buffer at offset
+                    if (this.sourceBuffer && data.samples) {
+                        const samples = (data.samples instanceof Float32Array)
+                            ? data.samples
+                            : new Float32Array(data.samples);
+                        this.sourceBuffer.set(samples, data.offset);
+                        this._mergeReadyRange(data.offset, data.offset + samples.length);
+                        this.port.postMessage({
+                            type: 'chunk-appended',
+                            offset: data.offset,
+                            length: samples.length,
+                            readyRanges: this.readyRanges.slice() // copy for main thread
+                        });
+                    }
+                    break;
+
                 // No-ops for compatibility with shared message protocol
                 case 'set-window-size':
                 case 'set-grain-size':
@@ -93,6 +143,46 @@ class WaveletStretchProcessor extends AudioWorkletProcessor {
                     break;
             }
         };
+    }
+
+    /**
+     * Merge a new range into the sorted readyRanges list.
+     * Coalesces overlapping/adjacent ranges.
+     */
+    _mergeReadyRange(start, end) {
+        const ranges = this.readyRanges;
+        const merged = [];
+        let newRange = { start, end };
+        let inserted = false;
+
+        for (const r of ranges) {
+            if (r.end < newRange.start) {
+                merged.push(r);
+            } else if (r.start > newRange.end) {
+                if (!inserted) {
+                    merged.push(newRange);
+                    inserted = true;
+                }
+                merged.push(r);
+            } else {
+                // Overlapping — extend newRange
+                newRange.start = Math.min(newRange.start, r.start);
+                newRange.end = Math.max(newRange.end, r.end);
+            }
+        }
+        if (!inserted) merged.push(newRange);
+        this.readyRanges = merged;
+    }
+
+    /**
+     * Check if a sample position falls within a computed (ready) region.
+     */
+    _isReady(pos) {
+        for (const r of this.readyRanges) {
+            if (pos >= r.start && pos < r.end) return true;
+            if (r.start > pos) break; // sorted, no need to continue
+        }
+        return false;
     }
 
     process(inputs, outputs, parameters) {
@@ -117,6 +207,32 @@ class WaveletStretchProcessor extends AudioWorkletProcessor {
                     channel[j] = 0;
                 }
                 break;
+            }
+
+            // In streaming mode, check if this position has computed data
+            if (this.isStreaming && !this._isReady(pos)) {
+                // Buffer underrun — fade to silence, keep advancing
+                if (!this.underrunFading) {
+                    this.underrunFading = true;
+                    this.underrunFadeRemaining = this.underrunFadeLength;
+                    this.port.postMessage({ type: 'underrun', position: pos });
+                }
+                if (this.underrunFadeRemaining > 0) {
+                    const fadeProgress = this.underrunFadeRemaining / this.underrunFadeLength;
+                    channel[i] = this.sourceBuffer[pos] * fadeProgress * fadeProgress;
+                    this.underrunFadeRemaining--;
+                } else {
+                    channel[i] = 0;
+                }
+                this.sourcePosition++;
+                continue;
+            }
+
+            // Exiting underrun — data is available again, fade back in
+            if (this.underrunFading) {
+                this.underrunFading = false;
+                this.fadeInRemaining = this.fadeInLength;
+                this.port.postMessage({ type: 'underrun-resolved', position: pos });
             }
 
             let sample = this.sourceBuffer[pos];

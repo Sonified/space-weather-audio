@@ -745,6 +745,14 @@
                     </select>
                 </div>
                 <span id="gpuBadge" style="display:none;">GPU Accelerated</span>
+                <label id="streamingToggle" style="display:none; align-items:center; gap:4px; cursor:pointer; font-size:0.75em; color:#888; user-select:none;">
+                    <input type="checkbox" id="streamingCheckbox" checked>
+                    <span style="color:#7EB8B0; font-weight:600;">Streaming</span>
+                </label>
+                <label id="normalizeToggle" style="display:none; align-items:center; gap:4px; cursor:pointer; font-size:0.75em; color:#888; user-select:none;">
+                    <input type="checkbox" id="normalizeCheckbox" checked>
+                    <span style="color:#B89870; font-weight:600;">Normalize</span>
+                </label>
             </div>
 
             <!-- Primary: Speed — the big fader -->
@@ -944,6 +952,7 @@
             </div>
             <div class="waveform-container">
                 <canvas id="waveformCanvas"></canvas>
+                <canvas id="chunkMapCanvas" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; opacity:0.6; display:none;"></canvas>
                 <div class="playhead" id="playhead" style="left: 0"></div>
                 <div id="waveformTime"></div>
                 <div id="progressBar"></div>
@@ -1609,6 +1618,12 @@
         // Crossfade settings
         const CROSSFADE_DURATION = 0.15; // 150ms crossfade
 
+        // Streaming render-ahead state
+        let chunkScheduler = null;  // ChunkScheduler instance
+        let streamingWorklet = null;  // AudioWorkletNode for streaming playback
+        let streamingGain = null;
+        let isStreamingMode = false;  // true when streaming checkbox is checked
+
         // Playhead tracking
         let playStartTime = 0;
         let playStartPosition = 0; // Position in source (seconds)
@@ -1643,6 +1658,286 @@
         const downloadPanel = document.getElementById('downloadPanel');
         const downloadBtn = document.getElementById('downloadBtn');
         const downloadStatus = document.getElementById('downloadStatus');
+
+        // ===== STREAMING RENDER-AHEAD (Healing Block) =====
+
+        /**
+         * ChunkScheduler — Healing-block-style render-ahead for wavelet stretch.
+         *
+         * Computes GPU wavelet stretch chunks in priority order:
+         * 1. Forward from the playhead to the end of the file
+         * 2. "Heal" backward from the playhead to the beginning
+         *
+         * If the user seeks, reprioritize from the new position.
+         * Like the healing block algorithm from randomization-sim:
+         * the playhead is "where the need is," and we fill outward from there.
+         */
+        class ChunkScheduler {
+            constructor(audioData, speed, waveletGPU, opts) {
+                this.audioData = audioData;
+                this.speed = speed;
+                this.waveletGPU = waveletGPU;
+                this.opts = opts;
+
+                const stretchFactor = 1 / speed;
+                const sampleRate = 1 / opts.dt;
+
+                // Calculate chunk geometry
+                this.maxChunkSamples = waveletGPU.calculateMaxChunkSamples(
+                    opts.dt, opts.w0 || 6, opts.dj || 0.1,
+                    opts.transform || 'cwt', opts.binsPerOctave || 12,
+                    opts.fMin || 20, opts.minBW || 0
+                );
+                this.overlapSamples = Math.round(0.5 * sampleRate); // 0.5s overlap
+                this.stride = this.maxChunkSamples - this.overlapSamples;
+                this.numChunks = Math.ceil((audioData.length - this.overlapSamples) / this.stride);
+                this.totalOutputLen = Math.round(audioData.length * stretchFactor);
+                this.outputOverlap = Math.round(this.overlapSamples * stretchFactor);
+                this.stretchFactor = stretchFactor;
+
+                // Master output buffer (pre-allocated, zeros = silence)
+                this.output = new Float32Array(this.totalOutputLen);
+
+                // Chunk status: 0=pending, 1=computing, 2=ready
+                this.chunkStatus = new Uint8Array(this.numChunks);
+
+                // Priority queue (array of chunk indices)
+                this.queue = [];
+                this.isRunning = false;
+                this.aborted = false;
+                this.currentChunkIndex = -1;
+
+                // Callbacks
+                this.onChunkReady = null;     // (chunkIndex, numChunks, outputRange)
+                this.onComplete = null;       // ()
+                this.onProgress = null;       // (completedCount, totalCount)
+
+                console.log(
+                    `%c[ChunkScheduler] ${this.numChunks} chunks, ` +
+                    `${this.maxChunkSamples.toLocaleString()} samples/chunk, ` +
+                    `${this.overlapSamples.toLocaleString()} overlap, ` +
+                    `output: ${this.totalOutputLen.toLocaleString()} samples`,
+                    'color: #7EB8B0; font-weight: bold'
+                );
+            }
+
+            /**
+             * Set priority based on playhead position (in source samples).
+             * Forward from playhead → end, then heal backward to beginning.
+             */
+            setPriority(playheadSample) {
+                const playheadChunk = Math.max(0, Math.floor(playheadSample / this.stride));
+
+                this.queue = [];
+
+                // Forward from playhead to end
+                for (let i = playheadChunk; i < this.numChunks; i++) {
+                    if (this.chunkStatus[i] === 0) this.queue.push(i);
+                }
+
+                // Heal backward from playhead to beginning
+                for (let i = playheadChunk - 1; i >= 0; i--) {
+                    if (this.chunkStatus[i] === 0) this.queue.push(i);
+                }
+
+                console.log(
+                    `%c[ChunkScheduler] Priority set: playhead chunk ${playheadChunk}, ` +
+                    `${this.queue.length} chunks queued (${this.completedCount()}/${this.numChunks} done)`,
+                    'color: #7EB8B0'
+                );
+            }
+
+            /**
+             * Reprioritize from a new playhead position (e.g., after seek).
+             * Chunks already computed stay; only pending chunks get reordered.
+             */
+            reprioritize(playheadSample) {
+                this.setPriority(playheadSample);
+            }
+
+            completedCount() {
+                let count = 0;
+                for (let i = 0; i < this.numChunks; i++) {
+                    if (this.chunkStatus[i] === 2) count++;
+                }
+                return count;
+            }
+
+            /**
+             * Start processing chunks in priority order.
+             * Yields control after each chunk so the UI stays responsive.
+             */
+            async run() {
+                if (this.isRunning) return;
+                this.isRunning = true;
+                this.aborted = false;
+
+                while (this.queue.length > 0 && !this.aborted) {
+                    const ci = this.queue.shift();
+
+                    // Skip if already done or in progress
+                    if (this.chunkStatus[ci] !== 0) continue;
+
+                    this.chunkStatus[ci] = 1; // computing
+                    this.currentChunkIndex = ci;
+
+                    const t0 = performance.now();
+                    await this._processChunk(ci);
+                    const elapsed = (performance.now() - t0).toFixed(0);
+
+                    this.chunkStatus[ci] = 2; // ready
+                    this.currentChunkIndex = -1;
+
+                    const completed = this.completedCount();
+                    console.log(
+                        `%c[ChunkScheduler] Chunk ${ci}/${this.numChunks - 1} done (${elapsed}ms) — ` +
+                        `${completed}/${this.numChunks} total`,
+                        'color: #7EB8B0'
+                    );
+
+                    // Notify listeners
+                    const outputStart = Math.round((ci * this.stride) * this.stretchFactor);
+                    const outputEnd = Math.min(
+                        Math.round(((ci * this.stride) + this.maxChunkSamples) * this.stretchFactor),
+                        this.totalOutputLen
+                    );
+                    if (this.onChunkReady) {
+                        this.onChunkReady(ci, this.numChunks, { start: outputStart, end: outputEnd });
+                    }
+                    if (this.onProgress) {
+                        this.onProgress(completed, this.numChunks);
+                    }
+
+                    // Yield to event loop so UI updates and seeks can reprioritize
+                    await new Promise(r => setTimeout(r, 0));
+                }
+
+                this.isRunning = false;
+                if (!this.aborted && this.completedCount() === this.numChunks) {
+                    console.log(
+                        '%c[ChunkScheduler] All chunks complete!',
+                        'color: #7EB8B0; font-weight: bold'
+                    );
+                    if (this.onComplete) this.onComplete();
+                }
+            }
+
+            /**
+             * Process a single chunk: CWT + stretch on GPU, crossfade into output buffer.
+             */
+            async _processChunk(ci) {
+                const inputStart = ci * this.stride;
+                const inputEnd = Math.min(inputStart + this.maxChunkSamples, this.audioData.length);
+                const chunk = this.audioData.subarray(inputStart, inputEnd);
+
+                // CWT + stretch this chunk
+                await this.waveletGPU.computeCWT(chunk, {
+                    dt: this.opts.dt,
+                    w0: this.opts.w0 || 6,
+                    dj: this.opts.dj || 0.1,
+                    transform: this.opts.transform || 'cwt',
+                    binsPerOctave: this.opts.binsPerOctave || 12,
+                    fMin: this.opts.fMin || 20,
+                    minBW: this.opts.minBW || 0
+                });
+
+                const useUnwrapped = (this.opts.phaseMode === 'accumulate');
+                const stretched = await this.waveletGPU.stretchAudio(this.speed, {
+                    phaseRand: this.opts.phaseRand || 0,
+                    interpMode: this.opts.interpMode || 0,
+                    useUnwrapped
+                });
+
+                // Crossfade into master output buffer
+                const chunkOutputLen = Math.round(chunk.length * this.stretchFactor);
+                const outputStart = Math.round(inputStart * this.stretchFactor);
+
+                for (let j = 0; j < chunkOutputLen && j < stretched.length; j++) {
+                    const outIdx = outputStart + j;
+                    if (outIdx >= this.totalOutputLen) break;
+
+                    const sample = stretched[j];
+                    if (!isFinite(sample)) continue;
+
+                    if (ci > 0 && j < this.outputOverlap) {
+                        // Hann crossfade in overlap region
+                        const fade = 0.5 * (1 - Math.cos(Math.PI * j / this.outputOverlap));
+                        this.output[outIdx] = this.output[outIdx] * (1 - fade) + sample * fade;
+                    } else {
+                        this.output[outIdx] = sample;
+                    }
+                }
+            }
+
+            /**
+             * Abort the current run. Current chunk finishes but no more start.
+             */
+            abort() {
+                this.aborted = true;
+                this.queue = [];
+            }
+
+            /**
+             * Get the output range (in output samples) for a chunk index.
+             */
+            chunkOutputRange(ci) {
+                const outputStart = Math.round((ci * this.stride) * this.stretchFactor);
+                const inputEnd = Math.min((ci * this.stride) + this.maxChunkSamples, this.audioData.length);
+                const outputEnd = Math.round(inputEnd * this.stretchFactor);
+                return { start: outputStart, end: Math.min(outputEnd, this.totalOutputLen) };
+            }
+
+            /**
+             * Check if a source-time position (in samples) has computed audio.
+             */
+            isPositionReady(sourceSample) {
+                const ci = Math.floor(sourceSample / this.stride);
+                return ci >= 0 && ci < this.numChunks && this.chunkStatus[ci] === 2;
+            }
+        }
+
+        /**
+         * Draw the chunk map overlay — shows which chunks are computed.
+         * Green = ready, dark = pending, orange = computing.
+         */
+        function drawChunkMap() {
+            const canvas = document.getElementById('chunkMapCanvas');
+            if (!canvas || !chunkScheduler) {
+                if (canvas) canvas.style.display = 'none';
+                return;
+            }
+
+            canvas.style.display = 'block';
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = canvas.offsetWidth * dpr;
+            canvas.height = canvas.offsetHeight * dpr;
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+
+            const w = canvas.offsetWidth;
+            const h = canvas.offsetHeight;
+            const barH = 6; // chunk indicator bar height
+
+            ctx.clearRect(0, 0, w, h);
+
+            const scheduler = chunkScheduler;
+            for (let ci = 0; ci < scheduler.numChunks; ci++) {
+                const range = scheduler.chunkOutputRange(ci);
+                const x0 = (range.start / scheduler.totalOutputLen) * w;
+                const x1 = (range.end / scheduler.totalOutputLen) * w;
+
+                const status = scheduler.chunkStatus[ci];
+                if (status === 2) {
+                    ctx.fillStyle = 'rgba(126, 184, 176, 0.5)'; // teal = ready
+                } else if (status === 1) {
+                    ctx.fillStyle = 'rgba(196, 149, 74, 0.7)'; // gold = computing
+                } else {
+                    ctx.fillStyle = 'rgba(60, 60, 70, 0.4)'; // dark = pending
+                }
+
+                ctx.fillRect(x0, h - barH, x1 - x0, barH);
+            }
+        }
 
         // ===== UTILITY FUNCTIONS =====
 
@@ -1717,8 +2012,12 @@
             }
 
             // Restore sliders
-            // Note: stretchSlider not restored — mapping changed from stretch→speed,
-            // old saved values would give wrong speed. Defaults to 565 (1x speed).
+            if (settings.stretchSlider !== undefined) {
+                stretchSlider.value = settings.stretchSlider;
+                const restoredSpeed = sliderToSpeed(parseFloat(settings.stretchSlider));
+                stretchValue.textContent = (restoredSpeed < 10 ? restoredSpeed.toFixed(2) : Math.round(restoredSpeed)) + 'x';
+                updateSliderFill(stretchSlider);
+            }
 
             if (settings.overlapSlider !== undefined) {
                 overlapSlider.value = settings.overlapSlider;
@@ -2415,12 +2714,20 @@
             if (!sourceBuffer) return;
             playBtn.classList.remove('pulse');
 
+            const useStreaming = document.getElementById('streamingCheckbox').checked
+                && (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt');
+
             if (isPlaying) {
                 // Pause — lock in source-time position
                 const speed = gpuPlayingSpeed || sliderToSpeed(parseFloat(stretchSlider.value));
                 const elapsed = audioContext.currentTime - playStartTime;
                 playStartPosition += elapsed * speed;
-                stopGPUSource();
+
+                if (useStreaming && streamingWorklet) {
+                    streamingWorklet.port.postMessage({ type: 'pause' });
+                } else {
+                    stopGPUSource();
+                }
                 isPlaying = false;
                 playBtn.textContent = '▶';
                 stopPlayheadAnimation();
@@ -2428,7 +2735,30 @@
                 return;
             }
 
-            // Need to process first?
+            // Streaming mode: use ChunkScheduler + progressive worklet
+            if (useStreaming) {
+                // If we don't have a scheduler yet (or speed changed), start fresh
+                if (!chunkScheduler || gpuProcessedBuffer === null) {
+                    // Init GPU if needed
+                    if (!waveletGPU) {
+                        waveletGPU = new WaveletGPUCompute();
+                        await waveletGPU.initialize();
+                    }
+                    await startStreamingPlayback(playStartPosition);
+                } else {
+                    // Resume existing streaming session
+                    streamingWorklet.port.postMessage({ type: 'play' });
+                    playStartTime = audioContext.currentTime;
+                    gpuPlayingSpeed = chunkScheduler.speed;
+                    isPlaying = true;
+                    playBtn.textContent = '⏸';
+                    startPlayheadAnimation();
+                    setStatus(playingStatus(), 'active');
+                }
+                return;
+            }
+
+            // Batch mode (original path)
             if (!gpuProcessedBuffer) {
                 playBtn.disabled = true;
                 playBtn.textContent = '▶';
@@ -2495,18 +2825,321 @@
         // GPU animation removed — unified startPlayheadAnimation() handles both modes
         // since all position tracking is now in source-time
 
+        // ===== STREAMING RENDER-AHEAD PLAYBACK =====
+
+        /**
+         * Initialize the streaming worklet for progressive wavelet playback.
+         * Uses the wavelet-stretch-processor with init-buffer + append-chunk messages.
+         */
+        async function initStreamingWorklet(totalOutputLength) {
+            if (!audioContext) audioContext = new AudioContext();
+            if (audioContext.state === 'suspended') await audioContext.resume();
+
+            // Load worklet module if not already loaded
+            if (!streamingWorklet) {
+                await audioContext.audioWorklet.addModule('workers/wavelet-stretch-processor.js');
+                streamingWorklet = new AudioWorkletNode(audioContext, 'wavelet-stretch-processor', {
+                    processorOptions: { speed: 1.0 }
+                });
+
+                // Set up gain node
+                streamingGain = audioContext.createGain();
+                if (!oscAnalyser) {
+                    oscAnalyser = audioContext.createAnalyser();
+                    oscAnalyser.fftSize = 2048;
+                    oscBuffer = new Float32Array(oscAnalyser.fftSize);
+                    oscAnalyser.connect(audioContext.destination);
+                    startOscilloscope();
+                }
+                streamingWorklet.connect(streamingGain);
+                streamingGain.connect(oscAnalyser);
+
+                // Listen for worklet messages
+                streamingWorklet.port.onmessage = (event) => {
+                    const { type } = event.data;
+                    if (type === 'underrun') {
+                        console.log('%c[Streaming] Buffer underrun at position ' +
+                            event.data.position, 'color: #E8A838');
+                    } else if (type === 'underrun-resolved') {
+                        console.log('%c[Streaming] Underrun resolved at position ' +
+                            event.data.position, 'color: #7EB8B0');
+                    } else if (type === 'ended') {
+                        if (isPlaying && isLooping) {
+                            // Loop: seek back to start
+                            streamingWorklet.port.postMessage({
+                                type: 'seek', data: { position: 0 }
+                            });
+                            streamingWorklet.port.postMessage({ type: 'play' });
+                            playStartPosition = 0;
+                            playStartTime = audioContext.currentTime;
+                        } else {
+                            isPlaying = false;
+                            playBtn.textContent = '▶';
+                            stopPlayheadAnimation();
+                            playhead.style.left = '0%';
+                            playStartPosition = 0;
+                            setStatus('Playback ended.', 'active');
+                        }
+                    }
+                };
+            }
+
+            // Initialize the buffer in the worklet
+            streamingWorklet.port.postMessage({
+                type: 'init-buffer',
+                data: { totalLength: totalOutputLength }
+            });
+        }
+
+        /**
+         * Send a completed chunk to the streaming worklet.
+         * The chunk data comes from the ChunkScheduler's master output buffer.
+         */
+        function sendChunkToWorklet(scheduler, chunkIndex, outputRange) {
+            if (!streamingWorklet) return;
+
+            // Extract the chunk region from the master output buffer
+            const chunkData = scheduler.output.slice(outputRange.start, outputRange.end);
+
+            streamingWorklet.port.postMessage({
+                type: 'append-chunk',
+                data: {
+                    samples: chunkData,
+                    offset: outputRange.start
+                }
+            });
+        }
+
+        /**
+         * Start streaming playback — the main entry point.
+         *
+         * Creates a ChunkScheduler, inits the worklet, starts computing from
+         * the playhead, and begins playback after the first chunk completes.
+         */
+        async function startStreamingPlayback(sourceOffset = 0) {
+            if (!sourceBuffer || !waveletGPU) return;
+            if (gpuIsProcessing) return; // prevent double-start
+
+            gpuIsProcessing = true;
+            const speed = sliderToSpeed(parseFloat(stretchSlider.value));
+            const dt = 1.0 / sourceSampleRate;
+
+            const phaseMode = document.getElementById('phaseModeSelect').value;
+            const interpMode = parseInt(document.getElementById('interpModeSelect').value);
+            const algo = currentAlgorithm;
+
+            const opts = {
+                dt,
+                transform: algo,
+                phaseMode,
+                interpMode,
+                w0: parseFloat(document.getElementById('w0Select').value),
+                dj: parseFloat(document.getElementById('djSelect').value),
+                binsPerOctave: parseInt(document.getElementById('binsPerOctaveSelect').value),
+                fMin: 20,
+                minBW: parseFloat(document.getElementById('minBWSelect').value)
+            };
+
+            // Initialize GPU if needed
+            if (!waveletGPU.initialized) {
+                setStatus('Initializing WebGPU...', 'active');
+                await waveletGPU.initialize();
+            }
+
+            // Create the scheduler — computes into its own output buffer (main thread)
+            // WITHOUT touching the worklet yet. Old audio keeps playing.
+            chunkScheduler = new ChunkScheduler(sourceBuffer, speed, waveletGPU, opts);
+            const scheduler = chunkScheduler; // local capture for closures
+
+            // Set priority from the playhead position
+            const playheadSample = Math.floor(sourceOffset * sourceSampleRate);
+            scheduler.setPriority(playheadSample);
+
+            let firstChunkSent = false;
+            const startTime = performance.now();
+            const oldWasPlaying = isPlaying; // remember if old audio was playing
+
+            // On each chunk ready: first chunk triggers crossfade swap
+            scheduler.onChunkReady = async (ci, total, outputRange) => {
+                // Bail if a newer scheduler replaced us
+                if (chunkScheduler !== scheduler) return;
+
+                drawChunkMap();
+
+                if (!firstChunkSent) {
+                    firstChunkSent = true;
+                    const elapsed = (performance.now() - startTime).toFixed(0);
+                    console.log(
+                        `%c[Streaming] First chunk ready in ${elapsed}ms — crossfading to new buffer`,
+                        'color: #7EB8B0; font-weight: bold'
+                    );
+
+                    // Now it's safe to swap: fade out old → init new buffer → send chunks → fade in
+                    await initStreamingWorklet(scheduler.totalOutputLen);
+
+                    // Send all chunks computed so far
+                    for (let i = 0; i < scheduler.numChunks; i++) {
+                        if (scheduler.chunkStatus[i] === 2) {
+                            const range = scheduler.chunkOutputRange(i);
+                            sendChunkToWorklet(scheduler, i, range);
+                        }
+                    }
+
+                    // Crossfade: fade out → seek → play → fade in
+                    const now = audioContext.currentTime;
+                    const fadeDur = CROSSFADE_DURATION;
+
+                    if (oldWasPlaying && streamingGain) {
+                        // Gain was already at 1 from old playback — fade out
+                        streamingGain.gain.setValueAtTime(streamingGain.gain.value, now);
+                        streamingGain.gain.linearRampToValueAtTime(0, now + fadeDur * 0.5);
+                    }
+
+                    // After fade-out completes, seek and start new buffer, fade in
+                    const swapDelay = oldWasPlaying ? fadeDur * 0.5 : 0;
+                    setTimeout(() => {
+                        if (chunkScheduler !== scheduler) return; // stale
+                        const seekPos = sourceOffset / speed;
+                        streamingWorklet.port.postMessage({
+                            type: 'seek', data: { position: seekPos }
+                        });
+                        streamingWorklet.port.postMessage({ type: 'play' });
+
+                        // Fade in
+                        const t = audioContext.currentTime;
+                        streamingGain.gain.setValueAtTime(0, t);
+                        streamingGain.gain.linearRampToValueAtTime(1, t + fadeDur);
+
+                        // Update UI state
+                        playStartPosition = sourceOffset;
+                        playStartTime = audioContext.currentTime;
+                        gpuPlayingSpeed = speed;
+                        isPlaying = true;
+                        playBtn.textContent = '⏸';
+                        playBtn.disabled = false;
+                        startPlayheadAnimation();
+                        setStatus(`Streaming ${algoNames[algo] || algo} at ${speed < 10 ? speed.toFixed(2) : Math.round(speed)}x...`, 'active');
+                    }, swapDelay * 1000);
+                } else {
+                    // Subsequent chunks — just send to worklet
+                    sendChunkToWorklet(scheduler, ci, outputRange);
+                }
+            };
+
+            scheduler.onProgress = (completed, total) => {
+                if (chunkScheduler !== scheduler) return;
+                showProgress(completed / total);
+            };
+
+            scheduler.onComplete = () => {
+                if (chunkScheduler !== scheduler) return; // stale scheduler
+                gpuIsProcessing = false;
+                const totalMs = performance.now() - startTime;
+
+                // Normalize to peak if checkbox is checked
+                if (document.getElementById('normalizeCheckbox').checked) {
+                    let peak = 0;
+                    for (let i = 0; i < scheduler.output.length; i++) {
+                        const abs = Math.abs(scheduler.output[i]);
+                        if (abs > peak) peak = abs;
+                    }
+                    if (peak > 0 && peak !== 1) {
+                        const scale = 1.0 / peak;
+                        for (let i = 0; i < scheduler.output.length; i++) {
+                            scheduler.output[i] *= scale;
+                        }
+                        // Re-send normalized buffer to worklet
+                        streamingWorklet.port.postMessage({
+                            type: 'load-audio',
+                            data: { samples: scheduler.output }
+                        });
+                        // Seek back to current position (load-audio resets to 0)
+                        if (isPlaying && audioContext) {
+                            const elapsed = audioContext.currentTime - playStartTime;
+                            const currentPos = playStartPosition + elapsed * speed;
+                            const seekPos = currentPos / speed;
+                            streamingWorklet.port.postMessage({
+                                type: 'seek', data: { position: seekPos }
+                            });
+                            streamingWorklet.port.postMessage({ type: 'play' });
+                        }
+                    }
+                }
+
+                // Cache for the batch path
+                const buf = audioContext.createBuffer(1, scheduler.output.length, sourceSampleRate);
+                buf.getChannelData(0).set(scheduler.output);
+                gpuProcessedBuffer = buf;
+
+                drawWaveform(scheduler.output, { crossfade: false });
+                drawChunkMap();
+                hideProgress();
+                updateStats({ processingMs: totalMs });
+
+                const name = algoNames[algo] || algo;
+                const val = speed < 10 ? speed.toFixed(2) : Math.round(speed);
+                setStatus(`Streaming complete — ${name} at ${val}x`, 'active');
+            };
+
+            // Start computing! First chunk → playback, rest in background.
+            setStatus(`Computing chunks...`, 'active');
+            playBtn.disabled = true;
+            showProgress(0);
+
+            // Fire and forget — the scheduler runs asynchronously
+            chunkScheduler.run();
+        }
+
+        /**
+         * Handle seek in streaming mode — reprioritize the chunk scheduler.
+         */
+        function streamingSeek(sourcePosition) {
+            if (!chunkScheduler || !streamingWorklet) return;
+
+            // Reprioritize chunks from new position
+            const playheadSample = Math.floor(sourcePosition * sourceSampleRate);
+            chunkScheduler.reprioritize(playheadSample);
+
+            // Seek the worklet
+            const seekPos = sourcePosition / chunkScheduler.speed;
+            streamingWorklet.port.postMessage({
+                type: 'seek', data: { position: seekPos }
+            });
+
+            playStartPosition = sourcePosition;
+            playStartTime = audioContext.currentTime;
+
+            drawChunkMap();
+
+            // If scheduler stopped (all chunks were done or aborted), restart
+            if (!chunkScheduler.isRunning && chunkScheduler.queue.length > 0) {
+                chunkScheduler.run();
+            }
+        }
+
         function stop() {
             const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
 
             if (isOffline) {
+                // Stop streaming mode
+                if (chunkScheduler) {
+                    chunkScheduler.abort();
+                    chunkScheduler = null;
+                }
+                if (streamingWorklet) {
+                    streamingWorklet.port.postMessage({ type: 'pause' });
+                }
                 stopGPUSource();
                 gpuPlayingSpeed = null;
+                document.getElementById('chunkMapCanvas').style.display = 'none';
             } else if (stretchNode) {
                 stretchNode.port.postMessage({ type: 'pause' });
                 stretchNode.port.postMessage({ type: 'seek', data: { position: 0 } });
             }
 
+            gpuIsProcessing = false;
             playBtn.textContent = '▶';
+            playBtn.disabled = false;
             isPlaying = false;
             stopPlayheadAnimation();
             playhead.style.left = '0%';
@@ -2538,7 +3171,10 @@
         function updatePlayhead() {
             if (!isPlaying || !sourceBuffer || !audioContext) return;
 
-            const speed = sliderToSpeed(parseFloat(stretchSlider.value));
+            // For offline/streaming: the buffer plays at the speed it was rendered at,
+            // not wherever the slider is mid-drag. Use gpuPlayingSpeed if available.
+            const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
+            const speed = (isOffline && gpuPlayingSpeed) ? gpuPlayingSpeed : sliderToSpeed(parseFloat(stretchSlider.value));
             const elapsed = audioContext.currentTime - playStartTime;
 
             // We advance through source at the current speed
@@ -2836,50 +3472,20 @@
         // Track last speed for playhead calculation
         let lastSpeed = sliderToSpeed(parseFloat(stretchSlider.value));
 
-        let gpuRestretchTimeout = null;
-
         stretchSlider.addEventListener('input', (e) => {
             const sliderValue = parseFloat(e.target.value);
             const speed = sliderToSpeed(sliderValue);
             stretchValue.textContent = (speed < 10 ? speed.toFixed(2) : Math.round(speed)) + 'x';
             updateStats({ speed });
 
-            if (isPlaying) setStatus(playingStatus(), 'active');
-
             const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
             if (isOffline) {
-                // Lock in source position using the PLAYING buffer's speed
-                if (isPlaying && audioContext) {
-                    const rate = gpuPlayingSpeed || lastSpeed;
-                    const elapsed = audioContext.currentTime - playStartTime;
-                    playStartPosition += elapsed * rate;
-                    playStartTime = audioContext.currentTime;
-                }
-                lastSpeed = speed;
-                gpuProcessedBuffer = null; // invalidate — needs re-processing
-                if (sourceBuffer) {
-                    // Debounce: wait for slider to settle, then auto-render and play
-                    clearTimeout(gpuRestretchTimeout);
-                    gpuRestretchTimeout = setTimeout(async () => {
-                        if (!isPlaying) {
-                            // Auto-render and start playback
-                            playStartPosition = 0;
-                            const buf = await runOfflineStretch();
-                            if (buf && (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi')) {
-                                if (!audioContext) audioContext = new AudioContext();
-                                playGPUBuffer(buf, 0, true);
-                                isPlaying = true;
-                                playBtn.textContent = '⏸';
-                                startPlayheadAnimation();
-                                setStatus(playingStatus(), 'active');
-                            }
-                        } else {
-                            processAndCrossfadeGPU(gpuPlayingSpeed);
-                        }
-                    }, 300);
-                }
+                // During drag: update speed label only. Status bar, playhead,
+                // and audio untouched. Recompute happens on 'change' (release).
                 return;
             }
+
+            if (isPlaying) setStatus(playingStatus(), 'active');
 
             // Lock in current position before changing speed
             if (isPlaying && audioContext) {
@@ -2902,6 +3508,53 @@
                 playStartTime = audioContext.currentTime;
                 startPlayheadAnimation();
                 setStatus(playingStatus(), 'active');
+            }
+            saveSettings();
+        });
+
+        // Speed slider release — recompute for offline/GPU algorithms
+        stretchSlider.addEventListener('change', async (e) => {
+            const speed = sliderToSpeed(parseFloat(e.target.value));
+            const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
+            if (!isOffline || !sourceBuffer) return;
+
+            gpuProcessedBuffer = null; // invalidate cache
+
+            // Abort any in-flight streaming computation (but keep worklet playing!)
+            if (chunkScheduler && chunkScheduler.isRunning) {
+                chunkScheduler.abort();
+                chunkScheduler = null;
+            }
+
+            // Lock in source position using the OLD playing speed
+            if (isPlaying && audioContext) {
+                const rate = gpuPlayingSpeed || lastSpeed;
+                const elapsed = audioContext.currentTime - playStartTime;
+                playStartPosition += elapsed * rate;
+                playStartTime = audioContext.currentTime;
+            }
+            lastSpeed = speed;
+
+            const useStreaming = document.getElementById('streamingCheckbox').checked
+                && (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt');
+
+            if (useStreaming) {
+                // Old audio keeps playing — startStreamingPlayback computes
+                // in background, crossfades when first chunk is ready.
+                await startStreamingPlayback(playStartPosition);
+            } else if (!isPlaying) {
+                playStartPosition = 0;
+                const buf = await runOfflineStretch();
+                if (buf && (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi')) {
+                    if (!audioContext) audioContext = new AudioContext();
+                    playGPUBuffer(buf, 0, true);
+                    isPlaying = true;
+                    playBtn.textContent = '⏸';
+                    startPlayheadAnimation();
+                    setStatus(playingStatus(), 'active');
+                }
+            } else {
+                processAndCrossfadeGPU(gpuPlayingSpeed);
             }
             saveSettings();
         });
@@ -3083,6 +3736,11 @@
             } else {
                 gpuBadge.style.display = 'none';
             }
+
+            // Streaming + normalize toggles: only for GPU wavelet algorithms
+            const isGPUWavelet = (algo === 'cwt' || algo === 'cqt');
+            document.getElementById('streamingToggle').style.display = isGPUWavelet ? 'flex' : 'none';
+            document.getElementById('normalizeToggle').style.display = isGPUWavelet ? 'flex' : 'none';
         }
 
         algorithmSelect.addEventListener('change', (e) => {
@@ -3177,6 +3835,10 @@
         // ===== LOAD TEST TRACKS LIST =====
 
         const testTracks = [
+            { file: 'stretch_test_audio/GOES_REGION_1_RAW_DN_MAGN-L2-HIRES_G16_Bx_2022-08-17T00-00-00-000Z_2022-08-20T00-00-00-000Z.wav', name: 'GOES Region 1' },
+            { file: 'stretch_test_audio/GOES_REGION_1_DETRENDED_DN_MAGN-L2-HIRES_G16_Bx_2022-08-17T00-00-00-000Z_2022-08-20T00-00-00-000Z.wav', name: 'GOES Region 1 (Detrended)' },
+            { file: 'stretch_test_audio/GOES_REGION_2_RAW_DN_MAGN-L2-HIRES_G16_Bx_2022-01-14T00-00-00-000Z_2022-01-17T00-00-00-000Z.wav', name: 'GOES Region 2' },
+            { file: 'stretch_test_audio/GOES_REGION_2_DETRENDED_DN_MAGN-L2-HIRES_G16_Bx_2022-01-14T00-00-00-000Z_2022-01-17T00-00-00-000Z.wav', name: 'GOES Region 2 (Detrended)' },
             { file: 'stretch_test_audio/FF_AS_bird_chirp_run_it_back_1.wav', name: 'Bird Chirp' },
             { file: 'stretch_test_audio/Julia_Run_8.wav', name: 'Vocal Run' },
             { file: 'stretch_test_audio/FF_CA_60_foley_ticking_clock_slight_variation.wav', name: 'Clock Tick' },
@@ -3270,18 +3932,46 @@
             const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
 
             if (isOffline) {
-                if (!gpuProcessedBuffer) return;
                 const sourceDuration = sourceBuffer.length / audioContext.sampleRate;
-                playStartPosition = ratio * sourceDuration;
+                const seekPos = ratio * sourceDuration;
                 playhead.style.left = `${ratio * 100}%`;
-                playGPUBuffer(gpuProcessedBuffer, ratio * sourceDuration);
-                if (!isPlaying) {
-                    isPlaying = true;
-                    playBtn.textContent = '⏸';
-                    playBtn.classList.remove('pulse');
-                    setStatus(playingStatus(), 'active');
+
+                // Streaming mode: reprioritize chunks from click position
+                if (chunkScheduler && streamingWorklet) {
+                    streamingSeek(seekPos);
+                    if (!isPlaying) {
+                        streamingWorklet.port.postMessage({ type: 'play' });
+                        isPlaying = true;
+                        playBtn.textContent = '⏸';
+                        playBtn.classList.remove('pulse');
+                        setStatus(playingStatus(), 'active');
+                    }
+                    startPlayheadAnimation();
+                } else if (gpuProcessedBuffer) {
+                    // Batch mode seek
+                    playStartPosition = seekPos;
+                    playGPUBuffer(gpuProcessedBuffer, seekPos);
+                    if (!isPlaying) {
+                        isPlaying = true;
+                        playBtn.textContent = '⏸';
+                        playBtn.classList.remove('pulse');
+                        setStatus(playingStatus(), 'active');
+                    }
+                    startPlayheadAnimation();
+                } else {
+                    // Cold start — no buffer yet. Kick off streaming from click position.
+                    const useStreaming = document.getElementById('streamingCheckbox').checked
+                        && (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt');
+                    if (useStreaming && sourceBuffer) {
+                        (async () => {
+                            if (!waveletGPU) {
+                                waveletGPU = new WaveletGPUCompute();
+                                await waveletGPU.initialize();
+                            }
+                            await startStreamingPlayback(seekPos);
+                        })();
+                    }
                 }
-                startPlayheadAnimation();
             } else if (stretchNode) {
                 if (!isPlaying) {
                     stretchNode.port.postMessage({ type: 'play' });
@@ -3318,11 +4008,16 @@
             const isOffline = (currentAlgorithm === 'cwt' || currentAlgorithm === 'cqt' || currentAlgorithm === 'rtpghi');
 
             if (isOffline) {
-                if (!gpuProcessedBuffer) return;
                 const sourceDuration = sourceBuffer.length / audioContext.sampleRate;
-                playStartPosition = ratio * sourceDuration;
+                const seekPos = ratio * sourceDuration;
                 playhead.style.left = `${ratio * 100}%`;
-                playGPUBuffer(gpuProcessedBuffer, ratio * sourceDuration);
+
+                if (chunkScheduler && streamingWorklet) {
+                    streamingSeek(seekPos);
+                } else if (gpuProcessedBuffer) {
+                    playStartPosition = seekPos;
+                    playGPUBuffer(gpuProcessedBuffer, seekPos);
+                }
             } else {
                 scrubTargetRatio = ratio;
                 if (currentAlgorithm === 'resample' && stretchNode) {
