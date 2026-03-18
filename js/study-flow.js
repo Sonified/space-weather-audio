@@ -1401,6 +1401,16 @@ function applyAnalysisConfig(step) {
         if (etEl) etEl.value = et.toISOString().slice(11, 23);
     }
 
+    // Apply de-trend setting from study config
+    const detrend = studyConfig?.experimentalDesign?.detrend;
+    if (detrend !== undefined) {
+        const detrendCheckbox = document.getElementById('removeDCOffset');
+        if (detrendCheckbox) {
+            detrendCheckbox.checked = !!detrend;
+            if (window.pm?.study_flow) console.log(`📋 De-trend set to: ${!!detrend}`);
+        }
+    }
+
     if (window.pm?.study_flow) console.log(`📋 Analysis config applied: ${mapped.spacecraft} / ${mapped.dataset} / ${startTime} → ${endTime} / display=${step.displayOnLoad || 'all'}`);
 }
 

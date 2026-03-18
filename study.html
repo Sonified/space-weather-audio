@@ -123,8 +123,8 @@
                 </div>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 4px;"></div>
                 <div id="detrendContainer" style="display: flex; align-items: center; gap: 6px; padding: 0 8px;">
-                    <label for="removeDCOffsetStudy" style="font-size: var(--panel-label-size); font-weight: 600; color: #666; cursor: pointer; white-space: nowrap;">De-trend:</label>
-                    <input type="checkbox" id="removeDCOffsetStudy" style="width: 16px; height: 16px; cursor: pointer;" onchange="document.getElementById('removeDCOffset').checked = this.checked; document.getElementById('removeDCOffset').dispatchEvent(new Event('change'));">
+                    <label for="removeDCOffset" style="font-size: var(--panel-label-size); font-weight: 600; color: #666; cursor: pointer; white-space: nowrap;">De-trend:</label>
+                    <input type="checkbox" id="removeDCOffset" style="width: 16px; height: 16px; cursor: pointer;">
                 </div>
                 <div style="width: 0px; height: 0px; background: transparent; margin: 0 8px;"></div>
                 <div id="statusAnchorControls" style="display: contents;"></div>
@@ -142,7 +142,6 @@
                         <select id="dataType"><option value="DN_MAGN-L2-HIRES_G16" selected>DN_MAGN-L2-HIRES_G16</option></select>
                     </div>
                     <div class="control-group">
-                        <input type="checkbox" id="removeDCOffset">
                     </div>
                     <div class="control-group">
                         <select id="recentSearches"><option value="">-- Select Recent Search --</option></select>
