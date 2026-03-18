@@ -965,7 +965,7 @@
     if (document.hidden) {
       console.log('%c[DV] 🔇 Tab hidden — pausing polls', 'color: #f0883e;');
       stopPoll();
-    } else if (currentSlug) {
+    } else if (document.getElementById('studySelect')?.value) {
       console.log('%c[DV] 🔊 Tab visible — resuming polls', 'color: #3fb950;');
       _dvLastModified = null; // force full fetch on resume
       silentRefresh();
