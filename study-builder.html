@@ -1138,6 +1138,26 @@
   }
   .settings-preview-eye[data-tip]:hover::after { opacity: 1; }
   .speed-tip-wrap { position: relative; display: inline-block; width: 100%; }
+  .info-tip { position: relative; cursor: help; font-size: 13px; opacity: 0.45; }
+  .info-tip[data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1c2028;
+    color: #c9d1d9;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.1s;
+    border: 1px solid var(--border);
+    z-index: 10;
+  }
+  .info-tip[data-tip]:hover::after { opacity: 1; }
   .speed-tip-wrap[data-tip]::after {
     content: attr(data-tip);
     position: absolute;
@@ -1865,7 +1885,7 @@
               <div class="settings-row" style="margin-top:12px;">
                 <span class="toggle-label">Lock spectrogram to 1× view</span>
                 <div class="toggle" id="pb_lockSpectrogram" onclick="this.classList.toggle('on'); autoSave('playbackSpeed')"></div>
-                <span title="Spectrogram stays at 1× regardless of playback speed" style="cursor:help; font-size:13px; margin-left:6px; opacity:0.5;">ⓘ</span>
+                <span class="info-tip" data-tip="Spectrogram stays at 1× regardless of playback speed" style="margin-left:6px;">ⓘ</span>
               </div>
             </div>
           </div>
@@ -2579,24 +2599,14 @@
         console.warn('[INIT] localStorage parse failed:', e);
       }
     }
-    // Restore study picker dropdown synchronously
+    // Restore study picker label synchronously from cached data
     const _pickerRaw = localStorage.getItem('study_builder_picker');
     if (_pickerRaw) {
       try {
         const _studies = JSON.parse(_pickerRaw);
-        const _picker = document.getElementById('studyPicker');
-        if (_picker && _studies.length) {
-          const _slug = document.getElementById('slugValue')?.textContent?.trim();
-          _picker.innerHTML = '';
-          _picker.style.display = '';
-          _studies.forEach(s => {
-            const opt = document.createElement('option');
-            opt.value = s.slug;
-            opt.textContent = s.name || s.slug;
-            if (s.slug === _slug) opt.selected = true;
-            _picker.appendChild(opt);
-          });
-        }
+        const _slug = document.getElementById('slugValue')?.textContent?.trim();
+        const _current = _studies.find(s => s.slug === _slug);
+        if (_current) updateStudyPickerLabel(_current.name || _current.slug);
       } catch (e) {}
     }
   }
@@ -2914,6 +2924,10 @@
       // If live session is active, update test tooltips now that mode buttons are restored
       if (localStorage.getItem('sb_liveModeActive') === '1') document.querySelectorAll('.url-mode-cycle[data-mode="test"]').forEach(b => b.dataset.tip = 'Test: no block assignment');
     }
+
+    // Update study picker label + history tracking
+    if (config.slug) touchStudyHistory(config.slug, config.name || config.slug);
+    updateStudyPickerLabel(config.name || config.slug || 'No study loaded');
 
     console.groupEnd(); // [LOAD]
     // Keep _isLoading true briefly to absorb queued autoSave events from DOM changes during load
@@ -7315,30 +7329,108 @@
 
 
   // ── Recent Studies Picker ────────────────────────────────
-  function populatePicker(studies) {
-    const picker = document.getElementById('studyPicker');
-    if (!picker) return;
+
+  const STUDY_HISTORY_KEY = 'study_builder_history';
+  const HISTORY_MAX = 20;
+
+  function getStudyHistory() {
+    try { return JSON.parse(localStorage.getItem(STUDY_HISTORY_KEY)) || []; }
+    catch { return []; }
+  }
+
+  function touchStudyHistory(slug, name) {
+    let history = getStudyHistory();
+    history = history.filter(h => h.slug !== slug);
+    history.unshift({ slug, name, lastOpened: Date.now() });
+    if (history.length > HISTORY_MAX) history = history.slice(0, HISTORY_MAX);
+    localStorage.setItem(STUDY_HISTORY_KEY, JSON.stringify(history));
+  }
+
+  function relativeTime(timestamp) {
+    const diff = Date.now() - timestamp;
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days < 7) return `${days}d ago`;
+    return new Date(timestamp).toLocaleDateString();
+  }
+
+  function escHtml(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  function updateStudyPickerLabel(name) {
+    const el = document.getElementById('studyPickerName');
+    if (el) el.textContent = name || 'No study loaded';
+  }
+
+  function toggleStudyPicker(btn) {
+    const wrap = btn.closest('.study-picker-wrap');
+    const isOpen = wrap.classList.contains('open');
+    if (isOpen) { wrap.classList.remove('open'); return; }
+    renderStudyPickerList();
+    wrap.classList.add('open');
+    setTimeout(() => {
+      document.addEventListener('click', function close(e) {
+        if (!wrap.contains(e.target)) {
+          wrap.classList.remove('open');
+          document.removeEventListener('click', close);
+        }
+      });
+    }, 0);
+  }
+
+  function renderStudyPickerList() {
+    const listEl = document.getElementById('studyPickerList');
+    if (!listEl) return;
     const currentSlug = document.getElementById('slugValue')?.textContent?.trim();
-    picker.innerHTML = '';
-    if (!studies || studies.length === 0) {
-      picker.innerHTML = '<option value="">No saved studies</option>';
-      picker.style.display = 'none';
+    const history = getStudyHistory();
+    const pickerStudies = _pickerCache || [];
+
+    // Merge: history gives ordering + timestamps, pickerCache gives completeness
+    const seen = new Set();
+    const merged = [];
+    for (const h of history) {
+      seen.add(h.slug);
+      merged.push({ slug: h.slug, name: h.name, lastOpened: h.lastOpened });
+    }
+    for (const s of pickerStudies) {
+      if (!seen.has(s.slug)) merged.push({ slug: s.slug, name: s.name, lastOpened: null });
+    }
+
+    if (merged.length === 0) {
+      listEl.innerHTML = '<div class="study-picker-empty">No studies yet. Use File > Create New to start.</div>';
       return;
     }
-    picker.style.display = '';
-    studies.forEach(s => {
-      const opt = document.createElement('option');
-      opt.value = s.slug;
-      opt.textContent = s.name || s.slug;
-      if (s.slug === currentSlug) opt.selected = true;
-      picker.appendChild(opt);
-    });
+
+    listEl.innerHTML = merged.map(s => {
+      const isActive = s.slug === currentSlug;
+      const timeStr = s.lastOpened ? relativeTime(s.lastOpened) : '';
+      return `<div class="study-picker-item${isActive ? ' active' : ''}" onclick="switchStudy('${escHtml(s.slug)}')">
+        <div class="study-picker-item-name">${escHtml(s.name || s.slug)}</div>
+        <div class="study-picker-item-meta">
+          <span style="font-family:monospace;opacity:0.7;">${escHtml(s.slug)}</span>
+          ${timeStr ? `<span>${timeStr}</span>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function populatePicker(studies) {
+    // Update the picker button label to match current study
+    const currentSlug = document.getElementById('slugValue')?.textContent?.trim();
+    const current = studies?.find(s => s.slug === currentSlug);
+    updateStudyPickerLabel(current?.name || currentSlug || 'No study loaded');
   }
 
   let _pickerCache = null; // in-memory cache of [{slug, name}]
 
   async function refreshStudyPicker(updatedConfig) {
-    // If we have a config that was just saved, update the cache in-place instead of re-reading IndexedDB
     if (updatedConfig && _pickerCache) {
       const idx = _pickerCache.findIndex(s => s.slug === updatedConfig.slug);
       if (idx >= 0) {
@@ -7349,17 +7441,16 @@
         console.log(`%c[PICKER] 📋 Cache update (new entry): ${updatedConfig.slug}`, 'color: #79c0ff;');
       }
     } else {
-      // Full reload (first call, or after switchStudy/delete)
       _pickerCache = await indexdbList().catch(() => []);
       console.log(`%c[PICKER] 📋 Full IndexedDB reload: ${_pickerCache.length} studies`, 'color: #d29922; font-weight: bold;');
     }
-    // Cache for instant restore on next page load
     localStorage.setItem('study_builder_picker', JSON.stringify(_pickerCache));
     populatePicker(_pickerCache);
   }
 
   async function switchStudy(slug) {
     if (!slug) return;
+    document.querySelector('.study-picker-wrap')?.classList.remove('open');
     const config = await indexdbLoad(slug).catch(() => null);
     if (config) {
       loadConfigIntoBuilder(config);
@@ -7367,7 +7458,6 @@
       localStorage.setItem('study_builder_config', JSON.stringify(config));
       localStorage.setItem('study_builder_last', slug);
       console.log('💾 Switched to study:', slug);
-      // Reset or restore live mode UI based on whether THIS study is the live one
       const liveSlug = localStorage.getItem('sb_liveStudySlug');
       if (liveSlug === slug) {
         launchStudy({ restore: true });
@@ -7375,6 +7465,40 @@
         resetLiveModeUI();
       }
     }
+  }
+
+  // ── New Study Functions (HS35) ────────────────────────────
+
+  function newStudyFresh() {
+    document.getElementById('fileMenu').classList.remove('show');
+    const name = prompt('New study name:');
+    if (!name) return;
+    const slug = nameToSlug(name);
+    const blankConfig = {
+      slug,
+      name,
+      steps: [],
+      conditions: [],
+      randomization: { method: 'random' },
+      returningParticipant: {},
+      appSettings: {},
+      updatedAt: new Date().toISOString()
+    };
+    loadConfigIntoBuilder(blankConfig);
+    saveDraft();
+  }
+
+  function newStudyClone() {
+    document.getElementById('fileMenu').classList.remove('show');
+    const config = collectStudyConfig();
+    const newName = prompt('New study name:', config.name + ' (copy)');
+    if (!newName) return;
+    const clone = JSON.parse(JSON.stringify(config));
+    clone.name = newName;
+    clone.slug = nameToSlug(newName);
+    clone.updatedAt = new Date().toISOString();
+    loadConfigIntoBuilder(clone);
+    saveDraft();
   }
 
   function loadAppSettingsIntoBuilder(appSettings) {
