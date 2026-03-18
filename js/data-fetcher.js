@@ -634,6 +634,19 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             console.log(`   instrument_nyquist: ${audioData.instrument.nyquist.toFixed(4)} Hz (for Y-axis)`);
         }
         
+        // Apply de-trending before rendering if checkbox is checked
+        const removeDCChecked = document.getElementById('removeDCOffset')?.checked;
+        if (removeDCChecked) {
+            const { removeDCOffset: detrend, normalize: norm } = await import('./minimap-window-renderer.js');
+            const slider = document.getElementById('waveformFilterSlider');
+            const sliderVal = slider ? parseInt(slider.value) : 95;
+            const alpha = 0.95 + (sliderVal / 100) * (0.9999 - 0.95);
+            // Back up raw data before de-trending
+            window.rawWaveformData = new Float32Array(audioData.samples);
+            audioData.samples = norm(detrend(audioData.samples, alpha));
+            console.log(`🎛️ Pre-render de-trend applied (α=${alpha.toFixed(4)})`);
+        }
+
         // Set state
         State.setCompleteSamplesArray(audioData.samples);
         State.setOriginalAudioBlob(audioData.originalBlob);
@@ -884,14 +897,6 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         const startBtn = document.getElementById('startBtn');
         if (startBtn) {
             startBtn.classList.add('fetched');
-        }
-
-        // Auto-apply de-trending if checkbox is checked
-        const removeDC = document.getElementById('removeDCOffset')?.checked;
-        if (removeDC) {
-            const { changeWaveformFilter } = await import('./minimap-window-renderer.js');
-            console.log(`🎛️ Auto-applying de-trend after CDAWeb fetch...`);
-            changeWaveformFilter();
         }
 
         return audioData;
