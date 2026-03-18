@@ -870,6 +870,7 @@ export default {
            VALUES (?, ?, ?, 0, ?)`
         ).bind(sessionId, studyId, JSON.stringify(body.state), mode).run();
 
+        await touchStudy(studyId);
         const s = body.state;
         return json({
           success: true,
@@ -888,6 +889,7 @@ export default {
         await env.DB.prepare(
           `UPDATE assignment_sessions SET ended_at = ? WHERE study_id = ? AND ended_at IS NULL`
         ).bind(nowISO(), studyId).run();
+        await touchStudy(studyId);
         return json({ success: true });
       }
 
