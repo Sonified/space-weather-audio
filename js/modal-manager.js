@@ -31,9 +31,9 @@ class ModalManager {
         while (this.isTransitioning) {
             await new Promise(resolve => setTimeout(resolve, 50));
         }
-        
+
         this.isTransitioning = true;
-        
+
         try {
             const modal = document.getElementById(modalId);
             if (!modal) {

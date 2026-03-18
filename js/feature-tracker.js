@@ -299,6 +299,12 @@ export async function loadRegionsAfterDataFetch() {
         loadStandaloneFeatures();
     }
 
+    // Sync per-section feature count with loaded features (handles page refresh mid-analysis)
+    if (_currentSection > 0) {
+        const identified = standaloneFeatures.filter(f => f.lowFreq && f.highFreq && f.startTime && f.endTime).length;
+        _sectionFeatureCounts[_currentSection] = identified;
+    }
+
     // Render standalone features list and canvas boxes
     renderStandaloneFeaturesList();
     redrawAllCanvasFeatureBoxes();
