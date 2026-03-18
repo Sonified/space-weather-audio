@@ -2080,6 +2080,7 @@ async function runAnalysis(step) {
             completeBtn.addEventListener('click', async () => {
                 if (signal.aborted) return;  // stale listener from previous analysis
                 if (!completeBtn.classList.contains('ready') && !completeBtnAnim) return;  // not yet enabled
+                completeBtn.classList.remove('ready');  // prevent re-entry while awaiting confirmation
                 // Close any open feature popup before proceeding
                 try {
                     const { closeFeaturePopup } = await import('./spectrogram-renderer.js');
@@ -2113,7 +2114,8 @@ async function runAnalysis(step) {
                     }
                     const confirmed = await showConfirmationModal(config);
                     if (!confirmed) {
-                        // User went back — show (i) button again and wait for another Complete click
+                        // User went back — restore button and wait for another Complete click
+                        completeBtn.classList.add('ready');
                         if (aboutBtn) aboutBtn.style.display = '';
                         return;
                     }
@@ -2223,6 +2225,8 @@ async function runQuestionnaire(step) {
 
     // Saved answers for back navigation
     const answers = {};
+    // Freetext drafts — unsaved text preserved across back navigation
+    if (!window._freetextDrafts) window._freetextDrafts = {};
 
     // Restore any previously saved answers
     for (const q of questions) {
@@ -2259,7 +2263,8 @@ async function runQuestionnaire(step) {
         // Show back button if canGoBack and not the first question in the chain
         // For flat question steps (1 question each), chainOffset > 0 means we're past the first in the chain
         const showBack = canGoBack && (qi > 0 || chainOffset > 0);
-        const result = await showQuestionModal(q, displayIndex, displayTotal, progress, answers[q.id], showBack, step);
+        const prevAnswer = answers[q.id] ?? window._freetextDrafts[q.id] ?? undefined;
+        const result = await showQuestionModal(q, displayIndex, displayTotal, progress, prevAnswer, showBack, step);
 
         if (result === '__BACK__') {
             if (qi > 0) {
@@ -2280,8 +2285,9 @@ async function runQuestionnaire(step) {
             continue;
         }
 
-        // Save answer
+        // Save answer + clear draft
         answers[q.id] = result;
+        delete window._freetextDrafts[q.id];
         localStorage.setItem(`study_answer_${studySlug}_${q.id}`, JSON.stringify(result));
 
         // Save to D1
@@ -2381,6 +2387,13 @@ function showQuestionModal(question, index, total, progressPct, previousAnswer, 
         });
 
         backBtn?.addEventListener('click', () => {
+            // Stash freetext draft so it restores when navigating back
+            if (qType === 'freetext') {
+                const textarea = studyModalInner.querySelector('textarea');
+                if (textarea && textarea.value.trim()) {
+                    window._freetextDrafts[question.id] = textarea.value;
+                }
+            }
             resolve('__BACK__');
         });
     });

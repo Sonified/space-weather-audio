@@ -1486,9 +1486,14 @@
   function renderDetailRow(p) {
     let responses = {};
     try { responses = typeof p.responses === 'string' ? JSON.parse(p.responses) : (p.responses || {}); } catch {}
-    // Separate analysis_session from Q&A responses
-    const analysisSession = responses.analysis_session || responses.q_analysis_session || null;
-    const qaKeys = Object.keys(responses).filter(k => k !== 'analysis_session' && k !== 'q_analysis_session');
+    // Separate analysis_sessions from Q&A responses
+    const analysisSessionKeys = Object.keys(responses).filter(k => k.startsWith('analysis_session'));
+    const analysisSessions = analysisSessionKeys.map(k => responses[k]).filter(Boolean);
+    // Legacy: single analysis_session key (old data)
+    if (analysisSessions.length === 0 && (responses.analysis_session || responses.q_analysis_session)) {
+      analysisSessions.push(responses.analysis_session || responses.q_analysis_session);
+    }
+    const qaKeys = Object.keys(responses).filter(k => !k.startsWith('analysis_session') && k !== 'q_analysis_session');
 
     const condLabel = p.assigned_condition != null ? `C${p.assigned_condition}` : '—';
     const stepLabel = p.current_step ?? '—';
@@ -1537,12 +1542,12 @@
           <div class="ts-item"><span class="k">Completed</span><span class="v">${formatTimeFull(p.completed_at)}</span></div>
         </div>
 
-        <!-- Analysis session -->
-        ${analysisSession ? `
+        <!-- Analysis sessions -->
+        ${analysisSessions.length > 0 ? analysisSessions.map((s, i) => `
         <div class="detail-section">
-          <h4>Analysis Session</h4>
-          ${renderAnalysisBlock(analysisSession)}
-        </div>` : ''}
+          <h4>Analysis Session ${analysisSessions.length > 1 ? (s.session || i + 1) : ''}</h4>
+          ${renderAnalysisBlock(s)}
+        </div>`).join('') : ''}
 
         <!-- Responses -->
         ${qaKeys.length > 0 ? `
@@ -1563,7 +1568,7 @@
         <div class="detail-section">
           <h4 style="display:flex; align-items:center; justify-content:space-between;">
             Features
-            <button onclick="viewOnStudyPage('${escHtml(p.participant_id)}', ${analysisSession?.session || 1})" style="font-size:11px; padding:3px 10px; cursor:pointer; background:rgba(100,160,255,0.15); border:1px solid rgba(100,160,255,0.3); color:#7bb8ff; border-radius:4px;">🔎 View On Study Page</button>
+            <button onclick="viewOnStudyPage('${escHtml(p.participant_id)}', ${analysisSessions[0]?.session || 1})" style="font-size:11px; padding:3px 10px; cursor:pointer; background:rgba(100,160,255,0.15); border:1px solid rgba(100,160,255,0.3); color:#7bb8ff; border-radius:4px;">🔎 View On Study Page</button>
           </h4>
           <div id="features-${escHtml(p.participant_id)}">${p._features
             ? renderFeatureTable(p._features)
