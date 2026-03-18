@@ -243,17 +243,98 @@ export function setSpectrogramGainContrast(gainDb, contrastPct) {
     // Contrast: exponential curve — gentle near 100, dramatic at edges
     // slider 100 = 1×, each ±50 steps = 2× change (logarithmic feel)
     const contrastScale = Math.pow(2, (contrastPct - 100) / 50);
-    // Main material: contrast narrows range around -50dB midpoint, gain shrinks further
-    const midpoint = -50;
-    const newRange = 100 / contrastScale;
-    uDbFloor.value = midpoint - newRange / 2;
+    // Main material: contrast narrows range around baseline midpoint, gain shrinks further
+    const baseMidpoint = normBaseline.floor + normBaseline.range / 2;
+    const newRange = normBaseline.range / contrastScale;
+    uDbFloor.value = baseMidpoint - newRange / 2;
     uDbRange.value = newRange / gainFactor;
-    // Tile material: contrast = (val - 0.5) * scale + 0.5, then gain multiplies
-    if (uTileContrastScale) uTileContrastScale.value = gainFactor * contrastScale;
-    if (uTileGainOffset) uTileGainOffset.value = 0.5 * gainFactor * (1 - contrastScale);
-    if (window.pm?.gpu) console.log(`🎚️ [GPU] Gain: ×${gainFactor.toFixed(2)}, Contrast: ${contrastPct}% (×${contrastScale.toFixed(2)}) → floor=${uDbFloor.value.toFixed(1)}, range=${uDbRange.value.toFixed(1)}`);
+    // Tile material: remap u8 (baked with floor=-100, range=100) to normalization baseline
+    // u8_normalized → dB: dB = u8_norm * 100 - 100
+    // dB → new_normalized: (dB - normFloor) / normRange = u8_norm * (100/normRange) + (-100 - normFloor) / normRange
+    const tileScale = 100 / normBaseline.range;
+    const tileOffset = (-100 - normBaseline.floor) / normBaseline.range;
+    // Then contrast around midpoint 0.5, then gain multiply
+    if (uTileContrastScale) uTileContrastScale.value = gainFactor * tileScale * contrastScale;
+    if (uTileGainOffset) uTileGainOffset.value = gainFactor * ((tileOffset - 0.5) * contrastScale + 0.5);
+    if (window.pm?.rendering) console.log(`🎚️ [GPU] Gain: ×${gainFactor.toFixed(2)}, Contrast: ${contrastPct}% (×${contrastScale.toFixed(2)}) → floor=${uDbFloor.value.toFixed(1)}, range=${uDbRange.value.toFixed(1)}, norm=[${normBaseline.floor.toFixed(1)}, ${normBaseline.range.toFixed(1)}]`);
     renderFrame();
 }
+// ─── Normalization baseline ──────────────────────────────────────────────────
+// Normalization adjusts the dB-to-color mapping based on actual data statistics.
+// Manual gain/contrast layer on top of this baseline.
+let normBaseline = { floor: -100, range: 100 };  // default = raw (no normalization)
+
+/**
+ * Compute normalization stats from audio data and set the baseline.
+ * @param {'none'|'outliers'|'rms'|'both'} mode
+ */
+export function setNormalizationMode(mode) {
+    if (mode === 'none') {
+        normBaseline = { floor: -100, range: 100 };
+        reapplyGainContrast();
+        return;
+    }
+
+    // Use actual spectrogram magnitude data (Float32) — same values the shader sees
+    const magData = fullMagnitudeTexture?.image?.data;
+    if (!magData || magData.length === 0) {
+        if (window.pm?.gpu) console.log('🎚️ [Normalize] No spectrogram data available yet');
+        return;
+    }
+
+    // Subsample magnitudes → dB (same conversion as the TSL shader)
+    // Only count values in the displayable range — noise-floor bins below -100dB
+    // are already black in the default view and would skew the stats
+    const step = Math.max(1, Math.floor(magData.length / 50000));
+    const dbValues = [];
+    let sumDb = 0;
+    for (let i = 0; i < magData.length; i += step) {
+        const mag = magData[i];
+        if (mag > 1e-10) {
+            const db = 20 * Math.log10(mag);
+            if (db >= -100 && db <= 0) {
+                dbValues.push(db);
+                sumDb += db;
+            }
+        }
+    }
+    if (dbValues.length === 0) return;
+
+    const meanDb = sumDb / dbValues.length;
+
+    if (mode === 'rms') {
+        // Center an 80dB window on the mean spectral energy
+        normBaseline = { floor: meanDb - 40, range: 80 };
+    }
+
+    if (mode === 'outliers' || mode === 'both') {
+        dbValues.sort((a, b) => a - b);
+        const p2 = dbValues[Math.floor(dbValues.length * 0.02)];
+        const p98 = dbValues[Math.floor(dbValues.length * 0.98)];
+        const padding = (p98 - p2) * 0.1;
+
+        if (mode === 'outliers') {
+            normBaseline = { floor: p2 - padding, range: (p98 - p2) + 2 * padding };
+        } else {
+            // 'both': outlier range centered on mean spectral energy
+            const outlierRange = (p98 - p2) + 2 * padding;
+            normBaseline = { floor: meanDb - outlierRange / 2, range: outlierRange };
+        }
+    }
+
+    if (window.pm?.gpu) console.log(`🎚️ [Normalize] mode=${mode} → floor=${normBaseline.floor.toFixed(1)}, range=${normBaseline.range.toFixed(1)}`);
+    reapplyGainContrast();
+}
+
+/** Re-apply current gain/contrast sliders on top of normalization baseline. */
+function reapplyGainContrast() {
+    const gainSlider = document.getElementById('spectrogramGain');
+    const contrastSlider = document.getElementById('spectrogramContrast');
+    const g = gainSlider ? parseFloat(gainSlider.value) : 0;
+    const c = contrastSlider ? parseFloat(contrastSlider.value) : 100;
+    setSpectrogramGainContrast(g, c);
+}
+
 // Pending catmull settings (applied when uniforms are created)
 let pendingCatmull = { enabled: false, threshold: 128, core: 1.0, feather: 1.0 };
 export function setCatmullSettings({ enabled, threshold, core, feather }) {
