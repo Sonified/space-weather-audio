@@ -29,6 +29,7 @@
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
+  html { overflow-x: hidden; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: var(--bg);
@@ -1832,6 +1833,8 @@
             <div class="dropdown-item" onclick="saveAsToServer()">☁️ Save as NEW to server...</div>
             <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
             <div class="dropdown-item" onclick="copyFullStudyJson()">📋 Copy Study JSON</div>
+            <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
+            <div class="dropdown-item" onclick="deleteCurrentStudy()" style="color:#c47070; transition:color 0.15s;" onmouseenter="this.style.color='#f85149'" onmouseleave="this.style.color='#c47070'">🗑️ Delete This Study</div>
           </div>
         </div>
       </div>
@@ -2808,8 +2811,17 @@
 
     if (!config.steps || !config.steps.length) {
       console.warn('[LOAD] No steps in config!');
-      _isLoading = false;
-      if (_autoSaveObserver) _autoSaveObserver.observe(document.getElementById('stepList'), { childList: true, subtree: true, characterData: true, attributes: true });
+      updatePreview();
+      renumberSteps();
+      if (config.slug) touchStudyHistory(config.slug, config.name || config.slug);
+      updateStudyPickerLabel(config.name || config.slug || 'No study loaded');
+      console.groupEnd();
+      setTimeout(() => {
+        _lastSavedJSON = JSON.stringify(collectStudyConfig());
+        clearTimeout(_autoSaveTimer);
+        _isLoading = false;
+        if (_autoSaveObserver) _autoSaveObserver.observe(document.getElementById('stepList'), { childList: true, subtree: true, characterData: true, attributes: true });
+      }, 100);
       return;
     }
 
@@ -7540,6 +7552,7 @@
     document.querySelector('.study-picker-wrap')?.classList.remove('open');
     const config = await indexdbLoad(slug).catch(() => null);
     if (config) {
+      collapseFixedPanels();
       loadConfigIntoBuilder(config);
       updateLocalUrl(config.slug);
       localStorage.setItem('study_builder_config', JSON.stringify(config));
@@ -7556,6 +7569,19 @@
 
   // ── New Study Functions (HS35) ────────────────────────────
 
+  function collapseFixedPanels() {
+    ['experimentalDesignCard', 'studyLaunchCard', 'appSettingsCard', 'dataStreamCard'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el && el.classList.contains('active')) {
+        el.classList.remove('active');
+        const detail = el.querySelector('.step-detail');
+        if (detail) { detail.style.maxHeight = '0'; detail.style.overflow = 'hidden'; }
+      }
+    });
+    // Clear saved panel state so they don't reopen on next refresh
+    localStorage.removeItem('sb_fixedPanels');
+  }
+
   function newStudyFresh() {
     document.getElementById('fileMenu').classList.remove('show');
     const name = prompt('New study name:');
@@ -7571,6 +7597,7 @@
       appSettings: {},
       updatedAt: new Date().toISOString()
     };
+    collapseFixedPanels();
     loadConfigIntoBuilder(blankConfig);
     saveDraft();
   }
@@ -7584,8 +7611,36 @@
     clone.name = newName;
     clone.slug = nameToSlug(newName);
     clone.updatedAt = new Date().toISOString();
+    collapseFixedPanels();
     loadConfigIntoBuilder(clone);
     saveDraft();
+  }
+
+  async function deleteCurrentStudy() {
+    document.getElementById('fileMenu').classList.remove('show');
+    const slug = document.getElementById('slugValue')?.textContent?.trim();
+    const name = document.getElementById('studyNameInput')?.value || slug;
+    if (!slug) return;
+    if (!confirm(`Delete "${name}"?\n\nThis will remove it from your local browser. Server data is not affected.`)) return;
+    // Remove from IndexedDB
+    await indexdbDelete(slug).catch(() => {});
+    // Remove from localStorage
+    localStorage.removeItem('study_builder_config');
+    localStorage.removeItem('study_builder_last');
+    // Remove from history
+    let history = getStudyHistory().filter(h => h.slug !== slug);
+    localStorage.setItem(STUDY_HISTORY_KEY, JSON.stringify(history));
+    // Remove from picker cache
+    if (_pickerCache) _pickerCache = _pickerCache.filter(s => s.slug !== slug);
+    // Load another study or go blank
+    const next = _pickerCache?.[0];
+    if (next) {
+      switchStudy(next.slug);
+    } else {
+      collapseFixedPanels();
+      loadConfigIntoBuilder({ slug: '', name: '', steps: [], conditions: [], randomization: { method: 'random' }, returningParticipant: {}, appSettings: {} });
+    }
+    refreshStudyPicker();
   }
 
   function loadAppSettingsIntoBuilder(appSettings) {
