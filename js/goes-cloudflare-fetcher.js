@@ -261,8 +261,15 @@ export async function getOrCreateDownloadSession(spacecraft, dataset, startTimeI
     const key = sessionKey(spacecraft, dataset, startTimeISO, endTimeISO);
     const existing = activeSessions.get(key);
     if (existing && !existing.abortController.signal.aborted) {
-        if (window.pm?.data) console.log(`📦 [SESSION] Reusing existing session: ${key} (${existing.completedCount}/${existing.chunkSchedule?.length || '?'} chunks done)`);
-        return existing;
+        // Don't reuse sessions whose chunk data was freed by onComplete cleanup —
+        // a fresh session will re-read from IndexedDB cache (fast, no network)
+        const chunksFreed = existing.done && existing.processedChunks.every(c => c === null);
+        if (!chunksFreed) {
+            if (window.pm?.data) console.log(`📦 [SESSION] Reusing existing session: ${key} (${existing.completedCount}/${existing.chunkSchedule?.length || '?'} chunks done)`);
+            return existing;
+        }
+        if (window.pm?.data) console.log(`📦 [SESSION] Session chunks freed — creating fresh session: ${key}`);
+        activeSessions.delete(key);
     }
     return await createDownloadSession(spacecraft, dataset, startTimeISO, endTimeISO);
 }

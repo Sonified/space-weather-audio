@@ -2057,7 +2057,7 @@
             </div>
             <script>
               // Instant visual restore — no flash from green to red on refresh
-              if (localStorage.getItem('sb_liveModeActive') === '1') {
+              if (localStorage.getItem('sb_liveModeActive') === '1' && localStorage.getItem('sb_liveStudySlug') === localStorage.getItem('study_builder_last')) {
                 const b = document.getElementById('launchStudyBtn');
                 const l = document.getElementById('launchStudyLabel');
                 if (b) { b.innerHTML = 'End Study'; b.style.background = 'transparent'; b.style.borderColor = 'var(--border, #506078)'; b.style.color = 'var(--text-muted, #888)'; }
@@ -7179,6 +7179,13 @@
       localStorage.setItem('study_builder_config', JSON.stringify(config));
       localStorage.setItem('study_builder_last', slug);
       console.log('💾 Switched to study:', slug);
+      // Reset or restore live mode UI based on whether THIS study is the live one
+      const liveSlug = localStorage.getItem('sb_liveStudySlug');
+      if (liveSlug === slug) {
+        launchStudy({ restore: true });
+      } else {
+        resetLiveModeUI();
+      }
     }
   }
 
@@ -7562,8 +7569,8 @@
   let liveHeartbeatInterval = null;
   let liveSessionId = null;
 
-  // Restore live mode on page load
-  if (localStorage.getItem('sb_liveModeActive') === '1') {
+  // Restore live mode on page load (only if this is the live study)
+  if (localStorage.getItem('sb_liveModeActive') === '1' && localStorage.getItem('sb_liveStudySlug') === localStorage.getItem('study_builder_last')) {
     const dash = document.getElementById('launchDashboard');
     if (dash) { dash.style.transition = 'none'; dash.style.maxHeight = 'none'; dash.style.opacity = '1'; }
     launchStudy({ restore: true });
@@ -7674,6 +7681,45 @@
     }
   }
 
+  /** Reset all live mode UI to the default (not-live) state. Doesn't touch server or localStorage flags. */
+  function resetLiveModeUI() {
+    liveModeActive = false;
+    // Cards & header
+    document.getElementById('studyLaunchCard')?.classList.remove('live');
+    document.querySelector('.header-panel')?.classList.remove('live');
+    updateHeaderLiveStatus(null);
+    // Launch button
+    const btn = document.getElementById('launchStudyBtn');
+    if (btn) { btn.innerHTML = '🚀 Launch Study'; btn.style.background = 'rgba(34,197,94,0.1)'; btn.style.borderColor = 'var(--green)'; btn.style.color = 'var(--green)'; }
+    // Launch label
+    const label = document.getElementById('launchStudyLabel');
+    if (label) { label.textContent = 'Go live — open the study to real participants'; label.style.color = 'var(--text-muted)'; }
+    // Re-enable inputs
+    ['studyNameInput', 'urlTagInput'].forEach(id => {
+      const el = document.getElementById(id); if (el) { el.disabled = false; el.style.opacity = ''; }
+    });
+    document.querySelectorAll('input[name="launchStart"]').forEach(el => {
+      el.disabled = false; el.closest('label').style.opacity = '';
+    });
+    const startScheduled = document.querySelector('input[name="launchStart"][value="scheduled"]')?.checked;
+    const startTimeEl = document.getElementById('launchStartTime');
+    if (startTimeEl) { startTimeEl.disabled = !startScheduled; startTimeEl.style.opacity = ''; }
+    // Dashboard
+    const dashboard = document.getElementById('launchDashboard');
+    if (dashboard) { dashboard.style.maxHeight = '0'; dashboard.style.opacity = '0'; }
+    const dot = document.getElementById('liveHeartbeatDot');
+    if (dot) dot.classList.remove('alive');
+    const hbLabel = document.getElementById('liveHeartbeatLabel');
+    if (hbLabel) hbLabel.textContent = 'Heartbeat: waiting...';
+    // Status labels
+    const statusEl = document.getElementById('launchStatus');
+    if (statusEl) { statusEl.textContent = 'Not started'; statusEl.style.color = '#666'; statusEl.style.fontWeight = ''; }
+    const deployLabel = document.getElementById('deployStatusLabel');
+    if (deployLabel) { deployLabel.textContent = 'Inactive'; deployLabel.style.color = '#555'; }
+    // Tooltips
+    document.querySelectorAll('.url-mode-cycle[data-mode="test"]').forEach(b => b.dataset.tip = 'Test: full data flow');
+  }
+
   async function launchStudy({ restore = false } = {}) {
     const btn = document.getElementById('launchStudyBtn');
     const label = document.getElementById('launchStudyLabel');
@@ -7685,51 +7731,24 @@
     if (liveModeActive) {
       // ── End live study ──
       if (!confirm('End the live study? Participants currently in-progress can still finish, but no new assignments will be made.')) return;
-      liveModeActive = false;
       localStorage.removeItem('sb_liveModeActive');
       localStorage.removeItem('sb_liveSessionId');
-      document.getElementById('studyLaunchCard')?.classList.remove('live');
-      document.querySelector('.header-panel')?.classList.remove('live');
-      updateHeaderLiveStatus(null);
-      document.querySelectorAll('.url-mode-cycle[data-mode="test"]').forEach(b => b.dataset.tip = 'Test: full data flow');
-
-      // Re-enable study name and URL tag
-      ['studyNameInput', 'urlTagInput'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) { el.disabled = false; el.style.opacity = ''; }
-      });
-      // Re-enable start timing controls
-      document.querySelectorAll('input[name="launchStart"]').forEach(el => {
-        el.disabled = false;
-        el.closest('label').style.opacity = '';
-      });
-      const startScheduled = document.querySelector('input[name="launchStart"][value="scheduled"]')?.checked;
-      const startTimeEl = document.getElementById('launchStartTime');
-      if (startTimeEl) { startTimeEl.disabled = !startScheduled; startTimeEl.style.opacity = ''; }
-      btn.innerHTML = '🚀 Launch Study';
-      btn.style.background = 'rgba(34,197,94,0.1)';
-      btn.style.borderColor = 'var(--green)';
-      btn.style.color = 'var(--green)';
-      label.textContent = 'Go live — open the study to real participants';
-      label.style.color = 'var(--text-muted)';
-      dashboard.style.maxHeight = '0';
-      dashboard.style.opacity = '0';
-      if (dot) dot.classList.remove('alive');
-      if (hbLabel) hbLabel.textContent = 'Heartbeat: waiting...';
-      if (statusEl) { statusEl.textContent = 'Not started'; statusEl.style.color = '#666'; }
-      const deployLabel = document.getElementById('deployStatusLabel');
-      if (deployLabel) { deployLabel.textContent = 'Inactive'; deployLabel.style.color = '#555'; }
+      localStorage.removeItem('sb_liveStudySlug');
+      localStorage.removeItem('sb_liveDashboardCache');
+      localStorage.removeItem('sb_liveHeartbeatLabel');
+      resetLiveModeUI();
       if (liveHeartbeatInterval) { clearInterval(liveHeartbeatInterval); liveHeartbeatInterval = null; }
 
       // End session on server
       const slug = document.getElementById('slugValue')?.textContent?.trim();
-      if (slug && liveSessionId) {
+      const endingSessionId = liveSessionId;
+      liveSessionId = null;
+      if (slug && endingSessionId) {
         fetch(`${API_BASE}/api/study/${slug}/session/end`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         }).then(r => r.json()).then(data => {
-          console.log(`[LIVE] Session ${liveSessionId} ended:`, data);
-          liveSessionId = null;
+          console.log(`[LIVE] Session ${endingSessionId} ended:`, data);
         }).catch(e => console.warn('[LIVE] Session end error:', e));
       }
       return;
@@ -7774,6 +7793,8 @@
 
     liveModeActive = true;
     localStorage.setItem('sb_liveModeActive', '1');
+    const liveSlug = document.getElementById('slugValue')?.textContent?.trim();
+    if (liveSlug) localStorage.setItem('sb_liveStudySlug', liveSlug);
     document.getElementById('studyLaunchCard')?.classList.add('live');
     document.querySelector('.header-panel')?.classList.add('live');
     document.querySelectorAll('.url-mode-cycle[data-mode="test"]').forEach(b => b.dataset.tip = 'Test: no block assignment');
@@ -7873,6 +7894,11 @@
   // Instant restore from cache
   (function restoreLiveDashboardCache() {
     try {
+      // Only restore if this is the live study
+      const liveSlug = localStorage.getItem('sb_liveStudySlug');
+      const lastSlug = localStorage.getItem('study_builder_last');
+      if (liveSlug && liveSlug !== lastSlug) return;
+
       const cached = localStorage.getItem('sb_liveDashboardCache');
       if (cached) updateLiveDashboard(JSON.parse(cached), { cache: false });
       const labelText = localStorage.getItem('sb_liveHeartbeatLabel');

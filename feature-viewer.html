@@ -94,7 +94,9 @@
     <div class="container">
         <!-- Study Header — title is updated dynamically from config -->
         <div class="top-header-bar" style="display: flex; align-items: flex-end; margin-bottom: 6px; margin-top: 0px; position: relative; z-index: 1001; min-height: 2.2em;">
-            <div style="flex: 1;"></div>
+            <div style="flex: 1; display: flex; align-items: flex-end; gap: 8px;">
+                <span id="participantSelectorSlot"></span>
+            </div>
             <h1 id="studyTitle" style="margin: 0 0 0 0; flex: 0 0 auto; font-size: 1.5em; opacity: 0; color: #fff; transition: opacity 0.6s ease;"></h1>
             <div style="flex: 1; display: flex; justify-content: flex-end; align-items: flex-end; gap: 8px;">
                 <div id="participantIdDisplay" style="margin-bottom: 0;">
@@ -137,6 +139,9 @@
                     </div>
                     <div class="control-group">
                         <select id="dataType"><option value="DN_MAGN-L2-HIRES_G16" selected>DN_MAGN-L2-HIRES_G16</option></select>
+                        <!-- Hidden selects needed by streaming.js / feature-viewer.js -->
+                        <select id="dataSource" style="display:none"><option value="cloudflare">Cloudflare</option><option value="cdaweb">CDAWeb</option></select>
+                        <select id="dataRendering" style="display:none"><option value="progressive">Progressive</option><option value="triggered">Triggered</option></select>
                     </div>
                     <div class="control-group">
                         <input type="checkbox" id="removeDCOffset">

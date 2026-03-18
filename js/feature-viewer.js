@@ -115,6 +115,9 @@ async function init() {
     if (pidDisplay) pidDisplay.classList.add('sf-pid-visible');
     if (pidValue) pidValue.textContent = pid;
 
+    // Populate participant dropdown (non-blocking)
+    populateParticipantSelector(slug, pid);
+
     // Force feature boxes visible
     const fbCheckbox = document.getElementById('featureBoxesVisible');
     if (fbCheckbox) fbCheckbox.checked = true;
@@ -165,19 +168,91 @@ async function init() {
     await startStreaming(null, window.__STUDY_CONFIG);
 
     // Listen for session changes
+    let switchingSession = false;
     window.addEventListener('review-session-change', async (e) => {
         const newSession = e.detail.session;
+        if (switchingSession) {
+            console.warn(`🔎 [Review] Already switching — ignoring session ${newSession}`);
+            return;
+        }
+        switchingSession = true;
         window.__REVIEW_SESSION = newSession;
         const step = findAnalysisStep(studyConfig.steps, newSession);
         if (!step) {
             console.warn(`🔎 [Review] No analysis step for session ${newSession}`);
+            switchingSession = false;
             return;
         }
         applyAnalysisConfig(step);
+        updateSessionButtons(newSession);
+
+        // Re-force progressive rendering (same as init — appSettings may have set 'triggered')
+        const renderSelect = document.getElementById('dataRendering');
+        if (renderSelect) {
+            renderSelect.value = 'progressive';
+            renderSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
         console.log(`🔎 [Review] Switching to session ${newSession}`);
-        // Re-fetch data with updated config
-        await startStreaming(null, window.__STUDY_CONFIG);
+        try {
+            await startStreaming(null, window.__STUDY_CONFIG);
+        } catch (err) {
+            console.error(`🔎 [Review] Failed to load session ${newSession}:`, err);
+            const statusDiv = document.getElementById('status');
+            if (statusDiv) {
+                statusDiv.textContent = `Error loading session ${newSession}: ${err.message}`;
+                statusDiv.className = 'status error';
+            }
+        } finally {
+            switchingSession = false;
+        }
     });
+}
+
+async function populateParticipantSelector(slug, currentPid) {
+    const slot = document.getElementById('participantSelectorSlot');
+    if (!slot) return;
+    try {
+        const base = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+            ? 'https://spaceweather.now.audio' : location.origin;
+        const fetchUrl = `${base}/api/study/${encodeURIComponent(slug)}/participants?filter=all`;
+        console.log('🔎 [Review] Fetching participants:', fetchUrl);
+        const resp = await fetch(fetchUrl);
+        const data = await resp.json();
+        console.log('🔎 [Review] Participants response:', data.success, data.participants?.length, 'participants');
+        if (!data.success || !data.participants?.length) return;
+
+        const participants = data.participants.sort((a, b) =>
+            (a.registered_at || '').localeCompare(b.registered_at || '')
+        );
+
+        const selector = document.createElement('select');
+        selector.id = 'participantSelector';
+        selector.style.cssText = 'font-size: 12px; padding: 3px 6px; background: #1a1e28; color: #aab4c0; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; cursor: pointer; max-width: 260px;';
+
+        selector.innerHTML = participants.map((p, i) => {
+            const shortId = p.participant_id.split('_').pop();
+            const prefix = p.participant_id.startsWith('TEST_') ? 'T' : p.participant_id.startsWith('PREVIEW_') ? 'Pv' : '';
+            const tag = prefix ? `[${prefix}] ` : '';
+            const features = p.feature_count > 0 ? ` (${p.feature_count} feat)` : '';
+            const sel = p.participant_id === currentPid ? ' selected' : '';
+            return `<option value="${p.participant_id}"${sel}>${tag}${i + 1}. ${shortId}${features}</option>`;
+        }).join('');
+
+        slot.replaceWith(selector);
+
+        selector.addEventListener('change', () => {
+            const newPid = selector.value;
+            if (!newPid || newPid === currentPid) return;
+            const navUrl = new URL(window.location);
+            navUrl.searchParams.set('pid', newPid);
+            navUrl.searchParams.set('session', '1');
+            window.location.href = navUrl.toString();
+        });
+        console.log('🔎 [Review] Participant selector populated:', participants.length, 'options');
+    } catch (err) {
+        console.warn('🔎 [Review] Could not load participant list:', err);
+    }
 }
 
 function updateSessionButtons(activeSession) {

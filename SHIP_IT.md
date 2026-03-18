@@ -148,7 +148,7 @@ An
   - `#studyPicker` select already exists (hidden by default), populated from IndexedDB
   - Upgrade to show recent studies with last-edited timestamps
   - `GET /api/studies` already lists all studies with participant counts
-- [ ] **HS36.** Switching studies must update full UI state — live mode highlights, input disablings, dashboard visibility, border trace, header status, URL mode tooltips
+- [x] **HS36.** Switching studies must update full UI state ✅
 - [ ] **HS35.** "New Study" flow (Start Fresh / Clone / Template) → [`homestretch/HS35.md`](homestretch/HS35.md)
   - `saveAsToServer()` already does 90% of clone — prompts for name, generates slug, saves
   - No template concept exists yet — add `isTemplate` flag on IndexedDB configs
