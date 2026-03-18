@@ -1126,6 +1126,7 @@ export default {
       if (deleteFeatureMatch && request.method === 'DELETE') {
         const [, studyId, featureId] = deleteFeatureMatch;
         await env.DB.prepare(`DELETE FROM features WHERE id = ? AND study_id = ?`).bind(featureId, studyId).run();
+        await touchStudy(studyId);
         return json({ success: true, deleted: featureId });
       }
 
