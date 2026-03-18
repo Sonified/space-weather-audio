@@ -506,6 +506,35 @@ export async function prefetchCloudflareData(spacecraft, dataset, startTimeISO, 
     return session.promise;
 }
 
+/**
+ * Get stitched audio buffer from a completed prefetch session.
+ * Returns null if session doesn't exist or has no data.
+ * Used by the pre-render compute pipeline (HS25).
+ */
+export function getSessionAudioBuffer(spacecraft, dataset, startTimeISO, endTimeISO) {
+    const key = sessionKey(spacecraft, dataset, startTimeISO, endTimeISO);
+    const session = activeSessions.get(key);
+    if (!session || session.completedCount === 0) return null;
+
+    // Stitch all completed normalized chunks into one buffer
+    let totalSamples = 0;
+    for (const chunk of session.processedChunks) {
+        if (chunk?.normalized) totalSamples += chunk.normalized.length;
+    }
+    if (totalSamples === 0) return null;
+
+    const buffer = new Float32Array(totalSamples);
+    let offset = 0;
+    for (const chunk of session.processedChunks) {
+        if (chunk?.normalized) {
+            buffer.set(chunk.normalized, offset);
+            offset += chunk.normalized.length;
+        }
+    }
+
+    return { buffer, metadata: session.metadata };
+}
+
 // =============================================================================
 // Render Pipeline — subscribes to a download session
 // =============================================================================
@@ -1105,7 +1134,9 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
             const canvas = document.getElementById('minimap');
             const removeDC = document.getElementById('removeDCOffset')?.checked || false;
             const slider = document.getElementById('waveformFilterSlider');
-            const alpha = slider ? 0.9 + (parseInt(slider.value) / 1000) : 0.99;
+            const alpha = slider
+                ? 0.95 + (parseInt(slider.value) / 100) * (0.9999 - 0.95)
+                : 0.99;
 
             State.waveformWorker.postMessage({
                 type: 'build-waveform',
@@ -1129,6 +1160,16 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
             if (startBtn) startBtn.classList.add('fetched');
 
             State.setIsFetchingNewData(false);
+
+            // Auto-apply de-trending if checkbox is checked (updates completeSamplesArray,
+            // worklet buffer, and spectrogram so downloads and playback use de-trended data)
+            console.log(`🎛️ Auto-detrend check: removeDC=${removeDC}, completeSamples=${State.getCompleteSamplesLength()}`);
+            if (removeDC) {
+                const { changeWaveformFilter } = await import('./minimap-window-renderer.js');
+                console.log(`🎛️ Calling changeWaveformFilter() for auto-detrend...`);
+                changeWaveformFilter();
+                console.log(`🎛️ changeWaveformFilter() returned`);
+            }
 
             if (window.pm?.data) console.log(`🎨 ${logTime()} Render pipeline complete!`);
         },

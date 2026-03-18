@@ -2,6 +2,25 @@
 
 import * as State from './audio-state.js';
 import { createWAVBlob } from './wav-recording.js';
+import { removeDCOffset, normalize } from './minimap-window-renderer.js';
+
+/**
+ * Get samples ready for download, applying de-trending if the checkbox is checked.
+ * Always reads from rawWaveformData (original) and applies fresh de-trending,
+ * so we don't depend on State.completeSamplesArray being in the right state.
+ */
+function getDownloadSamples() {
+    const removeDC = document.getElementById('removeDCOffset')?.checked;
+    if (removeDC && window.rawWaveformData && window.rawWaveformData.length > 0) {
+        const slider = document.getElementById('waveformFilterSlider');
+        const value = slider ? parseInt(slider.value) : 95;
+        const alpha = 0.95 + (value / 100) * (0.9999 - 0.95);
+        console.log(`📥 Applying de-trend to download (α=${alpha.toFixed(4)})`);
+        const detrended = removeDCOffset(window.rawWaveformData, alpha);
+        return normalize(detrended);
+    }
+    return State.completeSamplesArray || State.getCompleteSamplesArray();
+}
 
 /**
  * Wire up all audio download/recording button handlers:
@@ -22,7 +41,7 @@ export function setupAudioDownloadHandlers() {
             }
 
             const metadata = State.currentMetadata;
-            const samples = State.completeSamplesArray || State.getCompleteSamplesArray();
+            const samples = getDownloadSamples();
 
             // Create filename from metadata (include component if known)
             const spacecraft = metadata.spacecraft || 'PSP';
@@ -36,7 +55,8 @@ export function setupAudioDownloadHandlers() {
                 ? componentSelector.options[componentSelector.selectedIndex].text.split(' ')[0] // Get "br" from "br (Radial)"
                 : 'audio';
 
-            const filename = `${spacecraft}_${dataset}_${componentLabel}_${startTime}_${endTime}.wav`;
+            const detrendSuffix = document.getElementById('removeDCOffset')?.checked ? '_detrended' : '';
+            const filename = `${spacecraft}_${dataset}_${componentLabel}_${startTime}_${endTime}${detrendSuffix}.wav`;
 
             // completeSamplesArray is at 44100 Hz (AudioContext's native sample rate)
             const sampleRate = 44100;

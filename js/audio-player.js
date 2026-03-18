@@ -8,7 +8,7 @@ const DEBUG_LOOP_FADES = true; // Enable loop fade logging
 
 import * as State from './audio-state.js';
 import { PlaybackState } from './audio-state.js';
-import { drawWaveformWithSelection, updatePlaybackIndicator, startPlaybackIndicator } from './minimap-window-renderer.js';
+import { drawWaveformWithSelection, updatePlaybackIndicator, startPlaybackIndicator, removeDCOffset, normalize } from './minimap-window-renderer.js';
 import { updateAxisForPlaybackSpeed } from './spectrogram-axis-renderer.js';
 import { drawSpectrogram, startVisualization, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
 import { zoomState } from './zoom-state.js';
@@ -1132,7 +1132,18 @@ export function downloadAudio() {
 
     // completeSamplesArray is at 44100 Hz (AudioContext's native sample rate)
     const sampleRate = 44100;
-    const samples = State.completeSamplesArray || State.getCompleteSamplesArray();
+    // If de-trend is active, apply it fresh from raw data
+    let samples;
+    const removeDC = document.getElementById('removeDCOffset')?.checked;
+    if (removeDC && window.rawWaveformData && window.rawWaveformData.length > 0) {
+        const slider = document.getElementById('waveformFilterSlider');
+        const value = slider ? parseInt(slider.value) : 95;
+        const alpha = 0.95 + (value / 100) * (0.9999 - 0.95);
+        console.log(`📥 Applying de-trend to download (α=${alpha.toFixed(4)})`);
+        samples = normalize(removeDCOffset(window.rawWaveformData, alpha));
+    } else {
+        samples = State.completeSamplesArray || State.getCompleteSamplesArray();
+    }
     console.log(`📥 Preparing WAV download: ${samples.length} samples @ ${sampleRate} Hz`);
     const numChannels = 1; // Mono
     const bytesPerSample = 2; // 16-bit
@@ -1194,8 +1205,9 @@ export function downloadAudio() {
         const timeStr = startDate.toISOString().split('T')[1].substring(0, 5).replace(':', '-');
         filename = `${metadata.network}_${metadata.station}_${dateStr}_${timeStr}`;
     }
-    a.download = `${filename}.wav`;
-    
+    const detrendSuffix = removeDC ? '_detrended' : '';
+    a.download = `${filename}${detrendSuffix}.wav`;
+
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

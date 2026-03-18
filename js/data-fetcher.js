@@ -724,7 +724,7 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         zoomState.applyInitialViewport();
 
         // Draw waveform
-        if (window.pm?.gpu) console.log(`🎨 ${logTime()} Drawing waveform...`);
+        if (window.pm?.rendering) console.log(`🎨 ${logTime()} Drawing waveform...`);
         positionMinimapAxisCanvas();
         drawMinimapAxis();
         drawWaveform();
@@ -740,7 +740,7 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         drawFrequencyAxis();
 
         // Start complete visualization (spectrogram)
-        if (window.pm?.gpu) console.log(`📊 ${logTime()} Starting spectrogram visualization...`);
+        if (window.pm?.rendering) console.log(`📊 ${logTime()} Starting spectrogram visualization...`);
         await startCompleteVisualization();
 
         // Load regions after data fetch (if any)
@@ -878,7 +878,7 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             // console.warn(`⚠️ [PIPELINE] Cannot send samples to worklet: workletNode=${!!State.workletNode}, audioContext=${!!State.audioContext}`);
         }
         
-        if (window.pm?.gpu) console.log(`✅ ${logTime()} CDAWeb data loaded and visualized!`);
+        if (window.pm?.rendering) console.log(`✅ ${logTime()} CDAWeb data loaded and visualized!`);
 
         // Stop the pulsing animation on Fetch Data button after first successful fetch
         const startBtn = document.getElementById('startBtn');
@@ -886,7 +886,13 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             startBtn.classList.add('fetched');
         }
 
-        // Update recent searches dropdown (called from startStreaming instead)
+        // Auto-apply de-trending if checkbox is checked
+        const removeDC = document.getElementById('removeDCOffset')?.checked;
+        if (removeDC) {
+            const { changeWaveformFilter } = await import('./minimap-window-renderer.js');
+            console.log(`🎛️ Auto-applying de-trend after CDAWeb fetch...`);
+            changeWaveformFilter();
+        }
 
         return audioData;
 

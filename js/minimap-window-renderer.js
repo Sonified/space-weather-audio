@@ -349,7 +349,7 @@ async function initWaveformThreeScene() {
         }
     });
 
-    if (window.pm?.gpu) console.log(`Three.js WebGPU waveform renderer initialized (${wfCachedWidth}x${wfCachedHeight})`);
+    if (window.pm?.rendering) console.log(`Three.js WebGPU waveform renderer initialized (${wfCachedWidth}x${wfCachedHeight})`);
 }
 
 function buildWaveformColormapTexture() {
@@ -513,7 +513,7 @@ export async function uploadWaveformSamples(samples, expectedTotalSamples = 0) {
     wfUMipTotalBins.value = parseFloat(numBins);
 
     wfLastUploadedSamples = samples;
-    if (window.pm?.gpu) console.log(`Minimap waveform uploaded: ${wfTotalSamples.toLocaleString()} samples, mip: ${numBins.toLocaleString()} bins (${WF_MIP_BIN_SIZE} samples/bin)`);
+    if (window.pm?.rendering) console.log(`Minimap waveform uploaded: ${wfTotalSamples.toLocaleString()} samples, mip: ${numBins.toLocaleString()} bins (${WF_MIP_BIN_SIZE} samples/bin)`);
 }
 
 /**
@@ -1183,7 +1183,7 @@ function getWaveformBackgroundColor() {
 }
 
 // Helper functions
-function removeDCOffset(data, alpha = 0.995) {
+export function removeDCOffset(data, alpha = 0.995) {
     const n = data.length;
     if (n === 0) return new Float32Array(0);
 
@@ -1232,7 +1232,7 @@ function removeDCOffset(data, alpha = 0.995) {
     return y;
 }
 
-function normalize(data) {
+export function normalize(data) {
     // Find the peak absolute value to scale symmetrically around zero
     let peak = 0;
     for (let i = 0; i < data.length; i++) {

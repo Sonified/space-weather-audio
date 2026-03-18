@@ -12,7 +12,8 @@ import {
     setCrossfadePower,
     setCatmullSettings,
     setWaveformPanMode,
-    setSpectrogramGainContrast
+    setSpectrogramGainContrast,
+    setNormalizationMode
 } from './main-window-renderer.js';
 import { setPyramidReduceMode, rebuildUpperLevels } from './spectrogram-pyramid.js';
 import { drawSpectrogramXAxis, positionSpectrogramXAxisCanvas } from './spectrogram-x-axis-renderer.js';
@@ -107,6 +108,9 @@ export function initializeAdvancedControls() {
         { id: 'printData', key: 'emic_print_data', type: 'checkbox' },
         { id: 'printD1', key: 'emic_print_d1', type: 'checkbox' },
         { id: 'printInteraction', key: 'emic_print_interaction', type: 'checkbox' },
+        // Waveform de-trend controls (in main controls row, not settings drawer)
+        { id: 'removeDCOffset', key: 'emic_detrend', type: 'checkbox' },
+        { id: 'waveformFilterSlider', key: 'emic_detrend_alpha', type: 'range' },
     ];
     // Page-specific localStorage: emic_study keeps 'emic_*' keys, index.html uses 'main_*'
     const settingsPrefix = isStudyMode() ? 'emic_' : 'main_';
@@ -151,7 +155,7 @@ export function initializeAdvancedControls() {
     }
 
     // Sync Prints checkboxes → pm flags (restore from localStorage + live toggle)
-    const printMap = { printInit: 'init', printGPU: 'gpu', printMemory: 'memory', printAudio: 'audio', printStudy: 'study_flow', printFeatures: 'features', printData: 'data', printD1: 'd1', printInteraction: 'interaction' };
+    const printMap = { printInit: 'init', printGPU: 'rendering', printMemory: 'memory', printAudio: 'audio', printStudy: 'study_flow', printFeatures: 'features', printData: 'data', printD1: 'd1', printInteraction: 'interaction' };
     for (const [id, pmKey] of Object.entries(printMap)) {
         const el = document.getElementById(id);
         if (!el) continue;
@@ -546,6 +550,14 @@ export function initializeAdvancedControls() {
         });
         contrastSlider.addEventListener('click', (e) => {
             if (e.altKey) { contrastSlider.value = 100; updateGainContrast(); }
+        });
+    }
+
+    // --- Spectrogram normalization dropdown ---
+    const normalizeSelect = document.getElementById('spectrogramNormalize');
+    if (normalizeSelect) {
+        normalizeSelect.addEventListener('change', () => {
+            setNormalizationMode(normalizeSelect.value);
         });
     }
 
