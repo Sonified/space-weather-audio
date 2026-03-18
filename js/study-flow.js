@@ -2008,6 +2008,14 @@ async function runAnalysis(step) {
         }
     }
 
+    // Apply spectrogram speed bypass if configured
+    const lockSpec = studyConfig.experimentalDesign?.lockSpectrogramTo1x;
+    if (lockSpec) {
+        const { setSpectrogramSpeedBypass } = await import('./audio-state.js');
+        setSpectrogramSpeedBypass(true);
+        if (window.pm?.study_flow) console.log('🔒 Spectrogram locked to 1× view (speed bypass active)');
+    }
+
     // Save analysis session metadata to D1 (data config for this session)
     const sessionDataset = window.__STUDY_CONFIG?.dataset || null;
     saveResponse(`analysis_session_${analysisSession}`, {

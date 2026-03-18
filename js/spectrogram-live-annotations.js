@@ -138,7 +138,7 @@ function getFeatureBoxPosition(feature, canvas) {
     // Y position (same calculation as canvas)
     const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
     const originalNyquist = originalSampleRate / 2;
-    const playbackRate = State.currentPlaybackRate || 1.0;
+    const playbackRate = State.getPlaybackRate();
 
     const lowFreqY_device = getYPositionForFrequencyScaled(lowFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
     const highFreqY_device = getYPositionForFrequencyScaled(highFreq, originalNyquist, canvas.height, State.frequencyScale, playbackRate);
@@ -207,7 +207,7 @@ export function updateLiveAnnotations() {
         const featureEndMs = new Date(feature.endTime).getTime();
 
         const timeUntilFeature = featureStartMs - playheadMs;
-        const playbackRate = State.currentPlaybackRate || 1.0;
+        const playbackRate = State.getPlaybackRate();
         const scaledLeadTime = LEAD_TIME_MS * playbackRate;
 
         const shouldShow = timeUntilFeature <= scaledLeadTime && timeUntilFeature > -(featureEndMs - featureStartMs);

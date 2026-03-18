@@ -133,8 +133,8 @@ export function drawFrequencyAxis() {
         window._yAxisMaxLogged = true; // Only log once to avoid spam
     }
     
-    // Get playback speed and apply slight smoothing
-    const currentPlaybackRate = State.currentPlaybackRate || 1.0;
+    // Get playback speed and apply slight smoothing (use visual rate for rendering)
+    const currentPlaybackRate = State.getPlaybackRate();
     const smoothedRate = previousPlaybackRate + (currentPlaybackRate - previousPlaybackRate) * (1 - SMOOTHING_FACTOR);
     previousPlaybackRate = smoothedRate;
     
@@ -696,7 +696,7 @@ export function updateAxisForPlaybackSpeed() {
  * Call this when data loads to set initial state
  */
 export function initializeAxisPlaybackRate() {
-    previousPlaybackRate = State.currentPlaybackRate || 1.0;
+    previousPlaybackRate = State.getPlaybackRate();
     drawFrequencyAxis();
 }
 

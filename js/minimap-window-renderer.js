@@ -829,7 +829,7 @@ function drawMinimapFeatureBoxes(ctx, width, height) {
     if (dataSpanMs <= 0) return;
 
     const originalNyquist = State.originalDataFrequencyRange?.max || 50;
-    const playbackRate = State.currentPlaybackRate || 1.0;
+    const playbackRate = State.getPlaybackRate();
     const scaleType = State.frequencyScale || 'linear';
 
     // Determine time range for X mapping

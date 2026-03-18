@@ -244,7 +244,7 @@ export function initializeAdvancedControls() {
     const mainWindowViewEl = document.getElementById('mainWindowView');
     if (mainWindowViewEl) {
         mainWindowViewEl.addEventListener('change', () => {
-            updateSpectrogramViewport(State.currentPlaybackRate || 1.0);
+            updateSpectrogramViewport(State.getPlaybackRate());
         });
     }
 

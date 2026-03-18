@@ -126,6 +126,70 @@
     min-width: 220px;
   }
   .file-menu.show { display: block; }
+  .file-menu-header {
+    padding: 6px 16px 4px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
+  /* Study picker — prominent custom dropdown */
+  .study-picker-wrap { position: relative; flex-shrink: 0; min-width: 180px; max-width: 320px; }
+  .study-picker-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+  }
+  .study-picker-btn:hover { border-color: var(--accent); background: var(--surface2); }
+  .study-picker-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .study-picker-chevron { flex-shrink: 0; opacity: 0.5; transition: transform 0.15s, opacity 0.15s; }
+  .study-picker-btn:hover .study-picker-chevron { opacity: 0.8; }
+  .study-picker-wrap.open .study-picker-chevron { transform: rotate(180deg); opacity: 0.8; }
+  .study-picker-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    z-index: 20;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    min-width: 280px;
+    max-width: 360px;
+    max-height: 400px;
+    overflow: hidden;
+    flex-direction: column;
+  }
+  .study-picker-wrap.open .study-picker-menu { display: flex; }
+  .study-picker-list { overflow-y: auto; flex: 1; max-height: 320px; }
+  .study-picker-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: background 0.1s;
+    border-left: 3px solid transparent;
+  }
+  .study-picker-item:hover { background: var(--surface2); }
+  .study-picker-item.active { border-left-color: var(--accent); background: rgba(77,168,255,0.08); }
+  .study-picker-item-name { font-size: 13px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .study-picker-item-meta { display: flex; gap: 8px; margin-top: 2px; font-size: 11px; color: var(--text-muted); }
+  .study-picker-empty { padding: 20px 14px; text-align: center; color: var(--text-muted); font-size: 12px; }
 
   /* Slug preview */
   .slug-preview {
@@ -1778,6 +1842,11 @@
                   </div>
                 </div>
                 <span style="font-size:11px; color:var(--text-muted);">×</span>
+              </div>
+              <div class="settings-row">
+                <span class="toggle-label">Lock spectrogram to 1× view</span>
+                <div class="toggle" id="pb_lockSpectrogram" onclick="this.classList.toggle('on'); autoSave('playbackSpeed')"></div>
+                <div style="font-size:10px; color:var(--text-muted); margin-left:8px;">Spectrogram stays at 1× regardless of playback speed</div>
               </div>
             </div>
           </div>
@@ -4161,8 +4230,9 @@
     // Playback
     const playbackSpeed = parseFloat(document.getElementById('pb_speed')?.value) || 1;
     const useGlobalSpeed = document.getElementById('pb_useGlobal')?.classList.contains('on') || false;
+    const lockSpectrogramTo1x = document.getElementById('pb_lockSpectrogram')?.classList.contains('on') || false;
 
-    return { conditions, returningParticipant, randomization, playbackSpeed, useGlobalSpeed };
+    return { conditions, returningParticipant, randomization, playbackSpeed, useGlobalSpeed, lockSpectrogramTo1x };
   }
 
   function loadExperimentalDesign(design) {
@@ -4220,6 +4290,8 @@
       globalToggle.classList.toggle('on', !!design.useGlobalSpeed);
       toggleGlobalSpeed(!!design.useGlobalSpeed);
     }
+    const lockToggle = document.getElementById('pb_lockSpectrogram');
+    if (lockToggle) lockToggle.classList.toggle('on', !!design.lockSpectrogramTo1x);
   }
 
   function toggleHealingBlockSettings() {

@@ -436,7 +436,7 @@ function getBoxDeviceRect(box) {
     const drawHeight = spectrogramOverlayCanvas.height;
 
     const originalNyquist = State.originalDataFrequencyRange?.max || 50;
-    const playbackRate = State.currentPlaybackRate || 1.0;
+    const playbackRate = State.getPlaybackRate();
     const scaleTransition = getScaleTransitionState();
     let lowY, highY;
 
@@ -564,7 +564,7 @@ function deviceXToTimestamp(deviceX, canvasWidth) {
  */
 function deviceYToFrequency(deviceY, canvasHeight) {
     const originalNyquist = State.originalDataFrequencyRange?.max || 50;
-    const playbackRate = State.currentPlaybackRate || 1.0;
+    const playbackRate = State.getPlaybackRate();
     const scaleType = State.frequencyScale;
     const minFreq = getLogScaleMinFreq();
 
@@ -688,7 +688,7 @@ function handleBoxDragMove(e, canvas) {
 
             const pixelDeltaY = curDevY - startDevY;
             const origNyquist = State.originalDataFrequencyRange?.max || 50;
-            const pr = State.currentPlaybackRate || 1.0;
+            const pr = State.getPlaybackRate();
             const freqToPixY = (f) => getYPositionForFrequencyScaled(f, origNyquist, dim.height, State.frequencyScale, pr);
 
             const orig = boxDragState.origBox;
@@ -1617,7 +1617,7 @@ export function updateCanvasAnnotations() {
 
                 // Simple subtraction
                 const samplesToFeature = featureStartSample - currentSample;
-                const playbackRate = State.currentPlaybackRate || 1.0;
+                const playbackRate = State.getPlaybackRate();
                 const timeUntilFeature = (samplesToFeature / (44.1 * playbackRate)) / 1000; // Wall-clock seconds
             }
         }
@@ -2086,7 +2086,7 @@ export async function changeFrequencyScale() {
                 resetSpectrogramState();
                 await renderCompleteSpectrogramForRegion(startSeconds, endSeconds);
 
-                const playbackRate = State.currentPlaybackRate || 1.0;
+                const playbackRate = State.getPlaybackRate();
                 updateSpectrogramViewport(playbackRate);
                 updateAllFeatureBoxPositions();
                 redrawAllCanvasFeatureBoxes();
@@ -2107,7 +2107,7 @@ export async function changeFrequencyScale() {
             resetSpectrogramState();
             await renderCompleteSpectrogram();
 
-            const playbackRate = State.currentPlaybackRate || 1.0;
+            const playbackRate = State.getPlaybackRate();
             updateSpectrogramViewport(playbackRate);
             updateAllFeatureBoxPositions();
             redrawAllCanvasFeatureBoxes();
@@ -2892,7 +2892,7 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
     const originalNyquist = State.originalDataFrequencyRange?.max || 50;
 
     // Get current playback rate (CRITICAL for stretching!)
-    const playbackRate = State.currentPlaybackRate || 1.0;
+    const playbackRate = State.getPlaybackRate();
 
     // Convert frequencies to Y positions (DEVICE PIXELS) - WITH SCALE INTERPOLATION!
     const scaleTransition = getScaleTransitionState();
@@ -3170,7 +3170,7 @@ function drawSavedBox(ctx, box, drawAnnotationsOnly = false, placedAnnotations =
                 const samplesToFeature = featureStartSample - currentSample;
                 const featureDurationSamples = featureEndSample - featureStartSample;
 
-                const playbackRate = State.currentPlaybackRate || 1.0;
+                const playbackRate = State.getPlaybackRate();
                 const LEAD_SAMPLES_OUTPUT = Math.floor(ANNOTATION_LEAD_TIME_MS * 44.1);
                 const leadTimeSamples = Math.floor(LEAD_SAMPLES_OUTPUT * playbackRate);
 

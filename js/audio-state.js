@@ -34,6 +34,7 @@ export let stretchStartPosition = 0;   // Source position (seconds) when stretch
 export let playbackState = PlaybackState.STOPPED;
 export let isLooping = false;
 export let currentPlaybackRate = 1.0;
+export let spectrogramSpeedBypass = false; // When true, spectrogram renders as if speed is 1x
 
 // Timing
 export let streamStartTime = 0;
@@ -161,6 +162,9 @@ export function setPlaybackState(value) {
 }
 export function setIsLooping(value) { isLooping = value; }
 export function setCurrentPlaybackRate(value) { currentPlaybackRate = value; }
+export function setSpectrogramSpeedBypass(value) { spectrogramSpeedBypass = value; }
+/** Canonical playback rate accessor. Respects spectrogram speed bypass (returns 1.0 when locked). */
+export function getPlaybackRate() { return spectrogramSpeedBypass ? 1.0 : currentPlaybackRate; }
 export function setStreamStartTime(value) { streamStartTime = value; }
 export function setLastUpdateTime(value) { lastUpdateTime = value; }
 export function setLastWorkletPosition(value) { lastWorkletPosition = value; }

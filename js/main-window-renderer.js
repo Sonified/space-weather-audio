@@ -1867,7 +1867,7 @@ export async function renderCompleteSpectrogramForRegion(startSeconds, endSecond
             initializeAxisPlaybackRate();
             drawFrequencyAxis();
 
-            updateSpectrogramViewport(State.currentPlaybackRate || 1.0);
+            updateSpectrogramViewport(State.getPlaybackRate());
         }
 
         const elapsed = performance.now() - startTime;
@@ -1987,7 +1987,7 @@ export function drawInterpolatedSpectrogram() {
     }
 
     // Update stretch + frequency (shared TSL uniforms — affects all materials)
-    const playbackRate = State.currentPlaybackRate || 1.0;
+    const playbackRate = State.getPlaybackRate();
     uStretchFactor.value = calculateStretchFactor(playbackRate, State.frequencyScale);
     updateFrequencyUniforms();
 
@@ -2055,7 +2055,7 @@ export function updateSpectrogramViewportFromZoom() {
     }
 
     // Update stretch + frequency (shared TSL uniforms — affects all materials)
-    const playbackRate = State.currentPlaybackRate || 1.0;
+    const playbackRate = State.getPlaybackRate();
     uStretchFactor.value = calculateStretchFactor(playbackRate, State.frequencyScale);
     updateFrequencyUniforms();
 
@@ -2504,7 +2504,7 @@ export function clearSmartRenderBounds() {
 
 export function restoreViewportState() {
     if (material && threeRenderer) {
-        const playbackRate = State.currentPlaybackRate || 1.0;
+        const playbackRate = State.getPlaybackRate();
         updateSpectrogramViewport(playbackRate);
     }
 }

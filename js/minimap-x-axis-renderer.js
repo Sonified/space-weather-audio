@@ -1366,7 +1366,7 @@ export function stopZoomTransition() {
                     zoomTransitionRAF = null; // Clear ID immediately to allow GC
                 // Check if infinite canvas exists (high-res render is ready)
                 // If it exists, update the viewport to display it
-                const playbackRate = State.currentPlaybackRate || 1.0;
+                const playbackRate = State.getPlaybackRate();
                 // This will only update if infiniteSpectrogramCanvas exists
                 // (i.e., if the high-res render has completed)
                 updateSpectrogramViewport(playbackRate);

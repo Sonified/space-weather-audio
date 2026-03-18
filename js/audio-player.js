@@ -362,16 +362,11 @@ export function updatePlaybackSpeed() {
         }
     }
 
-    // Update spectrogram axis to reflect new playback speed
+    // Update spectrogram visuals using visual rate (bypassed = 1x, normal = actual speed)
+    const visualRate = State.getPlaybackRate();
     updateAxisForPlaybackSpeed();
-
-    // Update spectrogram viewport (works for both full and temple - GPU stretching!)
-    updateSpectrogramViewport(finalSpeed);
-
-    // Update feature box positions for new playback speed (horizontal stretching)
+    updateSpectrogramViewport(visualRate);
     updateAllFeatureBoxPositions();
-
-    // Update canvas feature boxes too!
     redrawAllCanvasFeatureBoxes();
 }
 
