@@ -13,7 +13,8 @@ function nowISO() { return new Date().toISOString(); }
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, If-Modified-Since',
+  'Access-Control-Expose-Headers': 'Last-Modified',
 };
 
 // Helper: JSON response
@@ -767,6 +768,12 @@ export default {
         return json({ error: 'Invalid admin key' }, 403);
       }
 
+      // Helper: bump studies.updated_at so If-Modified-Since polling can short-circuit
+      const touchStudy = (studyId) => {
+        console.log(`[TOUCH] ${studyId} — bumping updated_at`);
+        return env.DB.prepare(`UPDATE studies SET updated_at = ? WHERE id = ?`).bind(nowISO(), studyId).run();
+      };
+
       // Helper: detect mode from participant ID prefix (for logging only)
       function detectMode(pid) {
         if (pid.startsWith('Preview_')) return 'preview';
@@ -788,6 +795,7 @@ export default {
           `INSERT INTO participants (participant_id, study_id, updated_at, last_event, registered_at) VALUES (?, ?, ?, ?, ?)
            ON CONFLICT(participant_id, study_id) DO UPDATE SET updated_at = ?, last_event = ?`
         ).bind(pid, studyId, now, regEvent, now, now, regEvent).run();
+        await touchStudy(studyId);
         return json({ success: true, participant_id: pid, mode });
       }
 
@@ -828,6 +836,7 @@ export default {
                last_event = ?
            WHERE participant_id = ? AND study_id = ?`
         ).bind(step, entry, nowISO(), stepEvent, decodedPid, studyId).run();
+        await touchStudy(studyId);
         return json({ success: true, current_step: step });
       }
 
@@ -1002,6 +1011,7 @@ export default {
             `UPDATE participants SET assigned_condition = ?, assignment_mode = ?, assigned_block = ?, assigned_at = ?,
              group_id = ?, updated_at = ? WHERE participant_id = ? AND study_id = ?`
           ).bind(assignedCondition, assignmentMode, assignedBlock, now, sessionId, now, pid, studyId).run();
+          await touchStudy(studyId);
 
           const conditionDetails = conditions[assignedCondition - 1] || {};
           return json({
@@ -1040,6 +1050,7 @@ export default {
                last_event = ?
            WHERE participant_id = ? AND study_id = ?`
         ).bind(conditionJson, nowISO(), conditionEvent, decodedPid, studyId).run();
+        await touchStudy(studyId);
         return json({ success: true, conditionIndex: body.conditionIndex });
       }
 
@@ -1080,6 +1091,7 @@ export default {
           await env.DB.prepare(
             `UPDATE participants SET updated_at = ? WHERE participant_id = ? AND study_id = ?`
           ).bind(nowISO(), pid, studyId).run();
+          await touchStudy(studyId);
           return json({ success: true, feature_id: id, mode });
         }
 
@@ -1090,6 +1102,7 @@ export default {
           await env.DB.prepare(
             `UPDATE participants SET completed_at = ?, updated_at = ?, last_event = ? WHERE participant_id = ? AND study_id = ?`
           ).bind(now, now, milestoneEvent, pid, studyId).run();
+          await touchStudy(studyId);
           return json({ success: true, mode });
         }
 
@@ -1102,6 +1115,7 @@ export default {
         await env.DB.prepare(
           `UPDATE participants SET responses = json_set(responses, ?, json(?)), updated_at = ?, last_event = ? WHERE participant_id = ? AND study_id = ?`
         ).bind(responseKey, dataStr, nowISO(), respEvent, pid, studyId).run();
+        await touchStudy(studyId);
         return json({ success: true, mode });
       }
 
@@ -1117,6 +1131,17 @@ export default {
       const listParticipantsMatch = path.match(/^\/api\/study\/([^/]+)\/participants$/);
       if (listParticipantsMatch && request.method === 'GET') {
         const studyId = listParticipantsMatch[1];
+
+        // If-Modified-Since: cheap 1-row check before expensive JOIN query
+        const ims = request.headers.get('If-Modified-Since');
+        if (ims) {
+          const study = await env.DB.prepare('SELECT updated_at FROM studies WHERE id = ?').bind(studyId).first();
+          if (study?.updated_at && new Date(study.updated_at) <= new Date(ims)) {
+            console.log(`[304] /participants ${studyId} — not modified`);
+            return new Response(null, { status: 304, headers: CORS_HEADERS });
+          }
+        }
+
         const filter = url.searchParams.get('filter') || 'all'; // all | test | live
         const timeoutMin = parseInt(url.searchParams.get('timeout') || '10', 10);
 
@@ -1137,7 +1162,9 @@ export default {
            ORDER BY p.registered_at DESC`
         ).bind(timeoutMin, studyId).all();
 
-        return json({ success: true, participants: results || [] });
+        const resp = json({ success: true, participants: results || [] });
+        resp.headers.set('Last-Modified', new Date().toUTCString());
+        return resp;
       }
 
       // GET /api/study/:studyId/participants/:pid/features — fetch all features
@@ -1187,6 +1214,17 @@ export default {
       const dashboardMatch = path.match(/^\/api\/study\/([^/]+)\/dashboard$/);
       if (dashboardMatch && request.method === 'GET') {
         const studyId = dashboardMatch[1];
+
+        // If-Modified-Since: cheap 1-row check before expensive multi-query dashboard
+        const ims = request.headers.get('If-Modified-Since');
+        if (ims) {
+          const study = await env.DB.prepare('SELECT updated_at FROM studies WHERE id = ?').bind(studyId).first();
+          if (study?.updated_at && new Date(study.updated_at) <= new Date(ims)) {
+            console.log(`[304] /dashboard ${studyId} — not modified`);
+            return new Response(null, { status: 304, headers: CORS_HEADERS });
+          }
+        }
+
         const timeoutMin = parseInt(url.searchParams.get('timeout') || '10', 10);
         // Session-based filtering: use active session's session_id
         const activeSession = await env.DB.prepare(
@@ -1227,7 +1265,7 @@ export default {
           } catch {}
         }
 
-        return json({
+        const dashResp = json({
           success: true,
           sessionId: sessionId || null,
           totalStarted: totalRow?.count || 0,
@@ -1237,6 +1275,8 @@ export default {
           participants: participantRows?.results || [],
           algorithmState,
         });
+        dashResp.headers.set('Last-Modified', new Date().toUTCString());
+        return dashResp;
       }
 
       // =======================================================================

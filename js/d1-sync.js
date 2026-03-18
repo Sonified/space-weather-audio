@@ -345,6 +345,9 @@ let _keepaliveTimer = null;
  * @param {number} intervalMinutes - How often to ping (default 1)
  */
 export function startHeartbeat(intervalMinutes = 1) {
+    // Disabled — last_heartbeat column is never read; updated_at from real actions
+    // (step changes, feature saves, responses) is what the dashboard uses.
+    return;
     stopHeartbeat();
     const pid = getParticipantId();
     const sid = getStudyId();

@@ -1655,6 +1655,27 @@
     <span id="slugFlash" style="font-size:13px;color:var(--green);opacity:0;transition:opacity 0.3s;">✓ Valid URL</span>
   </div>
   <div class="header-panel">
+    <!-- Row 0: Actions -->
+    <div class="header-actions">
+      <select id="studyPicker" class="btn" style="display:none; max-width:200px; cursor:pointer;" onchange="switchStudy(this.value)"></select>
+      <div class="dropdown-wrap">
+        <button class="btn" onclick="toggleFileMenu(this)">📁 File ▾</button>
+        <div class="file-menu" id="fileMenu">
+          <div class="dropdown-item" onclick="loadFromJson()">📄 Load from JSON file</div>
+          <div class="dropdown-item" onclick="loadFromServer()">☁️ Load from server</div>
+          <div class="dropdown-item" onclick="exportToJson()">💾 Save as JSON file</div>
+          <div class="dropdown-item" onclick="saveAsJson()">💾 Save as NEW JSON file...</div>
+          <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
+          <div class="dropdown-item" onclick="saveDraft()">☁️ Save to server</div>
+          <div class="dropdown-item" onclick="saveAsToServer()">☁️ Save as NEW to server...</div>
+        </div>
+      </div>
+      <button class="btn" onclick="copyFullStudyJson()" title="Copy entire study config to clipboard">Copy Study JSON</button>
+      <button class="btn" onclick="previewStudy()" title="Preview full study"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Preview</button>
+      <button class="btn" onclick="openDataExplorer()" title="Open full participant data viewer in a new tab">🔍 Data Viewer</button>
+      <div class="save-indicator" id="saveIndicator"></div>
+      <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="handleJsonFile(event)">
+    </div>
     <!-- Row 1: Study name -->
     <div class="header-row">
       <label for="studyNameInput" style="font-size:13px;color:var(--text-muted);font-weight:600;white-space:nowrap;">Study Name:</label>
@@ -1693,27 +1714,6 @@
         <span id="headerLiveStatus" style="display:none; margin-left:auto; font-size:13px; color:var(--green); white-space:nowrap;">Study is LIVE</span>
         <span id="headerLiveSessionId" style="display:none;"></span>
       </div>
-    </div>
-    <!-- Row 3: Actions -->
-    <div class="header-actions">
-      <select id="studyPicker" class="btn" style="display:none; max-width:200px; cursor:pointer;" onchange="switchStudy(this.value)"></select>
-      <div class="dropdown-wrap">
-        <button class="btn" onclick="toggleFileMenu(this)">📁 File ▾</button>
-        <div class="file-menu" id="fileMenu">
-          <div class="dropdown-item" onclick="loadFromJson()">📄 Load from JSON file</div>
-          <div class="dropdown-item" onclick="loadFromServer()">☁️ Load from server</div>
-          <div class="dropdown-item" onclick="exportToJson()">💾 Save as JSON file</div>
-          <div class="dropdown-item" onclick="saveAsJson()">💾 Save as NEW JSON file...</div>
-          <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
-          <div class="dropdown-item" onclick="saveDraft()">☁️ Save to server</div>
-          <div class="dropdown-item" onclick="saveAsToServer()">☁️ Save as NEW to server...</div>
-        </div>
-      </div>
-      <button class="btn" onclick="copyFullStudyJson()" title="Copy entire study config to clipboard">Copy Study JSON</button>
-      <button class="btn" onclick="previewStudy()" title="Preview full study"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Preview</button>
-      <button class="btn" onclick="openDataExplorer()" title="Open full participant data viewer in a new tab">🔍 Data Viewer</button>
-      <div class="save-indicator" id="saveIndicator"></div>
-      <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="handleJsonFile(event)">
     </div>
   </div>
 </div>
@@ -2170,7 +2170,7 @@
                 <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); display:block; margin-bottom:4px;" title="How often the study builder dashboard polls the server for participant updates. Lower values = more responsive but more server requests.">Dashboard Poll</label>
                 <div style="display:flex; align-items:center; gap:6px;">
                   <div class="dim-input-wrap" style="width:60px;">
-                    <input class="field-input" type="text" id="pollInterval" value="2" style="text-align:center; padding:5px 4px; font-size:13px; border-radius:var(--radius) 0 0 var(--radius);" onclick="event.stopPropagation()" />
+                    <input class="field-input" type="text" id="pollInterval" value="5" style="text-align:center; padding:5px 4px; font-size:13px; border-radius:var(--radius) 0 0 var(--radius);" onclick="event.stopPropagation()" />
                     <div class="dim-arrows">
                       <button class="dim-arrow" onclick="event.stopPropagation(); stepNumInput('pollInterval', 1, 1, 60)">▲</button>
                       <button class="dim-arrow" onclick="event.stopPropagation(); stepNumInput('pollInterval', -1, 1, 60)">▼</button>
@@ -4273,7 +4273,7 @@
   // ── Participant Tracking collect/load ─────────────────────────
   function collectParticipantTracking() {
     return {
-      pollInterval: parseInt(document.getElementById('pollInterval')?.value) || 2,
+      pollInterval: parseInt(document.getElementById('pollInterval')?.value) || 5,
       heartbeatInterval: parseInt(document.getElementById('heartbeatInterval')?.value) || 1,
       heartbeatTimeout: parseInt(document.getElementById('heartbeatTimeout')?.value) || 10,
       dropoutTimeout: parseInt(document.getElementById('dropoutTimeout')?.value) || 120,
@@ -4655,7 +4655,7 @@
     // IndexedDB — backup + powers the study picker dropdown
     try {
       await indexdbSave(config);
-      refreshStudyPicker();
+      refreshStudyPicker(config);
       console.log('%c[SAVE] ✅ Saved to IndexedDB:', 'color: #3fb950;', slug);
     } catch (e) { console.warn('❌ IndexedDB save failed:', e); }
 
@@ -7244,11 +7244,27 @@
     });
   }
 
-  async function refreshStudyPicker() {
-    const studies = await indexdbList().catch(() => []);
-    // Cache for instant restore on next load
-    localStorage.setItem('study_builder_picker', JSON.stringify(studies));
-    populatePicker(studies);
+  let _pickerCache = null; // in-memory cache of [{slug, name}]
+
+  async function refreshStudyPicker(updatedConfig) {
+    // If we have a config that was just saved, update the cache in-place instead of re-reading IndexedDB
+    if (updatedConfig && _pickerCache) {
+      const idx = _pickerCache.findIndex(s => s.slug === updatedConfig.slug);
+      if (idx >= 0) {
+        _pickerCache[idx].name = updatedConfig.name;
+        console.log(`%c[PICKER] 📋 Cache update (in-place): ${updatedConfig.slug}`, 'color: #79c0ff;');
+      } else {
+        _pickerCache.push({ slug: updatedConfig.slug, name: updatedConfig.name });
+        console.log(`%c[PICKER] 📋 Cache update (new entry): ${updatedConfig.slug}`, 'color: #79c0ff;');
+      }
+    } else {
+      // Full reload (first call, or after switchStudy/delete)
+      _pickerCache = await indexdbList().catch(() => []);
+      console.log(`%c[PICKER] 📋 Full IndexedDB reload: ${_pickerCache.length} studies`, 'color: #d29922; font-weight: bold;');
+    }
+    // Cache for instant restore on next page load
+    localStorage.setItem('study_builder_picker', JSON.stringify(_pickerCache));
+    populatePicker(_pickerCache);
   }
 
   async function switchStudy(slug) {
@@ -7650,6 +7666,30 @@
   let liveHeartbeatInterval = null;
   let liveSessionId = null;
 
+  // Pause dashboard polling when tab is backgrounded to save D1 reads
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (heartbeatInterval || liveHeartbeatInterval) console.log(`%c[VISIBILITY] 🔇 Tab hidden — pausing polls`, 'color: #f0883e;');
+      if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+      if (liveHeartbeatInterval) { clearInterval(liveHeartbeatInterval); liveHeartbeatInterval = null; }
+    } else {
+      console.log(`%c[VISIBILITY] 🔊 Tab visible — resuming polls`, 'color: #3fb950;');
+      // Resume polling — reset backoff state so first poll is immediate, then adaptive kicks in
+      if (testModeActive && !heartbeatInterval) {
+        _testPollUnchangedCount = 0;
+        _testPollLastJSON = '';
+        pollTestHeartbeat();
+        _adaptiveTestPoll();
+      }
+      if (liveModeActive && !liveHeartbeatInterval) {
+        _livePollUnchangedCount = 0;
+        _livePollLastJSON = '';
+        pollLiveDashboard();
+        _adaptiveLivePoll();
+      }
+    }
+  });
+
   // Restore live mode on page load (only if this is the live study)
   if (localStorage.getItem('sb_liveModeActive') === '1' && localStorage.getItem('sb_liveStudySlug') === localStorage.getItem('study_builder_last')) {
     const dash = document.getElementById('launchDashboard');
@@ -7945,7 +7985,7 @@
     }
 
     // Start polling
-    const pollSec = Math.max(1, parseInt(document.getElementById('pollInterval')?.value) || 2);
+    const pollSec = Math.max(1, parseInt(document.getElementById('pollInterval')?.value) || 5);
     liveHeartbeatInterval = setInterval(pollLiveDashboard, pollSec * 1000);
     const isRefresh = performance.getEntriesByType('navigation')[0]?.type === 'reload';
     if (isRefresh && localStorage.getItem('sb_liveDashboardCache')) {
@@ -7998,6 +8038,10 @@
     } catch {}
   })();
 
+  let _livePollLastJSON = '';
+  let _livePollUnchangedCount = 0;
+  let _livePollLastModified = null;
+
   async function pollLiveDashboard() {
     if (!liveModeActive) return;
     const hbLabel = document.getElementById('liveHeartbeatLabel');
@@ -8016,9 +8060,33 @@
       : 'https://spaceweather.now.audio';
 
     try {
-      const resp = await fetch(`${apiBase}/api/study/${slug}/dashboard?timeout=${toMin}`);
+      const headers = {};
+      if (_livePollLastModified) headers['If-Modified-Since'] = _livePollLastModified;
+      const resp = await fetch(`${apiBase}/api/study/${slug}/dashboard?timeout=${toMin}`, { headers });
+      if (resp.status === 304) {
+        _livePollUnchangedCount++;
+        console.log(`%c[LIVE POLL] ⏸ 304 Not Modified (#${_livePollUnchangedCount})`, 'color: #8b949e;');
+        _adaptiveLivePoll();
+        return;
+      }
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const lm = resp.headers.get('Last-Modified');
+      if (lm) _livePollLastModified = lm;
       const data = await resp.json();
+
+      // Change detection — skip DOM updates + console log when response is identical
+      const responseKey = `${data.totalStarted}|${data.activeParticipants}|${data.completedCount}|${data.droppedCount}|${data.sessionId}`;
+      if (responseKey === _livePollLastJSON) {
+        _livePollUnchangedCount++;
+        console.log(`%c[LIVE POLL] ⏸ No change (#${_livePollUnchangedCount})`, 'color: #8b949e;');
+        _adaptiveLivePoll();
+        return;
+      }
+      _livePollLastJSON = responseKey;
+      const wasBackedOff = _livePollUnchangedCount > 0;
+      _livePollUnchangedCount = 0;
+      _adaptiveLivePoll();
+      if (wasBackedOff) console.log(`%c[LIVE POLL] 🔄 Data changed — reset to base interval`, 'color: #3fb950; font-weight: bold;');
 
       const alg = data.algorithmState;
       if (data.sessionId && !liveSessionId) {
@@ -8045,7 +8113,22 @@
     } catch (e) {
       if (dot) dot.classList.remove('alive');
       if (hbLabel) hbLabel.textContent = `Poll failed ${now.toLocaleTimeString()} — ${e.message}`;
+      _livePollUnchangedCount = 0;
+      _adaptiveLivePoll();
     }
+  }
+
+  // Adaptive backoff: 5s → 15s → 30s when nothing changes, reset on change
+  function _adaptiveLivePoll() {
+    if (!liveModeActive) return;
+    clearInterval(liveHeartbeatInterval);
+    const baseSec = Math.max(1, parseInt(document.getElementById('pollInterval')?.value) || 5);
+    let interval;
+    if (_livePollUnchangedCount < 6)       interval = baseSec;       // first 30s: normal
+    else if (_livePollUnchangedCount < 12) interval = baseSec * 3;   // next ~90s: 15s
+    else                                   interval = baseSec * 6;   // steady state: 30s
+    console.log(`%c[LIVE POLL] ⏱ Interval: ${interval}s (unchanged: ${_livePollUnchangedCount})`, 'color: #d29922;');
+    liveHeartbeatInterval = setInterval(pollLiveDashboard, interval * 1000);
   }
 
   // Restore test mode on page load (synchronous, no animation)
@@ -8222,7 +8305,7 @@
       }
 
       // Start dashboard polling (read interval from input, default 2s)
-      const pollSec = Math.max(1, parseInt(document.getElementById('pollInterval')?.value) || 2);
+      const pollSec = Math.max(1, parseInt(document.getElementById('pollInterval')?.value) || 5);
       heartbeatInterval = setInterval(pollTestHeartbeat, pollSec * 1000);
       // On refresh with cached dashboard, delay first poll; otherwise poll immediately
       const isRefresh = performance.getEntriesByType('navigation')[0]?.type === 'reload';
@@ -8294,6 +8377,10 @@
     } catch {}
   })();
 
+  let _testPollLastJSON = '';
+  let _testPollUnchangedCount = 0;
+  let _testPollLastModified = null;
+
   async function pollTestHeartbeat() {
     if (!testModeActive) return;
     const hbLabel = document.getElementById('heartbeatLabel');
@@ -8312,9 +8399,33 @@
       : 'https://spaceweather.now.audio';
 
     try {
-      const resp = await fetch(`${apiBase}/api/study/${slug}/dashboard?timeout=${toMin}`);
+      const headers = {};
+      if (_testPollLastModified) headers['If-Modified-Since'] = _testPollLastModified;
+      const resp = await fetch(`${apiBase}/api/study/${slug}/dashboard?timeout=${toMin}`, { headers });
+      if (resp.status === 304) {
+        _testPollUnchangedCount++;
+        console.log(`%c[TEST POLL] ⏸ 304 Not Modified (#${_testPollUnchangedCount})`, 'color: #8b949e;');
+        _adaptiveTestPoll();
+        return;
+      }
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const lm = resp.headers.get('Last-Modified');
+      if (lm) _testPollLastModified = lm;
       const data = await resp.json();
+
+      // Change detection — skip DOM updates + console log when response is identical
+      const responseKey = `${data.totalStarted}|${data.activeParticipants}|${data.totalAssigned}|${data.completedCount}|${data.sessionId}`;
+      if (responseKey === _testPollLastJSON) {
+        _testPollUnchangedCount++;
+        console.log(`%c[TEST POLL] ⏸ No change (#${_testPollUnchangedCount})`, 'color: #8b949e;');
+        _adaptiveTestPoll();
+        return;
+      }
+      _testPollLastJSON = responseKey;
+      const wasBackedOff = _testPollUnchangedCount > 0;
+      _testPollUnchangedCount = 0;
+      _adaptiveTestPoll();
+      if (wasBackedOff) console.log(`%c[TEST POLL] 🔄 Data changed — reset to base interval`, 'color: #3fb950; font-weight: bold;');
 
       const alg = data.algorithmState;
       if (data.sessionId && !activeSessionId) activeSessionId = data.sessionId; // sync if we missed it
@@ -8335,7 +8446,22 @@
     } catch (e) {
       dot.classList.remove('alive');
       hbLabel.textContent = `Poll failed ${now.toLocaleTimeString()} — ${e.message}`;
+      _testPollUnchangedCount = 0;
+      _adaptiveTestPoll();
     }
+  }
+
+  // Adaptive backoff for test poll: same curve as live
+  function _adaptiveTestPoll() {
+    if (!testModeActive) return;
+    clearInterval(heartbeatInterval);
+    const baseSec = Math.max(1, parseInt(document.getElementById('pollInterval')?.value) || 5);
+    let interval;
+    if (_testPollUnchangedCount < 6)       interval = baseSec;
+    else if (_testPollUnchangedCount < 12) interval = baseSec * 3;
+    else                                   interval = baseSec * 6;   // steady state: 30s
+    console.log(`%c[TEST POLL] ⏱ Interval: ${interval}s (unchanged: ${_testPollUnchangedCount})`, 'color: #d29922;');
+    heartbeatInterval = setInterval(pollTestHeartbeat, interval * 1000);
   }
 </script>
 </body>

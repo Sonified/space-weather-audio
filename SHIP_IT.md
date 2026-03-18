@@ -88,10 +88,10 @@ An
   - Listening/tuning task, not code — use `stretch_test.html` with GOES data
   - Determine: Paul (window size, overlap %), Wavelet (w0, dj, phase mode, interpolation)
   - Save chosen params as defaults in study config
-- [ ] **HS3.1.** Wire up randomization playback settings for stretch modes + connect playback speed from study builder into the study → [`homestretch/HS3.1.md`](homestretch/HS3.1.md)
-  - **Critical gap:** `playbackSpeed` from study config is never applied (~10 lines, 30 min)
-  - `_assignedProcessing` works but speed is skipped in `applyAnalysisConfig()`
-  - Fix in `study-flow.js` ~line 1988
+- [ ] **HS3.1.** Wire up stretch algorithm assignment from randomized conditions → [`homestretch/HS3.1.md`](homestretch/HS3.1.md)
+  - ✅ Playback speed done — `step.playbackSpeed` applied in study-flow.js + feature-viewer.js
+  - ✅ Global speed toggle in study builder syncs to all per-card inputs
+  - **Remaining:** stretch algorithm from condition (`_assignedProcessing` → wavelet) not yet integrated
 - [ ] **HS3.2.** Double ensure analysis tasks appear in correct order based on condition, and correct stretch mode → [`homestretch/HS3.2.md`](homestretch/HS3.2.md)
   - Manual verification task — run through as different participants, check console `[ASSIGN]` logs
   - ~30 min
@@ -109,7 +109,7 @@ An
   - ~30 min
 - [x] **HS30.** Fixed at 1.25x speed for now (the study's stretch condition)
 - [ ] **HS31.** Add spectrogram shift on speed change option in Data Playback panel on study builder → [`homestretch/HS31.md`](homestretch/HS31.md)
-- [ ] **HS37.** "Use global speed" toggle next to global `pb_speed` input (default off). When on, disable per-card playback speed dropdowns and sync from global. When off, per-card speeds are independent
+- [x] **HS37.** "Use global speed" toggle next to global `pb_speed` input (default off). When on, disable per-card playback speed dropdowns and sync from global. When off, per-card speeds are independent
   - New toggle in Data Playback panel + viewport scaling by speed factor
   - ~1-2 hrs, no dependencies
 
@@ -138,9 +138,10 @@ An
 - [x] **HS32.** Feature viewer section switching bug (2→1 hangs on "loading") ✅
   - Root cause: completed sessions had processedChunks nulled by onComplete cleanup, reuse replayed empty data
   - Fix: detect freed sessions, create fresh ones from IndexedDB cache; added #dataSource/#dataRendering, try-catch, progressive re-force, read-only feature boxes
-- [ ] **HS33.** Feature viewer participant dropdown → [`homestretch/HS33.md`](homestretch/HS33.md)
-  - API already exists: `GET /api/study/:id/participants` returns list with feature counts
-  - Add `<select>` in header bar, populate on init, navigate via URL change on selection
+- [x] **HS33.** Feature viewer participant dropdown ✅
+  - Dropdown in header, populated from `/api/study/:id/participants`, navigates via URL
+  - Per-participant session data fetch from `/data` endpoint (respects condition ordering)
+  - Persistent annotations default, animated details open/close, brighter detail text
 
 #### 🧭 Study Builder Navigation
 - [ ] **HS34.** Recently viewed studies dropdown → [`homestretch/HS34.md`](homestretch/HS34.md)

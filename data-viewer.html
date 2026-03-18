@@ -951,14 +951,27 @@
   let pollTimer = null;
   let isPolling = false;
 
-  // Start 2-second auto-poll when a study is selected
+  // Start 5-second auto-poll when a study is selected
   function startPoll() {
     stopPoll();
-    pollTimer = setInterval(() => silentRefresh(), 2000);
+    pollTimer = setInterval(() => silentRefresh(), 5000);
   }
   function stopPoll() {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   }
+
+  // Pause polling when tab is backgrounded to save D1 reads
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      console.log('%c[DV] 🔇 Tab hidden — pausing polls', 'color: #f0883e;');
+      stopPoll();
+    } else if (currentSlug) {
+      console.log('%c[DV] 🔊 Tab visible — resuming polls', 'color: #3fb950;');
+      _dvLastModified = null; // force full fetch on resume
+      silentRefresh();
+      startPoll();
+    }
+  });
 
   // Detect refresh — skip initial server fetch if cache is fresh
   const isPageRefresh = performance.getEntriesByType('navigation')[0]?.type === 'reload';
@@ -993,6 +1006,7 @@
     const slug = document.getElementById('studySelect').value;
     console.log('[DV] loadParticipants called — slug:', JSON.stringify(slug));
     if (!slug) { console.log('[DV] no slug, stopping'); stopPoll(); return; }
+    _dvLastModified = null; // reset on study switch so first fetch is full
     localStorage.setItem('dv_last_study', slug);
     console.log('[DV] saved dv_last_study:', JSON.stringify(slug));
 
@@ -1050,6 +1064,8 @@
     }, { once: true });
   }
 
+  let _dvLastModified = null;
+
   // Silent refresh — no spinner, updates in-place
   async function silentRefresh() {
     const slug = document.getElementById('studySelect').value;
@@ -1061,6 +1077,11 @@
         fetchParticipantData(slug),
         fetchSessions(slug)
       ]);
+      if (data === null) {
+        // 304 Not Modified — nothing changed, skip re-render
+        isPolling = false;
+        return;
+      }
       let sessionsChanged = false;
       if (sessData?.sessions) {
         // Detect any change: new sessions (starts) or newly ended sessions
@@ -1110,8 +1131,17 @@
 
   async function fetchParticipantData(slug) {
     const baseUrl = detectApiBase();
-    const res = await fetch(`${baseUrl}/api/study/${encodeURIComponent(slug)}/participants?filter=${currentFilter}&timeout=10`);
+    const headers = {};
+    if (_dvLastModified) headers['If-Modified-Since'] = _dvLastModified;
+    const res = await fetch(`${baseUrl}/api/study/${encodeURIComponent(slug)}/participants?filter=${currentFilter}&timeout=10`, { headers });
+    if (res.status === 304) {
+      console.log('%c[DV] ⏸ 304 Not Modified — skipping (1 row read saved)', 'color: #8b949e;');
+      return null;
+    }
+    const lm = res.headers.get('Last-Modified');
+    if (lm) _dvLastModified = lm;
     const data = await res.json();
+    console.log(`%c[DV] 📥 Full fetch — ${data.participants?.length || 0} participants`, 'color: #58a6ff;');
     if (!data.success) throw new Error(data.error || 'Failed to load');
     return data;
   }
