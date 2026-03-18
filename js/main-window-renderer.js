@@ -238,16 +238,20 @@ export function setCrossfadePower(power) { crossfadePower = power; }
  */
 export function setSpectrogramGainContrast(gainDb, contrastPct) {
     if (!uDbFloor || !uDbRange) return;
+    // Gain: multiply — uniformly brighter/darker
     const gainFactor = Math.pow(10, gainDb / 60);
-    const contrastScale = contrastPct / 100;
-    const scale = gainFactor * contrastScale;
-    // Main material: shrink dB range = multiply normalized output
-    uDbFloor.value = -100;
-    uDbRange.value = 100 / scale;
-    // Tile material: just multiply
-    if (uTileContrastScale) uTileContrastScale.value = scale;
-    if (uTileGainOffset) uTileGainOffset.value = 0;
-    if (window.pm?.gpu) console.log(`🎚️ [GPU] Gain: ×${gainFactor.toFixed(2)}, Contrast: ${contrastPct}% → range=${uDbRange.value.toFixed(1)} | Tile: scale=${scale.toFixed(2)}`);
+    // Contrast: exponential curve — gentle near 100, dramatic at edges
+    // slider 100 = 1×, each ±50 steps = 2× change (logarithmic feel)
+    const contrastScale = Math.pow(2, (contrastPct - 100) / 50);
+    // Main material: contrast narrows range around -50dB midpoint, gain shrinks further
+    const midpoint = -50;
+    const newRange = 100 / contrastScale;
+    uDbFloor.value = midpoint - newRange / 2;
+    uDbRange.value = newRange / gainFactor;
+    // Tile material: contrast = (val - 0.5) * scale + 0.5, then gain multiplies
+    if (uTileContrastScale) uTileContrastScale.value = gainFactor * contrastScale;
+    if (uTileGainOffset) uTileGainOffset.value = 0.5 * gainFactor * (1 - contrastScale);
+    if (window.pm?.gpu) console.log(`🎚️ [GPU] Gain: ×${gainFactor.toFixed(2)}, Contrast: ${contrastPct}% (×${contrastScale.toFixed(2)}) → floor=${uDbFloor.value.toFixed(1)}, range=${uDbRange.value.toFixed(1)}`);
     renderFrame();
 }
 // Pending catmull settings (applied when uniforms are created)

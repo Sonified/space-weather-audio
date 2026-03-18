@@ -528,6 +528,25 @@ export function initializeAdvancedControls() {
         };
         gainSlider.addEventListener('input', updateGainContrast);
         contrastSlider.addEventListener('input', updateGainContrast);
+        // Click label or Option-click slider to reset to default
+        const gainLabelEl = document.getElementById('spectrogramGainLabel');
+        const contrastLabelEl = document.getElementById('spectrogramContrastLabel');
+        if (gainLabelEl) gainLabelEl.addEventListener('click', (e) => {
+            e.preventDefault();
+            gainSlider.value = 0;
+            updateGainContrast();
+        });
+        if (contrastLabelEl) contrastLabelEl.addEventListener('click', (e) => {
+            e.preventDefault();
+            contrastSlider.value = 100;
+            updateGainContrast();
+        });
+        gainSlider.addEventListener('click', (e) => {
+            if (e.altKey) { gainSlider.value = 0; updateGainContrast(); }
+        });
+        contrastSlider.addEventListener('click', (e) => {
+            if (e.altKey) { contrastSlider.value = 100; updateGainContrast(); }
+        });
     }
 
     // --- Custom spinner buttons for number inputs ---
