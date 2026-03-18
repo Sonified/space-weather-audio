@@ -7484,10 +7484,13 @@
   }
 
   // ── Data Stream polling ──
+  let _activityPollInterval = null;
+  let _activityPollFn = null;
+  const _ACTIVITY_POLL_MS = 5000;
   (function() {
     const LOG_EL = 'dataStreamLog';
     const COUNT_EL = 'streamCount';
-    const POLL_MS = 5000;
+    const POLL_MS = _ACTIVITY_POLL_MS;
     let eventCount = 0;
     let featureCounts = {}; // participant_id → count (for feature numbering)
 
@@ -7620,13 +7623,14 @@
       polling = false;
     }
 
-    setInterval(() => poll(false), POLL_MS);
+    _activityPollFn = () => poll(false);
+    _activityPollInterval = setInterval(_activityPollFn, POLL_MS);
     const _isRefresh = performance.getEntriesByType('navigation')[0]?.type === 'reload';
     if (_isRefresh) {
       console.log('%c[SB] Refresh detected — delaying data stream poll', 'color: #8b8; font-weight: bold');
-      setTimeout(() => poll(false), POLL_MS);
+      setTimeout(_activityPollFn, POLL_MS);
     } else {
-      setTimeout(() => poll(false), 1000);
+      setTimeout(_activityPollFn, 1000);
     }
   })();
 
@@ -7666,15 +7670,17 @@
   let liveHeartbeatInterval = null;
   let liveSessionId = null;
 
-  // Pause dashboard polling when tab is backgrounded to save D1 reads
+  // Pause dashboard + activity polling when tab is backgrounded to save D1 reads
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
-      if (heartbeatInterval || liveHeartbeatInterval) console.log(`%c[VISIBILITY] 🔇 Tab hidden — pausing polls`, 'color: #f0883e;');
+      const anyActive = heartbeatInterval || liveHeartbeatInterval || _activityPollInterval;
+      if (anyActive) console.log(`%c[VISIBILITY] 🔇 Tab hidden — pausing polls`, 'color: #f0883e;');
       if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
       if (liveHeartbeatInterval) { clearInterval(liveHeartbeatInterval); liveHeartbeatInterval = null; }
+      if (_activityPollInterval) { clearInterval(_activityPollInterval); _activityPollInterval = null; }
     } else {
       console.log(`%c[VISIBILITY] 🔊 Tab visible — resuming polls`, 'color: #3fb950;');
-      // Resume polling — reset backoff state so first poll is immediate, then adaptive kicks in
+      // Resume dashboard polling — reset backoff state so first poll is immediate, then adaptive kicks in
       if (testModeActive && !heartbeatInterval) {
         _testPollUnchangedCount = 0;
         _testPollLastJSON = '';
@@ -7686,6 +7692,11 @@
         _livePollLastJSON = '';
         pollLiveDashboard();
         _adaptiveLivePoll();
+      }
+      // Resume activity stream polling
+      if (_activityPollFn && !_activityPollInterval) {
+        _activityPollFn();
+        _activityPollInterval = setInterval(_activityPollFn, _ACTIVITY_POLL_MS);
       }
     }
   });
