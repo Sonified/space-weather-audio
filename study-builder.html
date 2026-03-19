@@ -1429,6 +1429,14 @@
     flex-shrink: 0;
   }
   .condition-row .cond-delete:hover { background: rgba(220,50,50,0.2); color: #f44; }
+  .condition-row .cond-preview {
+    width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    border-radius: 4px; transition: background 0.15s, color 0.15s, opacity 0.15s;
+    flex-shrink: 0; opacity: 0; margin-left: 8px;
+  }
+  .condition-row:hover .cond-preview { opacity: 1; }
+  .condition-row .cond-preview:hover { background: rgba(77,168,255,0.2); color: var(--accent); }
   .condition-row .cond-warn {
     width: 8px;
     height: 8px;
@@ -4336,6 +4344,7 @@
       <select class="cond-task2" onchange="checkConditionDuplicates(); autoSave('input')">${buildProcessingOptions(task2 || 'paulStretch')}</select>
       <span class="cond-warn" title="Duplicate condition"></span>
       <button type="button" class="cond-delete" onclick="deleteConditionRow(this)" title="Remove">×</button>
+      <button type="button" class="cond-preview" onclick="previewCondition(this)" title="Preview with this condition"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
     `;
     if (order) row.querySelector('.cond-order').value = order;
     list.appendChild(row);
@@ -4346,8 +4355,20 @@
     }
   }
 
+  function previewCondition(btn) {
+    const row = btn.closest('.condition-row');
+    const rows = row.parentElement.querySelectorAll('.condition-row');
+    const idx = Array.from(rows).indexOf(row) + 1; // 1-indexed
+    const slug = document.getElementById('slugValue')?.textContent?.trim();
+    if (!slug) return;
+    window.open(`${location.origin}/study.html?s=${slug}&mode=preview&condition=${idx}`, '_blank');
+  }
+
   function deleteConditionRow(btn) {
-    btn.closest('.condition-row').remove();
+    const row = btn.closest('.condition-row');
+    const num = row.querySelector('.cond-num')?.textContent || '?';
+    if (!confirm(`Delete condition ${num}? Are you sure?`)) return;
+    row.remove();
     renumberConditions();
     checkConditionDuplicates();
     updateConditionCount();

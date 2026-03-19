@@ -2409,7 +2409,8 @@ export function changeWaveformFilter() {
 
         // Re-render spectrogram pyramid tiles from de-trended samples
         // Only if spectrogram was already rendered (avoid interfering with initial load)
-        if (State.spectrogramInitialized) {
+        // Skip if pyramid was already pre-computed from de-trended data (HS25 preload)
+        if (State.spectrogramInitialized && !window.__PYRAMID_DETRENDED) {
             if (window.pm?.render) console.log(`  🔺 Rebuilding spectrogram from de-trended data...`);
             import('./spectrogram-pyramid.js').then(({ disposePyramid }) => {
                 import('./main-window-renderer.js').then(({ resetSpectrogramState, renderCompleteSpectrogram }) => {
@@ -2418,6 +2419,9 @@ export function changeWaveformFilter() {
                     renderCompleteSpectrogram();
                 });
             });
+        } else if (window.__PYRAMID_DETRENDED) {
+            console.log(`  🔺 Skipping spectrogram rebuild — pyramid already computed from de-trended data`);
+            window.__PYRAMID_DETRENDED = false; // Reset so manual toggle still works
         }
     } else if (State.waveformWorker) {
         // Data still loading progressively — tell the worker to rebuild with current settings

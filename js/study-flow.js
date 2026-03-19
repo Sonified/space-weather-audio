@@ -196,9 +196,22 @@ async function assignCondition() {
     const conditions = studyConfig.experimentalDesign?.conditions;
     if (!conditions || conditions.length === 0) return null;
 
-    // Preview mode — skip assignment entirely (no server calls)
+    // Preview mode — use forced condition from URL param, or skip
     if (window.__PREVIEW_MODE) {
-        if (window.pm?.study_flow) console.log('%c[ASSIGN] Preview mode — skipping condition assignment', 'color: #aa77ff;');
+        const forcedIdx = parseInt(new URLSearchParams(window.location.search).get('condition'));
+        if (forcedIdx && conditions[forcedIdx - 1]) {
+            const picked = conditions[forcedIdx - 1];
+            const condition = {
+                conditionIndex: forcedIdx,
+                order: picked.order,
+                task1Processing: picked.task1Processing,
+                task2Processing: picked.task2Processing,
+                assignmentMode: 'preview'
+            };
+            console.log(`%c[ASSIGN] Preview — forced condition #${forcedIdx}`, 'color: #aa77ff; font-weight: bold;', condition);
+            return condition; // no saveCondition — preview is ephemeral
+        }
+        if (window.pm?.study_flow) console.log('%c[ASSIGN] Preview mode — no condition forced, skipping', 'color: #aa77ff;');
         return null;
     }
 
@@ -832,8 +845,19 @@ async function processPreloadQueue() {
                     if (sessionData?.buffer && sessionData.metadata) {
                         const { computeSpectrogramTiles } = await import('./main-window-renderer.js');
                         const cacheKey = `${mapped.spacecraft}:${mapped.dataset}:${startTime}:${endTime}`;
+                        // If de-trend is enabled, apply it to the buffer before computing tiles
+                        let buffer = sessionData.buffer;
+                        if (studyConfig?.experimentalDesign?.detrend) {
+                            const { removeDCOffset } = await import('./minimap-window-renderer.js');
+                            const slider = document.getElementById('waveformFilterSlider');
+                            const value = slider ? parseInt(slider.value) : 50;
+                            const alpha = 0.95 + (value / 100) * (0.9999 - 0.95);
+                            buffer = removeDCOffset(new Float32Array(buffer), alpha);
+                            window.__PYRAMID_DETRENDED = true;
+                            console.log(`%c🎨 [HS25] De-trended buffer before pyramid compute (alpha=${alpha.toFixed(4)})`, 'color: #d29922;');
+                        }
                         console.log(`%c🎨 [HS25] Starting compute pipeline: ${cacheKey}`, 'color: #d29922; font-weight: bold;');
-                        await computeSpectrogramTiles(sessionData.buffer, {
+                        await computeSpectrogramTiles(buffer, {
                             dataDurationSec: sessionData.metadata.realWorldSpanSeconds,
                             sampleRate: sessionData.metadata.playbackSamplesPerRealSecond,
                             totalExpectedSamples: sessionData.metadata.totalExpectedSamples,

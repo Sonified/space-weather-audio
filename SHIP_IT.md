@@ -84,7 +84,8 @@ An
 #### 🎧 Listening & Content (you + headphones)
 - [ ] **HS1.** Tune wavelet + Paul stretch params → [`homestretch/HS1.md`](homestretch/HS1.md)
   - Use `stretch_test.html` with GOES Region 1 & 2 data (raw + de-trended)
-  - Determine: Paul (window size, overlap %), Wavelet (w0, dj, phase mode, interpolation)
+  - ✅ Paul stretch confirmed: window size 1024
+  - **Remaining:** Wavelet (w0, dj, phase mode, interpolation)
   - **Feeds into HS44** — chosen params used to generate pre-rendered wavelet audio
 - [ ] **HS43.** Figure out how de-trended audio incorporates into the study flow
   - Currently not using de-trended audio — need to determine where it fits
@@ -108,9 +109,11 @@ An
   - ✅ Playback speed done — `step.playbackSpeed` applied in study-flow.js + feature-viewer.js
   - ✅ Global speed toggle in study builder syncs to all per-card inputs
   - **Remaining:** `_assignedProcessing` → wavelet conditions fetch pre-rendered audio from R2; Paul conditions use real-time worklet
-- [ ] **HS39.** De-trend toggle in study builder Data Playback panel → [`homestretch/HS39.md`](homestretch/HS39.md)
-  - Config option to pre-set the de-trend checkbox state on study interface
-  - Wire into study config, apply on analysis start
+- [x] **HS39.** De-trend toggle in study builder Data Playback panel ✅
+  - Toggle in Data Playback panel, saved in `experimentalDesign.detrend`
+  - Applied on analysis start via `applyAnalysisConfig()`, consolidated duplicate checkboxes to single `removeDCOffset`
+  - Preload computes pyramid from de-trended buffer (skips redundant rebuild)
+- [ ] **HS46.** Lock down conditions panel when study is live — disable all inputs/toggles so conditions can't be changed mid-study
 
 #### 📊 Spectrogram visual tuning
 - [x] **HS40.** Spectrogram gain & contrast sliders ✅
@@ -123,6 +126,11 @@ An
 - [x] **HS3.2a.** Verify correct data (dates/spacecraft) per condition ✅
 - [ ] **HS3.2b.** Verify correct stretch algorithm per condition → [`homestretch/HS3.2.md`](homestretch/HS3.2.md)
   - Manual: run as different participants, check `[ASSIGN]` logs — ~30 min
+- [x] **HS46.** Condition preview buttons + delete guard ✅
+  - Preview 👁 button per condition row (hover-only, opens study in preview mode with `?condition=N`)
+  - `?condition=N` URL param parsed in study-flow.js — forces condition client-side, no server call
+  - Delete × now requires confirmation dialog
+  - Fixed toggle jump on reload (CSS `no-transition` class + cached participant counts)
 
 #### 🎵 Completed stretch work
 - [x] **HS30.** Fixed at 1.25x speed ✅
