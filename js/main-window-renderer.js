@@ -2776,6 +2776,7 @@ let progressiveLastRenderedSamples = 0; // track to avoid reprocessing same data
 // ─── Pre-render state (HS25: compute/present separation) ────────────────────
 let preRenderCacheKey = null;   // e.g. "GOES:DN_MAGN-L2-HIRES_G16:2024-01-15T00:00:00Z:2024-01-16T00:00:00Z"
 let preRenderComplete = false;
+let preRenderPresented = false;  // true after presentPrecomputedSpectrogram dispatches pyramid-ready
 let preRenderInProgress = false;
 let preRenderAudioData = null;  // stashed for present pipeline (reference, not copy)
 let preRenderSampleRate = 0;
@@ -2793,6 +2794,7 @@ function buildPreRenderCacheKey() {
 export function resetPreRender() {
     preRenderCacheKey = null;
     preRenderComplete = false;
+    preRenderPresented = false;
     preRenderInProgress = false;
     preRenderAudioData = null;
     preRenderSampleRate = 0;
@@ -2982,6 +2984,7 @@ async function presentPrecomputedSpectrogram(cacheKey) {
     renderFrame();
 
     // Signal completion
+    preRenderPresented = true;
     window.dispatchEvent(new Event('spectrogram-ready'));
     window.dispatchEvent(new Event('pyramid-ready'));
 
@@ -3104,7 +3107,6 @@ export async function renderProgressiveSpectrogram(audioData, { isComplete = fal
     const expectedTotalSamples = State.currentMetadata?.playback_total_samples || totalSamples;
     const sr = zoomState.sampleRate;
     const hasNewData = totalSamples > progressiveLastRenderedSamples;
-
     // Minimap FFT + waveform — only recompute when new data has arrived
     if (hasNewData && totalSamples > fftSize) {
         progressiveLastRenderedSamples = totalSamples;
@@ -3156,8 +3158,11 @@ export async function renderProgressiveSpectrogram(audioData, { isComplete = fal
     // ── Completion extras ──
     if (isComplete) {
         setSuppressPyramidReady(false);
-        window.dispatchEvent(new Event('spectrogram-ready'));
-        window.dispatchEvent(new Event('pyramid-ready'));
+        // Skip if present path already dispatched these events
+        if (!preRenderPresented) {
+            window.dispatchEvent(new Event('spectrogram-ready'));
+            window.dispatchEvent(new Event('pyramid-ready'));
+        }
         (window.requestIdleCallback || (cb => setTimeout(cb, 200)))(() => {
             State.compressSamplesArray();
         });
@@ -3171,6 +3176,7 @@ export async function renderProgressiveSpectrogram(audioData, { isComplete = fal
 export function resetProgressiveSpectrogram() {
     progressiveInitDone = false;
     progressiveLastRenderedSamples = 0;
+    preRenderPresented = false;
     // NOTE: do NOT call resetPreRender() here — pre-render cache must survive
     // so the present pipeline can use it when renderProgressiveSpectrogram runs.
     // Pre-render cache is invalidated by cache key mismatch instead.
