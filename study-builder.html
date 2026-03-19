@@ -1015,6 +1015,7 @@
     position: relative;
     transition: background 0.2s;
   }
+  .toggle.no-transition, .toggle.no-transition::after { transition: none !important; }
   .toggle.on { background: var(--accent); }
   .toggle::after {
     content: '';
@@ -2686,23 +2687,27 @@
         // Set header fields synchronously before any paint
         if (_config.name) document.getElementById('studyNameInput').value = _config.name;
         if (_config.slug) document.getElementById('slugValue').textContent = _config.slug;
-        // Restore Data Playback toggles synchronously (prevent flash from default → saved)
+        // Restore Data Playback toggles synchronously — suppress CSS transitions to prevent jump
         const _ed = _config.experimentalDesign;
         if (_ed) {
-          const _g = document.getElementById('pb_useGlobal');
-          if (_g) _g.classList.toggle('on', !!_ed.useGlobalSpeed);
+          const _map = { pb_useGlobal:'useGlobalSpeed', pb_lockSpectrogram:'lockSpectrogramTo1x', pb_preRenderPyramid:'preRenderPyramid', pb_detrend:'detrend' };
+          for (const [id, key] of Object.entries(_map)) {
+            const el = document.getElementById(id);
+            if (!el) continue;
+            el.classList.add('no-transition');
+            el.classList.toggle('on', !!_ed[key]);
+          }
           const _s = document.getElementById('pb_speed');
           if (_s && _ed.playbackSpeed != null) _s.value = parseFloat(_ed.playbackSpeed).toFixed(2);
-          const _l = document.getElementById('pb_lockSpectrogram');
-          if (_l) _l.classList.toggle('on', !!_ed.lockSpectrogramTo1x);
-          const _p = document.getElementById('pb_preRenderPyramid');
-          if (_p) _p.classList.toggle('on', !!_ed.preRenderPyramid);
-          const _d = document.getElementById('pb_detrend');
-          if (_d) _d.classList.toggle('on', !!_ed.detrend);
+          if (_s && _ed.useGlobalSpeed) { _s.disabled = false; _s.style.opacity = ''; }
           const _pw = document.getElementById('pb_paulWindowSize');
           if (_pw && _ed.paulWindowSize) _pw.value = String(_ed.paulWindowSize);
-          // Enable/disable speed input to match toggle state
-          if (_s && _ed.useGlobalSpeed) { _s.disabled = false; _s.style.opacity = ''; }
+          // Re-enable transitions after first frame
+          requestAnimationFrame(() => {
+            for (const id of Object.keys(_map)) {
+              document.getElementById(id)?.classList.remove('no-transition');
+            }
+          });
         }
         // Full config load happens below once all functions are defined
         window._pendingConfig = _config;
@@ -3073,7 +3078,7 @@
       loadAppSettingsIntoBuilder(config.appSettings);
     }
 
-    // Load experimental design (conditions, etc.)
+    // Load experimental design (conditions, randomization — toggles already set at top)
     if (config.experimentalDesign) {
       loadExperimentalDesign(config.experimentalDesign);
     }
@@ -4498,24 +4503,9 @@
       }
       toggleHealingBlockSettings();
     }
-    // Playback
-    if (design.playbackSpeed != null) {
-      const el = document.getElementById('pb_speed');
-      if (el) el.value = parseFloat(design.playbackSpeed).toFixed(2);
-    }
-    const globalToggle = document.getElementById('pb_useGlobal');
-    if (globalToggle) {
-      globalToggle.classList.toggle('on', !!design.useGlobalSpeed);
-      toggleGlobalSpeed(!!design.useGlobalSpeed);
-    }
-    const lockToggle = document.getElementById('pb_lockSpectrogram');
-    if (lockToggle) lockToggle.classList.toggle('on', !!design.lockSpectrogramTo1x);
-    const preRenderToggle = document.getElementById('pb_preRenderPyramid');
-    if (preRenderToggle) preRenderToggle.classList.toggle('on', !!design.preRenderPyramid);
-    const detrendToggle = document.getElementById('pb_detrend');
-    if (detrendToggle) detrendToggle.classList.toggle('on', !!design.detrend);
-    const paulWindowSelect = document.getElementById('pb_paulWindowSize');
-    if (paulWindowSelect && design.paulWindowSize) paulWindowSelect.value = String(design.paulWindowSize);
+    // Playback toggles (pb_useGlobal, pb_lockSpectrogram, pb_preRenderPyramid, pb_detrend,
+    // pb_paulWindowSize, pb_speed) are restored at the top of loadConfigIntoBuilder() — before
+    // expensive DOM work — to prevent visual jumping. No need to set them again here.
   }
 
   function toggleHealingBlockSettings() {
@@ -7588,7 +7578,10 @@
     }, 0);
   }
 
-  let _studyParticipantCounts = {}; // { slug: count } — cached from /api/studies
+  // Seed from localStorage so early restore can show counts without flash
+  let _studyParticipantCounts = (() => {
+    try { return JSON.parse(localStorage.getItem('sb_participantCounts') || '{}'); } catch { return {}; }
+  })();
 
   async function fetchStudyParticipantCounts() {
     try {
@@ -7599,6 +7592,7 @@
       if (data.studies) {
         _studyParticipantCounts = {};
         for (const s of data.studies) _studyParticipantCounts[s.id] = s.participant_count || 0;
+        localStorage.setItem('sb_participantCounts', JSON.stringify(_studyParticipantCounts));
       }
     } catch (e) { console.warn('[PICKER] Could not fetch participant counts:', e); }
   }
