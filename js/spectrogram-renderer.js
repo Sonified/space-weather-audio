@@ -304,6 +304,7 @@ export function clearAllCanvasFeatureBoxes() {
     featureBoxReadyToShow = false;
     featureBoxOpacity = 0;
     featureBoxPendingUntilSpectrogram = false;
+    featureBoxGeneration++;  // invalidate any stale pyramid-ready listeners
 
     if (spectrogramOverlayCtx && spectrogramOverlayCanvas) {
         spectrogramOverlayCtx.clearRect(0, 0, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
@@ -1522,6 +1523,7 @@ function redrawCanvasBoxes() {
  * Rebuilds from source of truth to stay in sync!
  */
 let featureBoxPendingUntilSpectrogram = false;
+let featureBoxGeneration = 0;  // incremented on clear — stale listeners self-invalidate
 
 export function redrawAllCanvasFeatureBoxes() {
     // Don't draw feature boxes until pyramid tiles have rendered
@@ -1529,8 +1531,10 @@ export function redrawAllCanvasFeatureBoxes() {
         if (window.pm?.features) console.log(`📦 [FEAT-BOX] redrawAll called but NOT ready (pending=${featureBoxPendingUntilSpectrogram})`);
         if (!featureBoxPendingUntilSpectrogram) {
             featureBoxPendingUntilSpectrogram = true;
-            if (window.pm?.rendering) console.log(`📦 [FEAT-BOX] Registering pyramid-ready listener`);
+            const gen = featureBoxGeneration;
+            if (window.pm?.rendering) console.log(`📦 [FEAT-BOX] Registering pyramid-ready listener (gen=${gen})`);
             window.addEventListener('pyramid-ready', () => {
+                if (gen !== featureBoxGeneration) return; // stale — section changed since registration
                 if (window.pm?.rendering) console.log(`📦 [FEAT-BOX] pyramid-ready FIRED! Starting fade-in`);
                 featureBoxPendingUntilSpectrogram = false;
                 featureBoxReadyToShow = true;

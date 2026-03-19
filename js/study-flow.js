@@ -2060,25 +2060,33 @@ async function runAnalysis(step) {
     // Apply this step's analysis config (spacecraft, dates, display settings)
     applyAnalysisConfig(step);
 
-    // Apply condition-assigned processing algorithm (stretch)
+    // Reset audio position to start of new section (prevents stale position from previous section
+    // bleeding into engageStretch, which reads State.currentAudioPosition)
+    const { setCurrentAudioPosition } = await import('./audio-state.js');
+    setCurrentAudioPosition(0);
+
+    // Set condition-assigned processing algorithm (stretch) — just set the preference,
+    // don't engage yet. Data loading will rebuild the worklet (destroying any active stretch
+    // node), and the post-load updatePlaybackSpeed() will engage with the freshly-primed node.
     if (step._assignedProcessing) {
         const mapped = PROCESSING_MAP[step._assignedProcessing];
         if (mapped) {
-            const { switchStretchAlgorithm } = await import('./audio-player.js');
-            switchStretchAlgorithm(mapped);
+            const { setStretchAlgorithm } = await import('./audio-state.js');
+            setStretchAlgorithm(mapped);
             if (window.pm?.study_flow) console.log(`🧪 Applied processing: ${step._assignedProcessing} → ${mapped}`);
         }
     }
 
-    // Apply playback speed from step config (global toggle syncs into per-step values at save time)
+    // Apply playback speed from step config — just set the slider position, don't call
+    // updatePlaybackSpeed() which would trigger engageStretch() with stale section 1 data.
+    // The post-load updatePlaybackSpeed() will handle actual engagement after fresh data arrives.
     const rawSpeed = step.playbackSpeed;
     const targetSpeed = parseFloat(String(rawSpeed || '1').replace(/x$/i, '')) || 1.0;
     if (targetSpeed !== 1.0) {
-        const { calculateSliderForSpeed, updatePlaybackSpeed } = await import('./audio-player.js');
+        const { calculateSliderForSpeed } = await import('./audio-player.js');
         const slider = document.getElementById('playbackSpeed');
         if (slider) {
             slider.value = calculateSliderForSpeed(targetSpeed);
-            updatePlaybackSpeed();
             if (window.pm?.audio || window.pm?.init) console.log(`🔊 Setting playback speed to ${targetSpeed}x (slider=${slider.value})`);
         }
     }

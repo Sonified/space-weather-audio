@@ -608,11 +608,23 @@ export function primeStretchProcessors(samples) {
 
     State.setStretchNodes(nodes);
 
-    // If stretch is currently active, update the active node reference
+    // If stretch is currently active, hot-swap to the new node with correct samples
     if (State.stretchActive && State.stretchAlgorithm !== 'resample') {
         const activeAlgo = State.stretchAlgorithm;
-        if (nodes[activeAlgo]) {
-            State.setStretchNode(nodes[activeAlgo]);
+        const newNode = nodes[activeAlgo];
+        if (newNode) {
+            const oldNode = State.stretchNode;
+            // Disconnect old node from audio graph
+            if (oldNode && oldNode !== newNode) {
+                try { oldNode.disconnect(); } catch (e) { /* already disconnected */ }
+            }
+            // Connect new node and set as active
+            newNode.connect(State.stretchGainNode);
+            State.setStretchNode(newNode);
+            // Re-send speed and seek to position 0 (section transition = fresh start)
+            newNode.port.postMessage({ type: 'set-speed', data: { speed: State.stretchSpeed } });
+            newNode.port.postMessage({ type: 'seek', data: { position: 0 } });
+            console.log(`🎛️ Hot-swapped stretch node [${activeAlgo}] with ${samples.length} new samples`);
         }
     }
 

@@ -87,8 +87,9 @@ An
   - ✅ Paul stretch confirmed: window size 1024
   - **Remaining:** Wavelet (w0, dj, phase mode, interpolation)
   - **Feeds into HS44** — chosen params used to generate pre-rendered wavelet audio
-- [ ] **HS43.** Figure out how de-trended audio incorporates into the study flow
-  - Currently not using de-trended audio — need to determine where it fits
+- [ ] **HS43.** De-trended audio in study flow — integrated, needs full testing
+  - ✅ De-trend toggle wired in study builder (HS39), auto-applies on fetch, persists across sessions
+  - **Remaining:** End-to-end test that de-trended audio plays correctly through study flow (both sections)
 
 #### 🌊 Pre-rendered wavelet audio pipeline
 > **Key insight:** Wavelet-stretched audio is ~4 MB per file. Pre-render locally via `stretch_test.html`, upload to R2, serve to participants. No WebGPU needed on client. Paul stretch remains real-time in the worklet — only wavelet needs pre-rendering.
@@ -105,15 +106,14 @@ An
   - Streaming prototype complete in `stretch_test.html` (kept as rendering tool + future portal feature)
 
 #### 🔌 Wiring & Integration
-- [ ] **HS3.1.** Wire stretch algorithm assignment from randomized conditions → [`homestretch/HS3.1.md`](homestretch/HS3.1.md)
+- [x] **HS3.1.** Wire stretch algorithm assignment from randomized conditions ✅ (remaining work merged into HS45)
   - ✅ Playback speed done — `step.playbackSpeed` applied in study-flow.js + feature-viewer.js
   - ✅ Global speed toggle in study builder syncs to all per-card inputs
-  - **Remaining:** `_assignedProcessing` → wavelet conditions fetch pre-rendered audio from R2; Paul conditions use real-time worklet
+  - ✅ `_assignedProcessing` routing → covered by HS45 (wavelet → R2 fetch, Paul → real-time worklet)
 - [x] **HS39.** De-trend toggle in study builder Data Playback panel ✅
   - Toggle in Data Playback panel, saved in `experimentalDesign.detrend`
   - Applied on analysis start via `applyAnalysisConfig()`, consolidated duplicate checkboxes to single `removeDCOffset`
   - Preload computes pyramid from de-trended buffer (skips redundant rebuild)
-- [ ] **HS46.** Lock down conditions panel when study is live — disable all inputs/toggles so conditions can't be changed mid-study
 
 #### 📊 Spectrogram visual tuning
 - [x] **HS40.** Spectrogram gain & contrast sliders ✅
@@ -126,6 +126,9 @@ An
 - [x] **HS3.2a.** Verify correct data (dates/spacecraft) per condition ✅
 - [ ] **HS3.2b.** Verify correct stretch algorithm per condition → [`homestretch/HS3.2.md`](homestretch/HS3.2.md)
   - Manual: run as different participants, check `[ASSIGN]` logs — ~30 min
+  - ~~**BUG A — Spectrogram not de-trended on first load:**~~ ✅ Fixed — double `pyramid-ready` dispatch: `presentPrecomputedSpectrogram` dispatched it, then `renderProgressiveSpectrogram(isComplete=true)` dispatched again, overwriting de-trended tiles with raw data. Added `preRenderPresented` guard so progressive path skips dispatch when tiles already presented via cache. Diagnostic prints removed.
+  - ~~**BUG B — Paul stretch wrong audio on section 2:**~~ ✅ Fixed — `primeStretchProcessors` now hot-swaps the active stretch node when new data arrives (disconnect old, connect new, re-send speed/seek). Previously the paul worklet kept section 1's samples because `engageStretch` fired before section 2 data loaded.
+  - **BUG C — Double engage/register in section 2:** `switchStretchAlgorithm('paul')` and `pyramid-ready` listener each fire twice for step 5. Something in the analysis setup path is double-triggering.
 - [x] **HS46.** Condition preview buttons + delete guard ✅
   - Preview 👁 button per condition row (hover-only, opens study in preview mode with `?condition=N`)
   - `?condition=N` URL param parsed in study-flow.js — forces condition client-side, no server call
@@ -222,6 +225,8 @@ An
 ### IT'S GO TIME (IGT)
 
 - [ ] **IGT1.** Send links to Lauren and Lucy, requesting review and feedback
+  - Send stretch test page — data is loaded in, show chosen default settings
+  - Study preview link for end-to-end walkthrough
 
 ### LOW PRIORITY IMPORTANT (LPI)
 
@@ -234,6 +239,12 @@ An
 - [ ] **LPI7.** Some elements still flash on study builder refresh — chevron/card state restore race condition not fully eliminated
 - [ ] **LPI8.** Defensively clean study slug as it's written — sanitize special chars, emoji, spaces to prevent malformed session IDs and URLs
 - [ ] **LPI9.** Confirmation modal at end of analysis section 1 was not clickable — core bug never identified
+- [ ] **LPI10.** Stretch test: changing CWT/CQT params during streaming playback layers new audio on top of old instead of crossfading — `onGPUParamChange` needs streaming-aware path
+- [x] **LPI11.** Lock down conditions panel when study is live ✅
+  - All condition selects, delete buttons, add/generate buttons disabled + dimmed when live
+  - Preview buttons remain clickable
+  - Unlocks automatically when study ends (or on resetLiveModeUI)
+  - Follows existing lock pattern (study name, URL tag, timing controls)
 
 ---
 
