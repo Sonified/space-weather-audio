@@ -12,6 +12,11 @@
  *    - Playback starts after first chunk, continues through computed regions
  *    - Uncomputed regions produce silence with automatic fade out/in
  *
+ * Double-buffer design for seamless param changes:
+ * - Active buffer plays audio. Back buffer loads new chunks.
+ * - 'swap-buffer' message triggers crossfade from active → back.
+ * - After swap, old active buffer becomes available for next re-use.
+ *
  * When the speed changes, the GPU re-computes the buffer and sends
  * it here via 'load-audio'. Crossfade is handled by the audio-player gain nodes.
  */
@@ -20,9 +25,23 @@ class WaveletStretchProcessor extends AudioWorkletProcessor {
     constructor(options) {
         super();
 
+        // Active buffer — currently playing
         this.sourceBuffer = null;
         this.sourcePosition = 0;
         this.isPlaying = false;
+        this.isStreaming = false;
+        this.readyRanges = [];  // sorted [{start, end}] of computed regions
+
+        // Back buffer — loads new audio while active plays
+        this.backBuffer = null;
+        this.backReadyRanges = [];
+        this.backIsStreaming = false;
+
+        // Crossfade between active ↔ back
+        this.swapFading = false;
+        this.swapFadeLength = 2205; // ~50ms at 44.1kHz
+        this.swapFadeRemaining = 0;
+        this.swapSeekPosition = null; // position to seek to in back buffer after swap
 
         // Fade-in/out to avoid clicks
         this.fadeInLength = 1102; // ~25ms at 44.1kHz
@@ -32,10 +51,8 @@ class WaveletStretchProcessor extends AudioWorkletProcessor {
         this.pendingSeekPosition = null;
         this.pendingPause = false;
 
-        // Streaming mode state
-        this.isStreaming = false;
-        this.readyRanges = [];  // sorted [{start, end}] of computed regions
-        this.underrunFading = false;  // true when fading out due to buffer underrun
+        // Underrun handling (streaming mode)
+        this.underrunFading = false;
         this.underrunFadeRemaining = 0;
         this.underrunFadeLength = 882; // ~20ms fade for underrun transitions
 
@@ -105,33 +122,75 @@ class WaveletStretchProcessor extends AudioWorkletProcessor {
                 // --- Streaming mode messages ---
 
                 case 'init-buffer':
-                    // Pre-allocate buffer for progressive chunk filling
-                    this.sourceBuffer = new Float32Array(data.totalLength);
-                    this.sourcePosition = 0;
-                    this.isStreaming = true;
-                    this.readyRanges = [];
-                    this.underrunFading = false;
-                    this.underrunFadeRemaining = 0;
-                    this.port.postMessage({
-                        type: 'buffer-initialized',
-                        totalLength: data.totalLength
-                    });
+                    // Pre-allocate buffer for progressive chunk filling.
+                    // If audio is currently playing, this goes to the BACK buffer
+                    // so active audio is undisturbed.
+                    if (this.isPlaying && this.sourceBuffer) {
+                        // Double-buffer: load into back buffer
+                        this.backBuffer = new Float32Array(data.totalLength);
+                        this.backReadyRanges = [];
+                        this.backIsStreaming = true;
+                        this.port.postMessage({
+                            type: 'buffer-initialized',
+                            totalLength: data.totalLength,
+                            target: 'back'
+                        });
+                    } else {
+                        // No active playback — load directly into active buffer
+                        this.sourceBuffer = new Float32Array(data.totalLength);
+                        this.sourcePosition = 0;
+                        this.isStreaming = true;
+                        this.readyRanges = [];
+                        this.underrunFading = false;
+                        this.underrunFadeRemaining = 0;
+                        this.port.postMessage({
+                            type: 'buffer-initialized',
+                            totalLength: data.totalLength,
+                            target: 'active'
+                        });
+                    }
                     break;
 
-                case 'append-chunk':
-                    // Copy crossfaded chunk data into buffer at offset
-                    if (this.sourceBuffer && data.samples) {
+                case 'append-chunk': {
+                    // Route to back buffer if it exists, otherwise active
+                    const toBack = this.backBuffer !== null;
+                    const buf = toBack ? this.backBuffer : this.sourceBuffer;
+                    const ranges = toBack ? this.backReadyRanges : this.readyRanges;
+
+                    if (buf && data.samples) {
                         const samples = (data.samples instanceof Float32Array)
                             ? data.samples
                             : new Float32Array(data.samples);
-                        this.sourceBuffer.set(samples, data.offset);
-                        this._mergeReadyRange(data.offset, data.offset + samples.length);
+                        buf.set(samples, data.offset);
+                        const newRanges = this._mergeRange(ranges, data.offset, data.offset + samples.length);
+                        if (toBack) {
+                            this.backReadyRanges = newRanges;
+                        } else {
+                            this.readyRanges = newRanges;
+                        }
                         this.port.postMessage({
                             type: 'chunk-appended',
                             offset: data.offset,
                             length: samples.length,
-                            readyRanges: this.readyRanges.slice() // copy for main thread
+                            readyRanges: newRanges.slice(),
+                            target: toBack ? 'back' : 'active'
                         });
+                    }
+                    break;
+                }
+
+                case 'swap-buffer':
+                    // Crossfade from active → back buffer.
+                    // data.seekPosition (in seconds) = where to start in the new buffer.
+                    if (this.backBuffer) {
+                        this.swapFading = true;
+                        this.swapFadeRemaining = this.swapFadeLength;
+                        this.swapSeekPosition = data?.seekPosition != null
+                            ? Math.floor(data.seekPosition * sampleRate)
+                            : this.sourcePosition; // default: same position
+                        // Clamp
+                        this.swapSeekPosition = Math.max(0,
+                            Math.min(this.swapSeekPosition, this.backBuffer.length - 1));
                     }
                     break;
 
@@ -146,11 +205,10 @@ class WaveletStretchProcessor extends AudioWorkletProcessor {
     }
 
     /**
-     * Merge a new range into the sorted readyRanges list.
-     * Coalesces overlapping/adjacent ranges.
+     * Merge a new range into a sorted ranges list.
+     * Returns the new merged array (does not mutate input).
      */
-    _mergeReadyRange(start, end) {
-        const ranges = this.readyRanges;
+    _mergeRange(ranges, start, end) {
         const merged = [];
         let newRange = { start, end };
         let inserted = false;
@@ -171,16 +229,24 @@ class WaveletStretchProcessor extends AudioWorkletProcessor {
             }
         }
         if (!inserted) merged.push(newRange);
-        this.readyRanges = merged;
+        return merged;
+    }
+
+    /**
+     * Kept for backward compat — delegates to _mergeRange and writes to this.readyRanges.
+     */
+    _mergeReadyRange(start, end) {
+        this.readyRanges = this._mergeRange(this.readyRanges, start, end);
     }
 
     /**
      * Check if a sample position falls within a computed (ready) region.
      */
-    _isReady(pos) {
-        for (const r of this.readyRanges) {
-            if (pos >= r.start && pos < r.end) return true;
-            if (r.start > pos) break; // sorted, no need to continue
+    _isReady(pos, ranges) {
+        const r = ranges || this.readyRanges;
+        for (const range of r) {
+            if (pos >= range.start && pos < range.end) return true;
+            if (range.start > pos) break; // sorted, no need to continue
         }
         return false;
     }
@@ -209,8 +275,69 @@ class WaveletStretchProcessor extends AudioWorkletProcessor {
                 break;
             }
 
+            // ── Swap crossfade: blend active → back buffer ──
+            if (this.swapFading && this.backBuffer) {
+                const progress = this.swapFadeRemaining / this.swapFadeLength; // 1→0
+                const oldGain = progress * progress; // quadratic fade out
+                const newGain = (1 - progress) * (1 - progress); // quadratic fade in
+
+                // Sample from active buffer (fading out)
+                let oldSample = 0;
+                if (pos < this.sourceBuffer.length) {
+                    if (!this.isStreaming || this._isReady(pos, this.readyRanges)) {
+                        oldSample = this.sourceBuffer[pos];
+                    }
+                }
+
+                // Sample from back buffer (fading in)
+                const backPos = this.swapSeekPosition + (this.swapFadeLength - this.swapFadeRemaining);
+                let newSample = 0;
+                if (backPos >= 0 && backPos < this.backBuffer.length) {
+                    if (!this.backIsStreaming || this._isReady(backPos, this.backReadyRanges)) {
+                        newSample = this.backBuffer[backPos];
+                    }
+                }
+
+                channel[i] = oldSample * oldGain + newSample * newGain;
+                this.swapFadeRemaining--;
+
+                if (this.swapFadeRemaining <= 0) {
+                    // Swap complete — back becomes active
+                    this.sourceBuffer = this.backBuffer;
+                    this.readyRanges = this.backReadyRanges;
+                    this.isStreaming = this.backIsStreaming;
+                    this.sourcePosition = this.swapSeekPosition + this.swapFadeLength;
+                    // Clamp
+                    if (this.sourcePosition >= this.sourceBuffer.length) {
+                        this.sourcePosition = this.sourceBuffer.length - 1;
+                    }
+
+                    // Clear back buffer
+                    this.backBuffer = null;
+                    this.backReadyRanges = [];
+                    this.backIsStreaming = false;
+                    this.swapFading = false;
+                    this.swapSeekPosition = null;
+
+                    // Clear any stale fade state
+                    this.underrunFading = false;
+                    this.underrunFadeRemaining = 0;
+                    this.fadeOutRemaining = 0;
+                    this.fadeInRemaining = 0;
+                    this.pendingPause = false;
+                    this.pendingSeekPosition = null;
+
+                    this.port.postMessage({ type: 'swap-complete' });
+                }
+
+                this.sourcePosition++;
+                continue;
+            }
+
+            // ── Normal playback from active buffer ──
+
             // In streaming mode, check if this position has computed data
-            if (this.isStreaming && !this._isReady(pos)) {
+            if (this.isStreaming && !this._isReady(pos, this.readyRanges)) {
                 // Buffer underrun — fade to silence, keep advancing
                 if (!this.underrunFading) {
                     this.underrunFading = true;
