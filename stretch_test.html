@@ -233,6 +233,23 @@
             box-shadow: 0 0 6px rgba(91, 168, 160, 0.3);
         }
 
+        /* Instant tooltip on speed label */
+        .speed-click-hint:hover::after {
+            content: 'Click → 1.25×';
+            position: absolute;
+            bottom: calc(100% + 4px);
+            right: 0;
+            background: #1a1b20;
+            color: #aaa;
+            font-size: 0.7em;
+            font-weight: 400;
+            padding: 2px 6px;
+            border-radius: 3px;
+            white-space: nowrap;
+            pointer-events: none;
+            border: 1px solid #333;
+        }
+
         /* Larger thumb for stretch slider */
         #stretchSlider::-webkit-slider-thumb {
             width: 20px;
@@ -772,7 +789,7 @@
             <div style="padding: 16px 0 12px 0;">
                 <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px;">
                     <label style="color: #999; font-size: 0.75em; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">Speed</label>
-                    <span id="stretchValue" style="color: #C4954A; font-weight: 600; font-size: 0.9em; background: rgba(196, 149, 74, 0.1); padding: 1px 8px; border-radius: 3px;">1.0x</span>
+                    <span id="stretchValue" class="speed-click-hint" style="color: #C4954A; font-weight: 600; font-size: 0.9em; background: rgba(196, 149, 74, 0.1); padding: 1px 8px; border-radius: 3px; cursor: pointer; position: relative;">1.0x</span>
                 </div>
                 <div style="position: relative;">
                     <input type="range" id="stretchSlider" min="0" max="1000" step="1" value="565" style="width: 100%;">
@@ -3498,6 +3515,15 @@
         // Track last speed for playhead calculation
         let lastSpeed = sliderToSpeed(parseFloat(stretchSlider.value));
 
+        // Click speed label → jump to 1.25x (study speed)
+        stretchValue.addEventListener('click', () => {
+            const targetSpeed = 1.25;
+            const sliderVal = 1000 * Math.log(targetSpeed / 0.05) / Math.log(200);
+            stretchSlider.value = Math.round(sliderVal);
+            stretchSlider.dispatchEvent(new Event('input'));
+            stretchSlider.dispatchEvent(new Event('change'));
+        });
+
         stretchSlider.addEventListener('input', (e) => {
             const sliderValue = parseFloat(e.target.value);
             const speed = sliderToSpeed(sliderValue);
@@ -3891,9 +3917,11 @@
         // ===== LOAD TEST TRACKS LIST =====
 
         const testTracks = [
-            { file: 'stretch_test_audio/GOES_REGION_1_RAW_DN_MAGN-L2-HIRES_G16_Bx_2022-08-17T00-00-00-000Z_2022-08-20T00-00-00-000Z.wav', name: 'GOES Region 1' },
+            { file: 'stretch_test_audio/GOES_REGION_1_GAINCURVED_DN_MAGN-L2-HIRES_G16_Bx_2022-08-17T00-00-00-000Z_2022-08-20T00-00-00-000Z.wav', name: 'GOES Region 1 (Gain Curved)' },
+            { file: 'stretch_test_audio/GOES_REGION_2_GAINCURVED_DN_MAGN-L2-HIRES_G16_Bx_2022-01-14T00-00-00-000Z_2022-01-17T00-00-00-000Z.wav', name: 'GOES Region 2 (Gain Curved)' },
+            { file: 'stretch_test_audio/GOES_REGION_1_RAW_DN_MAGN-L2-HIRES_G16_Bx_2022-08-17T00-00-00-000Z_2022-08-20T00-00-00-000Z.wav', name: 'GOES Region 1 (Raw)' },
             { file: 'stretch_test_audio/GOES_REGION_1_DETRENDED_DN_MAGN-L2-HIRES_G16_Bx_2022-08-17T00-00-00-000Z_2022-08-20T00-00-00-000Z.wav', name: 'GOES Region 1 (Detrended)' },
-            { file: 'stretch_test_audio/GOES_REGION_2_RAW_DN_MAGN-L2-HIRES_G16_Bx_2022-01-14T00-00-00-000Z_2022-01-17T00-00-00-000Z.wav', name: 'GOES Region 2' },
+            { file: 'stretch_test_audio/GOES_REGION_2_RAW_DN_MAGN-L2-HIRES_G16_Bx_2022-01-14T00-00-00-000Z_2022-01-17T00-00-00-000Z.wav', name: 'GOES Region 2 (Raw)' },
             { file: 'stretch_test_audio/GOES_REGION_2_DETRENDED_DN_MAGN-L2-HIRES_G16_Bx_2022-01-14T00-00-00-000Z_2022-01-17T00-00-00-000Z.wav', name: 'GOES Region 2 (Detrended)' },
             { file: 'stretch_test_audio/FF_AS_bird_chirp_run_it_back_1.wav', name: 'Bird Chirp' },
             { file: 'stretch_test_audio/Julia_Run_8.wav', name: 'Vocal Run' },
