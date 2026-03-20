@@ -816,7 +816,15 @@ export default {
       }
 
       // Helper: bump studies.updated_at so If-Modified-Since polling can short-circuit
+      // Optional 5s debounce — uncomment if write budget becomes a concern
+      // const _lastTouchTime = {};
       const touchStudy = (studyId) => {
+        // const now = Date.now();
+        // if (_lastTouchTime[studyId] && now - _lastTouchTime[studyId] < 5000) {
+        //   console.log(`[TOUCH] ${studyId} — skipped (debounce)`);
+        //   return Promise.resolve();
+        // }
+        // _lastTouchTime[studyId] = now;
         console.log(`[TOUCH] ${studyId} — bumping updated_at`);
         return env.DB.prepare(`UPDATE studies SET updated_at = ? WHERE id = ?`).bind(nowISO(), studyId).run();
       };
@@ -1233,6 +1241,17 @@ export default {
       const activityMatch = path.match(/^\/api\/study\/([^/]+)\/activity$/);
       if (activityMatch && request.method === 'GET') {
         const studyId = activityMatch[1];
+
+        // If-Modified-Since: cheap 1-row check before expensive 2-query activity scan
+        const ims = request.headers.get('If-Modified-Since');
+        if (ims) {
+          const study = await env.DB.prepare('SELECT updated_at FROM studies WHERE id = ?').bind(studyId).first();
+          if (study?.updated_at && new Date(study.updated_at) <= new Date(ims)) {
+            console.log(`[304] /activity ${studyId} — not modified`);
+            return new Response(null, { status: 304, headers: CORS_HEADERS });
+          }
+        }
+
         // Keep since in ISO format — nowISO() stores 'YYYY-MM-DDTHH:MM:SS.mmmZ' in D1
         const since = url.searchParams.get('since') || new Date(Date.now() - 3600000).toISOString();
         const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10), 2000);
@@ -1259,7 +1278,9 @@ export default {
         ].sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
          .slice(0, limit);
 
-        return json({ success: true, events, count: events.length });
+        const actResp = json({ success: true, events, count: events.length });
+        actResp.headers.set('Last-Modified', new Date().toUTCString());
+        return actResp;
       }
 
       // GET /api/study/:studyId/dashboard — aggregate stats for study builder
