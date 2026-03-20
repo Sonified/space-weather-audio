@@ -1,0 +1,37 @@
+{
+  "region1": {
+    "label": "Region 1 — Aug 17-20, 2022",
+    "startDate": "2022-08-17T00:00:00Z",
+    "totalSamples": 2592000,
+    "sampleRate": 10,
+    "gainEnvelope": [
+      { "sample": 735490, "dB": 0, "time": "Aug 16 20:25:49" },
+      { "sample": 735887, "dB": -17.5, "time": "Aug 16 20:26:28" },
+      { "sample": 736584, "dB": -17.2, "time": "Aug 16 20:27:38" },
+      { "sample": 736697, "dB": -12.7, "time": "Aug 16 20:27:49" },
+      { "sample": 739325, "dB": 0, "time": "Aug 16 20:32:12" },
+      { "sample": 1085827, "dB": 0, "time": "Aug 17 06:09:42" },
+      { "sample": 1086262, "dB": -11.7, "time": "Aug 17 06:10:26" },
+      { "sample": 1086652, "dB": -16.8, "time": "Aug 17 06:11:05" },
+      { "sample": 1086954, "dB": -11.9, "time": "Aug 17 06:11:35" },
+      { "sample": 1087378, "dB": 0, "time": "Aug 17 06:12:17" },
+      { "sample": 1755510, "dB": 0, "time": "Aug 18 00:45:51" },
+      { "sample": 1755551, "dB": -5, "time": "Aug 18 00:45:55" },
+      { "sample": 1755597, "dB": 0, "time": "Aug 18 00:45:59" },
+      { "sample": 2330600, "dB": 0.1, "time": "Aug 18 16:44:20" }
+    ]
+  },
+  "region2": {
+    "label": "Region 2 — Jan 14-17, 2022",
+    "startDate": "2022-01-14T00:00:00Z",
+    "totalSamples": 2592000,
+    "sampleRate": 10,
+    "gainEnvelope": [
+      { "sample": 734547, "dB": 0, "time": "Jan 13 20:24:14" },
+      { "sample": 748964, "dB": -3.1, "time": "Jan 13 20:48:16" },
+      { "sample": 759903, "dB": -4.4, "time": "Jan 13 21:06:30" },
+      { "sample": 810875, "dB": -4, "time": "Jan 13 22:31:27" },
+      { "sample": 839021, "dB": 0.2, "time": "Jan 13 23:18:22" }
+    ]
+  }
+}

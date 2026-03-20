@@ -1,0 +1,1625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Spike Review — GOES Bx Gain Reduction</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>𛲇</text></svg>">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    background: #0a0a0f;
+    color: #e0e0e0;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    overflow-x: hidden;
+}
+.header {
+    padding: 12px 20px;
+    background: #111118;
+    border-bottom: 1px solid #333;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+.header h1 { font-size: 16px; color: #7af; }
+.header label { font-size: 13px; cursor: pointer; }
+.header input[type="checkbox"] { margin-right: 4px; }
+.rms-display {
+    position: absolute;
+    top: 4px;
+    right: 8px;
+    font-size: 14px;
+    z-index: 10;
+    pointer-events: none;
+    text-align: right;
+    line-height: 1.4;
+}
+.rms-display .rms-row { color: #666; }
+.rms-display .rms-value { color: #8b8; }
+
+.region-container {
+    border-bottom: 2px solid #333;
+    padding: 10px 0;
+}
+.region-title {
+    padding: 2px 20px;
+    font-size: 14px;
+    color: #fa7;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.region-title .file-input-wrap {
+    display: inline-block;
+}
+.region-title input[type="file"] { font-size: 11px; color: #888; }
+.region-title .status { font-size: 12px; color: #888; font-weight: normal; }
+
+.waveform-section {
+    position: relative;
+    margin: 1px 10px;
+}
+.waveform-label {
+    padding: 2px 10px;
+    font-size: 11px;
+    color: #666;
+    display: flex;
+    justify-content: space-between;
+}
+.waveform-label .play-hint { color: #4a4; }
+canvas.waveform {
+    width: 100%;
+    height: calc((100vh - 220px) / 4);
+    display: block;
+    cursor: crosshair;
+    border: 1px solid #222;
+    border-radius: 3px;
+}
+canvas.waveform.playable {
+    cursor: pointer;
+    border-color: #363;
+}
+canvas.waveform.playable:hover {
+    border-color: #4a4;
+}
+
+/* Canvas stack — overlay canvas for playhead (avoids full waveform redraw each frame) */
+.canvas-stack {
+    position: relative;
+}
+.canvas-stack canvas.waveform {
+    position: relative;
+    z-index: 1;
+}
+.canvas-stack canvas.waveform-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+    pointer-events: none; /* clicks pass through to waveform canvas below */
+}
+
+/* Gain region overlay labels */
+.gain-regions-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    pointer-events: none;
+    height: 200px;
+}
+.gain-label {
+    position: absolute;
+    top: -20px;
+    transform: translateX(-50%);
+    pointer-events: all;
+}
+.gain-label input {
+    width: 50px;
+    background: #1a1a25;
+    border: 1px solid #555;
+    color: #ff8;
+    font-size: 11px;
+    font-family: inherit;
+    text-align: center;
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+.gain-label input:focus {
+    border-color: #fa7;
+    outline: none;
+}
+.gain-label .remove-btn {
+    font-size: 10px;
+    color: #f55;
+    cursor: pointer;
+    margin-left: 2px;
+    pointer-events: all;
+}
+
+.controls-bar {
+    padding: 8px 20px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.controls-bar button {
+    background: #252535;
+    border: 1px solid #555;
+    color: #ccc;
+    padding: 6px 14px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.controls-bar button:hover { background: #353545; border-color: #777; }
+.controls-bar button.active { background: #2a4a2a; border-color: #4a4; color: #8f8; }
+
+
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Spike Review — GOES-16 Bx</h1>
+    <label><input type="checkbox" id="snapZeroCrossing" checked> Snap to zero crossing</label>
+    <span style="font-size:12px;color:#666;">Auto-fetches from _recovery/*.f32</span>
+    <button onclick="copyJSON()" id="copyJsonBtn" style="background:#252535;border:1px solid #555;color:#ccc;padding:4px 12px;border-radius:4px;font-family:inherit;cursor:pointer;">Copy JSON</button>
+    <button onclick="downloadProcessed()" style="background:#252535;border:1px solid #555;color:#ccc;padding:4px 12px;border-radius:4px;font-family:inherit;cursor:pointer;">Download Processed .f32</button>
+    <span id="balanceDisplay" style="margin-left:auto;font-size:13px;color:#888;"></span>
+</div>
+
+<div class="region-container" id="region1Container">
+    <div class="region-title">
+        Region 1 — Aug 17-20, 2022
+        <span class="file-input-wrap">
+            <input type="file" id="region1File" accept=".f32,.bin,.raw">
+        </span>
+        <span class="status" id="region1Status">No data loaded</span>
+    </div>
+    <div class="waveform-section">
+        <div class="waveform-label"><span>Normalized (±1)</span><span class="play-hint">click to play</span></div>
+        <div class="canvas-stack">
+            <div class="rms-display" id="region1_rms_norm"></div>
+            <canvas class="waveform playable" id="region1_norm"></canvas>
+            <canvas class="waveform-overlay" id="region1_norm_overlay"></canvas>
+        </div>
+    </div>
+    <div class="waveform-section" id="region1_detrend_section">
+        <div class="waveform-label"><span>De-trended (click line to add point, drag to adjust, shift+click to remove)</span><span id="region1_detrend_range"></span></div>
+        <div class="canvas-stack">
+            <div class="rms-display" id="region1_rms_detrend"></div>
+            <canvas class="waveform" id="region1_detrend" data-region="region1" data-type="detrend"></canvas>
+            <canvas class="waveform-overlay" id="region1_detrend_overlay"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="region-container" id="region2Container">
+    <div class="region-title">
+        Region 2 — Jan 14-17, 2022
+        <span class="file-input-wrap">
+            <input type="file" id="region2File" accept=".f32,.bin,.raw">
+        </span>
+        <span class="status" id="region2Status">No data loaded</span>
+    </div>
+    <div class="waveform-section">
+        <div class="waveform-label"><span>Normalized (±1)</span><span class="play-hint">click to play</span></div>
+        <div class="canvas-stack">
+            <div class="rms-display" id="region2_rms_norm"></div>
+            <canvas class="waveform playable" id="region2_norm"></canvas>
+            <canvas class="waveform-overlay" id="region2_norm_overlay"></canvas>
+        </div>
+    </div>
+    <div class="waveform-section" id="region2_detrend_section">
+        <div class="waveform-label"><span>De-trended (click line to add point, drag to adjust, shift+click to remove)</span><span id="region2_detrend_range"></span></div>
+        <div class="canvas-stack">
+            <div class="rms-display" id="region2_rms_detrend"></div>
+            <canvas class="waveform" id="region2_detrend" data-region="region2" data-type="detrend"></canvas>
+            <canvas class="waveform-overlay" id="region2_detrend_overlay"></canvas>
+        </div>
+    </div>
+</div>
+
+
+<script>
+// ============================================================================
+// State
+// ============================================================================
+const regions = {
+    region1: {
+        label: 'Region 1 — Aug 17-20, 2022',
+        startDate: '2022-08-17T00:00:00Z',
+        days: 3,
+        sampleRate: 10,
+        raw: null,           // Float32Array — original
+        normalized: null,    // Float32Array — normalized to ±1
+        baseDetrended: null, // Float32Array — detrended before gain (selection reference)
+        detrended: null,     // Float32Array — after gain curve + re-normalize
+        gainEnvelope: [
+            // Spike 1: Aug 17 20:26:45.5 → 20:27:37.4
+            { sample: 736045, dB: 0 },
+            { sample: 736310, dB: -6 },
+            { sample: 736574, dB: 0 },
+            // Spike 2: Aug 18 06:10:44 → 06:11:37
+            { sample: 1086040, dB: 0 },
+            { sample: 1086305, dB: -6 },
+            { sample: 1086570, dB: 0 },
+            // Spike 3: Aug 19 00:45:40 → 00:46:33
+            { sample: 1755400, dB: 0 },
+            { sample: 1755665, dB: -6 },
+            { sample: 1755930, dB: 0 },
+        ],
+        rmsRaw: 0,
+        rmsProcessed: 0,
+        rmsDetrended: 0,
+        audioBuffer: null,
+    },
+    region2: {
+        label: 'Region 2 — Jan 14-17, 2022',
+        startDate: '2022-01-14T00:00:00Z',
+        days: 3,
+        sampleRate: 10,
+        raw: null,
+        normalized: null,
+        baseDetrended: null,
+        detrended: null,
+        gainEnvelope: [],
+        rmsRaw: 0,
+        rmsProcessed: 0,
+        rmsDetrended: 0,
+        audioBuffer: null,
+    }
+};
+
+let audioContext = null;
+let currentSource = null;
+let currentGainNode = null;
+let currentPlayRegion = null;
+let playStartTime = 0;
+let playStartSample = 0;
+let animFrameId = null;
+const FADE_TIME = 0.04; // 40ms fade in/out — smooth, no clicks
+
+// Envelope drag state
+let envelopeDrag = null; // {regionId, pointIndex, canvasId}
+
+// ============================================================================
+// Zoom State — per-canvas viewport (sample range)
+// ============================================================================
+// viewStart/viewEnd as fraction [0,1] of total data length
+const zoomViews = {};  // canvasId → { start: 0, end: 1 }
+
+function getZoom(canvasId) {
+    if (!zoomViews[canvasId]) zoomViews[canvasId] = { start: 0, end: 1 };
+    return zoomViews[canvasId];
+}
+
+function resetZoom(canvasId) {
+    zoomViews[canvasId] = { start: 0, end: 1 };
+}
+
+// ============================================================================
+// LocalStorage Persistence — save/restore gain envelope
+// ============================================================================
+const STORAGE_KEY = 'spikeReview_gainEnvelope';
+
+function saveState() {
+    const state = {};
+    for (const [id, reg] of Object.entries(regions)) {
+        state[id] = reg.gainEnvelope;
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function restoreState() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        if (!saved) return;
+        for (const [id, envelope] of Object.entries(saved)) {
+            if (regions[id] && Array.isArray(envelope)) {
+                regions[id].gainEnvelope = envelope;
+            }
+        }
+    } catch (_) {}
+}
+
+// Restore on init (before data loads)
+restoreState();
+
+// ============================================================================
+// Data Loading
+// ============================================================================
+document.getElementById('region1File').addEventListener('change', e => loadFile(e, 'region1'));
+document.getElementById('region2File').addEventListener('change', e => loadFile(e, 'region2'));
+
+function loadFile(event, regionId) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        const data = new Float32Array(reader.result);
+        regions[regionId].raw = data;
+        document.getElementById(`${regionId}Status`).textContent =
+            `${data.length.toLocaleString()} samples (${(data.length / 10 / 3600).toFixed(1)} hours)`;
+        processRegion(regionId);
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+// Auto-fetch from dev server
+async function autoFetch(regionId, filename) {
+    const status = document.getElementById(`${regionId}Status`);
+    status.textContent = 'Fetching...';
+    try {
+        const resp = await fetch(`_recovery/${filename}`);
+        if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+        const buf = await resp.arrayBuffer();
+        const data = new Float32Array(buf);
+        regions[regionId].raw = data;
+        status.textContent = `${data.length.toLocaleString()} samples (${(data.length / 10 / 3600).toFixed(1)} hours)`;
+        processRegion(regionId);
+    } catch (err) {
+        status.textContent = `Fetch failed: ${err.message}`;
+    }
+}
+
+// Try auto-fetch on load
+window.addEventListener('DOMContentLoaded', () => {
+    autoFetch('region1', 'region1_bx_raw.f32');
+    autoFetch('region2', 'region2_bx_raw.f32');
+});
+
+// ============================================================================
+// Processing Pipeline
+// ============================================================================
+function processRegion(regionId) {
+    const reg = regions[regionId];
+    if (!reg.raw) return;
+
+    // Pipeline matches the app: raw → detrend → gain curve → peak normalize
+    // (minimap-window-renderer.js: removeDCOffset → normalize)
+
+    // 1. Detrend raw directly (no pre-normalization — app doesn't do it)
+    reg.baseDetrended = detrend(reg.raw);
+
+    // 2. Apply gain curve, then peak normalize (matches app's normalize())
+    if (reg.gainEnvelope.length > 0) {
+        const gainAdjusted = applyGainCurve(reg.baseDetrended, reg.gainEnvelope);
+        reg.detrended = peakNormalize(gainAdjusted);
+    } else {
+        reg.detrended = peakNormalize(reg.baseDetrended);
+    }
+
+    // 3. Also peak-normalize raw for the upper waveform panel display
+    reg.normalized = peakNormalize(reg.raw);
+
+    // 4. Compute RMS
+    reg.rmsRaw = computeRMS(reg.raw);
+    reg.rmsProcessed = computeRMS(reg.normalized);
+    reg.rmsDetrended = computeRMS(reg.detrended);
+
+    // 5. Build audio buffer
+    buildAudioBuffer(regionId);
+
+    // 6. Render waveforms
+    renderWaveform(`${regionId}_norm`, reg.normalized, null);
+    renderWaveform(`${regionId}_detrend`, reg.detrended, reg.gainEnvelope);
+
+    // 7. Update RMS display
+    updateRMSDisplay();
+}
+
+// Piecewise linear gain curve — interpolate dB between control points
+function applyGainCurve(buffer, envelope) {
+    const out = new Float32Array(buffer);
+    if (envelope.length === 0) return out;
+
+    // Sort by sample (should already be sorted, but safety)
+    const pts = [...envelope].sort((a, b) => a.sample - b.sample);
+
+    // Add implicit anchors at start/end if not present
+    const totalSamples = buffer.length;
+    const allPts = [];
+    if (pts[0].sample > 0) allPts.push({ sample: 0, dB: 0 });
+    allPts.push(...pts);
+    if (pts[pts.length - 1].sample < totalSamples - 1) allPts.push({ sample: totalSamples - 1, dB: 0 });
+
+    // Walk through samples, interpolate between control points
+    let cpIdx = 0;
+    for (let i = 0; i < out.length; i++) {
+        // Advance to the segment containing sample i
+        while (cpIdx < allPts.length - 2 && allPts[cpIdx + 1].sample <= i) cpIdx++;
+
+        const p0 = allPts[cpIdx];
+        const p1 = allPts[cpIdx + 1];
+        const segLen = p1.sample - p0.sample;
+        const t = segLen > 0 ? (i - p0.sample) / segLen : 0;
+        const dB = p0.dB + t * (p1.dB - p0.dB);
+
+        if (dB !== 0) {
+            out[i] *= Math.pow(10, dB / 20);
+        }
+    }
+    return out;
+}
+
+/** Peak normalize to [-1, 1] — matches minimap-window-renderer.js normalize() */
+function peakNormalize(arr) {
+    let peak = 0;
+    for (let i = 0; i < arr.length; i++) {
+        const abs = arr[i] < 0 ? -arr[i] : arr[i];
+        if (abs > peak) peak = abs;
+    }
+    if (peak === 0) return new Float32Array(arr.length);
+    const out = new Float32Array(arr.length);
+    for (let i = 0; i < arr.length; i++) {
+        out[i] = arr[i] / peak;
+    }
+    return out;
+}
+
+function detrend(arr, alpha = 0.999) {
+    // Forward-backward EMA de-trending (matches minimap-window-renderer.js removeDCOffset)
+    const n = arr.length;
+    if (n === 0) return new Float32Array(0);
+
+    const warmup = Math.min(n, Math.ceil(3 / (1 - alpha)));
+
+    let initFwd = 0;
+    for (let i = 0; i < warmup; i++) initFwd += arr[i];
+    initFwd /= warmup;
+
+    let initBwd = 0;
+    for (let i = n - warmup; i < n; i++) initBwd += arr[i];
+    initBwd /= warmup;
+
+    // Forward EMA
+    const fwd = new Float32Array(n);
+    let mean = initFwd;
+    for (let i = 0; i < n; i++) {
+        mean = alpha * mean + (1 - alpha) * arr[i];
+        fwd[i] = mean;
+    }
+
+    // Backward EMA
+    const bwd = new Float32Array(n);
+    mean = initBwd;
+    for (let i = n - 1; i >= 0; i--) {
+        mean = alpha * mean + (1 - alpha) * arr[i];
+        bwd[i] = mean;
+    }
+
+    // Subtract averaged forward+backward mean
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+        out[i] = arr[i] - (fwd[i] + bwd[i]) * 0.5;
+    }
+
+    // Cosine taper at edges
+    const taperLen = Math.min(Math.ceil(n * 0.001), warmup, Math.floor(n / 2));
+    for (let i = 0; i < taperLen; i++) {
+        const w = 0.5 * (1 - Math.cos(Math.PI * i / taperLen));
+        out[i] *= w;
+        out[n - 1 - i] *= w;
+    }
+
+    return out;
+}
+
+function computeRMS(arr) {
+    let sum = 0;
+    for (let i = 0; i < arr.length; i++) sum += arr[i] * arr[i];
+    return Math.sqrt(sum / arr.length);
+}
+
+function buildAudioBuffer(regionId) {
+    const reg = regions[regionId];
+    if (!reg.detrended) return;
+    if (!audioContext) audioContext = new AudioContext({ sampleRate: 44100 });
+    // The detrended array IS the audio — 10 Hz instrument mapped to 44100 Hz playback
+    const buf = audioContext.createBuffer(1, reg.detrended.length, 44100);
+    buf.getChannelData(0).set(reg.detrended);
+    reg.audioBuffer = buf;
+}
+
+// ============================================================================
+// Zero Crossing Snap
+// ============================================================================
+function findNearestZeroCrossing(raw, fromSample, direction) {
+    // "Zero crossing" = crossing of local mean (computed from ±500 samples of fromSample)
+    const ctxStart = Math.max(0, fromSample - 500);
+    const ctxEnd = Math.min(raw.length, fromSample + 500);
+    let sum = 0;
+    for (let i = ctxStart; i < ctxEnd; i++) sum += raw[i];
+    const localMean = sum / (ctxEnd - ctxStart);
+
+    const maxSearch = 2000; // search up to 200 seconds at 10 Hz
+    if (direction < 0) {
+        for (let i = fromSample; i > Math.max(0, fromSample - maxSearch); i--) {
+            const a = raw[i] - localMean;
+            const b = raw[i - 1] - localMean;
+            if (a * b <= 0) return i; // sign change
+        }
+    } else {
+        for (let i = fromSample; i < Math.min(raw.length - 1, fromSample + maxSearch); i++) {
+            const a = raw[i] - localMean;
+            const b = raw[i + 1] - localMean;
+            if (a * b <= 0) return i; // sign change
+        }
+    }
+    return fromSample; // fallback
+}
+
+// ============================================================================
+// Min/Max Mipmap Pyramid — O(canvas_width) rendering at any zoom level
+// ============================================================================
+// Each level halves the sample count, storing {min, max} per bucket.
+// Level 0 = raw data, Level L = buckets of 2^L samples.
+// Query any range by walking the appropriate level.
+const mipmapCache = new WeakMap(); // Float32Array → { levels: [{mins, maxes}, ...] }
+
+function buildMipmap(data) {
+    if (mipmapCache.has(data)) return mipmapCache.get(data);
+
+    const levels = [];
+    // L0 = raw (we don't store it, just reference data directly)
+    let prevMins = data;
+    let prevMaxes = data;
+    const MAX_LEVELS = 22; // 2^22 = 4M, more than enough for 2.6M samples
+
+    for (let level = 0; level < MAX_LEVELS; level++) {
+        const prevLen = level === 0 ? data.length : prevMins.length;
+        const newLen = Math.ceil(prevLen / 2);
+        if (newLen < 1) break;
+
+        const mins = new Float32Array(newLen);
+        const maxes = new Float32Array(newLen);
+
+        for (let i = 0; i < newLen; i++) {
+            const j = i * 2;
+            if (level === 0) {
+                // Building from raw data
+                const a = data[j];
+                const b = j + 1 < data.length ? data[j + 1] : a;
+                mins[i] = a < b ? a : b;
+                maxes[i] = a > b ? a : b;
+            } else {
+                const aMin = prevMins[j];
+                const aMax = prevMaxes[j];
+                const bMin = j + 1 < prevMins.length ? prevMins[j + 1] : aMin;
+                const bMax = j + 1 < prevMaxes.length ? prevMaxes[j + 1] : aMax;
+                mins[i] = aMin < bMin ? aMin : bMin;
+                maxes[i] = aMax > bMax ? aMax : bMax;
+            }
+        }
+
+        levels.push({ mins, maxes, bucketSize: 1 << (level + 1) });
+        prevMins = mins;
+        prevMaxes = maxes;
+    }
+
+    const result = { levels };
+    mipmapCache.set(data, result);
+    return result;
+}
+
+// Query min/max over [start, end) using the mipmap
+function mipmapMinMax(data, mipmap, start, end) {
+    if (start >= end) return { min: 0, max: 0 };
+
+    // Pick the level where bucket size ≤ (end - start) / 2
+    // so we scan at most ~2× canvas width buckets
+    const span = end - start;
+    let level = -1; // -1 = raw data
+    for (let l = 0; l < mipmap.levels.length; l++) {
+        if (mipmap.levels[l].bucketSize <= span / 2) {
+            level = l;
+        } else {
+            break;
+        }
+    }
+
+    let min = Infinity, max = -Infinity;
+
+    if (level < 0) {
+        // Use raw data
+        for (let i = start; i < end && i < data.length; i++) {
+            if (data[i] < min) min = data[i];
+            if (data[i] > max) max = data[i];
+        }
+    } else {
+        const lv = mipmap.levels[level];
+        const bs = lv.bucketSize;
+        // Scan raw samples for the partial bucket at start
+        const firstFullBucket = Math.ceil(start / bs);
+        const lastFullBucket = Math.floor(end / bs);
+        // Partial head
+        for (let i = start; i < Math.min(firstFullBucket * bs, end); i++) {
+            if (data[i] < min) min = data[i];
+            if (data[i] > max) max = data[i];
+        }
+        // Full buckets from mipmap
+        for (let b = firstFullBucket; b < lastFullBucket && b < lv.mins.length; b++) {
+            if (lv.mins[b] < min) min = lv.mins[b];
+            if (lv.maxes[b] > max) max = lv.maxes[b];
+        }
+        // Partial tail
+        for (let i = Math.max(lastFullBucket * bs, start); i < end && i < data.length; i++) {
+            if (data[i] < min) min = data[i];
+            if (data[i] > max) max = data[i];
+        }
+    }
+
+    return { min, max };
+}
+
+// Per-pixel min/max using the mipmap — O(canvas_width)
+function mipmapPerPixel(data, mipmap, viewStart, viewEnd, canvasWidth) {
+    const result = new Float32Array(canvasWidth * 2); // [min0, max0, min1, max1, ...]
+    const samplesPerPixel = (viewEnd - viewStart) / canvasWidth;
+
+    if (samplesPerPixel <= 1) {
+        // Zoomed in enough to see individual samples — just use raw data
+        for (let px = 0; px < canvasWidth; px++) {
+            const idx = viewStart + Math.floor(px * samplesPerPixel);
+            const val = idx < data.length ? data[idx] : 0;
+            result[px * 2] = val;
+            result[px * 2 + 1] = val;
+        }
+        return result;
+    }
+
+    // Pick level where bucketSize ≤ samplesPerPixel
+    let level = -1;
+    for (let l = 0; l < mipmap.levels.length; l++) {
+        if (mipmap.levels[l].bucketSize <= samplesPerPixel) level = l;
+        else break;
+    }
+
+    for (let px = 0; px < canvasWidth; px++) {
+        const startIdx = viewStart + Math.floor(px * samplesPerPixel);
+        const endIdx = Math.min(viewStart + Math.floor((px + 1) * samplesPerPixel), viewEnd);
+
+        let pMin = Infinity, pMax = -Infinity;
+
+        if (level < 0 || endIdx - startIdx < 4) {
+            // Few samples — just scan raw
+            for (let i = startIdx; i < endIdx && i < data.length; i++) {
+                if (data[i] < pMin) pMin = data[i];
+                if (data[i] > pMax) pMax = data[i];
+            }
+        } else {
+            const lv = mipmap.levels[level];
+            const bs = lv.bucketSize;
+            const firstFull = Math.ceil(startIdx / bs);
+            const lastFull = Math.floor(endIdx / bs);
+            for (let i = startIdx; i < Math.min(firstFull * bs, endIdx); i++) {
+                if (data[i] < pMin) pMin = data[i];
+                if (data[i] > pMax) pMax = data[i];
+            }
+            for (let b = firstFull; b < lastFull && b < lv.mins.length; b++) {
+                if (lv.mins[b] < pMin) pMin = lv.mins[b];
+                if (lv.maxes[b] > pMax) pMax = lv.maxes[b];
+            }
+            for (let i = Math.max(lastFull * bs, startIdx); i < endIdx && i < data.length; i++) {
+                if (data[i] < pMin) pMin = data[i];
+                if (data[i] > pMax) pMax = data[i];
+            }
+        }
+
+        result[px * 2] = pMin === Infinity ? 0 : pMin;
+        result[px * 2 + 1] = pMax === -Infinity ? 0 : pMax;
+    }
+    return result;
+}
+
+// ============================================================================
+// Prefix Sum — O(1) local mean for any window
+// ============================================================================
+const prefixSumCache = new WeakMap();
+
+function buildPrefixSum(data) {
+    if (prefixSumCache.has(data)) return prefixSumCache.get(data);
+    // Float64 to avoid precision loss on large sums
+    const ps = new Float64Array(data.length + 1);
+    for (let i = 0; i < data.length; i++) {
+        ps[i + 1] = ps[i] + data[i];
+    }
+    prefixSumCache.set(data, ps);
+    return ps;
+}
+
+function prefixSumMean(ps, start, end) {
+    // Mean of data[start..end)
+    const n = end - start;
+    if (n <= 0) return 0;
+    return (ps[end] - ps[start]) / n;
+}
+
+// ============================================================================
+// Waveform Rendering (mipmap-accelerated)
+// ============================================================================
+// Gain envelope rendering constants
+const ENVELOPE_DB_RANGE = 18; // 0 to -18 dB, mapped from zeroY to bottom of canvas
+const ENVELOPE_Y_FRACTION = 1.0; // full range from zeroY to canvas bottom
+const POINT_RADIUS = 5;
+const POINT_HIT_RADIUS = 8;
+const LINE_HIT_RADIUS = 6;
+
+// Floating +/− badge that follows the pointer finger cursor
+const cursorBadge = document.createElement('div');
+cursorBadge.style.cssText = 'position:fixed;pointer-events:none;font-size:16px;font-weight:bold;font-family:sans-serif;z-index:9999;display:none;text-shadow:0 0 3px #000,0 0 3px #000;';
+document.body.appendChild(cursorBadge);
+function showCursorBadge(x, y, text, color) {
+    cursorBadge.textContent = text;
+    cursorBadge.style.color = color;
+    cursorBadge.style.left = (x + 18) + 'px';
+    cursorBadge.style.top = (y - 4) + 'px';
+    cursorBadge.style.display = 'block';
+}
+function hideCursorBadge() { cursorBadge.style.display = 'none'; }
+
+// Track hovered point for highlighting (set by mouse interaction)
+let hoveredPoint = null; // {regionId, index}
+
+function renderWaveform(canvasId, data, gainEnvelope) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !data) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const w = rect.width;
+    const h = rect.height;
+
+    // Background
+    ctx.fillStyle = '#0d0d15';
+    ctx.fillRect(0, 0, w, h);
+
+    // Zoom viewport — which fraction of data is visible
+    const zoom = getZoom(canvasId);
+    const viewStartSample = Math.floor(zoom.start * data.length);
+    const viewEndSample = Math.ceil(zoom.end * data.length);
+    const viewSamples = viewEndSample - viewStartSample;
+
+    // Helper: convert absolute sample index to pixel x
+    function sampleToX(sample) {
+        return ((sample - viewStartSample) / viewSamples) * w;
+    }
+
+    // Build acceleration structures (cached per Float32Array identity)
+    const mipmap = buildMipmap(data);
+    const prefixSum = buildPrefixSum(data);
+
+    // Compute data range for VISIBLE portion — O(log N) via mipmap
+    const { min, max } = mipmapMinMax(data, mipmap, viewStartSample, viewEndSample);
+    const range = max - min || 1;
+
+    // Draw literal zero line for normalized/detrended panels
+    const zeroY = (min <= 0 && max >= 0) ? h - ((0 - min) / range) * h : h / 2;
+    if (min <= 0 && max >= 0) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(0, zeroY);
+        ctx.lineTo(w, zeroY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    // Draw waveform — O(canvas_width) via mipmap per-pixel min/max
+    const perPixel = mipmapPerPixel(data, mipmap, viewStartSample, viewEndSample, Math.ceil(w));
+    ctx.strokeStyle = '#4a9eff';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+
+    for (let px = 0; px < Math.ceil(w); px++) {
+        const pxMin = perPixel[px * 2];
+        const pxMax = perPixel[px * 2 + 1];
+
+        const y1 = h - ((pxMin - min) / range) * h;
+        const y2 = h - ((pxMax - min) / range) * h;
+
+        if (px === 0) {
+            ctx.moveTo(px, y1);
+        }
+        ctx.lineTo(px, y2);
+        ctx.lineTo(px, y1);
+    }
+    ctx.stroke();
+
+    // Draw gain envelope line + control points (detrend panels only)
+    if (gainEnvelope) {
+        const regionId = canvasId.split('_')[0];
+        const totalSamples = data.length;
+
+        // Build full point list with implicit anchors
+        const pts = [];
+        if (gainEnvelope.length === 0 || gainEnvelope[0].sample > 0) {
+            pts.push({ sample: 0, dB: 0, implicit: true });
+        }
+        gainEnvelope.forEach((p, i) => pts.push({ ...p, index: i }));
+        if (gainEnvelope.length === 0 || gainEnvelope[gainEnvelope.length - 1].sample < totalSamples - 1) {
+            pts.push({ sample: totalSamples - 1, dB: 0, implicit: true });
+        }
+
+        // Helper: dB → y pixel (0 dB = zeroY, -ENVELOPE_DB_RANGE = bottom of canvas)
+        const envelopePixelRange = h - zeroY;
+        function dBtoY(dB) {
+            return zeroY - (dB / ENVELOPE_DB_RANGE) * envelopePixelRange;
+        }
+
+        // Draw faint ±6 dB reference lines
+        for (const refDb of [-6, 6]) {
+            const refY = dBtoY(refDb);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx.lineWidth = 0.5;
+            ctx.setLineDash([2, 6]);
+            ctx.beginPath();
+            ctx.moveTo(0, refY);
+            ctx.lineTo(w, refY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // Draw envelope line
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        let started = false;
+        for (const pt of pts) {
+            const x = sampleToX(pt.sample);
+            const y = dBtoY(pt.dB);
+            if (!started) { ctx.moveTo(x, y); started = true; }
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // Draw control point handles
+        for (const pt of pts) {
+            if (pt.implicit) continue; // don't draw implicit anchors
+            const x = sampleToX(pt.sample);
+            const y = dBtoY(pt.dB);
+            if (x < -10 || x > w + 10) continue; // off-screen
+
+            const isHovered = hoveredPoint && hoveredPoint.regionId === regionId && hoveredPoint.index === pt.index;
+
+            // Circle
+            ctx.beginPath();
+            ctx.arc(x, y, POINT_RADIUS, 0, Math.PI * 2);
+            ctx.fillStyle = isHovered ? '#ffdd44' : '#ffffff';
+            ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // dB label above point (if not 0 dB)
+            if (Math.abs(pt.dB) > 0.1) {
+                ctx.fillStyle = '#ff8';
+                ctx.font = '10px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(`${pt.dB > 0 ? '+' : ''}${pt.dB.toFixed(1)} dB`, x, y - 10);
+            }
+        }
+    }
+
+    // Day boundary markers
+    const samplesPerDay = 864000;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.setLineDash([4, 4]);
+    for (let d = 1; d < 3; d++) {
+        const x = sampleToX(d * samplesPerDay);
+        if (x > 0 && x < w) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, h);
+            ctx.stroke();
+        }
+    }
+    ctx.setLineDash([]);
+
+    // Time labels at bottom — adaptive spacing based on zoom level
+    const totalHoursVisible = viewSamples / 10 / 3600;
+    let hourStep;
+    if (totalHoursVisible > 24) hourStep = 6;
+    else if (totalHoursVisible > 6) hourStep = 1;
+    else if (totalHoursVisible > 1) hourStep = 0.25; // 15 min
+    else hourStep = 1/60; // 1 min
+
+    ctx.fillStyle = '#555';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    const startHour = viewStartSample / 10 / 3600;
+    const endHour = viewEndSample / 10 / 3600;
+    for (let hour = Math.ceil(startHour / hourStep) * hourStep; hour < endHour; hour += hourStep) {
+        const sample = hour * 3600 * 10;
+        const x = sampleToX(sample);
+        if (x < 10 || x > w - 10) continue;
+        const day = Math.floor(hour / 24);
+        const h_of_day = hour % 24;
+        const mins = Math.round((h_of_day % 1) * 60);
+        const label = mins === 0 ? `${Math.floor(h_of_day)}:00` : `${Math.floor(h_of_day)}:${mins.toString().padStart(2,'0')}`;
+        ctx.fillText(label, x, h - 3);
+    }
+
+    // Zoom level indicator
+    if (zoom.start > 0 || zoom.end < 1) {
+        const zoomFactor = 1 / (zoom.end - zoom.start);
+        ctx.fillStyle = '#666';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText(`${zoomFactor.toFixed(1)}x`, 4, 12);
+    }
+
+}
+
+// Lightweight playhead renderer — draws playhead on BOTH overlay canvases
+function renderPlayhead(regionId) {
+    const overlays = [
+        { id: `${regionId}_norm_overlay`, ref: `${regionId}_norm`, color: '#ff4444' },
+        { id: `${regionId}_detrend_overlay`, ref: `${regionId}_detrend`, color: 'rgba(255, 255, 255, 0.5)' },
+    ];
+
+    for (const { id: overlayId, ref: refCanvasId, color } of overlays) {
+        const overlay = document.getElementById(overlayId);
+        const refCanvas = document.getElementById(refCanvasId);
+        if (!overlay || !refCanvas) continue;
+
+        const dpr = window.devicePixelRatio || 1;
+        const rect = refCanvas.getBoundingClientRect();
+        overlay.width = rect.width * dpr;
+        overlay.height = rect.height * dpr;
+
+        const ctx = overlay.getContext('2d');
+        ctx.scale(dpr, dpr);
+        const w = rect.width;
+        const h = rect.height;
+
+        // Clear overlay (transparent)
+        ctx.clearRect(0, 0, w, h);
+
+        if (!isPlaying || currentPlayRegion !== regionId) continue;
+
+        const reg = regions[regionId];
+        if (!reg.detrended) continue;
+
+        const zoom = getZoom(refCanvasId);
+        const viewStartSample = Math.floor(zoom.start * reg.detrended.length);
+        const viewEndSample = Math.ceil(zoom.end * reg.detrended.length);
+        const viewSamples = viewEndSample - viewStartSample;
+
+        const samplePos = playFrac * reg.detrended.length;
+        const px = ((samplePos - viewStartSample) / viewSamples) * w;
+
+        if (px >= 0 && px <= w) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(px, 0);
+            ctx.lineTo(px, h);
+            ctx.stroke();
+
+            // Time label at playhead (only on norm overlay to avoid clutter)
+            if (refCanvasId.includes('_norm')) {
+                const sample = Math.floor(playFrac * reg.detrended.length);
+                const timeStr = sampleToTime(sample, regionId);
+                ctx.fillStyle = color;
+                ctx.font = '11px monospace';
+                ctx.textAlign = 'left';
+                const labelX = px + 4 < w - 100 ? px + 4 : px - 104;
+                ctx.fillText(timeStr, labelX, 14);
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Gain Envelope Interaction — add/remove/drag control points
+// ============================================================================
+// Hit-test: find control point near mouse position (returns index or -1)
+function hitTestPoint(regionId, canvasId, mouseX, mouseY) {
+    const reg = regions[regionId];
+    if (!reg.gainEnvelope || !reg.detrended) return -1;
+
+    const canvas = document.getElementById(canvasId);
+    const rect = canvas.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+    const zoom = getZoom(canvasId);
+    const viewStartSample = Math.floor(zoom.start * reg.detrended.length);
+    const viewEndSample = Math.ceil(zoom.end * reg.detrended.length);
+    const viewSamples = viewEndSample - viewStartSample;
+
+    const { min, max } = mipmapMinMax(reg.detrended, buildMipmap(reg.detrended), viewStartSample, viewEndSample);
+    const range = max - min || 1;
+    const zeroY = (min <= 0 && max >= 0) ? h - ((0 - min) / range) * h : h / 2;
+    const envelopePixelRange = h - zeroY;
+
+    function sampleToX(sample) { return ((sample - viewStartSample) / viewSamples) * w; }
+    function dBtoY(dB) { return zeroY - (dB / ENVELOPE_DB_RANGE) * envelopePixelRange; }
+
+    for (let i = 0; i < reg.gainEnvelope.length; i++) {
+        const pt = reg.gainEnvelope[i];
+        const px = sampleToX(pt.sample);
+        const py = dBtoY(pt.dB);
+        const dist = Math.sqrt((mouseX - px) ** 2 + (mouseY - py) ** 2);
+        if (dist <= POINT_HIT_RADIUS) return i;
+    }
+    return -1;
+}
+
+// Hit-test: is mouse near the envelope line? Returns {sample, dB} or null
+function hitTestLine(regionId, canvasId, mouseX, mouseY) {
+    const reg = regions[regionId];
+    if (!reg.detrended) return null;
+
+    const canvas = document.getElementById(canvasId);
+    const rect = canvas.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+    const zoom = getZoom(canvasId);
+    const totalSamples = reg.detrended.length;
+    const viewStartSample = Math.floor(zoom.start * totalSamples);
+    const viewEndSample = Math.ceil(zoom.end * totalSamples);
+    const viewSamples = viewEndSample - viewStartSample;
+
+    const { min, max } = mipmapMinMax(reg.detrended, buildMipmap(reg.detrended), viewStartSample, viewEndSample);
+    const range = max - min || 1;
+    const zeroY = (min <= 0 && max >= 0) ? h - ((0 - min) / range) * h : h / 2;
+    const envelopePixelRange = h - zeroY;
+
+    function sampleToX(sample) { return ((sample - viewStartSample) / viewSamples) * w; }
+    function dBtoY(dB) { return zeroY - (dB / ENVELOPE_DB_RANGE) * envelopePixelRange; }
+    function yTodB(y) { return -(y - zeroY) / envelopePixelRange * ENVELOPE_DB_RANGE; }
+
+    // Build full point list with implicit anchors
+    const pts = [];
+    const env = reg.gainEnvelope;
+    if (env.length === 0 || env[0].sample > 0) pts.push({ sample: 0, dB: 0 });
+    pts.push(...env);
+    if (env.length === 0 || env[env.length - 1].sample < totalSamples - 1) pts.push({ sample: totalSamples - 1, dB: 0 });
+
+    // Check distance to each line segment
+    for (let i = 0; i < pts.length - 1; i++) {
+        const ax = sampleToX(pts[i].sample), ay = dBtoY(pts[i].dB);
+        const bx = sampleToX(pts[i + 1].sample), by = dBtoY(pts[i + 1].dB);
+
+        const dx = bx - ax, dy = by - ay;
+        const lenSq = dx * dx + dy * dy;
+        if (lenSq === 0) continue;
+        let t = ((mouseX - ax) * dx + (mouseY - ay) * dy) / lenSq;
+        t = Math.max(0, Math.min(1, t));
+        const projX = ax + t * dx, projY = ay + t * dy;
+        const dist = Math.sqrt((mouseX - projX) ** 2 + (mouseY - projY) ** 2);
+
+        if (dist <= LINE_HIT_RADIUS) {
+            const mouseFrac = mouseX / w;
+            const sample = Math.round(viewStartSample + mouseFrac * viewSamples);
+            const dB = yTodB(mouseY);
+            return {
+                sample: Math.max(0, Math.min(totalSamples - 1, sample)),
+                dB: Math.max(-ENVELOPE_DB_RANGE, Math.min(ENVELOPE_DB_RANGE, dB))
+            };
+        }
+    }
+    return null;
+}
+
+function setupGainEnvelopeInteraction(canvasId, regionId) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    // Coordinate helpers (recalculated on each event for zoom-correctness)
+    function getCoordHelpers() {
+        const reg = regions[regionId];
+        if (!reg.detrended) return null;
+        const rect = canvas.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+        const zoom = getZoom(canvasId);
+        const totalSamples = reg.detrended.length;
+        const viewStartSample = Math.floor(zoom.start * totalSamples);
+        const viewEndSample = Math.ceil(zoom.end * totalSamples);
+        const viewSamples = viewEndSample - viewStartSample;
+
+        const mipmap = buildMipmap(reg.detrended);
+        const { min, max } = mipmapMinMax(reg.detrended, mipmap, viewStartSample, viewEndSample);
+        const range = max - min || 1;
+        const zeroY = (min <= 0 && max >= 0) ? h - ((0 - min) / range) * h : h / 2;
+        const envelopePixelRange = h - zeroY;
+
+        return {
+            rect, w, h, totalSamples, viewStartSample, viewSamples, zeroY, envelopePixelRange,
+            xToSample(x) { return Math.round(viewStartSample + (x / w) * viewSamples); },
+            yTodB(y) { return -(y - zeroY) / envelopePixelRange * ENVELOPE_DB_RANGE; },
+        };
+    }
+
+    canvas.addEventListener('mousemove', (e) => {
+        if (envelopeDrag) return; // dragging handled by global handler
+        const reg = regions[regionId];
+        if (!reg.detrended) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+
+        const ptIdx = hitTestPoint(regionId, canvasId, mx, my);
+
+        if (ptIdx >= 0) {
+            if (e.shiftKey) {
+                canvas.style.cursor = 'pointer';
+                showCursorBadge(e.clientX, e.clientY, '−', '#ff4444');
+            } else {
+                canvas.style.cursor = 'grab';
+                hideCursorBadge();
+            }
+            hoveredPoint = { regionId, index: ptIdx };
+        } else {
+            const lineHit = hitTestLine(regionId, canvasId, mx, my);
+            if (lineHit) {
+                canvas.style.cursor = 'pointer';
+                showCursorBadge(e.clientX, e.clientY, '+', '#44ff44');
+            } else {
+                canvas.style.cursor = 'default';
+                hideCursorBadge();
+            }
+            hoveredPoint = null;
+        }
+
+        // Re-render to update hover highlight
+        renderWaveform(canvasId, reg.detrended, reg.gainEnvelope);
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+        const reg = regions[regionId];
+        if (!reg.detrended) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+
+        const ptIdx = hitTestPoint(regionId, canvasId, mx, my);
+
+        if (ptIdx >= 0) {
+            if (e.shiftKey) {
+                // Shift+click = remove point
+                reg.gainEnvelope.splice(ptIdx, 1);
+                hoveredPoint = null;
+                processRegion(regionId);
+                saveState();
+                return;
+            }
+            if (e.altKey) {
+                // Option+click = snap to 0 dB
+                reg.gainEnvelope[ptIdx].dB = 0;
+                processRegion(regionId);
+                saveState();
+                return;
+            }
+            // Start drag — store initial mouse Y and dB for fine-tuning
+            envelopeDrag = { regionId, pointIndex: ptIdx, canvasId, startY: my, startdB: reg.gainEnvelope[ptIdx].dB };
+            canvas.style.cursor = 'grabbing';
+            e.preventDefault();
+            return;
+        }
+
+        // Click on line = add new point
+        const lineHit = hitTestLine(regionId, canvasId, mx, my);
+        if (lineHit) {
+            const newPt = { sample: lineHit.sample, dB: Math.round(lineHit.dB * 10) / 10 };
+            reg.gainEnvelope.push(newPt);
+            reg.gainEnvelope.sort((a, b) => a.sample - b.sample);
+
+            // Start dragging the new point immediately
+            const newIdx = reg.gainEnvelope.indexOf(newPt);
+            envelopeDrag = { regionId, pointIndex: newIdx, canvasId, startY: my, startdB: newPt.dB };
+            canvas.style.cursor = 'grabbing';
+
+            processRegion(regionId);
+            saveState();
+            e.preventDefault();
+        }
+    });
+
+    // Global mousemove for dragging
+    window.addEventListener('mousemove', (e) => {
+        if (!envelopeDrag || envelopeDrag.regionId !== regionId) return;
+
+        const helpers = getCoordHelpers();
+        if (!helpers) return;
+
+        const mx = e.clientX - helpers.rect.left;
+        const my = e.clientY - helpers.rect.top;
+
+        const reg = regions[regionId];
+        const idx = envelopeDrag.pointIndex;
+        const pt = reg.gainEnvelope[idx];
+        if (!pt) return;
+
+        // Convert mouse to sample
+        let newSample = helpers.xToSample(mx);
+
+        // dB: use delta from drag start — command key = fine mode (1/5 sensitivity)
+        const deltaY = my - envelopeDrag.startY;
+        const scale = e.metaKey ? 0.2 : 1.0;
+        const deltadB = helpers.yTodB(envelopeDrag.startY + deltaY * scale) - helpers.yTodB(envelopeDrag.startY);
+        let newdB = envelopeDrag.startdB + deltadB;
+
+        // Clamp X between neighbors (can't reorder)
+        const prevSample = idx > 0 ? reg.gainEnvelope[idx - 1].sample + 1 : 0;
+        const nextSample = idx < reg.gainEnvelope.length - 1 ? reg.gainEnvelope[idx + 1].sample - 1 : helpers.totalSamples - 1;
+        newSample = Math.max(prevSample, Math.min(nextSample, newSample));
+
+        // Option held = snap to 0 dB; otherwise clamp to ±range, snap to 0.1 dB
+        if (e.altKey) {
+            newdB = 0;
+        } else {
+            newdB = Math.max(-ENVELOPE_DB_RANGE, Math.min(ENVELOPE_DB_RANGE, newdB));
+            newdB = Math.round(newdB * 10) / 10;
+        }
+
+        pt.sample = newSample;
+        pt.dB = newdB;
+
+        // Just redraw the envelope visually — no recompute until mouseup
+        renderWaveform(canvasId, reg.detrended, reg.gainEnvelope);
+    });
+
+    // Global mouseup to end drag — NOW recompute
+    window.addEventListener('mouseup', () => {
+        if (!envelopeDrag || envelopeDrag.regionId !== regionId) return;
+        canvas.style.cursor = 'grab';
+        envelopeDrag = null;
+        processRegion(regionId);
+        saveState();
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+        if (!envelopeDrag) {
+            hoveredPoint = null;
+            canvas.style.cursor = 'default';
+            hideCursorBadge();
+        }
+    });
+}
+
+// ============================================================================
+// Playback
+// ============================================================================
+// Track current playback position as fraction [0,1] for drawing on canvas
+let playFrac = 0;
+let isPlaying = false;
+
+function stopPlayback() {
+    if (currentSource && currentGainNode && audioContext) {
+        // Fade out to avoid click
+        const now = audioContext.currentTime;
+        currentGainNode.gain.cancelScheduledValues(now);
+        currentGainNode.gain.setValueAtTime(currentGainNode.gain.value, now);
+        currentGainNode.gain.linearRampToValueAtTime(0, now + FADE_TIME);
+        // Stop after fade completes
+        const src = currentSource;
+        src.onended = null;
+        setTimeout(() => { try { src.stop(); } catch (_) {} }, FADE_TIME * 1000 + 10);
+        currentSource = null;
+        currentGainNode = null;
+    } else if (currentSource) {
+        currentSource.onended = null;
+        try { currentSource.stop(); } catch (_) {}
+        currentSource = null;
+        currentGainNode = null;
+    }
+    isPlaying = false;
+    if (animFrameId) {
+        cancelAnimationFrame(animFrameId);
+        animFrameId = null;
+    }
+    // Clear playhead overlay
+    if (currentPlayRegion) {
+        renderPlayhead(currentPlayRegion);
+    }
+}
+
+function startPlayback(regionId, xFrac) {
+    const reg = regions[regionId];
+    if (!reg.audioBuffer) return;
+
+    if (!audioContext) audioContext = new AudioContext({ sampleRate: 44100 });
+    if (audioContext.state === 'suspended') audioContext.resume();
+
+    // Stop any current playback
+    stopPlayback();
+
+    const startOffset = xFrac * reg.audioBuffer.duration;
+    currentSource = audioContext.createBufferSource();
+    currentSource.buffer = reg.audioBuffer;
+    // Route through gain node for smooth fade in/out
+    currentGainNode = audioContext.createGain();
+    currentGainNode.gain.setValueAtTime(0, audioContext.currentTime);
+    currentGainNode.gain.linearRampToValueAtTime(1, audioContext.currentTime + FADE_TIME);
+    currentSource.connect(currentGainNode);
+    currentGainNode.connect(audioContext.destination);
+    currentSource.start(0, startOffset);
+    currentPlayRegion = regionId;
+    playStartTime = audioContext.currentTime;
+    playFrac = xFrac;
+    isPlaying = true;
+
+    // Animate playhead on lightweight overlay canvas (no full waveform redraw!)
+    function animatePlayhead() {
+        if (!isPlaying) return;
+        const elapsed = audioContext.currentTime - playStartTime;
+        const totalDuration = reg.audioBuffer.duration;
+        playFrac = startOffset / totalDuration + elapsed / totalDuration;
+        if (playFrac >= 1) {
+            isPlaying = false;
+            playFrac = 0;
+            renderPlayhead(regionId);
+            return;
+        }
+        renderPlayhead(regionId);
+        animFrameId = requestAnimationFrame(animatePlayhead);
+    }
+    animatePlayhead();
+
+    currentSource.onended = () => {
+        isPlaying = false;
+        currentSource = null;
+        if (animFrameId) cancelAnimationFrame(animFrameId);
+        renderPlayhead(regionId);
+    };
+}
+
+function setupPlayback(canvasId, regionId) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    canvas.addEventListener('click', (e) => {
+        const reg = regions[regionId];
+        if (!reg.audioBuffer) return;
+        const rect = canvas.getBoundingClientRect();
+        const mouseXFrac = (e.clientX - rect.left) / rect.width;
+        // Map through zoom viewport to get data-space fraction
+        const zoom = getZoom(canvasId);
+        const dataFrac = zoom.start + mouseXFrac * (zoom.end - zoom.start);
+        startPlayback(regionId, Math.max(0, Math.min(1, dataFrac)));
+    });
+}
+
+// ============================================================================
+// RMS Display
+// ============================================================================
+function updateRMSDisplay() {
+    for (const [id, reg] of Object.entries(regions)) {
+        if (!reg.raw) continue;
+        const normEl = document.getElementById(`${id}_rms_norm`);
+        const detrendEl = document.getElementById(`${id}_rms_detrend`);
+        if (normEl) {
+            normEl.innerHTML = `<div class="rms-row">RMS: <span class="rms-value">${reg.rmsProcessed.toFixed(4)}</span></div>`;
+        }
+        if (detrendEl) {
+            detrendEl.innerHTML = `<div class="rms-row">RMS: <span class="rms-value">${reg.rmsDetrended.toFixed(4)}</span></div>`;
+        }
+    }
+
+    // Balance indicator — Region 2 relative to Region 1
+    const bal = document.getElementById('balanceDisplay');
+    const r1 = regions.region1, r2 = regions.region2;
+    if (bal && r1.raw && r2.raw) {
+        const pctDiff = ((r2.rmsDetrended - r1.rmsDetrended) / r1.rmsDetrended) * 100;
+        const absPct = Math.abs(pctDiff);
+        if (absPct < 0.5) {
+            bal.textContent = `Region 2: ${pctDiff > 0 ? '+' : ''}${pctDiff.toFixed(2)}%`;
+            bal.style.color = '#4f8';
+        } else if (pctDiff > 0) {
+            bal.textContent = `Region 2: +${pctDiff.toFixed(2)}% louder`;
+            bal.style.color = '#f44';
+        } else {
+            bal.textContent = `Region 2: ${pctDiff.toFixed(2)}% quieter`;
+            bal.style.color = '#48f';
+        }
+    }
+}
+
+// ============================================================================
+// Time Helpers
+// ============================================================================
+function sampleToTime(sample, regionId) {
+    const totalSeconds = sample / 10;
+    const day = Math.floor(totalSeconds / 86400);
+    const daySeconds = totalSeconds % 86400;
+    const h = Math.floor(daySeconds / 3600);
+    const m = Math.floor((daySeconds % 3600) / 60);
+    const s = Math.floor(daySeconds % 60);
+
+    const reg = regions[regionId];
+    const startDate = new Date(reg.startDate);
+    const dayDate = new Date(startDate.getTime() + day * 86400000);
+    const monthDay = dayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return `${monthDay} ${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+}
+
+// ============================================================================
+// Export
+// ============================================================================
+function copyJSON() {
+    const output = {};
+    for (const [id, reg] of Object.entries(regions)) {
+        if (!reg.raw) continue;
+        output[id] = {
+            label: reg.label,
+            startDate: reg.startDate,
+            totalSamples: reg.raw.length,
+            sampleRate: reg.sampleRate,
+            gainEnvelope: reg.gainEnvelope.map(pt => ({
+                sample: pt.sample,
+                dB: pt.dB,
+                time: sampleToTime(pt.sample, id),
+            })),
+            rms: {
+                raw: reg.rmsRaw,
+                normalized: reg.rmsProcessed,
+                detrended: reg.rmsDetrended,
+            }
+        };
+    }
+    const json = JSON.stringify(output, null, 2);
+    const btn = document.getElementById('copyJsonBtn');
+    navigator.clipboard.writeText(json).then(() => {
+        btn.textContent = 'Copied!';
+        btn.style.color = '#4f8';
+        btn.style.borderColor = '#4a4';
+        setTimeout(() => { btn.textContent = 'Copy JSON'; btn.style.color = '#ccc'; btn.style.borderColor = '#555'; }, 1500);
+    }).catch(() => {
+        btn.textContent = 'Failed';
+        setTimeout(() => { btn.textContent = 'Copy JSON'; }, 1500);
+    });
+}
+
+function downloadProcessed() {
+    for (const [id, reg] of Object.entries(regions)) {
+        if (!reg.detrended) continue;
+        const blob = new Blob([reg.detrended.buffer], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${id}_bx_processed.f32`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+}
+
+// ============================================================================
+// Init
+// ============================================================================
+setupGainEnvelopeInteraction('region1_detrend', 'region1');
+setupGainEnvelopeInteraction('region2_detrend', 'region2');
+setupPlayback('region1_norm', 'region1');
+setupPlayback('region2_norm', 'region2');
+
+// ============================================================================
+// Scroll Zoom — two-finger/wheel zoom on all waveform canvases
+// ============================================================================
+document.querySelectorAll('canvas.waveform').forEach(canvas => {
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault(); // always prevent page scroll on canvases
+
+        const canvasId = canvas.id;
+        if (!canvasId) return;
+
+        // Figure out which data this canvas shows
+        const regionId = canvasId.split('_')[0]; // region1 or region2
+        const reg = regions[regionId];
+        if (!reg?.raw) return;
+
+        const zoom = getZoom(canvasId);
+        const rect = canvas.getBoundingClientRect();
+        const mouseXFrac = (e.clientX - rect.left) / rect.width;
+        const viewSpan = zoom.end - zoom.start;
+
+        let newStart = zoom.start;
+        let newEnd = zoom.end;
+        let newSpan = viewSpan;
+
+        // Pinch zoom (ctrlKey on trackpad) or vertical scroll → zoom
+        if (e.deltaY && (e.ctrlKey || Math.abs(e.deltaY) > Math.abs(e.deltaX))) {
+            const zoomSpeed = e.ctrlKey ? 1.03 : 1.1; // pinch is finer
+            const factor = e.deltaY > 0 ? zoomSpeed : 1 / zoomSpeed;
+            const cursorFrac = zoom.start + mouseXFrac * viewSpan;
+
+            newSpan = viewSpan * factor;
+            newSpan = Math.max(newSpan, 100 / reg.detrended.length);
+            newSpan = Math.min(newSpan, 1);
+
+            newStart = cursorFrac - mouseXFrac * newSpan;
+            newEnd = newStart + newSpan;
+        }
+
+        // Horizontal swipe → pan left/right
+        if (e.deltaX && !e.ctrlKey && Math.abs(e.deltaX) >= Math.abs(e.deltaY)) {
+            // Pan proportional to visible span — deltaX in pixels, map to data fraction
+            const panAmount = (e.deltaX / rect.width) * viewSpan;
+            newStart = zoom.start + panAmount;
+            newEnd = zoom.end + panAmount;
+            newSpan = viewSpan; // span stays the same
+        }
+
+        // Clamp to [0, 1]
+        if (newStart < 0) { newEnd -= newStart; newStart = 0; }
+        if (newEnd > 1) { newStart -= (newEnd - 1); newEnd = 1; }
+        newStart = Math.max(0, newStart);
+        newEnd = Math.min(1, newEnd);
+
+        zoom.start = newStart;
+        zoom.end = newEnd;
+
+        // Sync all canvases in the same region to the same zoom
+        const types = ['_norm', '_detrend'];
+        for (const suffix of types) {
+            const siblingId = regionId + suffix;
+            if (siblingId !== canvasId) {
+                zoomViews[siblingId] = { start: newStart, end: newEnd };
+            }
+        }
+
+        // Re-render all canvases in this region
+        renderWaveform(`${regionId}_norm`, reg.normalized, null);
+        renderWaveform(`${regionId}_detrend`, reg.detrended, reg.gainEnvelope);
+    }, { passive: false });
+});
+
+// Double-click to reset zoom
+document.querySelectorAll('canvas.waveform').forEach(canvas => {
+    canvas.addEventListener('dblclick', () => {
+        const canvasId = canvas.id;
+        if (!canvasId) return;
+        const regionId = canvasId.split('_')[0];
+        const reg = regions[regionId];
+        if (!reg?.raw) return;
+
+        const types = ['_norm', '_detrend'];
+        for (const suffix of types) {
+            resetZoom(regionId + suffix);
+        }
+
+        renderWaveform(`${regionId}_norm`, reg.normalized, null);
+        renderWaveform(`${regionId}_detrend`, reg.detrended, reg.gainEnvelope);
+    });
+});
+
+// Prevent page scroll entirely when over any canvas
+document.body.style.overflow = 'hidden';
+document.body.style.height = '100vh';
+document.documentElement.style.overflow = 'auto';
+
+// Spacebar = stop playback (prevent scroll)
+document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        stopPlayback();
+    }
+});
+
+// Resize handler
+window.addEventListener('resize', () => {
+    for (const id of Object.keys(regions)) {
+        if (regions[id].raw) {
+            renderWaveform(`${id}_norm`, regions[id].normalized, null);
+            renderWaveform(`${id}_detrend`, regions[id].detrended, regions[id].gainEnvelope);
+        }
+    }
+});
+</script>
+</body>
+</html>
