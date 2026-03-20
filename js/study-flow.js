@@ -845,17 +845,19 @@ async function processPreloadQueue() {
                     if (sessionData?.buffer && sessionData.metadata) {
                         const { computeSpectrogramTiles } = await import('./main-window-renderer.js');
                         const cacheKey = `${mapped.spacecraft}:${mapped.dataset}:${startTime}:${endTime}`;
-                        // If de-trend is enabled, apply it to the buffer before computing tiles
+                        // De-trend → set state → render (same pattern as index.html/CDAWeb)
                         let buffer = sessionData.buffer;
                         if (studyConfig?.experimentalDesign?.detrend) {
-                            const { removeDCOffset } = await import('./minimap-window-renderer.js');
+                            const { removeDCOffset, normalize } = await import('./minimap-window-renderer.js');
                             const slider = document.getElementById('waveformFilterSlider');
                             const value = slider ? parseInt(slider.value) : 50;
                             const alpha = 0.95 + (value / 100) * (0.9999 - 0.95);
-                            buffer = removeDCOffset(new Float32Array(buffer), alpha);
-                            window.__PYRAMID_DETRENDED = true;
-                            console.log(`%c🎨 [HS25] De-trended buffer before pyramid compute (alpha=${alpha.toFixed(4)})`, 'color: #d29922;');
+                            window.rawWaveformData = new Float32Array(buffer);
+                            buffer = normalize(removeDCOffset(new Float32Array(buffer), alpha));
+                            console.log(`%c🎨 [HS25] De-trended buffer (alpha=${alpha.toFixed(4)})`, 'color: #d29922;');
                         }
+                        const State = await import('./audio-state.js');
+                        State.setCompleteSamplesArray(buffer);
                         console.log(`%c🎨 [HS25] Starting compute pipeline: ${cacheKey}`, 'color: #d29922; font-weight: bold;');
                         await computeSpectrogramTiles(buffer, {
                             dataDurationSec: sessionData.metadata.realWorldSpanSeconds,
@@ -2123,39 +2125,87 @@ async function runAnalysis(step) {
     const aboutBtn = document.getElementById('aboutInfoBtn');
     if (aboutBtn) aboutBtn.style.display = '';
 
-    // Hide overlay so the player is visible (study modal fades out with it)
+    // Apply silent data loading setting from config
+    const silentCb = document.getElementById('silentDownload');
+    if (silentCb) silentCb.checked = !!step.silentDataLoading;
+
     const overlay = document.getElementById('permanentOverlay');
+    const detrending = !!studyConfig?.experimentalDesign?.detrend;
+
+    // When de-trending is enabled, wait for complete data before presenting.
+    // De-trending requires the full signal (forward-backward filter), so we can't
+    // render progressively. Show a loading modal if prefetch isn't done yet.
+    if (detrending) {
+        const { isPreRenderDone } = await import('./main-window-renderer.js');
+        const { getPrefetchStatus } = await import('./goes-cloudflare-fetcher.js');
+        const cfg = window.__STUDY_CONFIG;
+
+        if (!isPreRenderDone() && cfg) {
+            // Show loading modal on the overlay
+            if (studyModalInner) {
+                const status = getPrefetchStatus(cfg.spacecraft, cfg.dataset, cfg.startTime, cfg.endTime);
+                const pct = status?.totalCount ? Math.round((status.completedCount / status.totalCount) * 100) : 0;
+                studyModalInner.innerHTML = `
+                    <div class="modal-content" style="text-align: center; min-width: 500px; width: auto; max-width: 600px; background: linear-gradient(135deg, rgba(240, 240, 245, 0.97) 0%, rgba(230, 232, 238, 0.97) 100%);">
+                        <div style="font-size: 22px; font-weight: 600; color: #444; margin-bottom: 20px;">Preparing analysis data</div>
+                        <div style="background: rgba(0,0,0,0.08); border-radius: 8px; height: 28px; overflow: hidden; margin-bottom: 14px;">
+                            <div id="preloadBar" style="height: 100%; width: ${pct}%; border-radius: 8px; transition: width 0.3s ease; background: repeating-linear-gradient(-45deg, #4a9eff, #4a9eff 10px, #6bb8ff 10px, #6bb8ff 20px); background-size: 28px 28px; animation: stripeMove 0.6s linear infinite;"></div>
+                        </div>
+                        <div id="preloadStatus" style="font-size: 15px; color: #444; font-weight: 600;">
+                            Loading GOES data from R2 server, Files ${status?.completedCount || 0} of ${status?.totalCount || '?'}...
+                        </div>
+                    </div>`;
+                if (studyModalEl) {
+                    studyModalEl.style.display = 'flex';
+                    studyModalEl.classList.add('modal-visible');
+                }
+            }
+
+            // Poll until pre-render (de-trend + tile compute) is complete
+            await new Promise(resolve => {
+                const poll = setInterval(() => {
+                    const s = getPrefetchStatus(cfg.spacecraft, cfg.dataset, cfg.startTime, cfg.endTime);
+                    const el = document.getElementById('preloadStatus');
+                    const bar = document.getElementById('preloadBar');
+                    if (el && s) {
+                        el.textContent = `Loading GOES data from R2 server, Files ${s.completedCount} of ${s.totalCount}...`;
+                        if (bar && s.totalCount) {
+                            bar.style.width = `${Math.round((s.completedCount / s.totalCount) * 100)}%`;
+                        }
+                    }
+                    if (isPreRenderDone()) {
+                        clearInterval(poll);
+                        resolve();
+                    }
+                }, 250);
+            });
+            if (window.pm?.data) console.log(`📦 [ANALYSIS] De-trend mode — pre-render complete, presenting`);
+        }
+    }
+
+    // Hide overlay so the player is visible (study modal fades out with it)
     if (overlay) {
         overlay.style.transition = 'opacity 0.3s ease-out';
         overlay.style.opacity = '0';
-        // Tell modalManager the modal is closed so confirmation modal works later
         modalManager.currentModal = null;
         setTimeout(() => {
             overlay.style.display = 'none';
-            // Clean up study modal after overlay fade completes
             if (studyModalEl) {
                 studyModalEl.style.display = 'none';
                 studyModalEl.classList.remove('modal-visible');
                 if (studyModalInner) studyModalInner.innerHTML = '';
             }
-            // Release focus from any modal button so spacebar works for play/pause
             if (document.activeElement && overlay.contains(document.activeElement)) {
                 document.activeElement.blur();
             }
         }, 300);
     }
 
-    // Apply silent data loading setting from config
-    const silentCb = document.getElementById('silentDownload');
-    if (silentCb) silentCb.checked = !!step.silentDataLoading;
-
     // Trigger data fetch/render
     if (typeof window.triggerDataRender === 'function') {
-        // Data was preloaded — just trigger the render
-        if (window.pm?.data) console.log(`📦 [ANALYSIS] Data was preloaded — calling triggerDataRender() (no new fetch needed)`);
+        if (window.pm?.data) console.log(`📦 [ANALYSIS] Data was preloaded — calling triggerDataRender()`);
         window.triggerDataRender();
     } else {
-        // No preload — kick off the fetch ourselves
         const startBtn = document.getElementById('startBtn');
         if (startBtn && !startBtn.disabled) {
             if (window.pm?.data) console.log(`📦 [ANALYSIS] No preload — triggering fresh data fetch via startBtn`);
@@ -2164,7 +2214,6 @@ async function runAnalysis(step) {
             if (window.pm?.data) console.log(`📦 [ANALYSIS] No preload and startBtn not available — data fetch NOT triggered`);
         }
     }
-    // Switch to progressive rendering mode
     const renderSelect = document.getElementById('dataRendering');
     if (renderSelect) {
         renderSelect.value = 'progressive';

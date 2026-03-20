@@ -1975,7 +1975,8 @@
               </div>
               <div class="settings-row" style="margin-top:12px;">
                 <span class="toggle-label">De-trend (remove DC offset)</span>
-                <span class="info-tip" data-tip="Apply forward-backward EMA high-pass filter to remove slow trends from magnetometer data"><div class="toggle" id="pb_detrend" onclick="this.classList.toggle('on'); autoSave('playbackSpeed')"></div></span>
+                <span class="info-tip" data-tip="Apply forward-backward EMA high-pass filter to remove slow trends from magnetometer data. When enabled, all data downloads before the spectrogram is shown (no progressive rendering)."><div class="toggle" id="pb_detrend" onclick="this.classList.toggle('on'); autoSave('playbackSpeed')"></div></span>
+                <span style="display:block; font-size:11px; color:#888; margin-top:4px; line-height:1.3;">When enabled, data fully downloads before display. A loading indicator appears if the participant reaches analysis before download completes.</span>
               </div>
               <div class="settings-row" style="margin-top:12px;">
                 <span class="toggle-label">Paul Stretch Window Size</span>
@@ -4391,6 +4392,23 @@
       genBtn.style.opacity = count > 0 ? '0.35' : '1';
       genBtn.style.cursor = count > 0 ? 'default' : 'pointer';
     }
+  }
+
+  function lockConditionsPanel(locked) {
+    // Lock/unlock all condition selects and delete buttons (preview stays enabled)
+    document.querySelectorAll('#conditionsList select, #conditionsList .cond-delete').forEach(el => {
+      el.disabled = locked;
+      el.style.opacity = locked ? '0.4' : '';
+      if (el.tagName === 'SELECT') el.style.cursor = locked ? 'default' : '';
+    });
+    // Lock/unlock add + generate buttons
+    document.querySelectorAll('.condition-add-btn, .condition-generate-btn').forEach(el => {
+      el.disabled = locked;
+      el.style.opacity = locked ? '0.4' : '';
+      el.style.cursor = locked ? 'default' : '';
+    });
+    // Restore generate button's own disabled logic when unlocking
+    if (!locked) updateConditionCount();
   }
 
   function checkConditionDuplicates() {
@@ -8082,6 +8100,9 @@
     }
 
     let polling = false;
+    let _activityLastModified = null;
+    let _activityUnchangedCount = 0;
+    let _activityErrorCount = 0;
 
     async function poll(bulk) {
       if (polling) return;
@@ -8094,11 +8115,38 @@
 
       try {
         const baseUrl = window.STUDY_API_BASE || 'https://spaceweather.now.audio';
-        const resp = await fetch(`${baseUrl}/api/study/${slug}/activity?since=${encodeURIComponent(lastSeen)}&limit=${batchSize}`);
+        const headers = {};
+        if (_activityLastModified) headers['If-Modified-Since'] = _activityLastModified;
+        const resp = await fetch(`${baseUrl}/api/study/${slug}/activity?since=${encodeURIComponent(lastSeen)}&limit=${batchSize}`, { headers });
+
+        // Reset error backoff on any successful response
+        _activityErrorCount = 0;
+
+        if (resp.status === 304) {
+          _activityUnchangedCount++;
+          console.log(`%c[ACTIVITY] ⏸ 304 Not Modified (#${_activityUnchangedCount})`, 'color: #8b949e;');
+          _adaptiveActivityPoll();
+          polling = false;
+          return;
+        }
         if (!resp.ok) { polling = false; return; }
 
+        const lm = resp.headers.get('Last-Modified');
+        if (lm) _activityLastModified = lm;
+
         const data = await resp.json();
-        if (!data.events || data.events.length === 0) { polling = false; return; }
+        if (!data.events || data.events.length === 0) {
+          _activityUnchangedCount++;
+          _adaptiveActivityPoll();
+          polling = false;
+          return;
+        }
+
+        // Got new events — reset backoff
+        const wasBackedOff = _activityUnchangedCount > 0;
+        _activityUnchangedCount = 0;
+        _adaptiveActivityPoll();
+        if (wasBackedOff) console.log(`%c[ACTIVITY] 🔄 New events — reset to base interval`, 'color: #3fb950; font-weight: bold;');
 
         const log = document.getElementById(LOG_EL);
         const count = document.getElementById(COUNT_EL);
@@ -8117,9 +8165,30 @@
         const ts = newest.timestamp || newest.updated_at || newest.created_at;
         if (ts) lastSeen = ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z';
       } catch (e) {
-        console.warn('Data stream poll error:', e);
+        _activityErrorCount++;
+        const backoffSec = Math.min(60, _ACTIVITY_POLL_MS / 1000 * Math.pow(2, _activityErrorCount));
+        console.warn(`[ACTIVITY] Poll error #${_activityErrorCount} — next retry in ${backoffSec}s`, e.message);
+        clearInterval(_activityPollInterval);
+        _activityPollInterval = setTimeout(() => {
+          _activityPollInterval = setInterval(_activityPollFn, _adaptiveActivityInterval() * 1000);
+          _activityPollFn();
+        }, backoffSec * 1000);
       }
       polling = false;
+    }
+
+    function _adaptiveActivityInterval() {
+      const baseSec = _ACTIVITY_POLL_MS / 1000;
+      if (_activityUnchangedCount < 6)  return baseSec;       // first 30s: normal (5s)
+      if (_activityUnchangedCount < 12) return baseSec * 3;   // next ~90s: 15s
+      return baseSec * 6;                                      // steady state: 30s
+    }
+
+    function _adaptiveActivityPoll() {
+      clearInterval(_activityPollInterval);
+      const interval = _adaptiveActivityInterval();
+      console.log(`%c[ACTIVITY] ⏱ Interval: ${interval}s (unchanged: ${_activityUnchangedCount})`, 'color: #d29922;');
+      _activityPollInterval = setInterval(_activityPollFn, interval * 1000);
     }
 
     _activityPollFn = () => poll(false);
@@ -8192,8 +8261,10 @@
         pollLiveDashboard();
         _adaptiveLivePoll();
       }
-      // Resume activity stream polling
+      // Resume activity stream polling — reset backoff so first poll is immediate
       if (_activityPollFn && !_activityPollInterval) {
+        _activityUnchangedCount = 0;
+        _activityErrorCount = 0;
         _activityPollFn();
         _activityPollInterval = setInterval(_activityPollFn, _ACTIVITY_POLL_MS);
       }
@@ -8335,6 +8406,8 @@
     const startScheduled = document.querySelector('input[name="launchStart"][value="scheduled"]')?.checked;
     const startTimeEl = document.getElementById('launchStartTime');
     if (startTimeEl) { startTimeEl.disabled = !startScheduled; startTimeEl.style.opacity = ''; }
+    // Unlock conditions panel
+    lockConditionsPanel(false);
     // Dashboard
     const dashboard = document.getElementById('launchDashboard');
     if (dashboard) { dashboard.style.maxHeight = '0'; dashboard.style.opacity = '0'; }
@@ -8443,6 +8516,9 @@
     });
     const startTimeInput = document.getElementById('launchStartTime');
     if (startTimeInput) { startTimeInput.disabled = true; startTimeInput.style.opacity = '0.4'; }
+
+    // Lock conditions panel while live
+    lockConditionsPanel(true);
 
     btn.innerHTML = 'End Study';
     btn.style.background = 'transparent';

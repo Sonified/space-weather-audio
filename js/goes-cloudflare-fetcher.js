@@ -536,6 +536,22 @@ export function getSessionAudioBuffer(spacecraft, dataset, startTimeISO, endTime
     return { buffer, metadata: session.metadata };
 }
 
+/**
+ * Get prefetch progress for a data range.
+ * Returns { done, completedCount, totalCount, session } or null if no session exists.
+ */
+export function getPrefetchStatus(spacecraft, dataset, startTimeISO, endTimeISO) {
+    const key = sessionKey(spacecraft, dataset, startTimeISO, endTimeISO);
+    const session = activeSessions.get(key);
+    if (!session) return null;
+    return {
+        done: session.done,
+        completedCount: session.completedCount,
+        totalCount: session.chunkSchedule?.length || 0,
+        promise: session.promise,
+    };
+}
+
 // =============================================================================
 // Render Pipeline — subscribes to a download session
 // =============================================================================
@@ -1075,9 +1091,22 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
 
             // Use running buffer for completeSamplesArray
             growProgressiveBuffer();
-            const stitched = progressiveSamplesBuffer
+            let stitched = progressiveSamplesBuffer
                 ? progressiveSamplesBuffer.subarray(0, progressiveSamplesOffset)
                 : new Float32Array(0);
+
+            // De-trend BEFORE setting state — one buffer, one truth (matches index.html pattern)
+            const removeDCChecked = document.getElementById('removeDCOffset')?.checked || false;
+            if (removeDCChecked) {
+                const { removeDCOffset: detrend, normalize: norm } = await import('./minimap-window-renderer.js');
+                const slider = document.getElementById('waveformFilterSlider');
+                const sliderVal = slider ? parseInt(slider.value) : 50;
+                const alpha = 0.95 + (sliderVal / 100) * (0.9999 - 0.95);
+                window.rawWaveformData = new Float32Array(stitched);
+                stitched = norm(detrend(stitched, alpha));
+                console.log(`🎛️ Pre-render de-trend applied (α=${alpha.toFixed(4)})`);
+            }
+
             State.setCompleteSamplesArray(stitched);
             if (window.pm?.data) console.log(`📦 ${logTime()} completeSamplesArray ready: ${stitched.length.toLocaleString()} samples`);
 
@@ -1149,7 +1178,6 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
                 totalExpectedSamples: totalWorkletSamples,
             });
 
-            if (window.pm?.render) console.log(`🎨 ${logTime()} Final spectrogram render with complete data...`);
             await renderProgressiveSpectrogram(State.completeSamplesArray, { isComplete: true });
 
             // Update playback controls
@@ -1162,15 +1190,8 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
 
             State.setIsFetchingNewData(false);
 
-            // Auto-apply de-trending if checkbox is checked (updates completeSamplesArray,
-            // worklet buffer, and spectrogram so downloads and playback use de-trended data)
-            console.log(`🎛️ Auto-detrend check: removeDC=${removeDC}, completeSamples=${State.getCompleteSamplesLength()}`);
-            if (removeDC) {
-                const { changeWaveformFilter } = await import('./minimap-window-renderer.js');
-                console.log(`🎛️ Calling changeWaveformFilter() for auto-detrend...`);
-                changeWaveformFilter();
-                console.log(`🎛️ changeWaveformFilter() returned`);
-            }
+            // De-trending already applied above before setCompleteSamplesArray —
+            // no need for changeWaveformFilter() rebuild here
 
             if (window.pm?.data) console.log(`🎨 ${logTime()} Render pipeline complete!`);
         },
