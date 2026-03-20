@@ -582,6 +582,24 @@ export default {
       }
 
       // =======================================================================
+      // Pre-rendered EMIC audio: /api/emic-audio/:filename.wav
+      // Serves wavelet-stretched WAVs from emic-data R2 bucket
+      // =======================================================================
+      const emicAudioMatch = path.match(/^\/api\/emic-audio\/([^/]+\.wav)$/);
+      if (emicAudioMatch && request.method === 'GET') {
+        const filename = emicAudioMatch[1];
+        const obj = await env.EMIC_DATA.get(`audio/${filename}`);
+        if (!obj) return json({ error: 'Not found', key: `audio/${filename}` }, 404);
+        return new Response(obj.body, {
+          headers: {
+            'Content-Type': 'audio/wav',
+            'Cache-Control': 'public, max-age=31536000',
+            ...CORS_HEADERS,
+          },
+        });
+      }
+
+      // =======================================================================
       // EMIC Data Routes: /emic/data/*
       // Serves GOES magnetometer chunks from emic-data R2 bucket
       // =======================================================================

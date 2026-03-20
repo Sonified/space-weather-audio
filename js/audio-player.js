@@ -440,6 +440,11 @@ async function waveletComputeCWT(samples) {
  * Fast path: only re-runs Pass 2 (CWT coefficients are cached from Pass 1).
  */
 async function waveletStretchAndLoad(speed) {
+    // Pre-rendered wavelet: worklet already has the stretched audio, skip GPU
+    if (State.waveletPreRendered) {
+        console.log(`%c🎵 [WAVELET] Pre-rendered — skipping GPU stretch`, 'color: #E040FB;');
+        return true;
+    }
     if (!waveletGPU) {
         console.warn('[Wavelet GPU] Not initialized — cannot stretch');
         return false;
@@ -589,6 +594,20 @@ export function primeStretchProcessors(samples) {
         const node = createStretchNode(algo);
 
         if (algo === 'wavelet') {
+            // Check for pre-rendered wavelet audio (from R2, already stretched)
+            if (State.waveletPreRendered && window.__waveletPreRendered?.samples) {
+                const pre = window.__waveletPreRendered;
+                const copy = new Float32Array(pre.samples);
+                node.port.postMessage(
+                    { type: 'load-audio', data: { samples: copy } },
+                    [copy.buffer]
+                );
+                node._ready = true;
+                State.setStretchSpeed(pre.speed);
+                console.log(`%c🎵 [WAVELET] Loaded pre-rendered audio into worklet (${pre.samples.length} samples, ${pre.speed}× speed)`, 'color: #E040FB; font-weight: bold;');
+                nodes[algo] = node;
+                continue;
+            }
             // Wavelet node gets GPU-stretched audio, not raw samples.
             // Mark as not ready — will be loaded when CWT + stretch completes.
             nodes[algo] = node;
@@ -626,6 +645,12 @@ export function primeStretchProcessors(samples) {
             newNode.port.postMessage({ type: 'seek', data: { position: 0 } });
             console.log(`🎛️ Hot-swapped stretch node [${activeAlgo}] with ${samples.length} new samples`);
         }
+    }
+
+    // Skip GPU CWT if pre-rendered wavelet audio is loaded
+    if (State.waveletPreRendered) {
+        console.log(`%c🎵 [WAVELET] Skipping GPU CWT — using pre-rendered audio`, 'color: #E040FB;');
+        return;
     }
 
     // Kick off GPU CWT for wavelet algorithm (async, doesn't block priming)
@@ -757,15 +782,25 @@ function engageStretch(speed) {
     node.port.postMessage({ type: 'set-speed', data: { speed } });
 
     if (algorithm === 'wavelet') {
-        // Wavelet: run GPU stretch pass, then load result and engage
-        node._pendingResume = { position: currentPosition, shouldPlay: wasPlaying, doCrossfade: true };
-        waveletStretchAndLoad(speed).then(ok => {
-            if (!ok) return;
-            // node._ready will be set by the 'loaded' message handler
-        }).catch(err => {
-            console.error('🎛️ Wavelet GPU stretch failed:', err);
-        });
-        return;
+        if (State.waveletPreRendered && node._ready) {
+            // Pre-rendered: worklet already loaded — treat like a primed node
+            console.log(`%c🎵 [WAVELET] Engaging pre-rendered wavelet`, 'color: #E040FB;');
+            // Use baked speed, not slider speed
+            const bakedSpeed = window.__waveletPreRendered?.speed || speed;
+            State.setStretchSpeed(bakedSpeed);
+            node.port.postMessage({ type: 'set-speed', data: { speed: bakedSpeed } });
+            // Fall through to the _ready block below
+        } else {
+            // GPU wavelet: run stretch pass, then load result and engage
+            node._pendingResume = { position: currentPosition, shouldPlay: wasPlaying, doCrossfade: true };
+            waveletStretchAndLoad(speed).then(ok => {
+                if (!ok) return;
+                // node._ready will be set by the 'loaded' message handler
+            }).catch(err => {
+                console.error('🎛️ Wavelet GPU stretch failed:', err);
+            });
+            return;
+        }
     }
 
     if (node._ready) {

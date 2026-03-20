@@ -155,6 +155,74 @@ function clearAllStepFlags() {
 /** Processing algorithm mapping: builder values → audio-state values */
 const PROCESSING_MAP = { resample: 'resample', paulStretch: 'paul', wavelet: 'wavelet' };
 
+// Pre-rendered wavelet audio — cached promises keyed by startDate
+const _waveletAudioCache = {};  // { 'YYYY-MM-DD': Promise<Float32Array> }
+
+/**
+ * Build the API URL for a pre-rendered wavelet audio file.
+ */
+function getWaveletAudioUrl(filename) {
+    const API_BASE = window.location.hostname === 'spaceweather.now.audio'
+        ? window.location.origin
+        : 'https://spaceweather.now.audio';
+    return `${API_BASE}/api/emic-audio/${encodeURIComponent(filename)}`;
+}
+
+/**
+ * Fetch + decode a pre-rendered wavelet WAV from R2. Returns Float32Array.
+ * Caches the promise so duplicate fetches are deduplicated.
+ */
+function fetchWaveletAudio(dateKey, filename) {
+    if (_waveletAudioCache[dateKey]) return _waveletAudioCache[dateKey];
+    const url = getWaveletAudioUrl(filename);
+    console.log(`%c🎵 [WAVELET] Fetching pre-rendered audio: ${filename}`, 'color: #E040FB; font-weight: bold;');
+    _waveletAudioCache[dateKey] = (async () => {
+        try {
+            const resp = await fetch(url);
+            if (!resp.ok) {
+                console.warn(`🎵 [WAVELET] Pre-rendered audio not found (${resp.status}): ${url}`);
+                return null;
+            }
+            const arrayBuffer = await resp.arrayBuffer();
+            // Decode WAV to get samples — use OfflineAudioContext for decoding
+            const tempCtx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 1, 44100);
+            const audioBuffer = await tempCtx.decodeAudioData(arrayBuffer);
+            const samples = audioBuffer.getChannelData(0);
+            console.log(`%c🎵 [WAVELET] Decoded: ${samples.length} samples (${(samples.length / 44100).toFixed(1)}s)`, 'color: #E040FB;');
+            return new Float32Array(samples);  // Copy from AudioBuffer
+        } catch (err) {
+            console.error('🎵 [WAVELET] Fetch/decode failed:', err);
+            return null;
+        }
+    })();
+    return _waveletAudioCache[dateKey];
+}
+
+/**
+ * Kick off early wavelet audio prefetch for any analysis steps that use wavelet processing.
+ * Called after condition assignment, before the participant starts analysis.
+ */
+function prefetchWaveletAudio() {
+    const ed = studyConfig?.experimentalDesign;
+    const waveletMap = ed?.waveletAudioMap;
+    if (!waveletMap || Object.keys(waveletMap).length === 0) return;
+
+    // Find analysis steps and check which ones use wavelet
+    const analysisIndices = [];
+    studyConfig.steps.forEach((s, i) => { if (s.type === 'analysis') analysisIndices.push(i); });
+
+    analysisIndices.forEach((stepIdx) => {
+        const step = studyConfig.steps[stepIdx];
+        if (step._assignedProcessing !== 'wavelet') return;
+
+        const startDate = (step.startTime || step.startDate || '').slice(0, 10);
+        const filename = waveletMap[startDate];
+        if (filename) {
+            fetchWaveletAudio(startDate, filename);  // Fire and forget — cached for later
+        }
+    });
+}
+
 /**
  * Load a previously assigned condition.
  * Checks sessionStorage first (per-tab, immune to cross-tab races),
@@ -1305,6 +1373,8 @@ async function init() {
     }
     if (assignedCondition) {
         applyConditionOrder(assignedCondition);
+        // Kick off early wavelet audio prefetch (fire-and-forget, cached for analysis entry)
+        prefetchWaveletAudio();
     }
 
     // Init debug flags panel
@@ -2073,9 +2143,35 @@ async function runAnalysis(step) {
     if (step._assignedProcessing) {
         const mapped = PROCESSING_MAP[step._assignedProcessing];
         if (mapped) {
-            const { setStretchAlgorithm } = await import('./audio-state.js');
+            const { setStretchAlgorithm, setWaveletPreRendered } = await import('./audio-state.js');
             setStretchAlgorithm(mapped);
             if (window.pm?.study_flow) console.log(`🧪 Applied processing: ${step._assignedProcessing} → ${mapped}`);
+
+            // Pre-rendered wavelet: load samples into wavelet worklet (bypass GPU CWT)
+            if (step._assignedProcessing === 'wavelet') {
+                const ed = studyConfig.experimentalDesign;
+                const waveletMap = ed?.waveletAudioMap;
+                if (waveletMap) {
+                    const startDate = (step.startTime || step.startDate || '').slice(0, 10);
+                    const filename = waveletMap[startDate];
+                    if (filename) {
+                        // Await the cached promise (may already be resolved from prefetch)
+                        const samples = await fetchWaveletAudio(startDate, filename);
+                        if (samples) {
+                            setWaveletPreRendered(true);
+                            // Store samples + baked speed for loading into worklet after priming
+                            window.__waveletPreRendered = {
+                                samples,
+                                speed: ed.waveletSpeed || 1.25
+                            };
+                            console.log(`%c🎵 [WAVELET] Pre-rendered audio ready (${samples.length} samples, ${ed.waveletSpeed || 1.25}× speed)`, 'color: #E040FB; font-weight: bold;');
+                        }
+                    }
+                }
+            } else {
+                setWaveletPreRendered(false);
+                window.__waveletPreRendered = null;
+            }
         }
     }
 

@@ -29,6 +29,7 @@ export let stretchActive = false;      // Whether stretch path is currently the 
 export let stretchSpeed = 1.0;         // Current stretch speed (same unit as baseSpeed)
 export let stretchStartTime = 0;       // audioContext.currentTime when stretch playback started
 export let stretchStartPosition = 0;   // Source position (seconds) when stretch started
+export let waveletPreRendered = false; // True when pre-rendered wavelet WAV is loaded (skip GPU CWT)
 
 // Playback state
 export let playbackState = PlaybackState.STOPPED;
@@ -156,6 +157,7 @@ export function setStretchActive(value) { stretchActive = value; }
 export function setStretchSpeed(value) { stretchSpeed = value; }
 export function setStretchStartTime(value) { stretchStartTime = value; }
 export function setStretchStartPosition(value) { stretchStartPosition = value; }
+export function setWaveletPreRendered(value) { waveletPreRendered = value; }
 export function setPlaybackState(value) {
     // console.log(`🔧 setPlaybackState(${value}) - previous state: ${playbackState}`);
     playbackState = value;

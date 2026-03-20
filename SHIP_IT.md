@@ -82,11 +82,11 @@ An
 - [x] **HS20.** Update placement of copy card info to prevent accidental clicking ⏱ ~30 min ▶️ 00:35 ✅ 00:50
 
 #### 🎧 Listening & Content (you + headphones)
-- [ ] **HS1.** Tune wavelet + Paul stretch params → [`homestretch/HS1.md`](homestretch/HS1.md)
-  - Use `stretch_test.html` with GOES Region 1 & 2 data (raw + de-trended)
+- [x] **HS1.** Tune wavelet + Paul stretch params ✅
   - ✅ Paul stretch confirmed: window size 1024
-  - **Remaining:** Wavelet (w0, dj, phase mode, interpolation)
-  - **Feeds into HS44** — chosen params used to generate pre-rendered wavelet audio
+  - ✅ Wavelet CWT: w0=10, dj=0.125, phase=unwrapped (pitch-accurate), interp=cubic (Catmull-Rom)
+  - ✅ Gain curve pipeline: piecewise linear envelope in `gain_curves.json`, applied post-detrend pre-normalize
+  - ✅ RMS matched between regions within 0.02%
 - [ ] **HS43.** De-trended audio in study flow — integrated, needs full testing
   - ✅ De-trend toggle wired in study builder (HS39), auto-applies on fetch, persists across sessions
   - **Remaining:** End-to-end test that de-trended audio plays correctly through study flow (both sections)
@@ -94,14 +94,17 @@ An
 #### 🌊 Pre-rendered wavelet audio pipeline
 > **Key insight:** Wavelet-stretched audio is ~4 MB per file. Pre-render locally via `stretch_test.html`, upload to R2, serve to participants. No WebGPU needed on client. Paul stretch remains real-time in the worklet — only wavelet needs pre-rendering.
 
-- [ ] **HS44.** Generate pre-rendered wavelet-stretched audio for all study conditions
-  - Render each GOES region × wavelet speed (e.g. 1.25x) using tuned params from HS1
-  - Verify gain/balance, normalize, export as WAV
-- [ ] **HS45.** Upload wavelet audio to R2 and wire into study flow
-  - Store in R2: `emic-data/wavelet/{region}_{detrend}_{speed}.wav`
-  - Study config maps condition → R2 URL for wavelet audio
-  - Client: fetch WAV → `decodeAudioData()` → `load-audio` to wavelet worklet
-  - Speed metadata (e.g. 1.25) for playhead math only — worklet plays at 1x sample rate
+- [x] **HS44.** Generate pre-rendered wavelet-stretched audio for all study conditions ✅
+  - ✅ Gain-curved, de-trended, peak-normalized WAVs (16-bit PCM, 44100 Hz, ~4 MB each)
+  - ✅ Pipeline matches app exactly: raw → removeDCOffset → applyGainCurve → peakNormalize → CWT
+  - ✅ `spike_review.html` gain envelope editor for tuning curves
+  - ✅ `process_gain_curves.js` Node script for reproducible WAV generation
+- [ ] **HS45.** Wire pre-rendered wavelet audio into study flow
+  - ✅ Uploaded to R2: `emic-data/audio/GOES_REGION_{1,2}_speed_cwt_1.25x.wav`
+  - ✅ Study builder toggles: `gainCurve` + `vizGainCurve` in Playback & Presentation panel
+  - **Remaining:** Study config maps condition → R2 URL for wavelet audio
+  - **Remaining:** Client: fetch WAV → `decodeAudioData()` → play via worklet at 1x sample rate
+  - **Remaining:** Speed metadata (e.g. 1.25) for playhead math only
 - [x] ~~**HS26-29.**~~ Client-side GPU wavelet stretch — superseded by pre-rendered approach
   - Streaming prototype complete in `stretch_test.html` (kept as rendering tool + future portal feature)
 

@@ -1979,6 +1979,30 @@
                 <span style="display:block; font-size:11px; color:#888; margin-top:4px; line-height:1.3;">When enabled, data fully downloads before display. A loading indicator appears if the participant reaches analysis before download completes.</span>
               </div>
               <div class="settings-row" style="margin-top:12px;">
+                <span class="toggle-label">Gain curve pre-normalization</span>
+                <span class="info-tip" data-tip="Apply piecewise-linear gain envelope (from gain_curves.json) after de-trending and before peak normalization. Balances RMS levels across regions."><div class="toggle on" id="pb_gainCurve" onclick="this.classList.toggle('on'); const vizRow=document.getElementById('pb_vizGainCurveRow'); if(vizRow) vizRow.style.display=this.classList.contains('on')?'':'none'; autoSave('playbackSpeed')"></div></span>
+              </div>
+              <div class="settings-row" style="margin-top:12px;" id="pb_vizGainCurveRow">
+                <span class="toggle-label">Visualize gain-curved spectrum</span>
+                <span class="info-tip" data-tip="When enabled, the spectrogram/pyramid is computed from the gain-curved signal so participants see what they hear. When off, the spectrogram shows the original de-trended signal."><div class="toggle on" id="pb_vizGainCurve" onclick="this.classList.toggle('on'); autoSave('playbackSpeed')"></div></span>
+              </div>
+              <div id="pb_waveletAudioSection" style="margin-top:12px; padding:10px; background:rgba(255,255,255,0.03); border-radius:var(--radius); border:1px solid rgba(255,255,255,0.06);">
+                <div style="font-size:11px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Pre-rendered Wavelet Audio (R2)</div>
+                <div class="settings-row" style="margin-top:0;">
+                  <span class="toggle-label" style="min-width:80px;">Region 1</span>
+                  <input class="field-input" id="pb_waveletFile1" type="text" value="GOES_REGION_1_speed_cwt_1.25x.wav" placeholder="filename.wav" style="flex:1; padding:4px 8px; font-size:12px;" oninput="autoSave('playbackSpeed')" onclick="event.stopPropagation()" />
+                </div>
+                <div class="settings-row" style="margin-top:6px;">
+                  <span class="toggle-label" style="min-width:80px;">Region 2</span>
+                  <input class="field-input" id="pb_waveletFile2" type="text" value="GOES_REGION_2_speed_cwt_1.25x.wav" placeholder="filename.wav" style="flex:1; padding:4px 8px; font-size:12px;" oninput="autoSave('playbackSpeed')" onclick="event.stopPropagation()" />
+                </div>
+                <div class="settings-row" style="margin-top:6px;">
+                  <span class="toggle-label" style="min-width:80px;">Speed</span>
+                  <input class="field-input" id="pb_waveletSpeed" type="text" value="1.25" style="width:60px; padding:4px 8px; font-size:12px; text-align:center;" oninput="autoSave('playbackSpeed')" onclick="event.stopPropagation()" />
+                  <span style="font-size:11px; color:var(--text-muted);">× (baked into WAV)</span>
+                </div>
+              </div>
+              <div class="settings-row" style="margin-top:12px;">
                 <span class="toggle-label">Paul Stretch Window Size</span>
                 <select id="pb_paulWindowSize" onchange="autoSave('playbackSpeed')" style="padding:4px 8px; font-size:12px; border-radius:var(--radius); border:1px solid var(--border); background:var(--bg); color:var(--text);">
                   <option value="256">256</option>
@@ -2699,7 +2723,7 @@
         // Restore Data Playback toggles synchronously — suppress CSS transitions to prevent jump
         const _ed = _config.experimentalDesign;
         if (_ed) {
-          const _map = { pb_useGlobal:'useGlobalSpeed', pb_lockSpectrogram:'lockSpectrogramTo1x', pb_preRenderPyramid:'preRenderPyramid', pb_detrend:'detrend' };
+          const _map = { pb_useGlobal:'useGlobalSpeed', pb_lockSpectrogram:'lockSpectrogramTo1x', pb_preRenderPyramid:'preRenderPyramid', pb_detrend:'detrend', pb_gainCurve:'gainCurve', pb_vizGainCurve:'vizGainCurve' };
           for (const [id, key] of Object.entries(_map)) {
             const el = document.getElementById(id);
             if (!el) continue;
@@ -2711,6 +2735,21 @@
           if (_s && _ed.useGlobalSpeed) { _s.disabled = false; _s.style.opacity = ''; }
           const _pw = document.getElementById('pb_paulWindowSize');
           if (_pw && _ed.paulWindowSize) _pw.value = String(_ed.paulWindowSize);
+          // Show/hide vizGainCurve row based on gainCurve toggle state
+          const _vizRow = document.getElementById('pb_vizGainCurveRow');
+          if (_vizRow) _vizRow.style.display = document.getElementById('pb_gainCurve')?.classList.contains('on') ? '' : 'none';
+          // Restore wavelet audio config
+          if (_ed.waveletAudioMap) {
+            const _files = Object.values(_ed.waveletAudioMap);
+            const _wf1 = document.getElementById('pb_waveletFile1');
+            const _wf2 = document.getElementById('pb_waveletFile2');
+            if (_wf1 && _files[0]) _wf1.value = _files[0];
+            if (_wf2 && _files[1]) _wf2.value = _files[1];
+          }
+          if (_ed.waveletSpeed != null) {
+            const _ws = document.getElementById('pb_waveletSpeed');
+            if (_ws) _ws.value = String(_ed.waveletSpeed);
+          }
           // Re-enable transitions after first frame
           requestAnimationFrame(() => {
             for (const id of Object.keys(_map)) {
@@ -4492,9 +4531,33 @@
     const lockSpectrogramTo1x = document.getElementById('pb_lockSpectrogram')?.classList.contains('on') || false;
     const preRenderPyramid = document.getElementById('pb_preRenderPyramid')?.classList.contains('on') || false;
     const detrend = document.getElementById('pb_detrend')?.classList.contains('on') || false;
+    const gainCurve = document.getElementById('pb_gainCurve')?.classList.contains('on') || false;
+    const vizGainCurve = document.getElementById('pb_vizGainCurve')?.classList.contains('on') || false;
     const paulWindowSize = parseInt(document.getElementById('pb_paulWindowSize')?.value) || 1024;
 
-    return { conditions, returningParticipant, randomization, playbackSpeed, useGlobalSpeed, lockSpectrogramTo1x, preRenderPyramid, detrend, paulWindowSize };
+    // Pre-rendered wavelet audio config
+    const waveletAudioMap = {};
+    const waveletSpeed = parseFloat(document.getElementById('pb_waveletSpeed')?.value) || 1.25;
+    // Build map: scan analysis steps for start dates, pair with filenames
+    const analysisSteps = [];
+    document.querySelectorAll('#flowList .flow-card').forEach(card => {
+      const typeEl = card.querySelector('.step-type');
+      if (typeEl && typeEl.value === 'analysis') analysisSteps.push(card);
+    });
+    const waveletFiles = [
+      document.getElementById('pb_waveletFile1')?.value?.trim(),
+      document.getElementById('pb_waveletFile2')?.value?.trim()
+    ];
+    analysisSteps.forEach((card, i) => {
+      const startInput = card.querySelector('.analysis-start');
+      if (startInput && startInput.value && waveletFiles[i]) {
+        // Convert datetime-local to YYYY-MM-DD key
+        const dateKey = startInput.value.slice(0, 10);
+        waveletAudioMap[dateKey] = waveletFiles[i];
+      }
+    });
+
+    return { conditions, returningParticipant, randomization, playbackSpeed, useGlobalSpeed, lockSpectrogramTo1x, preRenderPyramid, detrend, gainCurve, vizGainCurve, paulWindowSize, waveletAudioMap, waveletSpeed };
   }
 
   function loadExperimentalDesign(design) {
