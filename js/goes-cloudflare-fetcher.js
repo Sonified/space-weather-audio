@@ -1128,14 +1128,10 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
             progressiveSamplesOffset = 0;
             progressiveBufferChunkIndex = 0;
 
-            // Also free session processedChunks (no longer needed)
-            for (let i = 0; i < session.processedChunks.length; i++) {
-                if (session.processedChunks[i]) {
-                    session.processedChunks[i].normalized = null;
-                    session.processedChunks[i].raw = null;
-                    session.processedChunks[i] = null;
-                }
-            }
+            // Keep session.processedChunks alive — if the user steps backward
+            // in the study flow, getOrCreateDownloadSession can reuse this session
+            // and attachRendererToSession replays chunks instantly (no re-download).
+            // Memory cost is small (~5 MB per region).
 
             if (window.pm?.data) console.log(`🧹 ${logTime()} Memory cleaned up`);
 

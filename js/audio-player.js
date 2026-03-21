@@ -335,13 +335,16 @@ export function updatePlaybackSpeed() {
                 State.setStretchStartTime(State.audioContext.currentTime);
             }
             // Now update speed in state and worklet
-            State.setStretchSpeed(baseSpeed);
+            // Pre-rendered wavelet: speed is always 1.0 (stretch baked into WAV)
+            const updateSpeed = (State.stretchAlgorithm === 'wavelet' && State.waveletPreRendered) ? 1.0 : baseSpeed;
+            State.setStretchSpeed(updateSpeed);
             if (State.stretchNode) {
-                State.stretchNode.port.postMessage({ type: 'set-speed', data: { speed: baseSpeed } });
+                State.stretchNode.port.postMessage({ type: 'set-speed', data: { speed: updateSpeed } });
             }
 
             // Wavelet: re-run GPU stretch pass with new speed (CWT is cached)
-            if (State.stretchAlgorithm === 'wavelet') {
+            // Skip for pre-rendered wavelet (stretch is already baked)
+            if (State.stretchAlgorithm === 'wavelet' && !State.waveletPreRendered) {
                 waveletStretchAndLoad(baseSpeed).catch(err => {
                     console.error('🎛️ Wavelet re-stretch failed:', err);
                 });
@@ -603,7 +606,10 @@ export function primeStretchProcessors(samples) {
                     [copy.buffer]
                 );
                 node._ready = true;
-                State.setStretchSpeed(pre.speed);
+                // Worklet plays at 1.0x — stretch is baked into the WAV.
+                // Speed scaling lives in realWorldToAudioSeconds/audioSecondsToRealWorld
+                // via window.__waveletPreRendered.speed (not State.stretchSpeed).
+                State.setStretchSpeed(1.0);
                 console.log(`%c🎵 [WAVELET] Loaded pre-rendered audio into worklet (${pre.samples.length} samples, ${pre.speed}× speed)`, 'color: #E040FB; font-weight: bold;');
                 nodes[algo] = node;
                 continue;
@@ -641,7 +647,9 @@ export function primeStretchProcessors(samples) {
             newNode.connect(State.stretchGainNode);
             State.setStretchNode(newNode);
             // Re-send speed and seek to position 0 (section transition = fresh start)
-            newNode.port.postMessage({ type: 'set-speed', data: { speed: State.stretchSpeed } });
+            // Pre-rendered wavelet: worklet plays at 1.0x (stretch baked into WAV)
+            const hotSwapSpeed = (activeAlgo === 'wavelet' && State.waveletPreRendered) ? 1.0 : State.stretchSpeed;
+            newNode.port.postMessage({ type: 'set-speed', data: { speed: hotSwapSpeed } });
             newNode.port.postMessage({ type: 'seek', data: { position: 0 } });
             console.log(`🎛️ Hot-swapped stretch node [${activeAlgo}] with ${samples.length} new samples`);
         }
@@ -723,7 +731,12 @@ function realWorldToAudioSeconds(realWorldSeconds) {
                                 || State.currentMetadata?.original_sample_rate
                                 || 1200;
     const ctxRate = State.audioContext?.sampleRate || 44100;
-    return realWorldSeconds * samplesPerRealSecond / ctxRate;
+    let audioSec = realWorldSeconds * samplesPerRealSecond / ctxRate;
+    // Pre-rendered wavelet: buffer is 1/speed shorter than unstretched
+    if (State.waveletPreRendered && window.__waveletPreRendered?.speed) {
+        audioSec /= window.__waveletPreRendered.speed;
+    }
+    return audioSec;
 }
 
 /**
@@ -734,6 +747,10 @@ function audioSecondsToRealWorld(audioSeconds) {
                                 || State.currentMetadata?.original_sample_rate
                                 || 1200;
     const ctxRate = State.audioContext?.sampleRate || 44100;
+    // Pre-rendered wavelet: buffer is 1/speed shorter — scale back up
+    if (State.waveletPreRendered && window.__waveletPreRendered?.speed) {
+        audioSeconds *= window.__waveletPreRendered.speed;
+    }
     return audioSeconds * ctxRate / samplesPerRealSecond;
 }
 
@@ -774,21 +791,20 @@ function engageStretch(speed) {
 
     State.setStretchNode(node);
     State.setStretchActive(true);
-    State.setStretchSpeed(speed);
+    // Pre-rendered wavelet: always use 1.0x speed (stretch baked into WAV).
+    // Must set BEFORE any path branches — both the _ready and !_ready paths need this.
+    const effectiveSpeed = (algorithm === 'wavelet' && State.waveletPreRendered) ? 1.0 : speed;
+    State.setStretchSpeed(effectiveSpeed);
     State.setStretchStartPosition(currentPosition);
     State.setStretchStartTime(State.audioContext.currentTime);
 
     // Set speed on the processor
-    node.port.postMessage({ type: 'set-speed', data: { speed } });
+    node.port.postMessage({ type: 'set-speed', data: { speed: effectiveSpeed } });
 
     if (algorithm === 'wavelet') {
         if (State.waveletPreRendered && node._ready) {
             // Pre-rendered: worklet already loaded — treat like a primed node
             console.log(`%c🎵 [WAVELET] Engaging pre-rendered wavelet`, 'color: #E040FB;');
-            // Use baked speed, not slider speed
-            const bakedSpeed = window.__waveletPreRendered?.speed || speed;
-            State.setStretchSpeed(bakedSpeed);
-            node.port.postMessage({ type: 'set-speed', data: { speed: bakedSpeed } });
             // Fall through to the _ready block below
         } else {
             // GPU wavelet: run stretch pass, then load result and engage
@@ -906,7 +922,8 @@ export function switchStretchAlgorithm(algorithm) {
             State.stretchGainNode.gain.linearRampToValueAtTime(1, swapTime + SWITCH_FADE);
         }, SWITCH_FADE * 1000 + 5); // +5ms safety margin
 
-        State.setStretchSpeed(baseSpeed);
+        const switchSpeed = (newAlgo === 'wavelet' && State.waveletPreRendered) ? 1.0 : baseSpeed;
+        State.setStretchSpeed(switchSpeed);
         State.setStretchStartPosition(currentPosition);
         State.setStretchStartTime(State.audioContext.currentTime);
     }
