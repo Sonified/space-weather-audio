@@ -1435,8 +1435,15 @@
     border-radius: 4px; transition: background 0.15s, color 0.15s, opacity 0.15s;
     flex-shrink: 0; opacity: 0; margin-left: 8px;
   }
-  .condition-row:hover .cond-preview { opacity: 1; }
+  .condition-row:hover .cond-preview, .condition-row:hover .cond-test { opacity: 1; }
   .condition-row .cond-preview:hover { background: rgba(77,168,255,0.2); color: var(--accent); }
+  .condition-row .cond-test {
+    width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+    background: none; border: none; cursor: pointer;
+    border-radius: 4px; transition: background 0.15s, opacity 0.15s;
+    flex-shrink: 0; opacity: 0; margin-left: 2px; font-size: 13px;
+  }
+  .condition-row .cond-test:hover { background: rgba(77,168,255,0.2); }
   .condition-row .cond-warn {
     width: 8px;
     height: 8px;
@@ -4385,6 +4392,7 @@
       <span class="cond-warn" title="Duplicate condition"></span>
       <button type="button" class="cond-delete" onclick="deleteConditionRow(this)" title="Remove">×</button>
       <button type="button" class="cond-preview" onclick="previewCondition(this)" title="Preview with this condition"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+      <button type="button" class="cond-test" onclick="testCondition(this)" title="Test with this condition (reset)">🧪</button>
     `;
     if (order) row.querySelector('.cond-order').value = order;
     list.appendChild(row);
@@ -4402,6 +4410,15 @@
     const slug = document.getElementById('slugValue')?.textContent?.trim();
     if (!slug) return;
     window.open(`${location.origin}/study.html?s=${slug}&mode=preview&condition=${idx}`, '_blank');
+  }
+
+  function testCondition(btn) {
+    const row = btn.closest('.condition-row');
+    const rows = row.parentElement.querySelectorAll('.condition-row');
+    const idx = Array.from(rows).indexOf(row) + 1; // 1-indexed
+    const slug = document.getElementById('slugValue')?.textContent?.trim();
+    if (!slug) return;
+    window.open(`${location.origin}/study.html?s=${slug}&mode=test&condition=${idx}&reset`, '_blank');
   }
 
   function deleteConditionRow(btn) {
@@ -4540,9 +4557,8 @@
     const waveletSpeed = parseFloat(document.getElementById('pb_waveletSpeed')?.value) || 1.25;
     // Build map: scan analysis steps for start dates, pair with filenames
     const analysisSteps = [];
-    document.querySelectorAll('#flowList .flow-card').forEach(card => {
-      const typeEl = card.querySelector('.step-type');
-      if (typeEl && typeEl.value === 'analysis') analysisSteps.push(card);
+    document.querySelectorAll('#stepList .step-card[data-type="analysis"]').forEach(card => {
+      analysisSteps.push(card);
     });
     const waveletFiles = [
       document.getElementById('pb_waveletFile1')?.value?.trim(),

@@ -1705,7 +1705,7 @@
          */
         class ChunkScheduler {
             constructor(audioData, speed, waveletGPU, opts) {
-                this.audioData = audioData;
+                this.originalLength = audioData.length;
                 this.speed = speed;
                 this.waveletGPU = waveletGPU;
                 this.opts = opts;
@@ -1721,8 +1721,27 @@
                 );
                 this.overlapSamples = Math.round(0.5 * sampleRate); // 0.5s overlap
                 this.stride = this.maxChunkSamples - this.overlapSamples;
-                this.numChunks = Math.ceil((audioData.length - this.overlapSamples) / this.stride);
-                this.totalOutputLen = Math.round(audioData.length * stretchFactor);
+
+                // Mirror-pad input so last chunk gets full context (avoids CWT edge trimming)
+                const rawLen = audioData.length;
+                const lastChunkStart = Math.floor((rawLen - this.overlapSamples) / this.stride) * this.stride;
+                const neededEnd = lastChunkStart + this.maxChunkSamples;
+                if (neededEnd > rawLen) {
+                    const padLen = neededEnd - rawLen;
+                    const padded = new Float32Array(neededEnd);
+                    padded.set(audioData);
+                    // Mirror-reflect: copy end of signal reversed
+                    for (let i = 0; i < padLen; i++) {
+                        padded[rawLen + i] = audioData[rawLen - 1 - i] || 0;
+                    }
+                    this.audioData = padded;
+                    console.log(`%c[ChunkScheduler] Mirror-padded input: ${rawLen} → ${neededEnd} (+${padLen} samples)`, 'color: #7EB8B0;');
+                } else {
+                    this.audioData = audioData;
+                }
+
+                this.numChunks = Math.ceil((this.audioData.length - this.overlapSamples) / this.stride);
+                this.totalOutputLen = Math.round(rawLen * stretchFactor);
                 this.outputOverlap = Math.round(this.overlapSamples * stretchFactor);
                 this.stretchFactor = stretchFactor;
 
@@ -1983,7 +2002,13 @@
         // slider 0-1000 → speed 0.05x-10x  (slider 565 ≈ 1x)
         // f(x) = 0.05 * 200^(x/1000)
         function sliderToSpeed(sliderValue) {
-            return 0.05 * Math.pow(200, sliderValue / 1000);
+            const raw = 0.05 * Math.pow(200, sliderValue / 1000);
+            // Snap to exact common values (exponential curve can't land on these)
+            const snaps = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 5.0];
+            for (const s of snaps) {
+                if (Math.abs(raw - s) < 0.01) return s;
+            }
+            return raw;
         }
         // Everything uses speed internally. No stretchFactor concept.
 

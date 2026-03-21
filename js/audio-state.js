@@ -30,6 +30,7 @@ export let stretchSpeed = 1.0;         // Current stretch speed (same unit as ba
 export let stretchStartTime = 0;       // audioContext.currentTime when stretch playback started
 export let stretchStartPosition = 0;   // Source position (seconds) when stretch started
 export let waveletPreRendered = false; // True when pre-rendered wavelet WAV is loaded (skip GPU CWT)
+export let paulStretchGain = 2.0;      // Gain compensation for paul stretch phase-randomization (~50% amplitude loss)
 
 // Playback state
 export let playbackState = PlaybackState.STOPPED;
@@ -158,6 +159,7 @@ export function setStretchSpeed(value) { stretchSpeed = value; }
 export function setStretchStartTime(value) { stretchStartTime = value; }
 export function setStretchStartPosition(value) { stretchStartPosition = value; }
 export function setWaveletPreRendered(value) { waveletPreRendered = value; }
+export function setPaulStretchGain(value) { paulStretchGain = value; }
 export function setPlaybackState(value) {
     // console.log(`🔧 setPlaybackState(${value}) - previous state: ${playbackState}`);
     playbackState = value;

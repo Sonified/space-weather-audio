@@ -99,6 +99,7 @@
             <div style="flex: 1;"></div>
             <h1 id="studyTitle" style="margin: 0 0 0 0; flex: 0 0 auto; font-size: 1.5em; opacity: 0; color: #fff; transition: opacity 0.6s ease;"></h1>
             <div style="flex: 1; display: flex; justify-content: flex-end; align-items: flex-end; gap: 8px;">
+                <span id="processingModeLabel" style="display:none; font-size: 11px; color: #8b8; font-family: monospace; margin-bottom: 2px; opacity: 0.8;"></span>
                 <button id="aboutInfoBtn" type="button" class="header-info-btn" title="About this study" style="display:none;">i</button>
                 <div id="participantIdDisplay" style="margin-bottom: 0;">
                     <span id="participantIdText" title="Click to view your participant info">
@@ -278,12 +279,12 @@
                     </div>
                     <div class="dev-control" style="display: flex; align-items: center; gap: 4px;">
                         <label for="spectrogramGain" id="spectrogramGainLabel" style="cursor: pointer;">Gain:</label>
-                        <input type="range" id="spectrogramGain" min="-60" max="60" value="0" step="1" style="width: 120px;">
+                        <input type="range" id="spectrogramGain" min="-30" max="30" value="0" step="1" style="width: 120px;">
                         <span id="spectrogramGainValue" style="min-width: 44px; width: 44px; font-size: 11px; color: #fff; text-align: right; white-space: nowrap;">0 dB</span>
                     </div>
                     <div class="dev-control" style="display: flex; align-items: center; gap: 4px;">
                         <label for="spectrogramContrast" id="spectrogramContrastLabel" style="cursor: pointer;">Contrast:</label>
-                        <input type="range" id="spectrogramContrast" min="10" max="200" value="100" step="1" style="width: 120px;">
+                        <input type="range" id="spectrogramContrast" min="70" max="130" value="100" step="1" style="width: 120px;">
                         <span id="spectrogramContrastValue" style="min-width: 24px; width: 24px; font-size: 11px; color: #fff; text-align: right;">100</span>
                     </div>
                     <div class="dev-control" style="display: flex; align-items: center; gap: 4px;">
@@ -318,7 +319,16 @@
     </div>
 
     <!-- Permanent Modal Overlay -->
-    <div id="permanentOverlay" style="display: flex; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.65); z-index: 1000; align-items: center; justify-content: center;"></div>
+    <div id="permanentOverlay" style="display: flex; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.65); z-index: 1000; align-items: center; justify-content: center;">
+        <div id="studyLoadingSplash" style="color: rgba(255,255,255,0.8); font-family: system-ui, -apple-system, sans-serif; font-size: 22px; font-weight: 500; letter-spacing: 0.5px; display: flex; align-items: center; gap: 14px;">
+            <svg width="28" height="28" viewBox="0 0 24 24" style="animation: studySpin 1s linear infinite;">
+                <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.25)" stroke-width="2.5" fill="none"/>
+                <path d="M12 2a10 10 0 0 1 10 10" stroke="rgba(255,255,255,0.8)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+            </svg>
+            Loading study...
+        </div>
+        <style>@keyframes studySpin { to { transform: rotate(360deg); } }</style>
+    </div>
 
     <!-- Study Flags Panel (floating, always on top — even above overlay) -->
 

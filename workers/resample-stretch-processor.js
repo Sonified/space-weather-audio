@@ -67,7 +67,7 @@ class ResampleStretchProcessor extends AudioWorkletProcessor {
             const { type, data } = event.data;
 
             switch (type) {
-                case 'load-audio':
+                case 'load-audio': {
                     this.isPlaying = false;
                     this.pendingPause = false;
                     this.pendingSeekPosition = null;
@@ -76,8 +76,20 @@ class ResampleStretchProcessor extends AudioWorkletProcessor {
                     this.sourceBuffer = (data.samples instanceof Float32Array)
                         ? data.samples : new Float32Array(data.samples);
                     this.sourcePosition = 0;
+
+                    // RMS measurement — what audio did resample actually receive?
+                    let sumSq = 0, peak = 0;
+                    for (let i = 0; i < this.sourceBuffer.length; i++) {
+                        sumSq += this.sourceBuffer[i] * this.sourceBuffer[i];
+                        const a = Math.abs(this.sourceBuffer[i]);
+                        if (a > peak) peak = a;
+                    }
+                    const rms = Math.sqrt(sumSq / this.sourceBuffer.length);
+                    console.log(`🔊 [RESAMPLE WORKLET] Received ${this.sourceBuffer.length} samples — RMS: ${rms.toFixed(6)}, peak: ${peak.toFixed(6)}`);
+
                     this.port.postMessage({ type: 'loaded', duration: data.samples.length / sampleRate });
                     break;
+                }
 
                 case 'play':
                     this.isPlaying = true;

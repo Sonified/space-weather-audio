@@ -321,7 +321,9 @@ export function updatePlaybackSpeed() {
     // Stretch algorithm dropdown is always visible in standard mode
 
     // Stretch switching: non-resample algorithms use stretch processor at ANY speed
-    const useStretch = State.stretchAlgorithm !== 'resample' && State.getCompleteSamplesLength() > 0;
+    // Only attempt if stretch nodes are primed — avoids premature engage during worklet init
+    const hasStretchNodes = State.stretchNodes && Object.keys(State.stretchNodes).length > 0;
+    const useStretch = State.stretchAlgorithm !== 'resample' && State.getCompleteSamplesLength() > 0 && hasStretchNodes;
 
     if (useStretch) {
         if (!State.stretchActive) {
@@ -675,16 +677,26 @@ export function primeStretchProcessors(samples) {
 }
 
 /**
+ * Target gain for the stretch output node.
+ * Paul stretch phase-randomization reduces peak amplitude ~50%, so we compensate with 2x gain.
+ */
+function stretchTargetGain(algorithm = State.stretchAlgorithm) {
+    return (algorithm === 'paul' || algorithm === 'paulStretch') ? State.paulStretchGain : 1.0;
+}
+
+/**
  * Perform the gain crossfade between source and stretch paths.
  * direction: 'toStretch' or 'toSource'
  */
 function performCrossfade(direction) {
     const now = State.audioContext.currentTime;
     if (direction === 'toStretch') {
+        const targetGain = stretchTargetGain();
+        console.log(`🎛️ Crossfade → stretch: targetGain=${targetGain} (algorithm=${State.stretchAlgorithm})`);
         State.sourceGainNode.gain.setValueAtTime(State.sourceGainNode.gain.value, now);
         State.sourceGainNode.gain.linearRampToValueAtTime(0, now + STRETCH_CROSSFADE_DURATION);
         State.stretchGainNode.gain.setValueAtTime(State.stretchGainNode.gain.value, now);
-        State.stretchGainNode.gain.linearRampToValueAtTime(1, now + STRETCH_CROSSFADE_DURATION);
+        State.stretchGainNode.gain.linearRampToValueAtTime(targetGain, now + STRETCH_CROSSFADE_DURATION);
         // Pause source after crossfade
         setTimeout(() => {
             if (State.stretchActive) {
@@ -919,7 +931,7 @@ export function switchStretchAlgorithm(algorithm) {
             }
             const swapTime = State.audioContext.currentTime;
             State.stretchGainNode.gain.setValueAtTime(0, swapTime);
-            State.stretchGainNode.gain.linearRampToValueAtTime(1, swapTime + SWITCH_FADE);
+            State.stretchGainNode.gain.linearRampToValueAtTime(stretchTargetGain(algorithm), swapTime + SWITCH_FADE);
         }, SWITCH_FADE * 1000 + 5); // +5ms safety margin
 
         const switchSpeed = (newAlgo === 'wavelet' && State.waveletPreRendered) ? 1.0 : baseSpeed;

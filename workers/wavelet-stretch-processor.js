@@ -275,6 +275,15 @@ class WaveletStretchProcessor extends AudioWorkletProcessor {
                 break;
             }
 
+            // Fade out over final 100ms to avoid end-of-buffer click
+            const endFadeSamples = 4410; // ~100ms at 44.1kHz
+            const samplesLeft = this.sourceBuffer.length - pos;
+            let endFadeGain = 1.0;
+            if (samplesLeft < endFadeSamples) {
+                const t = samplesLeft / endFadeSamples;
+                endFadeGain = t * t; // quadratic fade
+            }
+
             // ── Swap crossfade: blend active → back buffer ──
             if (this.swapFading && this.backBuffer) {
                 const progress = this.swapFadeRemaining / this.swapFadeLength; // 1→0
@@ -395,7 +404,7 @@ class WaveletStretchProcessor extends AudioWorkletProcessor {
                 this.fadeInRemaining--;
             }
 
-            channel[i] = sample;
+            channel[i] = sample * endFadeGain;
             this.sourcePosition++;
         }
 

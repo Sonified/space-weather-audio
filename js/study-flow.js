@@ -155,8 +155,83 @@ function clearAllStepFlags() {
 /** Processing algorithm mapping: builder values → audio-state values */
 const PROCESSING_MAP = { resample: 'resample', paulStretch: 'paul', wavelet: 'wavelet' };
 
+/** Piecewise linear gain curve — interpolate dB between control points */
+function applyGainCurveToBuffer(buffer, envelope) {
+    const out = new Float32Array(buffer);
+    if (!envelope || envelope.length === 0) return out;
+    const pts = [...envelope].sort((a, b) => a.sample - b.sample);
+    const totalSamples = buffer.length;
+    const allPts = [];
+    if (pts[0].sample > 0) allPts.push({ sample: 0, dB: 0 });
+    allPts.push(...pts);
+    if (pts[pts.length - 1].sample < totalSamples - 1) allPts.push({ sample: totalSamples - 1, dB: 0 });
+    let cpIdx = 0;
+    for (let i = 0; i < out.length; i++) {
+        while (cpIdx < allPts.length - 2 && allPts[cpIdx + 1].sample <= i) cpIdx++;
+        const p0 = allPts[cpIdx];
+        const p1 = allPts[cpIdx + 1];
+        const segLen = p1.sample - p0.sample;
+        const t = segLen > 0 ? (i - p0.sample) / segLen : 0;
+        const dB = p0.dB + t * (p1.dB - p0.dB);
+        if (dB !== 0) out[i] *= Math.pow(10, dB / 20);
+    }
+    return out;
+}
+
+function _logWaveletRMS(samples) {
+    let sumSq = 0;
+    for (let i = 0; i < samples.length; i++) sumSq += samples[i] * samples[i];
+    const rms = Math.sqrt(sumSq / samples.length);
+    let peak = 0;
+    for (let i = 0; i < samples.length; i++) { const a = Math.abs(samples[i]); if (a > peak) peak = a; }
+    console.log(`%c🔊 [WAVELET] Audio RMS: ${rms.toFixed(6)}, peak: ${peak.toFixed(6)}, samples: ${samples.length}`, 'color: #E040FB; font-weight: bold;');
+}
+
 // Pre-rendered wavelet audio — cached promises keyed by startDate
 const _waveletAudioCache = {};  // { 'YYYY-MM-DD': Promise<Float32Array> }
+
+// ── IndexedDB cache for wavelet WAV files ──
+const WAV_DB_NAME = 'waveletAudioCache';
+const WAV_DB_VERSION = 1;
+const WAV_STORE = 'wavFiles';
+let _wavDb = null;
+
+async function _openWavDb() {
+    if (_wavDb) return _wavDb;
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(WAV_DB_NAME, WAV_DB_VERSION);
+        req.onerror = () => { console.warn('IndexedDB wavelet cache unavailable'); resolve(null); };
+        req.onsuccess = () => { _wavDb = req.result; resolve(_wavDb); };
+        req.onupgradeneeded = (e) => {
+            const d = e.target.result;
+            if (!d.objectStoreNames.contains(WAV_STORE)) {
+                d.createObjectStore(WAV_STORE, { keyPath: 'filename' });
+            }
+        };
+    });
+}
+
+async function _getCachedWav(filename) {
+    const d = await _openWavDb();
+    if (!d) return null;
+    return new Promise((resolve) => {
+        const tx = d.transaction([WAV_STORE], 'readonly');
+        const req = tx.objectStore(WAV_STORE).get(filename);
+        req.onsuccess = () => resolve(req.result?.samples ?? null);
+        req.onerror = () => resolve(null);
+    });
+}
+
+async function _storeCachedWav(filename, samples) {
+    const d = await _openWavDb();
+    if (!d) return;
+    return new Promise((resolve) => {
+        const tx = d.transaction([WAV_STORE], 'readwrite');
+        tx.objectStore(WAV_STORE).put({ filename, samples, cachedAt: Date.now() });
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+    });
+}
 
 /**
  * Build the API URL for a pre-rendered wavelet audio file.
@@ -170,26 +245,43 @@ function getWaveletAudioUrl(filename) {
 
 /**
  * Fetch + decode a pre-rendered wavelet WAV from R2. Returns Float32Array.
- * Caches the promise so duplicate fetches are deduplicated.
+ * Checks IndexedDB first; on miss, fetches from R2 and caches locally.
+ * In-memory promise cache deduplicates concurrent fetches.
  */
 function fetchWaveletAudio(dateKey, filename) {
     if (_waveletAudioCache[dateKey]) return _waveletAudioCache[dateKey];
-    const url = getWaveletAudioUrl(filename);
-    console.log(`%c🎵 [WAVELET] Fetching pre-rendered audio: ${filename}`, 'color: #E040FB; font-weight: bold;');
     _waveletAudioCache[dateKey] = (async () => {
         try {
+            // 1. Check IndexedDB cache
+            const cached = await _getCachedWav(filename);
+            if (cached) {
+                console.log(`%c🎵 [WAVELET] Cache hit (IndexedDB): ${filename} — ${cached.length} samples`, 'color: #E040FB; font-weight: bold;');
+                _logWaveletRMS(cached);
+                return cached;
+            }
+
+            // 2. Fetch from R2
+            const url = getWaveletAudioUrl(filename);
+            console.log(`%c🎵 [WAVELET] Fetching from R2: ${filename}`, 'color: #E040FB; font-weight: bold;');
             const resp = await fetch(url);
             if (!resp.ok) {
                 console.warn(`🎵 [WAVELET] Pre-rendered audio not found (${resp.status}): ${url}`);
                 return null;
             }
             const arrayBuffer = await resp.arrayBuffer();
-            // Decode WAV to get samples — use OfflineAudioContext for decoding
+
+            // 3. Decode WAV
             const tempCtx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 1, 44100);
             const audioBuffer = await tempCtx.decodeAudioData(arrayBuffer);
-            const samples = audioBuffer.getChannelData(0);
+            const samples = new Float32Array(audioBuffer.getChannelData(0));  // Copy from AudioBuffer
             console.log(`%c🎵 [WAVELET] Decoded: ${samples.length} samples (${(samples.length / 44100).toFixed(1)}s)`, 'color: #E040FB;');
-            return new Float32Array(samples);  // Copy from AudioBuffer
+            _logWaveletRMS(samples);
+
+            // 4. Cache in IndexedDB for next time
+            await _storeCachedWav(filename, samples);
+            console.log(`%c🎵 [WAVELET] Cached in IndexedDB: ${filename}`, 'color: #E040FB;');
+
+            return samples;
         } catch (err) {
             console.error('🎵 [WAVELET] Fetch/decode failed:', err);
             return null;
@@ -202,10 +294,25 @@ function fetchWaveletAudio(dateKey, filename) {
  * Kick off early wavelet audio prefetch for any analysis steps that use wavelet processing.
  * Called after condition assignment, before the participant starts analysis.
  */
-function prefetchWaveletAudio() {
+// Default wavelet audio filenames keyed by analysis step start date (YYYY-MM-DD)
+const DEFAULT_WAVELET_AUDIO_MAP = {
+    '2022-08-17': 'GOES_REGION_1_speed_cwt_1.25x.wav',
+    '2022-01-14': 'GOES_REGION_2_speed_cwt_1.25x.wav',
+};
+const DEFAULT_WAVELET_SPEED = 1.25;
+
+function getWaveletMap() {
     const ed = studyConfig?.experimentalDesign;
-    const waveletMap = ed?.waveletAudioMap;
-    if (!waveletMap || Object.keys(waveletMap).length === 0) return;
+    const map = ed?.waveletAudioMap;
+    return (map && Object.keys(map).length > 0) ? map : DEFAULT_WAVELET_AUDIO_MAP;
+}
+
+function getWaveletSpeed() {
+    return studyConfig?.experimentalDesign?.waveletSpeed || DEFAULT_WAVELET_SPEED;
+}
+
+function prefetchWaveletAudio() {
+    const waveletMap = getWaveletMap();
 
     // Find analysis steps and check which ones use wavelet
     const analysisIndices = [];
@@ -264,23 +371,28 @@ async function assignCondition() {
     const conditions = studyConfig.experimentalDesign?.conditions;
     if (!conditions || conditions.length === 0) return null;
 
-    // Preview mode — use forced condition from URL param, or skip
-    if (window.__PREVIEW_MODE) {
+    // Preview/test mode — use forced condition from URL param if provided
+    if (window.__PREVIEW_MODE || window.__TEST_MODE) {
         const forcedIdx = parseInt(new URLSearchParams(window.location.search).get('condition'));
         if (forcedIdx && conditions[forcedIdx - 1]) {
             const picked = conditions[forcedIdx - 1];
+            const mode = window.__PREVIEW_MODE ? 'preview' : 'test';
             const condition = {
                 conditionIndex: forcedIdx,
                 order: picked.order,
                 task1Processing: picked.task1Processing,
                 task2Processing: picked.task2Processing,
-                assignmentMode: 'preview'
+                assignmentMode: mode
             };
-            console.log(`%c[ASSIGN] Preview — forced condition #${forcedIdx}`, 'color: #aa77ff; font-weight: bold;', condition);
-            return condition; // no saveCondition — preview is ephemeral
+            console.log(`%c[ASSIGN] ${mode} — forced condition #${forcedIdx}`, 'color: #aa77ff; font-weight: bold;', condition);
+            if (window.__TEST_MODE) saveCondition(studySlug, condition);
+            return condition;
         }
-        if (window.pm?.study_flow) console.log('%c[ASSIGN] Preview mode — no condition forced, skipping', 'color: #aa77ff;');
-        return null;
+        if (window.__PREVIEW_MODE) {
+            if (window.pm?.study_flow) console.log('%c[ASSIGN] Preview mode — no condition forced, skipping', 'color: #aa77ff;');
+            return null;
+        }
+        // Test mode without forced condition — fall through to server assignment
     }
 
     // Check for existing assignment
@@ -858,6 +970,10 @@ async function processPreloadQueue() {
     if (preloadQueueRunning) return;
     preloadQueueRunning = true;
 
+    // Yield to the browser so any pending DOM updates (e.g., study modals) can paint
+    // before heavy synchronous work (de-trend, gain curve, GPU compute) starts.
+    await new Promise(r => setTimeout(r, 0));
+
     // Same mapping as applyAnalysisConfig — must match so session keys align
     const spacecraftMap = {
         'GOES-16': { spacecraft: 'GOES', dataset: 'DN_MAGN-L2-HIRES_G16' },
@@ -921,8 +1037,22 @@ async function processPreloadQueue() {
                             const value = slider ? parseInt(slider.value) : 50;
                             const alpha = 0.95 + (value / 100) * (0.9999 - 0.95);
                             window.rawWaveformData = new Float32Array(buffer);
-                            buffer = normalize(removeDCOffset(new Float32Array(buffer), alpha));
+                            let detrended = removeDCOffset(new Float32Array(buffer), alpha);
                             console.log(`%c🎨 [HS25] De-trended buffer (alpha=${alpha.toFixed(4)})`, 'color: #d29922;');
+                            // Yield so the browser can paint/animate between heavy sync ops
+                            await new Promise(r => requestAnimationFrame(r));
+
+                            // Apply gain curve between de-trend and peak normalize
+                            if (window.__gainCurveData) {
+                                const startDate = startTime?.slice(0, 10);
+                                const gcRegion = Object.values(window.__gainCurveData).find(r => r.startDate?.slice(0, 10) === startDate);
+                                if (gcRegion?.gainEnvelope?.length) {
+                                    detrended = applyGainCurveToBuffer(detrended, gcRegion.gainEnvelope);
+                                    console.log(`%c🎨 [HS25] Gain curve applied: ${gcRegion.label}`, 'color: #d29922;');
+                                }
+                            }
+
+                            buffer = normalize(detrended);
                         }
                         const State = await import('./audio-state.js');
                         State.setCompleteSamplesArray(buffer);
@@ -1013,6 +1143,9 @@ function initDataPreload(config) {
 }
 
 async function init() {
+    const _t0 = performance.now();
+    const _tLog = (label) => console.log(`⏱️ [INIT] ${label}: ${(performance.now() - _t0).toFixed(0)}ms`);
+
     studySlug = window.__STUDY_SLUG;
     if (!studySlug) {
         showError('No study specified. URL should be /study/{slug}');
@@ -1027,6 +1160,7 @@ async function init() {
     // Fetch config from D1
     if (window.pm?.study_flow) console.log(`%c[INIT] ① Fetching study config: ${studySlug}`, 'color: #58a6ff; font-weight: bold;');
     studyConfig = await fetchStudyConfig(studySlug);
+    _tLog('fetchStudyConfig');
 
     if (!studyConfig) {
         // Fallback: try loading from local JSON file
@@ -1064,19 +1198,36 @@ async function init() {
     }
 
     // Apply app settings from config to DOM (drives settings-drawer.js)
+    // Non-blocking: apply when drawer appears, don't hold up init
     if (studyConfig.appSettings) {
-        // Wait for settings drawer to be injected
-        const waitForDrawer = () => new Promise(resolve => {
-            if (document.getElementById('settingsDrawer')) { resolve(); return; }
+        const _applyWhenReady = () => {
+            if (document.getElementById('settingsDrawer')) {
+                applyAppSettings(studyConfig.appSettings);
+                _tLog('applyAppSettings (immediate)');
+                return;
+            }
             const obs = new MutationObserver(() => {
-                if (document.getElementById('settingsDrawer')) { obs.disconnect(); resolve(); }
+                if (document.getElementById('settingsDrawer')) {
+                    obs.disconnect();
+                    applyAppSettings(studyConfig.appSettings);
+                    _tLog('applyAppSettings (deferred)');
+                }
             });
             obs.observe(document.body, { childList: true, subtree: true });
-            // Fallback timeout
-            setTimeout(() => { obs.disconnect(); resolve(); }, 3000);
-        });
-        await waitForDrawer();
-        applyAppSettings(studyConfig.appSettings);
+            setTimeout(() => obs.disconnect(), 3000);
+        };
+        _applyWhenReady();
+    }
+
+    // Load gain curves (non-blocking — needed by prefetch, not by modal)
+    if (studyConfig.experimentalDesign?.gainCurve) {
+        fetch('/gain_curves.json').then(r => r.ok ? r.json() : null).then(data => {
+            if (data) {
+                window.__gainCurveData = data;
+                if (window.pm?.study_flow) console.log('📋 Gain curves loaded for audio normalization');
+            }
+            _tLog('gainCurves');
+        }).catch(e => console.warn('Failed to load gain_curves.json:', e));
     }
 
     // CSS rule in study.html keeps participantIdDisplay hidden by default.
@@ -1333,54 +1484,22 @@ async function init() {
     }
     } // end jumpToStep === null / !isPreview
 
-    // ── Early registration + condition assignment (auto-skip path) ──
-    // For auto-skip registration, generate the participant ID and assign condition
-    // NOW so that step reordering happens BEFORE preload queue is built.
-    // When runRegistration() is reached later, it sees the existing ID and skips.
-    if (window.pm?.study_flow) console.log(`%c[INIT] ③ Early registration check (auto-skip path)`, 'color: #58a6ff; font-weight: bold;');
+    // ── Generate participant ID locally (sync — no server call) ──
+    // Store ID so runRegistration() sees it and auto-skips.
+    // Server init fires non-blocking below.
+    if (window.pm?.study_flow) console.log(`%c[INIT] ③ Early registration (sync ID only)`, 'color: #58a6ff; font-weight: bold;');
     if (!getParticipantId() && !isPreview) {
         const regStep = studyConfig.steps.find(s => s.type === 'registration');
         const isAuto = regStep && (regStep.idMethod === 'auto' || regStep.idMethod === 'auto_generate');
         if (isAuto && regStep.skipLogin) {
-            // In test mode, use the TEST_ ID that was already generated
             const pid = window.__TEST_PARTICIPANT_ID || generateParticipantId(regStep.idPrefix);
             storeParticipantId(pid);
-            await initParticipant(pid, studySlug);
-            startHeartbeat();
-            if (window.pm?.study_flow) console.log(`%c[INIT] ③ Early auto-registration: ${pid}`, 'color: #58a6ff; font-weight: bold;');
-        } else {
-            if (window.pm?.study_flow) console.log(`%c[INIT] ③ Not auto-skip — deferring registration to step flow`, 'color: #58a6ff;');
+            if (window.pm?.study_flow) console.log(`%c[INIT] ③ Stored ID locally: ${pid}`, 'color: #58a6ff; font-weight: bold;');
         }
-    } else {
-        if (window.pm?.study_flow) console.log(`%c[INIT] ③ Participant already exists: ${getParticipantId() || '(preview/test)'}`, 'color: #58a6ff;');
     }
 
-    // Load saved condition OR assign new one — must happen before preload
-    if (window.pm?.study_flow) console.log(`%c[INIT] ④ Condition assignment`, 'color: #58a6ff; font-weight: bold;');
-    assignedCondition = loadSavedCondition(studySlug);
-    if (assignedCondition) {
-        if (window.pm?.study_flow) console.log(`%c[INIT] ④ Loaded saved condition #${assignedCondition.conditionIndex}: order=[${assignedCondition.order}] task1=${assignedCondition.task1Processing} task2=${assignedCondition.task2Processing}`, 'color: #58a6ff;');
-    } else if (getParticipantId()) {
-        // Participant exists but no condition yet — assign now
-        assignedCondition = await assignCondition();
-        if (assignedCondition) {
-            if (window.pm?.study_flow) console.log(`%c[INIT] ④ Assigned NEW condition #${assignedCondition.conditionIndex}`, 'color: #58a6ff; font-weight: bold;');
-        } else {
-            if (window.pm?.study_flow) console.log(`%c[INIT] ④ No conditions configured — skipping`, 'color: #58a6ff;');
-        }
-    } else {
-        if (window.pm?.study_flow) console.log(`%c[INIT] ④ No participant yet — deferring condition assignment`, 'color: #58a6ff;');
-    }
-    if (assignedCondition) {
-        applyConditionOrder(assignedCondition);
-        // Kick off early wavelet audio prefetch (fire-and-forget, cached for analysis entry)
-        prefetchWaveletAudio();
-    }
-
-    // Init debug flags panel
+    // Init debug flags panel + step nav (sync, fast)
     initStudyFlagsPanel();
-
-    // Init admin step navigation
     initStepNav();
 
     // If resuming past registration, show participant ID if config says so
@@ -1392,10 +1511,49 @@ async function init() {
         }
     }
 
-    // Set up data preloading AFTER condition order is applied (correct step order)
-    if (window.pm?.study_flow) console.log(`%c[INIT] ⑤ Initializing data preload (condition order applied)`, 'color: #58a6ff; font-weight: bold;');
-    // HS25: On resume, preload the CURRENT step first so it's first in the compute queue
-    // (initDataPreload skips steps <= currentStepIndex, which would miss the step we're about to enter)
+    // ══ SHOW MODAL NOW — zero awaits between fetchStudyConfig and here ══
+    if (window.pm?.study_flow) console.log(`%c[INIT] ④ Starting flow → runCurrentStep(${currentStepIndex})`, 'color: #58a6ff; font-weight: bold;');
+    _tLog('preFlow');
+    flowActive = true;
+    studyStartTime = new Date().toISOString();
+    runCurrentStep();
+
+    // ── Everything below is background work — modal is already visible ──
+
+    // Server-side participant init (non-blocking)
+    const pid = getParticipantId();
+    if (pid) {
+        initParticipant(pid, studySlug).then(() => {
+            _tLog('initParticipant (background)');
+            startHeartbeat();
+        }).catch(e => console.warn('[INIT] initParticipant failed:', e));
+    }
+
+    // Condition assignment + step reordering (non-blocking)
+    // Must complete before user reaches analysis steps — they have 2 info modals to click through.
+    assignedCondition = loadSavedCondition(studySlug);
+    if (assignedCondition) {
+        applyConditionOrder(assignedCondition);
+        if (window.pm?.study_flow) console.log(`%c[INIT] ⑤ Condition #${assignedCondition.conditionIndex} (saved)`, 'color: #58a6ff; font-weight: bold;');
+    } else if (pid) {
+        assignCondition().then(cond => {
+            if (cond) {
+                assignedCondition = cond;
+                applyConditionOrder(cond);
+                prefetchWaveletAudio();
+                if (window.pm?.study_flow) console.log(`%c[INIT] ⑤ Condition #${cond.conditionIndex} (assigned)`, 'color: #58a6ff; font-weight: bold;');
+            }
+            _tLog('assignCondition (background)');
+        }).catch(e => console.warn('[INIT] assignCondition failed:', e));
+    }
+    if (assignedCondition) {
+        prefetchWaveletAudio();
+    }
+
+    // Yield for paint, then start heavy preload work
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    if (window.pm?.study_flow) console.log(`%c[INIT] ⑥ Initializing data preload`, 'color: #58a6ff; font-weight: bold;');
     if (currentStepIndex > 0) {
         const currentStep = studyConfig.steps[currentStepIndex];
         if (currentStep?.type === 'analysis' && currentStep.dataPreload) {
@@ -1403,12 +1561,6 @@ async function init() {
         }
     }
     initDataPreload(studyConfig);
-
-    // Start the flow
-    if (window.pm?.study_flow) console.log(`%c[INIT] ⑥ Starting flow → runCurrentStep(${currentStepIndex})`, 'color: #58a6ff; font-weight: bold;');
-    flowActive = true;
-    studyStartTime = new Date().toISOString();
-    runCurrentStep();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1528,6 +1680,9 @@ function isNextStepModal() {
  */
 function ensureStudyModal() {
     if (studyModalEl && document.contains(studyModalEl)) return;
+    // Remove the HTML loading splash (if present)
+    const splash = document.getElementById('studyLoadingSplash');
+    if (splash) splash.remove();
     studyModalEl = document.createElement('div');
     studyModalEl.id = 'studyModal';
     studyModalEl.className = 'modal-window';
@@ -1590,11 +1745,11 @@ function openStudyModalIfNeeded() {
     if (studyModalEl) {
         const isFirstShow = !studyModalEl.dataset.hasShown;
         if (isFirstShow) {
-            studyModalEl.style.opacity = '0';
-            studyModalEl.style.display = 'flex';
-            studyModalEl.style.transition = 'opacity 0.6s ease';
-            void studyModalEl.offsetHeight;
+            // Instant show — no CSS transition. Heavy prefetch work (de-trend, GPU compute)
+            // can block the main thread and freeze CSS transitions mid-animation.
+            studyModalEl.style.transition = 'none';
             studyModalEl.style.opacity = '1';
+            studyModalEl.style.display = 'flex';
             studyModalEl.dataset.hasShown = '1';
         } else {
             studyModalEl.style.transition = 'none';
@@ -1822,7 +1977,10 @@ async function runRegistration(step) {
         if (window.pm?.study_flow) console.log(`📋 Auto-registered (skip login): ${pid}`);
         if (!assignedCondition) {
             assignedCondition = await assignCondition();
-            if (assignedCondition) applyConditionOrder(assignedCondition);
+            if (assignedCondition) {
+                applyConditionOrder(assignedCondition);
+                prefetchWaveletAudio();
+            }
         }
         advanceStep();
     } else {
@@ -1892,7 +2050,10 @@ function showLoginModal(step) {
             // Assign condition after manual registration
             if (!assignedCondition) {
                 assignedCondition = await assignCondition();
-                if (assignedCondition) applyConditionOrder(assignedCondition);
+                if (assignedCondition) {
+                    applyConditionOrder(assignedCondition);
+                    prefetchWaveletAudio();
+                }
             }
             resolve();
             advanceStep();
@@ -2147,25 +2308,28 @@ async function runAnalysis(step) {
             setStretchAlgorithm(mapped);
             if (window.pm?.study_flow) console.log(`🧪 Applied processing: ${step._assignedProcessing} → ${mapped}`);
 
+            // Show processing mode label on localhost
+            if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+                const label = document.getElementById('processingModeLabel');
+                if (label) {
+                    label.textContent = step._assignedProcessing;
+                    label.style.display = '';
+                }
+            }
+
             // Pre-rendered wavelet: load samples into wavelet worklet (bypass GPU CWT)
             if (step._assignedProcessing === 'wavelet') {
-                const ed = studyConfig.experimentalDesign;
-                const waveletMap = ed?.waveletAudioMap;
-                if (waveletMap) {
-                    const startDate = (step.startTime || step.startDate || '').slice(0, 10);
-                    const filename = waveletMap[startDate];
-                    if (filename) {
-                        // Await the cached promise (may already be resolved from prefetch)
-                        const samples = await fetchWaveletAudio(startDate, filename);
-                        if (samples) {
-                            setWaveletPreRendered(true);
-                            // Store samples + baked speed for loading into worklet after priming
-                            window.__waveletPreRendered = {
-                                samples,
-                                speed: ed.waveletSpeed || 1.25
-                            };
-                            console.log(`%c🎵 [WAVELET] Pre-rendered audio ready (${samples.length} samples, ${ed.waveletSpeed || 1.25}× speed)`, 'color: #E040FB; font-weight: bold;');
-                        }
+                const waveletMap = getWaveletMap();
+                const startDate = (step.startTime || step.startDate || '').slice(0, 10);
+                const filename = waveletMap[startDate];
+                if (filename) {
+                    const bakedSpeed = getWaveletSpeed();
+                    // Await the cached promise (may already be resolved from prefetch)
+                    const samples = await fetchWaveletAudio(startDate, filename);
+                    if (samples) {
+                        setWaveletPreRendered(true);
+                        window.__waveletPreRendered = { samples, speed: bakedSpeed };
+                        console.log(`%c🎵 [WAVELET] Pre-rendered audio ready (${samples.length} samples, ${bakedSpeed}× speed)`, 'color: #E040FB; font-weight: bold;');
                     }
                 }
             } else {
@@ -2258,7 +2422,10 @@ async function runAnalysis(step) {
             }
 
             // Poll until pre-render (de-trend + tile compute) is complete
+            // Timeout after 45s — if GPU context is wedged, no amount of waiting helps
             await new Promise(resolve => {
+                const startedAt = Date.now();
+                const TIMEOUT_MS = 45000;
                 const poll = setInterval(() => {
                     const s = getPrefetchStatus(cfg.spacecraft, cfg.dataset, cfg.startTime, cfg.endTime);
                     const el = document.getElementById('preloadStatus');
@@ -2272,6 +2439,20 @@ async function runAnalysis(step) {
                     if (isPreRenderDone()) {
                         clearInterval(poll);
                         resolve();
+                    } else if (Date.now() - startedAt > TIMEOUT_MS) {
+                        clearInterval(poll);
+                        console.error('[ANALYSIS] Pre-render timed out after 45s — GPU context may be wedged');
+                        if (studyModalInner) {
+                            studyModalInner.innerHTML = `
+                                <div class="modal-content" style="text-align: center; min-width: 500px; width: auto; max-width: 600px; background: linear-gradient(135deg, rgba(240, 240, 245, 0.97) 0%, rgba(230, 232, 238, 0.97) 100%);">
+                                    <div style="font-size: 22px; font-weight: 600; color: #c44; margin-bottom: 16px;">Unable to load analysis</div>
+                                    <div style="font-size: 15px; color: #555; line-height: 1.6; margin-bottom: 20px;">
+                                        Something went wrong while preparing the display.<br>
+                                        Please <strong>close all browser tabs</strong>, then reopen this page.
+                                    </div>
+                                </div>`;
+                        }
+                        // Don't resolve — leave the modal up so the participant sees the message
                     }
                 }, 250);
             });

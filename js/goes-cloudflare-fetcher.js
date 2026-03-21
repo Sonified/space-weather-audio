@@ -25,6 +25,46 @@ import { storeChunk, getChunk } from './goes-data-cache.js';
 const WORKER_BASE = 'https://spaceweather.now.audio/emic';
 const INSTRUMENT_SAMPLE_RATE = 10; // Hz — GOES mag high-res cadence
 
+// ── Gain curve helpers (matches spike_review.html applyGainCurve) ──
+
+/** Find the gain curve region matching a startTimeISO (e.g. "2022-08-17T00:00Z") */
+function findGainCurveRegion(gcData, startTimeISO) {
+    const startDate = startTimeISO?.slice(0, 10); // "2022-08-17"
+    if (!startDate || !gcData) return null;
+    for (const key of Object.keys(gcData)) {
+        const region = gcData[key];
+        if (region.startDate?.slice(0, 10) === startDate) return region;
+    }
+    return null;
+}
+
+/** Piecewise linear gain curve — interpolate dB between control points */
+function applyGainCurve(buffer, envelope) {
+    const out = new Float32Array(buffer);
+    if (!envelope || envelope.length === 0) return out;
+
+    const pts = [...envelope].sort((a, b) => a.sample - b.sample);
+    const totalSamples = buffer.length;
+    const allPts = [];
+    if (pts[0].sample > 0) allPts.push({ sample: 0, dB: 0 });
+    allPts.push(...pts);
+    if (pts[pts.length - 1].sample < totalSamples - 1) allPts.push({ sample: totalSamples - 1, dB: 0 });
+
+    let cpIdx = 0;
+    for (let i = 0; i < out.length; i++) {
+        while (cpIdx < allPts.length - 2 && allPts[cpIdx + 1].sample <= i) cpIdx++;
+        const p0 = allPts[cpIdx];
+        const p1 = allPts[cpIdx + 1];
+        const segLen = p1.sample - p0.sample;
+        const t = segLen > 0 ? (i - p0.sample) / segLen : 0;
+        const dB = p0.dB + t * (p1.dB - p0.dB);
+        if (dB !== 0) {
+            out[i] *= Math.pow(10, dB / 20);
+        }
+    }
+    return out;
+}
+
 // Dataset → satellite name mapping (mirrors goes_to_r2.py)
 const DATASET_TO_SATELLITE = {
     'DN_MAGN-L2-HIRES_G16': 'GOES-16',
@@ -1103,11 +1143,47 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
                 const sliderVal = slider ? parseInt(slider.value) : 50;
                 const alpha = 0.95 + (sliderVal / 100) * (0.9999 - 0.95);
                 window.rawWaveformData = new Float32Array(stitched);
-                stitched = norm(detrend(stitched, alpha));
+                let detrended = detrend(stitched, alpha);
                 console.log(`🎛️ Pre-render de-trend applied (α=${alpha.toFixed(4)})`);
+
+                // Apply gain curve between de-trend and peak normalize
+                // (matches pipeline used to pre-render wavelet WAVs)
+                if (window.__gainCurveData) {
+                    const gcRegion = findGainCurveRegion(window.__gainCurveData, startTimeISO);
+                    if (gcRegion) {
+                        detrended = applyGainCurve(detrended, gcRegion.gainEnvelope);
+                        console.log(`🎛️ Gain curve applied: ${gcRegion.label} (${gcRegion.gainEnvelope.length} control points)`);
+                    }
+                }
+
+                stitched = norm(detrended);
+            }
+
+            // RMS measurement for level matching
+            if (window.pm?.audio) {
+                let sumSq = 0;
+                for (let i = 0; i < stitched.length; i++) sumSq += stitched[i] * stitched[i];
+                const rms = Math.sqrt(sumSq / stitched.length);
+                let peak = 0;
+                for (let i = 0; i < stitched.length; i++) { const a = Math.abs(stitched[i]); if (a > peak) peak = a; }
+                console.log(`🔊 [RESAMPLE] Audio RMS: ${rms.toFixed(6)}, peak: ${peak.toFixed(6)}, samples: ${stitched.length}`);
             }
 
             State.setCompleteSamplesArray(stitched);
+
+            // Swap the main worklet buffer with the processed audio.
+            // The worklet was progressively fed raw min-max normalized chunks,
+            // but the processed buffer has de-trend + gain curve + peak normalize applied.
+            // swap-buffer crossfades seamlessly — no glitch even if playback is active.
+            if (removeDCChecked && State.workletNode) {
+                const swapCopy = new Float32Array(stitched);
+                State.workletNode.port.postMessage(
+                    { type: 'swap-buffer', samples: swapCopy, sampleRate: originalSampleRate },
+                    [swapCopy.buffer]
+                );
+                console.log(`🎛️ Worklet buffer swapped with processed audio (de-trend + gain curve + normalize)`);
+            }
+
             if (window.pm?.data) console.log(`📦 ${logTime()} completeSamplesArray ready: ${stitched.length.toLocaleString()} samples`);
 
             // Free allReceivedData and processedChunks

@@ -2126,6 +2126,8 @@ function checkPageTurnAdvance() {
     if (State.totalAudioDuration <= 0) return;
     // Don't advance while user is actively dragging the minimap viewport
     if (minimapDragging) return;
+    // Don't advance while feature info popup is open — keep the page in view
+    if (isFeaturePopupOpen()) return;
 
     // Current playhead timestamp
     const playheadMs = State.dataStartTime.getTime() +
