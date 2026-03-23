@@ -87,9 +87,9 @@ An
   - ✅ Wavelet CWT: w0=10, dj=0.125, phase=unwrapped (pitch-accurate), interp=cubic (Catmull-Rom)
   - ✅ Gain curve pipeline: piecewise linear envelope in `gain_curves.json`, applied post-detrend pre-normalize
   - ✅ RMS matched between regions within 0.02%
-- [ ] **HS43.** De-trended audio in study flow — integrated, needs full testing
+- [x] **HS43.** De-trended audio in study flow ✅
   - ✅ De-trend toggle wired in study builder (HS39), auto-applies on fetch, persists across sessions
-  - **Remaining:** End-to-end test that de-trended audio plays correctly through study flow (both sections)
+  - ✅ End-to-end tested — de-trended audio plays correctly through all 12 conditions
 
 #### 🌊 Pre-rendered wavelet audio pipeline
 > **Key insight:** Wavelet-stretched audio is ~4 MB per file. Pre-render locally via `stretch_test.html`, upload to R2, serve to participants. No WebGPU needed on client. Paul stretch remains real-time in the worklet — only wavelet needs pre-rendering.
@@ -99,12 +99,13 @@ An
   - ✅ Pipeline matches app exactly: raw → removeDCOffset → applyGainCurve → peakNormalize → CWT
   - ✅ `spike_review.html` gain envelope editor for tuning curves
   - ✅ `process_gain_curves.js` Node script for reproducible WAV generation
-- [ ] **HS45.** Wire pre-rendered wavelet audio into study flow
+- [x] **HS45.** Wire pre-rendered wavelet audio into study flow ✅
   - ✅ Uploaded to R2: `emic-data/audio/GOES_REGION_{1,2}_speed_cwt_1.25x.wav`
   - ✅ Study builder toggles: `gainCurve` + `vizGainCurve` in Playback & Presentation panel
-  - **Remaining:** Study config maps condition → R2 URL for wavelet audio
-  - **Remaining:** Client: fetch WAV → `decodeAudioData()` → play via worklet at 1x sample rate
-  - **Remaining:** Speed metadata (e.g. 1.25) for playhead math only
+  - ✅ Default wavelet audio map + speed in study-flow.js, R2 fetch + IndexedDB cache
+  - ✅ Client: fetch WAV → decodeAudioData → load into wavelet worklet, bypass GPU CWT
+  - ✅ Speed metadata (1.25x) for playhead math via `waveletBakedSpeed`
+  - ✅ All 12 conditions verified end-to-end with correct stretch types
 - [x] ~~**HS26-29.**~~ Client-side GPU wavelet stretch — superseded by pre-rendered approach
   - Streaming prototype complete in `stretch_test.html` (kept as rendering tool + future portal feature)
 
@@ -120,18 +121,18 @@ An
 
 #### 📊 Spectrogram visual tuning
 - [x] **HS40.** Spectrogram gain & contrast sliders ✅
-- [ ] **HS41.** Auto-gain normalization system → [`homestretch/HS41.md`](homestretch/HS41.md)
+- [x] **HS41.** Auto-gain normalization system ✅
   - Dropdown: **None / Outliers / RMS / Both**
   - Piggybacks on FFT pass — minimal overhead
   - Config option in study builder Data Playback panel
 
 #### ✅ Verification
 - [x] **HS3.2a.** Verify correct data (dates/spacecraft) per condition ✅
-- [ ] **HS3.2b.** Verify correct stretch algorithm per condition → [`homestretch/HS3.2.md`](homestretch/HS3.2.md)
-  - Manual: run as different participants, check `[ASSIGN]` logs — ~30 min
-  - ~~**BUG A — Spectrogram not de-trended on first load:**~~ ✅ Fixed — double `pyramid-ready` dispatch: `presentPrecomputedSpectrogram` dispatched it, then `renderProgressiveSpectrogram(isComplete=true)` dispatched again, overwriting de-trended tiles with raw data. Added `preRenderPresented` guard so progressive path skips dispatch when tiles already presented via cache. Diagnostic prints removed.
-  - ~~**BUG B — Paul stretch wrong audio on section 2:**~~ ✅ Fixed — `primeStretchProcessors` now hot-swaps the active stretch node when new data arrives (disconnect old, connect new, re-send speed/seek). Previously the paul worklet kept section 1's samples because `engageStretch` fired before section 2 data loaded.
-  - **BUG C — Double engage/register in section 2:** `switchStretchAlgorithm('paul')` and `pyramid-ready` listener each fire twice for step 5. Something in the analysis setup path is double-triggering.
+- [x] **HS3.2b.** Verify correct stretch algorithm per condition ✅
+  - ✅ All 12 conditions tested end-to-end — stretch types and region orders match study config
+  - ~~**BUG A — Spectrogram not de-trended on first load:**~~ ✅ Fixed
+  - ~~**BUG B — Paul stretch wrong audio on section 2:**~~ ✅ Fixed
+  - **BUG C — Double engage/register in section 2:** `switchStretchAlgorithm('paul')` and `pyramid-ready` listener each fire twice for step 5. Something in the analysis setup path is double-triggering. (moved to LPI)
 - [x] **HS46.** Condition preview buttons + delete guard ✅
   - Preview 👁 button per condition row (hover-only, opens study in preview mode with `?condition=N`)
   - `?condition=N` URL param parsed in study-flow.js — forces condition client-side, no server call
@@ -197,10 +198,10 @@ An
   - Restore flow: list backups → pick from numbered list → confirm → load into builder
 
 #### 🧪 Testing & tuning (~1 hr)
-- [ ] **HS7.1.** Test study launch functionality ⏱ ~1 hr → [`homestretch/HS7.1.md`](homestretch/HS7.1.md)
-  - 11-phase end-to-end checklist covering all 3 modes (preview/test/live)
-  - Edge cases: dropout/resume, healing block, simultaneous participants
-  - Data verification steps + reset procedures
+- [x] **HS7.1.** Test study launch functionality ✅
+  - 12/12 conditions verified across test mode with forced conditions
+  - All stretch types (resample, paulStretch, wavelet) × all region orders confirmed
+  - Full completions with features, questionnaires, and submissions verified on server
 
 #### ✅ Completed
 - [x] **HS3.** Build deployment panel toward the bottom of study builder (above Data Stream) with settings like randomization for the two analysis sections
@@ -242,6 +243,8 @@ An
 - [ ] **LPI7.** Some elements still flash on study builder refresh — chevron/card state restore race condition not fully eliminated
 - [ ] **LPI8.** Defensively clean study slug as it's written — sanitize special chars, emoji, spaces to prevent malformed session IDs and URLs
 - [ ] **LPI9.** Confirmation modal at end of analysis section 1 was not clickable — core bug never identified
+- [ ] **LPI12.** Spectrogram sometimes flashes on load — shows, disappears, reappears during overlay-to-analysis transition
+- [ ] **LPI13.** Double engage/register in section 2 — `switchStretchAlgorithm` and `pyramid-ready` listener each fire twice for step 5 (BUG C from HS3.2b)
 - [ ] **LPI10.** Stretch test: changing CWT/CQT params during streaming playback layers new audio on top of old instead of crossfading — `onGPUParamChange` needs streaming-aware path
 - [x] **LPI11.** Lock down conditions panel when study is live ✅
   - All condition selects, delete buttons, add/generate buttons disabled + dimmed when live

@@ -2843,6 +2843,11 @@ export async function computeSpectrogramTiles(audioData, { dataDurationSec, samp
         setTileDuration(chunkMode === 'adaptive' ? 'adaptive' : parseInt(chunkMode), dataDurationSec, totalExpectedSamples);
         initPyramid(dataDurationSec, sampleRate);
 
+        // // Hide canvas during pre-render so tiles don't flash through semi-transparent overlay
+        // const canvas = threeRenderer.domElement;
+        // const prevVisibility = canvas.style.visibility;
+        // canvas.style.visibility = 'hidden';
+
         // THE HEAVY LIFT — GPU FFT for all tiles
         await renderBaseTiles(audioData, sampleRate, fftSize, 0);
 
@@ -2857,6 +2862,8 @@ export async function computeSpectrogramTiles(audioData, { dataDurationSec, samp
             processPendingGPUTextureSwaps();
             if (window.pm?.rendering) console.log(`%c🎨 [PRE-RENDER] GPU texture swaps complete — tiles fully baked`, 'color: #3fb950;');
         }
+
+        // canvas.style.visibility = prevVisibility;
 
         // Stash for present pipeline
         preRenderAudioData = audioData;

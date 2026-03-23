@@ -221,6 +221,47 @@
     transition: all 0.15s;
   }
   .btn-ghost-link:hover { color: #ccccdd; border-color: rgba(255,255,255,0.22); }
+  /* Data Viewer split button */
+  .dv-split-btn {
+    position: relative;
+    display: inline-flex;
+    margin-left: 10px;
+  }
+  .dv-split-btn .dv-main {
+    display: flex; align-items: center; gap: 5px;
+    padding: 8px 12px 8px 16px;
+    border-radius: 6px 0 0 6px;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-right: none;
+    background: transparent; color: #8899aa;
+    font-size: 13px; cursor: pointer; transition: all 0.15s;
+  }
+  .dv-split-btn .dv-main:hover { color: #ccccdd; border-color: rgba(255,255,255,0.22); }
+  .dv-split-btn .dv-chevron {
+    display: flex; align-items: center; justify-content: center;
+    width: 26px;
+    border-radius: 0 6px 6px 0;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: transparent; color: #8899aa;
+    font-size: 10px; cursor: pointer; transition: all 0.15s;
+  }
+  .dv-split-btn .dv-chevron:hover { color: #ccccdd; border-color: rgba(255,255,255,0.22); background: rgba(255,255,255,0.04); }
+  .dv-split-menu {
+    display: none; position: absolute; top: 100%; right: 0;
+    margin-top: 4px; min-width: 200px;
+    background: #1e2030; border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px; padding: 4px 0;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 9999;
+  }
+  .dv-split-menu.open { display: block; }
+  .dv-split-menu button {
+    display: block; width: 100%; text-align: left;
+    padding: 8px 14px; background: none; border: none;
+    color: #aabbcc; font-size: 12.5px; cursor: pointer;
+    transition: background 0.1s;
+  }
+  .dv-split-menu button:hover { background: rgba(255,255,255,0.07); color: #ddeeff; }
+  .dv-split-menu .dv-label { font-size: 10px; color: #667788; padding: 6px 14px 2px; text-transform: uppercase; letter-spacing: 0.5px; }
   .study-picker-menu {
     display: none;
     position: absolute;
@@ -1864,8 +1905,16 @@
         <div class="save-indicator" id="saveIndicator"></div>
         <!-- Preview — filled accent button -->
         <button class="btn-preview" onclick="previewStudy()" title="Preview full study"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Preview</button>
-        <!-- Data Viewer — ghost text link -->
-        <button class="btn-ghost-link" onclick="openDataExplorer()" title="Open participant data viewer">🔍 Data Viewer →</button>
+        <!-- Data Viewer — split button (local / live) -->
+        <div class="dv-split-btn" id="dvSplitBtn">
+          <button class="dv-main" onclick="openDataExplorer()" title="Open participant data viewer">🔍 Data Viewer</button>
+          <button class="dv-chevron" onclick="toggleDvMenu(event)" title="Choose local or live">▼</button>
+          <div class="dv-split-menu" id="dvSplitMenu">
+            <div class="dv-label" id="dvMenuLabel">Open data viewer</div>
+            <button onclick="openDataExplorer('local')">🖥 Local (localhost)</button>
+            <button onclick="openDataExplorer('live')">🌐 Live (spaceweather.now.audio)</button>
+          </div>
+        </div>
       </div>
       <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="handleJsonFile(event)">
     </div>
@@ -7831,8 +7880,10 @@
       updatedAt: new Date().toISOString()
     };
     collapseFixedPanels();
+    resetLiveModeUI();
     loadConfigIntoBuilder(blankConfig);
     saveDraft();
+    refreshStudyPicker(blankConfig);
   }
 
   function newStudyClone() {
@@ -7844,9 +7895,13 @@
     clone.name = newName;
     clone.slug = nameToSlug(newName);
     clone.updatedAt = new Date().toISOString();
+    delete clone.adminKey;  // new study needs its own key
     collapseFixedPanels();
+    resetLiveModeUI();
     loadConfigIntoBuilder(clone);
+    document.getElementById('adminKeyInput').value = '';
     saveDraft();
+    refreshStudyPicker(clone);
   }
 
   async function deleteCurrentStudy() {
@@ -8069,14 +8124,31 @@
     if (current) updateStudyPickerLabel(current.name || slug);
   });
   // ── Data Explorer launcher ──
-  function openDataExplorer() {
+  const _isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  function openDataExplorer(target) {
     const slug = (document.getElementById('urlTagInput')?.value || document.getElementById('slugValue')?.textContent || '').trim();
     // Pass admin auth to data viewer so it skips the gate
     if (sessionStorage.getItem('admin_authed') === 'true') {
       sessionStorage.setItem('dv_admin_authed', 'true');
     }
-    const url = slug ? `data-viewer.html?study=${encodeURIComponent(slug)}` : 'data-viewer.html';
-    window.open(url, '_blank');
+    const path = slug ? `data-viewer.html?study=${encodeURIComponent(slug)}` : 'data-viewer.html';
+    // Determine target: explicit choice, or smart default (local when on localhost, live otherwise)
+    const useLive = target === 'live' || (!target && !_isLocal);
+    const base = useLive ? 'https://spaceweather.now.audio/' : '';
+    window.open(base + path, '_blank');
+    closeDvMenu();
+  }
+  function toggleDvMenu(e) {
+    e.stopPropagation();
+    const menu = document.getElementById('dvSplitMenu');
+    menu.classList.toggle('open');
+    if (menu.classList.contains('open')) {
+      // Close on any outside click
+      setTimeout(() => document.addEventListener('click', closeDvMenu, { once: true }), 0);
+    }
+  }
+  function closeDvMenu() {
+    document.getElementById('dvSplitMenu')?.classList.remove('open');
   }
 
   // ── Data Stream polling ──
