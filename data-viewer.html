@@ -50,6 +50,7 @@
     display: flex;
     align-items: center;
     gap: 12px;
+    position: relative;
   }
   .header h1 {
     font-size: 16px;
@@ -763,8 +764,8 @@
 <div class="header">
   <div class="header-top">
     <h1>Data Viewer</h1>
+    <span class="summary-inline" id="summaryBar" style="display:none; position:absolute; left:0; transform:translateX(0);"><span class="summary-stat total"><span class="value" id="sumTotal">0</span> <span class="label">total</span></span><span class="summary-div">·</span><span class="summary-stat active"><span class="value" id="sumActive">0</span> <span class="label">active</span></span><span class="summary-div">·</span><span class="summary-stat completed"><span class="value" id="sumCompleted">0</span> <span class="label">completed</span></span><span class="summary-div">·</span><span class="summary-stat features"><span class="value" id="sumFeatures">0</span> <span class="label">features</span></span></span>
     <div style="flex:1;"></div>
-    <span class="summary-inline" id="summaryBar" style="display:none;"><span class="summary-stat total"><span class="value" id="sumTotal">0</span> <span class="label">total</span></span><span class="summary-div">·</span><span class="summary-stat active"><span class="value" id="sumActive">0</span> <span class="label">active</span></span><span class="summary-div">·</span><span class="summary-stat completed"><span class="value" id="sumCompleted">0</span> <span class="label">completed</span></span><span class="summary-div">·</span><span class="summary-stat features"><span class="value" id="sumFeatures">0</span> <span class="label">features</span></span></span>
     <button class="logout-btn" id="logoutBtn" style="display:none;" onclick="adminLogout()">Log out</button>
   </div>
 </div>
@@ -1187,7 +1188,20 @@
     document.getElementById('sumActive').textContent = active;
     document.getElementById('sumCompleted').textContent = completed;
     document.getElementById('sumFeatures').textContent = features;
+    alignSummaryBar();
   }
+
+  function alignSummaryBar() {
+    const bar = document.getElementById('summaryBar');
+    const searchBox = document.querySelector('.search-box');
+    if (!bar || !searchBox) return;
+    const headerTop = bar.parentElement;
+    if (!headerTop) return;
+    const parentLeft = headerTop.getBoundingClientRect().left;
+    const searchLeft = searchBox.getBoundingClientRect().left;
+    bar.style.left = (searchLeft - parentLeft) + 'px';
+  }
+  window.addEventListener('resize', alignSummaryBar);
 
   function setFilter(filter) {
     currentFilter = filter;

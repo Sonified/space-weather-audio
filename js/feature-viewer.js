@@ -211,6 +211,35 @@ async function init() {
     }
     applyAnalysisConfig(analysisStep);
 
+    // Build session buttons dynamically based on number of analysis steps
+    const analysisSteps = (studyConfig.steps || []).filter(s => s.type === 'analysis');
+    const sessionGroup = document.getElementById('sessionGroup');
+    if (sessionGroup) {
+        if (analysisSteps.length <= 1) {
+            // Single-section study — hide session switcher entirely
+            sessionGroup.style.display = 'none';
+        } else {
+            // Build buttons for each analysis step
+            const label = sessionGroup.querySelector('label');
+            sessionGroup.innerHTML = '';
+            if (label) sessionGroup.appendChild(label);
+            for (let i = 1; i <= analysisSteps.length; i++) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'study-btn' + (i === session ? ' active' : '');
+                btn.setAttribute('data-session', String(i));
+                btn.textContent = String(i);
+                btn.addEventListener('click', () => {
+                    sessionGroup.querySelectorAll('.study-btn[data-session]').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    window.__REVIEW_SESSION = i;
+                    window.dispatchEvent(new CustomEvent('review-session-change', { detail: { session: i } }));
+                });
+                sessionGroup.appendChild(btn);
+            }
+        }
+    }
+
     // Highlight the correct session button
     updateSessionButtons(session);
 
