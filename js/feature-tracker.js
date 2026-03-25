@@ -295,8 +295,24 @@ export async function loadRegionsAfterDataFetch() {
     if (window.__REVIEW_MODE && window.__REVIEW_PID) {
         await loadReviewFeatures();
     } else {
-        // Normal path: load from localStorage
-        loadStandaloneFeatures();
+        // Check for pending shared features (from a share link)
+        const pendingShared = sessionStorage.getItem('pendingSharedFeatures');
+        if (pendingShared) {
+            try {
+                const sharedFeatures = JSON.parse(pendingShared);
+                sessionStorage.removeItem('pendingSharedFeatures');
+                standaloneFeatures = sharedFeatures;
+                console.log(`🔗 Loaded ${sharedFeatures.length} shared feature(s)`);
+                saveStandaloneFeatures(); // persist to localStorage so they survive refresh
+            } catch (e) {
+                console.error('Failed to parse shared features:', e);
+                sessionStorage.removeItem('pendingSharedFeatures');
+                loadStandaloneFeatures();
+            }
+        } else {
+            // Normal path: load from localStorage
+            loadStandaloneFeatures();
+        }
     }
 
     // Sync per-section feature count with loaded features (handles page refresh mid-analysis)
@@ -709,11 +725,11 @@ export function renderStandaloneFeaturesList() {
         featureRow.innerHTML = `
             <span class="feature-number">Feature ${flatNum}</span>
             <span class="freq-display ${hasCoords ? 'completed' : ''}">${hasCoords ? formatFeatureButtonText(feature) : 'No selection'}</span>
-            <label class="confidence-label" for="confidence-sa-${idx}">Confidence:</label>
+            ${isStudyMode() ? `<label class="confidence-label" for="confidence-sa-${idx}">Confidence:</label>
             <select id="confidence-sa-${idx}">
                 <option value="confirmed" ${feature.confidence === 'confirmed' || !feature.confidence ? 'selected' : ''}>Yes</option>
                 <option value="possibly" ${feature.confidence === 'possibly' ? 'selected' : ''}>Possibly</option>
-            </select>
+            </select>` : ''}
             <textarea class="freq-input notes-field"
                       placeholder="Add description..."
                       id="notes-sa-${idx}">${feature.notes || ''}</textarea>
@@ -725,7 +741,7 @@ export function renderStandaloneFeaturesList() {
         const confidenceSelect = featureRow.querySelector(`#confidence-sa-${idx}`);
         const notesField = featureRow.querySelector(`#notes-sa-${idx}`);
 
-        confidenceSelect.addEventListener('change', function() {
+        if (confidenceSelect) confidenceSelect.addEventListener('change', function() {
             if (window.pm?.interaction) console.log(`%c[CONFIDENCE] idx=${idx} old=${standaloneFeatures[idx].confidence} new=${this.value}`, 'color: #f80; font-weight: bold');
             standaloneFeatures[idx].confidence = this.value;
             saveStandaloneFeatures();

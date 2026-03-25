@@ -1102,13 +1102,13 @@ function showFeaturePopup(box) {
                 </div>
             </div>
         </div>
-        <div class="feature-popup-confidence">
+        ${isStudyMode() ? `<div class="feature-popup-confidence">
             <span class="feature-popup-confidence-label">Is this an EMIC wave?</span>
             <div class="feature-popup-pills">
                 <button class="feature-popup-pill${feature.confidence === 'confirmed' ? ' active' : ''}" data-confidence="confirmed">Yes</button>
                 <button class="feature-popup-pill${feature.confidence === 'possibly' ? ' active' : ''}" data-confidence="possibly">Possibly</button>
             </div>
-        </div>
+        </div>` : ''}
         <textarea class="feature-popup-notes" placeholder="Describe this feature...">${feature.notes || ''}</textarea>
         <details class="feature-popup-details"${reviewMode ? ' open' : ''}>
             <summary>Details</summary>
@@ -1357,7 +1357,7 @@ function showFeaturePopup(box) {
                 if (input.value !== originalFields[input.dataset.key]) isDirty = true;
             });
         }
-        saveBtn.disabled = !confidenceSelected;
+        saveBtn.disabled = pills.length > 0 ? !confidenceSelected : false;
         saveBtn.textContent = isDirty ? 'Save' : 'Done';
     }
     notesArea.addEventListener('input', updateSaveState);
@@ -1428,6 +1428,11 @@ function showFeaturePopup(box) {
         if (e.key === 'Escape') {
             e.stopPropagation();
             closeFeaturePopup();
+        }
+        if (e.key === 'Enter' && !e.shiftKey && !isStudyMode() && !saveBtn.disabled) {
+            e.preventDefault();
+            e.stopPropagation();
+            saveAndClose();
         }
     }
     function onClickOutside(e) {

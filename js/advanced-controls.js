@@ -523,9 +523,9 @@ export function initializeAdvancedControls() {
     if (gainSlider && contrastSlider) {
         const gainLabel = document.getElementById('spectrogramGainValue');
         const contrastLabel = document.getElementById('spectrogramContrastValue');
-        // Restore saved values
-        const savedGain = localStorage.getItem(`${settingsPrefix}spectrogram_gain`);
-        const savedContrast = localStorage.getItem(`${settingsPrefix}spectrogram_contrast`);
+        // Restore saved values (study mode only — portal always uses defaults)
+        const savedGain = isStudyMode() ? localStorage.getItem(`${settingsPrefix}spectrogram_gain`) : null;
+        const savedContrast = isStudyMode() ? localStorage.getItem(`${settingsPrefix}spectrogram_contrast`) : null;
         if (savedGain !== null) gainSlider.value = savedGain;
         if (savedContrast !== null) contrastSlider.value = savedContrast;
         const updateGainContrast = () => {

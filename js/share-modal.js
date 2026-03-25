@@ -11,6 +11,7 @@ import { getCurrentColormap } from './colormaps.js';
 import { updateDatasetOptions } from './ui-controls.js';
 import { getCurrentComponentIndex } from './component-selector.js';
 import { captureRenderedCanvas } from './main-window-renderer.js';
+import { getStandaloneFeatures } from './feature-tracker.js';
 
 /**
  * Render x-axis with larger labels for thumbnail
@@ -1201,7 +1202,7 @@ function gatherSessionData() {
             start: State.dataStartTime?.toISOString(),
             end: State.dataEndTime?.toISOString()
         },
-        regions: [],
+        features: getStandaloneFeatures().filter(f => f.lowFreq && f.highFreq && f.startTime && f.endTime),
         view_settings: {
             frequency_scale: State.frequencyScale,
             colormap: getCurrentColormap(),
@@ -1372,15 +1373,10 @@ export function applySharedSession(shareData) {
 
     // Note: isSharedSession was already set in checkAndLoadSharedSession() before any async work
 
-    // Store regions to be applied after data loads
-    if (session.regions && session.regions.length > 0) {
-        console.log('🔗 Storing', session.regions.length, 'regions to sessionStorage');
-        // Log feature counts for debugging
-        session.regions.forEach((r, i) => {
-            const featureCount = r.features?.length || 0;
-            console.log(`🔗   Region ${i + 1}: ${featureCount} feature(s)`);
-        });
-        sessionStorage.setItem('pendingSharedRegions', JSON.stringify(session.regions));
+    // Store features to be applied after data loads
+    if (session.features && session.features.length > 0) {
+        console.log('🔗 Storing', session.features.length, 'shared features to sessionStorage');
+        sessionStorage.setItem('pendingSharedFeatures', JSON.stringify(session.features));
     }
 
     // Store view settings
