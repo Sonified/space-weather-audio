@@ -1426,7 +1426,7 @@ async function saveSession(request, env, username) {
     spacecraft: data.spacecraft,
     data_type: data.data_type,
     time_range: data.time_range,
-    regions: data.regions || [],
+    features: data.features || [],
     view_settings: data.view_settings || {},
     version: data.version || 1,
   };
