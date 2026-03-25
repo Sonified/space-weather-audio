@@ -878,13 +878,6 @@ export function initializeAdvancedControls() {
         const detrend = document.getElementById('detrendContainer');
         if (comp) comp.style.visibility = hideControls ? 'hidden' : '';
         if (detrend) detrend.style.visibility = hideControls ? 'hidden' : '';
-        if (comp?.previousElementSibling) comp.previousElementSibling.style.visibility = hideControls ? 'hidden' : '';
-        if (comp?.nextElementSibling && comp.nextElementSibling.id !== 'detrendContainer') {
-            comp.nextElementSibling.style.visibility = hideControls ? 'hidden' : '';
-        }
-        if (detrend?.nextElementSibling && detrend.nextElementSibling.id !== 'status') {
-            detrend.nextElementSibling.style.visibility = hideControls ? 'hidden' : '';
-        }
     }
 
     // When switching viewing mode, reset waveform to full view and re-render
