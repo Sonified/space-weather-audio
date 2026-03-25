@@ -4792,14 +4792,9 @@ html:not([data-advanced]) .study-page .spectrogram-controls {
 
 /* EMIC modal overrides — dimensions come from study config via the renderer */
 
-/* Playback bar: hidden-scrollbar horizontal scroll */
+/* Playback bar: let flex-wrap handle overflow, not hidden scrolling */
 .panel-playback > div {
-    overflow-x: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-}
-.panel-playback > div::-webkit-scrollbar {
-    display: none;
+    overflow-x: visible;
 }
 
 /* Questionnaires panel: thin dark scrollbar */
