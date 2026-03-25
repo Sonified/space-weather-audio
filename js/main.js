@@ -178,11 +178,14 @@ async function initializeMainApp() {
         }
     }
 
+    // Load saved spacecraft/date selection ASAP to avoid flash of HTML defaults
+    await loadSavedSpacecraft();
+
     // Update participant ID display
     updateParticipantIdDisplay();
 
     // Memory monitoring is started after recent-searches cache loads (see below)
-    
+
     // ═══════════════════════════════════════════════════════════
     // 🚨 STUDY MODE: Show overlay only during active simulation in participant mode
     // ═══════════════════════════════════════════════════════════
@@ -235,15 +238,12 @@ async function initializeMainApp() {
     loadFftSize();
 
     initWaveformWorker();
-    
+
     const sliderValueFor1x = calculateSliderForSpeed(1.0);
     document.getElementById('playbackSpeed').value = sliderValueFor1x;
     if (!isStudyMode()) {
         console.log(`Initialized playback speed slider at position ${sliderValueFor1x} for 1.0x speed`);
     }
-    
-    // Load saved spacecraft selection (or use default)
-    await loadSavedSpacecraft();
     
     if (window.pm?.init) console.groupEnd(); // End UI Setup
     
