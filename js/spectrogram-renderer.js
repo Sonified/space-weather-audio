@@ -171,7 +171,10 @@ let debugFrameCounter = 0;
  * Lightweight confirm dialog — no backdrop dimming, centered popup, defaults to OK.
  * Returns a Promise<boolean>.
  */
+let _confirmDeleteOpen = false;
 function confirmDelete(message, clientX, clientY) {
+    if (_confirmDeleteOpen) return Promise.resolve(false);
+    _confirmDeleteOpen = true;
     return new Promise(resolve => {
         const dialog = document.createElement('div');
         // Position to the right of click, vertically centered on it; fallback to screen center
@@ -209,6 +212,7 @@ function confirmDelete(message, clientX, clientY) {
         `;
 
         const cleanup = (result) => {
+            _confirmDeleteOpen = false;
             document.removeEventListener('keydown', onKey);
             dialog.remove();
             resolve(result);
