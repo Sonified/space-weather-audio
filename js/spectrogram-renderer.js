@@ -2255,7 +2255,17 @@ export function setupSpectrogramSelection() {
         }
     };
     document.addEventListener('visibilitychange', spectrogramRepositionOnVisibility);
-    
+
+    // Redraw annotations immediately when annotation mode changes
+    const annotationModeEl = document.getElementById('annotationMode');
+    if (annotationModeEl) {
+        annotationModeEl.addEventListener('change', () => {
+            // Clear annotation timing state so persistent mode shows immediately
+            annotationTimingState.clear();
+            redrawCanvasBoxes();
+        });
+    }
+
     if (window.pm?.init) console.log('✅ Created spectrogram selection overlay canvas:', {
         left: spectrogramOverlayCanvas.style.left,
         top: spectrogramOverlayCanvas.style.top,

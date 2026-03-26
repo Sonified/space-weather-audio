@@ -164,17 +164,14 @@ async function startErrorFlameEffect() {
     if (errorFlameActive) return;
     
     try {
-        // Get or create audio context
-        const State = await import('./audio-state.js');
-        let audioContext = State.audioContext;
-        
-        // Create audio context if it doesn't exist
+        // Use a PRIVATE audio context for flame visuals — NEVER touch State.audioContext.
+        // Bug fix: previously this created a bare AudioContext() (defaulting to system sample
+        // rate, e.g. 96kHz) and stored it as the global State audio context, poisoning the
+        // real audio pipeline which expects the context created by audio-worklet-init.
+        let audioContext = window._flameAudioContext;
         if (!audioContext) {
-            audioContext = new AudioContext({ 
-                latencyHint: 'playback'
-            });
-            State.setAudioContext(audioContext);
-            console.log(`🎵 Created audio context for flame effect (sampleRate: ${audioContext.sampleRate} Hz)`);
+            audioContext = new AudioContext({ latencyHint: 'playback', sampleRate: 44100 });
+            window._flameAudioContext = audioContext;
         }
         
         // Resume audio context if suspended (required for Web Audio API)

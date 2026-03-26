@@ -81,6 +81,7 @@ export function initializeAdvancedControls() {
         { id: 'audioQuality', key: 'emic_audio_quality', type: 'select' },
         { id: 'tileChunkSize', key: 'emic_tile_chunk_size', type: 'select' },
         { id: 'featurePlaybackMode', key: 'emic_feature_playback_mode', type: 'select' },
+        { id: 'annotationMode', key: 'emic_annotation_mode', type: 'select' },
         { id: 'dataSource', key: 'emic_data_source', type: 'select' },
         { id: 'drawerBypassCache', key: 'emic_bypass_cache', type: 'checkbox' },
         { id: 'silentDownload', key: 'emic_silent_download', type: 'checkbox' },

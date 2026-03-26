@@ -2301,6 +2301,12 @@ async function runAnalysis(step) {
     // Set condition-assigned processing algorithm (stretch) — just set the preference,
     // don't engage yet. Data loading will rebuild the worklet (destroying any active stretch
     // node), and the post-load updatePlaybackSpeed() will engage with the freshly-primed node.
+    // No condition assigned (no active session, preview mode, etc.) — default to resample
+    // so audio isn't 4400x too fast (raw 10Hz data played at 44100Hz)
+    if (!step._assignedProcessing) {
+        step._assignedProcessing = 'resample';
+        console.log('🧪 No condition assigned — defaulting to resample processing');
+    }
     if (step._assignedProcessing) {
         const mapped = PROCESSING_MAP[step._assignedProcessing];
         if (mapped) {

@@ -158,7 +158,8 @@ export async function initAudioWorklet() {
             await window._audioWorkletLoading;
         } else {
             const ctx = new AudioContext({
-                latencyHint: 'playback'  // 30ms buffer for stable playback (prevents dropouts)
+                sampleRate: 44100,        // Must match WAV data rate — bare AudioContext() defaults to system rate (96kHz on pro audio setups)
+                latencyHint: 'playback'   // 30ms buffer for stable playback (prevents dropouts)
             });
             window._audioWorkletLoading = (async () => {
                 await ctx.audioWorklet.addModule('workers/audio-worklet.js');
