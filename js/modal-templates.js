@@ -83,8 +83,8 @@ export function createEmicAboutModal() {
                 </p>
                 <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
                 <p style="margin-bottom: 0; color: #555; font-size: 15px; line-height: 1.6;">
-                    If you have any questions or need assistance, please contact the study coordinator, Lucy Williams, at
-                    <a href="mailto:lewilliams@smith.edu" style="color: #007bff; text-decoration: none; font-weight: 600;">lewilliams@smith.edu</a>.
+                    If you have any questions or need assistance, please contact the CHIRP team at
+                    <a href="mailto:chirpscienceproject@gmail.com" style="color: #007bff; text-decoration: none; font-weight: 600;">chirpscienceproject@gmail.com</a>.
                 </p>
             </div>
         </div>
@@ -116,8 +116,8 @@ export function createParticipantInfoModal() {
                 </div>
                 <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
                 <p style="margin-bottom: 0; color: #555; font-size: 15px; line-height: 1.6;">
-                    If you have any questions or need assistance, please contact the study coordinator, Lucy Williams, at
-                    <a href="mailto:lewilliams@smith.edu" style="color: #007bff; text-decoration: none; font-weight: 600;">lewilliams@smith.edu</a>.
+                    If you have any questions or need assistance, please contact the CHIRP team at
+                    <a href="mailto:chirpscienceproject@gmail.com" style="color: #007bff; text-decoration: none; font-weight: 600;">chirpscienceproject@gmail.com</a>.
                 </p>
             </div>
         </div>

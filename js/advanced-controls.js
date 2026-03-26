@@ -182,8 +182,10 @@ export function initializeAdvancedControls() {
     // Upgrade all native <select> elements to custom styled dropdowns
     const cselInstances = upgradeAllSelects();
 
-    // Auto-download: if enabled, click Fetch Data after a brief init delay
-    if (document.getElementById('autoDownload')?.checked) {
+    // Auto-download: only in study mode (portal users control when to fetch)
+    const _adEl = document.getElementById('autoDownload');
+    console.log(`🔧 autoDownload checkbox: checked=${_adEl?.checked}, localStorage=${localStorage.getItem(isStudyMode() ? 'emic_auto_download' : 'main_auto_download')}, studyMode=${isStudyMode()}`);
+    if (isStudyMode() && _adEl?.checked) {
         setTimeout(() => {
             const fetchBtn = document.getElementById('startBtn');
             if (fetchBtn && !fetchBtn.disabled) {
