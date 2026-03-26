@@ -3,7 +3,7 @@
 import { isStudyMode } from './master-modes.js';
 import { updateDatasetOptions, saveDateTime } from './ui-controls.js';
 import { startMemoryMonitoring } from './main-window-renderer.js';
-import { refreshSelectById } from './custom-select.js';
+const refreshSelectById = window.__customSelect?.refreshSelectById || (() => {});
 
 // 🔍 RECENT SEARCHES SYSTEM (using IndexedDB cache)
 

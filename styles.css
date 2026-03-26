@@ -3426,9 +3426,9 @@ select.csel-native {
     border: 1px solid #555;
     border-radius: 4px;
     padding: 4px 8px;
-    color: #ddd;
-    font-size: 13px;
-    font-weight: normal;
+    color: #d8d8d8;
+    font-size: 14px;
+    font-weight: 500;
     cursor: pointer;
     outline: none;
     transition: border-color 0.15s, background 0.15s;

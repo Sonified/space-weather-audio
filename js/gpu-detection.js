@@ -2,9 +2,44 @@
 
 /**
  * Detect GPU/WebGPU capabilities and store the result on window.__gpuCapability.
- * Called early in initializeMainApp() so the correct render/compute path is chosen.
+ * Kicked off non-blocking at init; spectrogram can await the result before rendering.
  */
-export async function detectGPUCapability() {
+
+let _gpuPromise = null;
+
+/**
+ * Start GPU detection. Safe to call multiple times — only runs once.
+ * Returns a promise that resolves when detection is complete.
+ */
+export function detectGPUCapability() {
+    if (!_gpuPromise) {
+        _gpuPromise = _detect();
+    }
+    return _gpuPromise;
+}
+
+/**
+ * Wait for GPU detection to finish, with a timeout fallback.
+ * If detection takes longer than `timeoutMs`, resolves with CPU-fallback defaults.
+ * Call this from spectrogram-pyramid before choosing compute backend.
+ */
+export function waitForGPUDetection(timeoutMs = 5000) {
+    if (window.__gpuCapability) return Promise.resolve(window.__gpuCapability);
+    if (!_gpuPromise) detectGPUCapability();
+
+    return Promise.race([
+        _gpuPromise.then(() => window.__gpuCapability),
+        new Promise(resolve => setTimeout(() => {
+            if (!window.__gpuCapability) {
+                console.warn(`⚠️ GPU detection timed out after ${timeoutMs}ms — falling back to CPU`);
+                window.__gpuCapability = { useGPU: false, vendor: 'none', timedOut: true };
+            }
+            resolve(window.__gpuCapability);
+        }, timeoutMs))
+    ]);
+}
+
+async function _detect() {
     try {
         const ram = navigator.deviceMemory || 'unknown';
         const cores = navigator.hardwareConcurrency || 'unknown';

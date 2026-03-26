@@ -98,7 +98,10 @@ async function initWaveformThreeScene() {
     canvas.width = wfCachedWidth;
     canvas.height = wfCachedHeight;
 
-    wfRenderer = new THREE.WebGPURenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: true });
+    wfRenderer = new THREE.WebGPURenderer({
+        canvas, antialias: false, alpha: false, preserveDrawingBuffer: true,
+        requiredLimits: { maxTextureDimension2D: 16384 }
+    });
     wfRenderer.setSize(wfCachedWidth, wfCachedHeight, false);
     await wfRenderer.init();
 
@@ -455,13 +458,26 @@ export async function uploadWaveformSamples(samples, expectedTotalSamples = 0) {
     // Use expected total if provided (progressive loading: allocate for full duration)
     const effectiveTotal = expectedTotalSamples > samples.length ? expectedTotalSamples : samples.length;
     wfTotalSamples = effectiveTotal;
-    wfTextureWidth = 4096;
+    // Choose texture width to keep height ≤ 8192 (universal WebGPU limit)
+    const MAX_TEX_DIM = 8192;
+    wfTextureWidth = (Math.ceil(wfTotalSamples / 4096) > MAX_TEX_DIM) ? 8192 : 4096;
     wfTextureHeight = Math.ceil(wfTotalSamples / wfTextureWidth);
+
+    // Hard cap for truly enormous datasets (>67M samples)
+    if (wfTextureHeight > MAX_TEX_DIM) {
+        console.warn(`⚠️ Minimap texture height ${wfTextureHeight} exceeds ${MAX_TEX_DIM} — clamping`);
+        wfTextureHeight = MAX_TEX_DIM;
+        wfTotalSamples = wfTextureWidth * wfTextureHeight;
+    }
 
     // Pad to fill the texture rectangle (zeros = silence for unfilled right portion)
     const paddedLength = wfTextureWidth * wfTextureHeight;
     const data = new Float32Array(paddedLength);
-    data.set(samples);
+    if (samples.length > paddedLength) {
+        data.set(samples.subarray(0, paddedLength));
+    } else {
+        data.set(samples);
+    }
 
     if (wfSampleTexture) wfSampleTexture.dispose();
     wfSampleTexture = new THREE.DataTexture(data, wfTextureWidth, wfTextureHeight, THREE.RedFormat, THREE.FloatType);

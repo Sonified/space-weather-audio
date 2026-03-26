@@ -18,6 +18,7 @@ import { initAudioWorklet } from './audio-worklet-init.js';
 
 // ===== FIRST FETCH TRACKING =====
 let hasPerformedFirstFetch = false; // Track if first fetch has been performed
+let _streamingInProgress = false;   // Re-entrancy guard — prevents double-fetch races
 
 /**
  * Getter for hasPerformedFirstFetch (module-scoped let can't be re-exported)
@@ -32,6 +33,11 @@ export function getHasPerformedFirstFetch() {
  * @param {Object|null} config - Optional direct config { spacecraft, dataset, startTime, endTime }
  */
 export async function startStreaming(event, config = null) {
+    if (_streamingInProgress) {
+        console.warn('⚠️ startStreaming already in progress — ignoring duplicate call');
+        return;
+    }
+    _streamingInProgress = true;
     try {
         if (event) {
             event.preventDefault();
@@ -135,6 +141,8 @@ export async function startStreaming(event, config = null) {
             const sv = spacecraftEl?.value, dv = dataTypeEl?.value;
             const sd = startDateEl?.value, st = startTimeEl?.value;
             const ed = endDateEl?.value, et = endTimeEl?.value;
+            console.log(`⏱️ [FETCH] spacecraft=${sv} dataset=${dv} selectedIndex=${dataTypeEl?.selectedIndex} options=${Array.from(dataTypeEl?.options||[]).map(o=>o.value).join(',')}`);
+            console.log(`⏱️ [FETCH] range: ${sd}T${st} → ${ed}T${et}`);
 
             if (!sv || !dv || !sd || !st || !ed || !et) {
                 alert('Please fill in all fields (spacecraft, dataset, start date/time, end date/time)');
@@ -257,6 +265,8 @@ export async function startStreaming(event, config = null) {
             statusDiv.className = 'status error';
         }
         throw error;
+    } finally {
+        _streamingInProgress = false;
     }
 }
 

@@ -419,7 +419,7 @@ class CustomSelect {
  * Upgrade all native <select> elements within a container (default: document).
  * Returns a Map of select ID → CustomSelect instance for later .refresh() calls.
  */
-export function upgradeAllSelects(container = document) {
+function upgradeAllSelects(container = document) {
     const instances = new Map();
     container.querySelectorAll('select:not(.csel-native)').forEach(sel => {
         const cs = new CustomSelect(sel);
@@ -432,9 +432,11 @@ export function upgradeAllSelects(container = document) {
  * Refresh the CustomSelect instance wrapping a given native <select> element.
  * Call after programmatically changing the <option>s via innerHTML.
  */
-export function refreshSelectById(id) {
+function refreshSelectById(id) {
     const inst = allInstances.find(cs => cs.select.id === id);
     if (inst) inst.refresh();
 }
 
-export { CustomSelect };
+// Expose globally — loaded as regular <script> for instant execution,
+// also importable from modules via window.__customSelect
+window.__customSelect = { upgradeAllSelects, refreshSelectById, CustomSelect, _allInstances: allInstances };

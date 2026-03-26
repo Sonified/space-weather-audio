@@ -510,6 +510,7 @@ async function initThreeScene() {
                 maxComputeWorkgroupStorageSize: 32768,
                 maxComputeWorkgroupSizeX: 256,
                 maxComputeInvocationsPerWorkgroup: 256,
+                maxTextureDimension2D: 16384,
             }
         });
         await threeRenderer.init();
@@ -1221,13 +1222,29 @@ function uploadMainWaveformSamples(expectedTotalSamples = 0) {
 
     const effectiveTotal = expectedTotalSamples > samples.length ? expectedTotalSamples : samples.length;
     wfTotalSamples = effectiveTotal;
-    wfTextureWidth = 4096;
+
+    // Choose texture width to keep height ≤ 8192 (universal WebGPU limit)
+    // 4096 wide → max 33.5M samples; 8192 wide → max 67M samples
+    const MAX_TEX_DIM = 8192;
+    wfTextureWidth = (Math.ceil(wfTotalSamples / 4096) > MAX_TEX_DIM) ? 8192 : 4096;
     wfTextureHeight = Math.ceil(wfTotalSamples / wfTextureWidth);
+
+    // Hard cap — truncate waveform display if dataset is truly enormous (>67M samples)
+    if (wfTextureHeight > MAX_TEX_DIM) {
+        console.warn(`⚠️ Waveform texture height ${wfTextureHeight} exceeds ${MAX_TEX_DIM} — clamping (${wfTotalSamples} samples)`);
+        wfTextureHeight = MAX_TEX_DIM;
+        wfTotalSamples = wfTextureWidth * wfTextureHeight;
+    }
 
     // Pad to fill texture rectangle (zeros = silence)
     const paddedLength = wfTextureWidth * wfTextureHeight;
     const data = new Float32Array(paddedLength);
-    data.set(samples);
+    // If samples exceeds clamped texture capacity, copy only what fits
+    if (samples.length > paddedLength) {
+        data.set(samples.subarray(0, paddedLength));
+    } else {
+        data.set(samples);
+    }
 
     if (wfSampleTexture) wfSampleTexture.dispose();
     wfSampleTexture = new THREE.DataTexture(data, wfTextureWidth, wfTextureHeight, THREE.RedFormat, THREE.FloatType);

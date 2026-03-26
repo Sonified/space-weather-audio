@@ -25,7 +25,7 @@ import { isStudyMode, isLocalEnvironment } from './master-modes.js';
 import { isAdminUnlocked } from './admin-unlock.js';
 import { getRealUsernameStored, getActiveId } from './participant-id.js';
 import { pm } from './logger.js';
-import { upgradeAllSelects } from './custom-select.js';
+const upgradeAllSelects = window.__customSelect?.upgradeAllSelects || (() => new Map());
 import { injectSettingsDrawer, injectGearPopovers } from './settings-drawer.js';
 
 export function initializeAdvancedControls() {

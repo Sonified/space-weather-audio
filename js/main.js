@@ -4,6 +4,7 @@
  * Main orchestration: initialization, startStreaming, event handlers
  */
 
+console.log(`⏱️ main.js TOP-OF-FILE at ${(performance.now()).toFixed(1)}ms (module tree loading...)`);
 
 import * as State from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, switchStretchAlgorithm, calculateSliderForSpeed } from './audio-player.js';
@@ -32,6 +33,7 @@ import { setupResizeHandler } from './resize-handler.js';
 import { detectGPUCapability } from './gpu-detection.js';
 import { initializeApp, updateParticipantIdDisplay } from './mode-initializers.js';
 import { initScrollZoom } from './scroll-zoom.js';
+const upgradeAllSelects = window.__customSelect?.upgradeAllSelects || (() => new Map());
 
 if (window.pm?.init) console.log('✅ CONSTANTS DEFINED');
 
@@ -40,8 +42,15 @@ export { startStreaming } from './streaming.js';
 
 // Main initialization function
 async function initializeMainApp() {
+    const _t = (label) => console.log(`⏱️ [${(performance.now()).toFixed(1)}ms] ${label}`);
+    _t('initializeMainApp() START');
+
     // Capture wheel events on canvases immediately to prevent page scroll before data loads
     initScrollZoom();
+
+    // Upgrade native <select> elements to custom dropdowns BEFORE any awaits
+    // so the visual swap happens before first paint (no flash of native selects)
+    upgradeAllSelects();
 
     if (window.pm?.rendering) {
         console.log('════════════════════');
@@ -49,26 +58,32 @@ async function initializeMainApp() {
         console.log('════════════════════');
     }
 
-    // ─── GPU Capability Detection ────────────────────────────────────────
-    await detectGPUCapability();
+    // ─── GPU Capability Detection (non-blocking) ─────────────────────────
+    // requestAdapter() takes ~700ms on macOS — run in background, don't block UI init.
+    // Result is only needed when spectrogram rendering starts (after data fetch).
+    _t('detectGPUCapability() kicked off (non-blocking)');
+    detectGPUCapability().then(() => _t('detectGPUCapability() resolved in background'));
 
     // Check for new version first (will reload page if update available)
+    _t('checkAppVersion() start');
     if (await checkAppVersion()) return;
+    _t('checkAppVersion() done');
 
     // Group core system initialization
     if (window.pm?.init) console.groupCollapsed('🔧 [INIT] Core Systems');
-    
+
     // ═══════════════════════════════════════════════════════════
     // 📏 STATUS AUTO-RESIZE - Shrink font when text overflows
     // ═══════════════════════════════════════════════════════════
     const { setupStatusAutoResize } = await import('./status-auto-resize.js');
     setupStatusAutoResize();
-    
+
     // ═══════════════════════════════════════════════════════════
     // 🎯 MASTER MODE - Initialize and check configuration
     // ═══════════════════════════════════════════════════════════
     const { initializeMasterMode, isStudyMode, CURRENT_MODE, AppMode } = await import('./master-modes.js');
     initializeMasterMode();
+    _t('core systems done');
     
     // Initialize error reporter early (catches errors during initialization)
     initErrorReporter();
@@ -98,7 +113,9 @@ async function initializeMainApp() {
         }
     }
     if (CURRENT_MODE === AppMode.EMIC_STUDY || CURRENT_MODE === AppMode.SPACE_WEATHER_PORTAL) {
+        _t('initializeAdvancedControls() start');
         initializeAdvancedControls();
+        _t('initializeAdvancedControls() done');
     }
 
     if (!isLocalEnvironment()) {
@@ -179,7 +196,9 @@ async function initializeMainApp() {
     }
 
     // Load saved spacecraft/date selection ASAP to avoid flash of HTML defaults
+    _t('loadSavedSpacecraft() start');
     await loadSavedSpacecraft();
+    _t('loadSavedSpacecraft() done');
 
     // Update participant ID display
     updateParticipantIdDisplay();
@@ -200,22 +219,26 @@ async function initializeMainApp() {
     }
     
     // Initialize modals first (all modes need them)
+    _t('initializeModals() start');
     try {
         await initializeModals();
+        _t('initializeModals() done');
         if (window.pm?.init) console.log('✅ Modals initialized successfully');
     } catch (error) {
         console.error('❌ CRITICAL: Failed to initialize modals:', error);
         // Don't proceed if modals failed - this will cause dark screen
         throw error;
     }
-    
+
+    _t('setupModalEventListeners() start');
     // Setup UI controls (all modes need them — skip in review mode, no modals)
     if (!window.__REVIEW_MODE) setupModalEventListeners();
-    
+    _t('setupModalEventListeners() done');
+
     // Initialize complete button state (disabled until first feature is identified)
     updateCompleteButtonState();
     updateCmpltButtonState();
-    
+
     // Setup spectrogram frequency selection
     setupSpectrogramSelection();
     
@@ -326,9 +349,10 @@ async function initializeMainApp() {
     document.getElementById('dataType').addEventListener('change', (e) => {
         // 💾 Save data type selection to localStorage for persistence
         localStorage.setItem('selectedDataType', e.target.value);
+        const selectedOption = e.target.options[e.target.selectedIndex];
+        if (selectedOption) localStorage.setItem('selectedDataTypeLabel', selectedOption.textContent);
         console.log('💾 Saved data type selection:', e.target.value);
         enableFetchButton();
-        e.target.blur(); // Blur so spacebar can toggle play/pause
         e.target.blur(); // Blur so spacebar can toggle play/pause
     });
 
@@ -628,21 +652,24 @@ async function initializeMainApp() {
     if (listenersGroupOpen) logGroupEnd();
     
     setupLifecycleHandlers();
-    
+
+    _t('initializeMainApp() COMPLETE');
+
     if (window.pm?.init) console.groupEnd(); // End Event Listeners
 } // End initializeMainApp
 
 // Call initialization when DOM is ready
+console.log(`⏱️ main.js BOTTOM (imports done) at ${performance.now().toFixed(1)}ms | readyState=${document.readyState}`);
 if (document.readyState === 'loading') {
     // DOM is still loading, wait for DOMContentLoaded
-    if (window.pm?.init) console.log('⏳ Waiting for DOMContentLoaded...');
+    console.log(`⏱️ Waiting for DOMContentLoaded...`);
     document.addEventListener('DOMContentLoaded', () => {
-        if (window.pm?.init) console.log('🔵 DOMContentLoaded FIRED - calling initializeMainApp');
+        console.log(`⏱️ DOMContentLoaded fired at ${performance.now().toFixed(1)}ms`);
         initializeMainApp();
     });
 } else {
     // DOM is already loaded (interactive or complete), initialize immediately
-    // console.log('✅ DOM already loaded, initializing immediately');
+    console.log(`⏱️ DOM already ready, calling initializeMainApp immediately`);
     initializeMainApp();
 }
 

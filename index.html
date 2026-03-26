@@ -39,7 +39,7 @@
             r.style.background = a.pageBg;
         })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20260325.234845.234557.234326.234107.233259.232446.231314.231003.195747.195738.071507.031844.043436.034006.034005.034004.033959.004431.231723.231618.231601.004457.004436.002818.235020.235015.235006.234954.231238.230935.220646.215655.215427.215300.214558.214527.203448.201900.200807.194042.191438.185150.184921.182912.182737.181931.180806.180735.180657.180511.180351.175356.174710.081701.081557.081235.080111.075556.075159.064520.064502.060419.055149.054350.053329.052524.050716.050310.044921.044733.043239.042005.041339.003602.002745.000203.234105.232846.231223.225305.224754.224744.224702.220240.220146.215652.200149.070214.064302.062315.052138.051944.051933.051752.044821.044712.044706.040658.015002.014259.011450.005003.004955.002441.050305.045015.044250.034654.034116.033952.033942.033735.033636.030504.020433.011252.002318.223103.222113.221631.200818.105718.104648.104123.085250.065420.054915.054912.054906.052735.042430.041609.040852.040842.040829.040824.040751.032759.032751.032743.025205.004903.073608.073207.072912.072216.071608.071008.065641.064717.063811.062214.060452.060031.055040.045231.045121.024949.020052.014555.012349.005144.004941.004632.004436.004320.003742.003726.003538.002336.001938.001933.001914.001908.001901.001856.001555.001546.001526.001502.001448.222740.060013.060000.055813.004907.001441.205353.204633.204514.204401.200242.182741.175722.155839.151608.151133.074543.074056.072310.070720.065209.055340.054608.053256.052041.051540.050729.045456.043401.005753.004912.004851.000832.000315.233222.232810.232607.232547.223826.223221.210310.203206.202618.202302.202157.202022.201559.201237.195135.194916.185734.053144.052223.051318.045811.043122.042750.042050.040856.040334.035610.035317.034203.034158.034151.034145.022031.220253.020106.011719.003559.234507.205713.205433.205325.205230.204850.204637.204356.203229.185037.184658.183700.182935.182050.182016.181728.181608.172716.171944.161757.161750.161742.160355.160307.160205.155820.155734.155654.155643.155621.155612.155601.155549.044353.044348.044344.044339.044335.044328.005349.070826.070149.070146.042120.230220.225052.031644.031038.030840.023603.022627.192022.191147.190853.023919.022155.021611.021604.021600.021539.021527.003104.003047.003019.002750.082311.082257.081801.081750">
+    <link rel="stylesheet" href="styles.css?v=20260326.005214">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         /* Meta-variables for axis tick label styling */
@@ -170,8 +170,7 @@
                     <div class="control-group" style="flex-direction: row; align-items: center; gap: 8px; flex-shrink: 1; min-width: 210px;">
                         <label for="dataType" style="margin-bottom: 0; white-space: nowrap;">Data:</label>
                         <select id="dataType" style="width: 248px; min-width: 150px; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis;">
-                            <option value="PSP_FLD_L2_MAG_RTN">PSP_FLD_L2_MAG_RTN (Full Cadence)</option>
-                            <option value="PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC">PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC (4 Samples/Cycle)</option>
+                            <!-- Populated by inline script (saved value) then modules (full list) -->
                         </select>
                     </div>
 
@@ -475,24 +474,59 @@
 
         var sc = localStorage.getItem('selectedSpacecraft');
         var dt = localStorage.getItem('selectedDataType');
+        var dtLabel = localStorage.getItem('selectedDataTypeLabel');
         var sd = localStorage.getItem('selectedStartDate');
         var st = localStorage.getItem('selectedStartTime');
         var ed = localStorage.getItem('selectedEndDate');
         var et = localStorage.getItem('selectedEndTime');
 
-        if (sc) { var el = document.getElementById('spacecraft'); if (el) el.value = sc; }
+        var dtEl = document.getElementById('dataType');
+
+        if (sc) {
+            var el = document.getElementById('spacecraft'); if (el) el.value = sc;
+        }
+
+        // Restore dataType dropdown: use cached full HTML if spacecraft matches, else show saved value
+        var cachedHTML = localStorage.getItem('_dataTypeHTML');
+        var cachedSC = localStorage.getItem('_dataTypeSpacecraft');
+        if (dtEl && cachedHTML && cachedSC === (sc || 'PSP')) {
+            // Full dropdown HTML cached from last session — restore with all options
+            dtEl.innerHTML = cachedHTML;
+            if (dt) dtEl.value = dt;
+        } else if (dt && dtEl) {
+            // Returning user but spacecraft changed or no cache — show saved value as placeholder
+            var label = dtLabel || dt;
+            dtEl.innerHTML = '<option value="' + dt + '" selected>' + label + '</option>';
+        } else if (dtEl) {
+            // First visit: default to PSP
+            dtEl.innerHTML = '<option value="PSP_FLD_L2_MAG_RTN" selected>PSP_FLD_L2_MAG_RTN (Full Cadence)</option>'
+                + '<option value="PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC">PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC (4 Samples/Cycle)</option>';
+        }
+
         if (sd) { var el = document.getElementById('startDate'); if (el) el.value = sd; }
         if (st) { var el = document.getElementById('startTime'); if (el) el.value = st; }
         if (ed) { var el = document.getElementById('endDate'); if (el) el.value = ed; }
         if (et) { var el = document.getElementById('endTime'); if (el) el.value = et; }
-        // dataType dropdown needs spacecraft-specific options — handled later by loadSavedSpacecraft()
+
+        // Restore visible checkboxes immediately (prefix main_ for index.html)
+        var detrend = localStorage.getItem('main_detrend');
+        if (detrend !== null) { var cb = document.getElementById('removeDCOffset'); if (cb) cb.checked = detrend === 'true'; }
+
+        // Restore username display
+        var username = localStorage.getItem('emic_real_username') || sessionStorage.getItem('participantId') || localStorage.getItem('participantId');
+        if (username) { var uel = document.getElementById('participantIdValue'); if (uel) uel.textContent = username; }
     })();
     </script>
+
+    <!-- Custom selects: load + upgrade IMMEDIATELY so first paint shows styled dropdowns -->
+    <script src="js/custom-select.js"></script>
+    <script>window.__customSelect.upgradeAllSelects();</script>
 
     <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- APPLICATION LAYER: Main app code (might break during beta) -->
     <!-- ═══════════════════════════════════════════════════════════ -->
-    <script type="module" src="js/main.js?v=20260325.234845.234557.234326.234107.233259.232446.231314.231003.195747.195738.071507.031844.043436.034006.034005.034004.033959.004431.231723.231618.231601.004457.004436.002818.235020.235015.235006.234954.231238.230935.220646.215655.215427.215300.214558.214527.203448.201900.200807.194042.191438.185150.184921.182912.182737.181931.180806.180735.180657.180511.180351.175356.174710.081701.081557.081235.080111.075556.075159.064520.064502.060419.055149.054350.053329.052524.050716.050310.044921.044733.043239.042005.041339.003602.002745.000203.234105.232846.231223.225305.224754.224744.224702.220240.220146.215652.200149.070214.064302.062315.052138.051944.051933.051752.044821.044712.044706.040658.015002.014259.011450.005003.004955.002441.050305.045015.044250.034654.034116.033952.033942.033735.033636.030504.020433.011252.002318.223103.222113.221631.200818.105718.104648.104123.085250.065420.054915.054912.054906.052735.042430.041609.040852.040842.040829.040824.040751.032759.032751.032743.025205.004903.073608.073207.072912.072216.071608.071008.065641.064717.063811.062214.060452.060031.055040.045231.045121.024949.020052.014555.012349.005144.004941.004632.004436.004320.003742.003726.003538.002336.001938.001933.001914.001908.001901.001856.001555.001546.001526.001502.001448.222740.060013.060000.055813.004907.001441.205353.204633.204514.204401.200242.182741.175722.155839.151608.151133.074543.074056.072310.070720.065209.055340.054608.053256.052041.051540.050729.045456.043401.005753.004912.004851.000832.000315.233222.232810.232607.232547.223826.223221.210310.203206.202618.202302.202157.202022.201559.201237.195135.194916.185734.053144.052223.051318.045811.043122.042750.042050.040856.040334.035610.035317.034203.034158.034151.034145.022031.220253.020106.011719.003559.234507.205713.205433.205325.205230.204850.204637.204356.203229.185037.184658.183700.182935.182050.182016.181728.181608.172716.171944.161757.161750.161742.160355.160307.160205.155820.155734.155654.155643.155621.155612.155601.155549.044353.044348.044344.044339.044335.044328.005349.070826.070149.070146.042120.230220.225052.031644.031038.030840.023603.022627.192022.191147.190853.023919.022155.021611.021604.021600.021539.021527.003104.003047.003019.002750.082311.082257.081801.081750"></script>
+    <script>window.__t0 = performance.now(); console.log('⏱️ module script tag reached at', window.__t0.toFixed(1), 'ms');</script>
+    <script type="module" src="js/main.js?v=20260326.005214"></script>
 
     <!-- Responsive spectrogram height: fill viewport so bottom edge sits at window edge -->
     <script>

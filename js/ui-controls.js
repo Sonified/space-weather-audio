@@ -9,7 +9,7 @@ import { drawWaveform, changeWaveformFilter } from './minimap-window-renderer.js
 import { updatePlaybackSpeed } from './audio-player.js';
 import { isStudyMode, CURRENT_MODE, AppMode } from './master-modes.js';
 import { log, logGroup, logGroupEnd } from './logger.js';
-import { refreshSelectById } from './custom-select.js';
+const refreshSelectById = window.__customSelect?.refreshSelectById || (() => {});
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Re-exports from ui-modals.js (zero-breakage migration — consumers keep importing from here)
@@ -90,6 +90,9 @@ export async function loadSavedSpacecraft() {
         const validOptions = Array.from(dataTypeSelect.options).map(opt => opt.value);
         if (validOptions.includes(savedDataType)) {
             dataTypeSelect.value = savedDataType;
+            // Save the friendly label so inline script can show it instantly next load
+            const selectedOpt = dataTypeSelect.options[dataTypeSelect.selectedIndex];
+            if (selectedOpt) localStorage.setItem('selectedDataTypeLabel', selectedOpt.textContent);
             if (!isStudyMode()) {
                 console.log(`Data type: ${savedDataType}`);
             }
@@ -297,6 +300,10 @@ export function updateDatasetOptions() {
     }
     if (inGroup) html += '</optgroup>';
     dataTypeSelect.innerHTML = html;
+
+    // Cache the full dropdown HTML so the inline script can restore it instantly next load
+    localStorage.setItem('_dataTypeHTML', html);
+    localStorage.setItem('_dataTypeSpacecraft', spacecraft);
 
     // Sync the custom select wrapper (if active) with the new options
     refreshSelectById('dataType');

@@ -344,9 +344,10 @@ export async function renderBaseTiles(audioData, sampleRate, fftSize, viewCenter
     const signal = buildAbortController.signal;
 
     // Initialize compute backend (GPU → WASM worker pool fallback)
-    // Respects capability detection from main.js (window.__gpuCapability)
+    // Wait for GPU detection (kicked off at init, non-blocking; 5s timeout → CPU fallback)
     if (!computeBackend) {
-        const gpuCap = window.__gpuCapability;
+        const { waitForGPUDetection } = await import('./gpu-detection.js');
+        const gpuCap = await waitForGPUDetection(5000);
         const gpuAllowed = gpuCap ? gpuCap.useGPU : true;  // default to trying GPU if no detection ran
         if (gpuAllowed && SpectrogramGPUCompute.isSupported()) {
             try {
