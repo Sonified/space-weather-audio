@@ -7,6 +7,8 @@ import { clearCompleteSpectrogram, aggressiveCleanup } from './main-window-rende
 import { clearWaveformRenderer, startPlaybackIndicator } from './minimap-window-renderer.js';
 import { cancelZoomTransitionRAF, stopZoomTransition } from './minimap-x-axis-renderer.js';
 import { cleanupKeyboardShortcuts } from './keyboard-shortcuts.js';
+import { stopOscilloscope } from './oscilloscope-renderer.js';
+import { exitOverheatMode } from './core/flame-engine.js';
 
 /**
  * Set up all lifecycle cleanup handlers (beforeunload, pagehide, visibilitychange).
@@ -82,10 +84,12 @@ export function setupLifecycleHandlers() {
                 // 🔥 FIX: Store visibility change handler reference for cleanup
                 const visibilityChangeHandler = () => {
                     if (document.hidden) {
-                        // Aggressive cleanup when hidden - save memory, stop animations
+                        // Aggressive cleanup when hidden - stop all processing
                         if (window.pm?.render) console.log('💤 Page hidden - aggressive cleanup');
                         audioPlayerModule.cancelAllRAFLoops();
                         axisModule.cancelScaleTransitionRAF();
+                        stopOscilloscope();
+                        exitOverheatMode();
                         cleanupSpectrogramSelection(); // Destroy canvas overlay
                     } else {
                         // Page visible again - recreate everything and restore state
