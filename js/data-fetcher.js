@@ -567,10 +567,18 @@ async function decodeWAVBlob(wavBlob, cacheEntry) {
 /**
  * Convert ISO 8601 extended format to basic format
  * e.g., "2025-07-31T22:00:00.000Z" -> "20250731T220000Z"
+ * Handles edge cases: missing seconds, extra whitespace, variable-length
+ * fractional seconds, non-ASCII characters from paste operations.
  */
 function toBasicISO8601(isoString) {
-    // Remove milliseconds if present
-    let cleaned = isoString.replace(/\.\d{3}/g, '');
+    // Strip whitespace and non-ASCII (zero-width joiners, non-breaking spaces)
+    let cleaned = isoString.trim().replace(/[^\x20-\x7E]/g, '').trim();
+    // Remove fractional seconds of any length (e.g., .0, .000, .0000)
+    cleaned = cleaned.replace(/\.\d+/, '');
+    // Ensure trailing Z
+    if (!cleaned.endsWith('Z')) cleaned += 'Z';
+    // Pad missing seconds: "2024-06-29T11:00Z" -> "2024-06-29T11:00:00Z"
+    cleaned = cleaned.replace(/T(\d{2}):(\d{2})Z$/, 'T$1:$2:00Z');
     // Remove all dashes and colons, keep T and Z
     cleaned = cleaned.replace(/-/g, '').replace(/:/g, '');
     return cleaned;
