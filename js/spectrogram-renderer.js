@@ -864,9 +864,17 @@ function startPlaybackEndMonitor(endTimeSec) {
         }
         const pos = getCurrentPosition();
         if (pos >= featurePlaybackEndTime) {
-            pausePlayback();
-            featurePlaybackRAF = null;
-            featurePlaybackEndTime = null;
+            if (State.isLooping && isolatedFeatureBox && State.dataStartTime) {
+                const dataStartMs = State.dataStartTime.getTime();
+                const isoStartSec = (new Date(isolatedFeatureBox.startTime).getTime() - dataStartMs) / 1000;
+                const padding = 0.5;
+                seekToPosition(Math.max(0, isoStartSec - padding), true);
+                startIsolationEndStop();
+            } else {
+                pausePlayback();
+                featurePlaybackRAF = null;
+                featurePlaybackEndTime = null;
+            }
             return;
         }
         featurePlaybackRAF = requestAnimationFrame(monitorPlayback);
