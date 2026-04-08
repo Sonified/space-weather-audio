@@ -29,6 +29,10 @@ __pycache__/
 # Nested git repos
 harp/
 wavelets/
+# Large test data files
+tools/gap_test_wavs/*.cdf
+wavelet_processed_audio/
+
 # Claude instructions
 claude_instructions/
 CLAUDE.md
