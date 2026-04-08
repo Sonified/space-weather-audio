@@ -2814,7 +2814,7 @@ export function setupSpectrogramSelection() {
 
         // Only draw selection box if Drag is set to drawFeature
         const mainDragMode = document.getElementById('mainWindowDrag');
-        const isDragDrawFeature = mainDragMode && mainDragMode.value === 'drawFeature';
+        const isDragDrawFeature = !mainDragMode || mainDragMode.value === 'drawFeature';
         if (!isDragDrawFeature) return;
 
         // Draw ALL boxes (completed + current dragging)
@@ -2862,7 +2862,7 @@ export function setupSpectrogramSelection() {
 
             // Redraw overlay
             const mainDragMode = document.getElementById('mainWindowDrag');
-            if (mainDragMode && mainDragMode.value === 'drawFeature') {
+            if (!mainDragMode || mainDragMode.value === 'drawFeature') {
                 const width = spectrogramOverlayCanvas.width;
                 const height = spectrogramOverlayCanvas.height;
                 spectrogramOverlayCtx.clearRect(0, 0, width, height);
@@ -2950,7 +2950,7 @@ export function setupSpectrogramSelection() {
 
             // Check Release dropdown: seek-to-position on release
             const mainReleaseMode = document.getElementById('mainWindowRelease');
-            if (mainReleaseMode && mainReleaseMode.value === 'playAudio' && !zoomState.isInRegion()) {
+            if ((!mainReleaseMode || mainReleaseMode.value === 'playAudio') && !zoomState.isInRegion()) {
                 const canvasRect = canvas.getBoundingClientRect();
                 const releaseX = e.clientX - canvasRect.left;
                 const modeSelect = document.getElementById('viewingMode');
@@ -2989,7 +2989,7 @@ export function setupSpectrogramSelection() {
 
         // --- DRAG (exceeded 5px threshold) ---
         const mainDragMode = document.getElementById('mainWindowDrag');
-        const isDragDrawFeature = mainDragMode && mainDragMode.value === 'drawFeature';
+        const isDragDrawFeature = !mainDragMode || mainDragMode.value === 'drawFeature';
 
         if (!isDragDrawFeature) {
             // Drag=No action — cancel without creating feature
