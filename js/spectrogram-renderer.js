@@ -1339,6 +1339,7 @@ function showFeaturePopup(box) {
     // Play button
     popup.querySelector('.feature-popup-play').addEventListener('click', (e) => {
         e.stopPropagation();
+        e.currentTarget.blur();
         const btn = e.currentTarget;
         playFeature(btn.dataset.start, btn.dataset.end);
     });
@@ -1381,6 +1382,7 @@ function showFeaturePopup(box) {
     isolateBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         const btn = e.currentTarget;
+        btn.blur();
         const isActive = btn.classList.toggle('active');
 
         if (isActive) {
