@@ -1,7 +1,5 @@
 // settings-drawer.js — Settings drawer and gear popover HTML injection
 
-import { isStudyMode, isLocalEnvironment } from './master-modes.js';
-
 /**
  * SHARED ADVANCED CONTROLS: Gear popovers, settings drawer, localStorage persistence.
  * Called from both EMIC Study and Space Weather Portal modes.
@@ -529,8 +527,6 @@ export function injectSettingsDrawer() {
 }
 
 export function injectGearPopovers() {
-    const adv = isLocalEnvironment() || isStudyMode(); // All options locally + study; only Show + Mode on live portal
-
     // Nav Bar gear
     const navGear = document.getElementById('navBarGear');
     if (navGear && !navGear.querySelector('.gear-btn')) {
@@ -555,7 +551,7 @@ export function injectGearPopovers() {
                         <option value="static">Windowed Static</option>
                     </select>
                 </div>
-                ${adv ? `<div class="gear-popover-row">
+                <div class="gear-popover-row">
                     <span class="gear-label">Click:</span>
                     <select id="navBarClick" class="gear-select">
                         <option value="moveWindow" selected>Move window</option>
@@ -575,15 +571,15 @@ export function injectGearPopovers() {
                         <option value="show" selected>Show</option>
                         <option value="hide">Hide</option>
                     </select>
-                </div>` : ''}
+                </div>
                 <div class="gear-popover-title">Zoom</div>
-                ${adv ? `<div class="gear-popover-row">
+                <div class="gear-popover-row">
                     <span class="gear-label">Zoom:</span>
                     <select id="navBarScroll" class="gear-select">
                         <option value="zoom" selected>Zoom</option>
                         <option value="none">No action</option>
                     </select>
-                </div>` : ''}
+                </div>
                 <div class="gear-popover-row">
                     <span class="gear-label">Sens:</span>
                     <select id="navBarVSens" class="gear-select" data-paired="navBarScroll">
@@ -596,13 +592,13 @@ export function injectGearPopovers() {
                     </select>
                 </div>
                 <div class="gear-popover-title">Scroll</div>
-                ${adv ? `<div class="gear-popover-row">
+                <div class="gear-popover-row">
                     <span class="gear-label">Scroll:</span>
                     <select id="navBarHScroll" class="gear-select">
                         <option value="pan" selected>Pan</option>
                         <option value="none">No action</option>
                     </select>
-                </div>` : ''}
+                </div>
                 <div class="gear-popover-row">
                     <span class="gear-label">Sens:</span>
                     <select id="navBarHSens" class="gear-select" data-paired="navBarHScroll">
@@ -643,7 +639,7 @@ export function injectGearPopovers() {
                         <option value="static">Windowed Static</option>
                     </select>
                 </div>
-                ${adv ? `<div class="gear-popover-row">
+                <div class="gear-popover-row">
                     <span class="gear-label">Click:</span>
                     <select id="mainWindowClick" class="gear-select">
                         <option value="noAction" selected>No action</option>
@@ -685,15 +681,15 @@ export function injectGearPopovers() {
                         <option value="box">Box</option>
                         <option value="nearest">Nearest</option>
                     </select>
-                </div>` : ''}
+                </div>
                 <div class="gear-popover-title">Zoom</div>
-                ${adv ? `<div class="gear-popover-row">
+                <div class="gear-popover-row">
                     <span class="gear-label">Zoom:</span>
                     <select id="mainWindowScroll" class="gear-select">
                         <option value="zoom" selected>Zoom</option>
                         <option value="none">No action</option>
                     </select>
-                </div>` : ''}
+                </div>
                 <div class="gear-popover-row">
                     <span class="gear-label">Sens:</span>
                     <select id="mainWindowVSens" class="gear-select" data-paired="mainWindowScroll">
@@ -706,13 +702,13 @@ export function injectGearPopovers() {
                     </select>
                 </div>
                 <div class="gear-popover-title">Scroll</div>
-                ${adv ? `<div class="gear-popover-row">
+                <div class="gear-popover-row">
                     <span class="gear-label">Scroll:</span>
                     <select id="mainWindowHScroll" class="gear-select">
                         <option value="pan" selected>Pan</option>
                         <option value="none">No action</option>
                     </select>
-                </div>` : ''}
+                </div>
                 <div class="gear-popover-row">
                     <span class="gear-label">Sens:</span>
                     <select id="mainWindowHSens" class="gear-select" data-paired="mainWindowHScroll">
@@ -725,7 +721,7 @@ export function injectGearPopovers() {
                         <option value="200">200%</option>
                     </select>
                 </div>
-                ${adv ? `<div class="gear-popover-title">Feature Numbers</div>
+                <div class="gear-popover-title">Feature Numbers</div>
                 <div class="gear-popover-row">
                     <span class="gear-label">Color:</span>
                     <select id="mainWindowNumbers" class="gear-select">
@@ -775,7 +771,7 @@ export function injectGearPopovers() {
                         <option value="on" selected>On</option>
                         <option value="off">Off</option>
                     </select>
-                </div>` : ''}
+                </div>
             </div>
         `;
     }
