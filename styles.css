@@ -3669,7 +3669,6 @@ select.csel-native {
     padding: 10px 14px;
     min-width: 240px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(8px);
     z-index: 31;
 }
 
