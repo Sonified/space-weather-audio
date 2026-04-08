@@ -1639,14 +1639,14 @@ function applyAnalysisConfig(step) {
         const sdEl = document.getElementById('startDate');
         const stEl = document.getElementById('startTime');
         if (sdEl) sdEl.value = st.toISOString().slice(0, 10);
-        if (stEl) stEl.value = st.toISOString().slice(11, 23);
+        if (stEl) stEl.value = st.toISOString().slice(11, 23).replace(/\.0+$/, '');
     }
     if (endTime) {
         const et = new Date(endTime);
         const edEl = document.getElementById('endDate');
         const etEl = document.getElementById('endTime');
         if (edEl) edEl.value = et.toISOString().slice(0, 10);
-        if (etEl) etEl.value = et.toISOString().slice(11, 23);
+        if (etEl) etEl.value = et.toISOString().slice(11, 23).replace(/\.0+$/, '');
     }
 
     // Apply de-trend setting from study config

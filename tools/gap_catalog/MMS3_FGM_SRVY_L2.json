@@ -1,0 +1,84 @@
+{
+  "dataset_id": "MMS3_FGM_SRVY_L2",
+  "label": "MMS3 FGM Survey",
+  "cataloged_at": "2026-04-05T17:36:03.037484",
+  "time_range": {
+    "start": "2015-09-01",
+    "end": "2025-12-31"
+  },
+  "summary": {
+    "total_intervals": 8,
+    "total_gaps": 7,
+    "boundaries_sharpened": true
+  },
+  "intervals": [
+    {
+      "start_iso": "2015-09-01T00:00:06.000Z",
+      "end_iso": "2019-06-03T19:11:50.000Z",
+      "end_epoch_raw": 6.128611796232014e+17,
+      "end_precise": "2019-06-03T19:11:50.439",
+      "cadence_ns": 62500736.0
+    },
+    {
+      "start_iso": "2019-06-04T00:00:06.000Z",
+      "end_iso": "2019-08-17T12:48:40.000Z",
+      "start_epoch_raw": 6.128784759064308e+17,
+      "start_precise": "2019-06-04T00:00:06.722",
+      "cadence_ns": 62501120.0,
+      "end_epoch_raw": 6.193181897831507e+17,
+      "end_precise": "2019-08-17T12:48:40.599"
+    },
+    {
+      "start_iso": "2019-08-28T02:12:48.000Z",
+      "end_iso": "2020-08-08T13:17:11.000Z",
+      "start_epoch_raw": 6.202304376730949e+17,
+      "start_precise": "2019-08-28T02:12:48.489",
+      "cadence_ns": 62501120.0,
+      "end_epoch_raw": 6.501647005821302e+17,
+      "end_precise": "2020-08-08T13:17:11.398"
+    },
+    {
+      "start_iso": "2020-08-19T03:02:34.000Z",
+      "end_iso": "2021-08-01T16:10:46.000Z",
+      "start_epoch_raw": 6.51078223772922e+17,
+      "start_precise": "2020-08-19T03:02:34.588",
+      "cadence_ns": 62501120.0,
+      "end_epoch_raw": 6.811063159390291e+17,
+      "end_precise": "2021-08-01T16:10:46.755"
+    },
+    {
+      "start_iso": "2021-08-12T19:33:20.000Z",
+      "end_iso": "2022-07-26T01:07:14.000Z",
+      "start_epoch_raw": 6.820688701693957e+17,
+      "start_precise": "2021-08-12T19:33:20.985",
+      "cadence_ns": 62501120.0,
+      "end_epoch_raw": 7.120697034234824e+17,
+      "end_precise": "2022-07-26T01:07:14.239"
+    },
+    {
+      "start_iso": "2022-08-08T21:29:06.000Z",
+      "end_iso": "2024-01-09T22:52:28.000Z",
+      "start_epoch_raw": 7.132662153715617e+17,
+      "start_precise": "2022-08-08T21:29:06.187",
+      "cadence_ns": 62500992.0,
+      "end_epoch_raw": 7.581128177267383e+17,
+      "end_precise": "2024-01-09T22:52:28.542"
+    },
+    {
+      "start_iso": "2024-01-10T00:00:04.000Z",
+      "end_iso": "2025-09-04T02:02:04.000Z",
+      "start_epoch_raw": 7.581168738496804e+17,
+      "start_precise": "2024-01-10T00:00:04.665",
+      "cadence_ns": 62500864.0,
+      "end_epoch_raw": 8.102233932787066e+17,
+      "end_precise": "2025-09-04T02:02:04.094"
+    },
+    {
+      "start_iso": "2025-09-18T00:43:08.000Z",
+      "end_iso": "2026-01-01T00:00:03.000Z",
+      "start_epoch_raw": 8.114282579685499e+17,
+      "start_precise": "2025-09-18T00:43:08.784",
+      "cadence_ns": 125001088.0
+    }
+  ]
+}

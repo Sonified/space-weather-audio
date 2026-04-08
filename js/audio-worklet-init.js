@@ -11,6 +11,9 @@ import { drawWaveformWithSelection, startPlaybackIndicator } from './minimap-win
 import { isStudyMode } from './master-modes.js';
 import { setStatusText } from './status-text.js';
 
+// ── Isolation filter nodes (set during audio graph init) ──
+let _isolateNodes = null;
+
 // Helper functions
 function formatDuration(seconds) {
     const minutes = Math.floor(seconds / 60);
@@ -208,13 +211,50 @@ export async function initAudioWorklet() {
     stretchGain.gain.value = 0; // Stretch silent by default
     State.setStretchGainNode(stretchGain);
 
-    // Audio graph: worklet → sourceGain → masterGain → analyser + destination
+    // ── Isolation dual-path: normal vs bandpass-filtered, with crossfade ──
+    // Normal path: gain → isolateNormalGain → outputNode
+    // Filtered path: gain → isolateHP → isolateLP → isolateFilteredGain → outputNode
+    const outputNode = State.audioContext.createGain();
+    outputNode.gain.value = 1;
+
+    const isolateNormalGain = State.audioContext.createGain();
+    isolateNormalGain.gain.value = 1; // Normal path active by default
+
+    const isolateFilteredGain = State.audioContext.createGain();
+    isolateFilteredGain.gain.value = 0; // Filtered path silent by default
+
+    const isolateHP = State.audioContext.createBiquadFilter();
+    isolateHP.type = 'highpass';
+    isolateHP.frequency.value = 20; // Default passthrough
+    isolateHP.Q.value = 0.7071;     // Butterworth
+
+    const isolateLP = State.audioContext.createBiquadFilter();
+    isolateLP.type = 'lowpass';
+    isolateLP.frequency.value = 20000; // Default passthrough
+    isolateLP.Q.value = 0.7071;
+
+    // Audio graph: worklet → sourceGain → masterGain → [dual isolation path] → outputNode → analyser + destination
     //              stretchNode → stretchGain → masterGain (connected when stretch activates)
     worklet.connect(sourceGain);
     sourceGain.connect(gain);
     stretchGain.connect(gain);
-    gain.connect(analyser);
-    gain.connect(State.audioContext.destination);
+
+    // Normal path (unfiltered)
+    gain.connect(isolateNormalGain);
+    isolateNormalGain.connect(outputNode);
+
+    // Filtered path (bandpass via HP+LP in series)
+    gain.connect(isolateHP);
+    isolateHP.connect(isolateLP);
+    isolateLP.connect(isolateFilteredGain);
+    isolateFilteredGain.connect(outputNode);
+
+    // Output to analyser + destination
+    outputNode.connect(analyser);
+    outputNode.connect(State.audioContext.destination);
+
+    // Export isolation controls
+    _isolateNodes = { isolateNormalGain, isolateFilteredGain, isolateHP, isolateLP };
 
     // Register callback to prime stretch processors when audio data is ready
     State.setOnCompleteSamplesReady((samples) => primeStretchProcessors(samples));
@@ -443,4 +483,67 @@ export async function initAudioWorklet() {
 
     // COMMENTED OUT: Using complete spectrogram renderer instead of streaming
     // startVisualization();
+}
+
+// ── Isolation filter API ──
+
+const ISOLATE_CROSSFADE_MS = 80; // Fast but pop-free
+
+/**
+ * Enable isolation mode: crossfade to the bandpass-filtered path.
+ * @param {number} highpassFreqAudio - Highpass cutoff in audio-domain Hz
+ * @param {number} lowpassFreqAudio  - Lowpass cutoff in audio-domain Hz
+ */
+export function enableIsolation(highpassFreqAudio, lowpassFreqAudio) {
+    if (!_isolateNodes || !State.audioContext) return;
+    const { isolateNormalGain, isolateFilteredGain, isolateHP, isolateLP } = _isolateNodes;
+    const now = State.audioContext.currentTime;
+    const fadeEnd = now + ISOLATE_CROSSFADE_MS / 1000;
+
+    // Set filter frequencies
+    isolateHP.frequency.setValueAtTime(highpassFreqAudio, now);
+    isolateLP.frequency.setValueAtTime(lowpassFreqAudio, now);
+
+    // Crossfade: normal → 0, filtered → 1
+    isolateNormalGain.gain.cancelScheduledValues(now);
+    isolateFilteredGain.gain.cancelScheduledValues(now);
+    isolateNormalGain.gain.setValueAtTime(isolateNormalGain.gain.value, now);
+    isolateFilteredGain.gain.setValueAtTime(isolateFilteredGain.gain.value, now);
+    isolateNormalGain.gain.linearRampToValueAtTime(0, fadeEnd);
+    isolateFilteredGain.gain.linearRampToValueAtTime(1, fadeEnd);
+}
+
+/**
+ * Disable isolation mode: crossfade back to the unfiltered path.
+ */
+export function disableIsolation() {
+    if (!_isolateNodes || !State.audioContext) return;
+    const { isolateNormalGain, isolateFilteredGain } = _isolateNodes;
+    const now = State.audioContext.currentTime;
+    const fadeEnd = now + ISOLATE_CROSSFADE_MS / 1000;
+
+    // Crossfade: normal → 1, filtered → 0
+    isolateNormalGain.gain.cancelScheduledValues(now);
+    isolateFilteredGain.gain.cancelScheduledValues(now);
+    isolateNormalGain.gain.setValueAtTime(isolateNormalGain.gain.value, now);
+    isolateFilteredGain.gain.setValueAtTime(isolateFilteredGain.gain.value, now);
+    isolateNormalGain.gain.linearRampToValueAtTime(1, fadeEnd);
+    isolateFilteredGain.gain.linearRampToValueAtTime(0, fadeEnd);
+}
+
+/**
+ * Update isolation filter frequencies (e.g., during box resize).
+ */
+export function updateIsolationFrequencies(highpassFreqAudio, lowpassFreqAudio) {
+    if (!_isolateNodes || !State.audioContext) return;
+    const { isolateHP, isolateLP } = _isolateNodes;
+    const now = State.audioContext.currentTime;
+    isolateHP.frequency.setValueAtTime(highpassFreqAudio, now);
+    isolateLP.frequency.setValueAtTime(lowpassFreqAudio, now);
+}
+
+/** Check if isolation is currently active (filtered gain > 0.5) */
+export function isIsolationActive() {
+    if (!_isolateNodes) return false;
+    return _isolateNodes.isolateFilteredGain.gain.value > 0.5;
 }

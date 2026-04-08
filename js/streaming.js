@@ -15,6 +15,7 @@ import { drawDayMarkers } from './day-markers.js';
 import { initScrollZoom } from './scroll-zoom.js';
 import { isStudyMode } from './master-modes.js';
 import { initAudioWorklet } from './audio-worklet-init.js';
+import { abortCDAWebFetch } from './data-fetcher.js';
 
 // ===== FIRST FETCH TRACKING =====
 let hasPerformedFirstFetch = false; // Track if first fetch has been performed
@@ -34,8 +35,16 @@ export function getHasPerformedFirstFetch() {
  */
 export async function startStreaming(event, config = null) {
     if (_streamingInProgress) {
-        console.warn('⚠️ startStreaming already in progress — ignoring duplicate call');
-        return;
+        // A fetch is already running — abort it so the new request can take over
+        // (e.g., user picked a cached search while CDAWeb was generating audio)
+        abortCDAWebFetch();
+        console.log('⏭️ Cancelling in-progress fetch for new request');
+        // Wait briefly for the old fetch to unwind and release the guard
+        await new Promise(r => setTimeout(r, 50));
+        if (_streamingInProgress) {
+            console.warn('⚠️ Previous fetch still unwinding — ignoring duplicate call');
+            return;
+        }
     }
     _streamingInProgress = true;
     try {
@@ -153,6 +162,15 @@ export async function startStreaming(event, config = null) {
             dataset = dv;
             startTimeISO = `${sd}T${st}Z`;
             endTimeISO = `${ed}T${et}Z`;
+
+            if (new Date(startTimeISO) >= new Date(endTimeISO)) {
+                const statusEl = document.getElementById('status');
+                if (statusEl) {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = 'Start time must be earlier than end time.';
+                }
+                return;
+            }
         }
 
         if (window.pm?.data) console.log(`🛰️ ${logTime()} Fetching: ${spacecraft} ${dataset} from ${startTimeISO} to ${endTimeISO}`);
@@ -257,6 +275,11 @@ export async function startStreaming(event, config = null) {
         }
 
     } catch (error) {
+        // Aborted fetches are intentional (user navigated away) — don't show error
+        if (error.name === 'AbortError') {
+            console.log('⏭️ Fetch aborted — user started a new request');
+            return;
+        }
 
         console.error('❌ Error in startStreaming:', error);
         const statusDiv = document.getElementById('status');

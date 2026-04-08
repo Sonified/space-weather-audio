@@ -902,6 +902,8 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
                             playPauseBtn.classList.remove('play-active', 'pulse-play', 'pulse-resume', 'pulse-attention');
                             playPauseBtn.classList.add('pause-active');
                         }
+                        const loopBtn = document.getElementById('loopBtn');
+                        if (loopBtn) loopBtn.disabled = false;
 
                         startPlaybackIndicator();
                     } else {
@@ -913,6 +915,8 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
                             playPauseBtn.classList.remove('pause-active');
                             playPauseBtn.classList.add('play-active');
                         }
+                        const loopBtn2 = document.getElementById('loopBtn');
+                        if (loopBtn2) loopBtn2.disabled = false;
                         if (isSharedSession) {
                             playPauseBtn?.classList.add('pulse-attention');
                         }
@@ -1066,6 +1070,8 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
                         playPauseBtn.classList.remove('play-active', 'pulse-play', 'pulse-resume', 'pulse-attention');
                         playPauseBtn.classList.add('pause-active');
                     }
+                    const loopBtn3 = document.getElementById('loopBtn');
+                    if (loopBtn3) loopBtn3.disabled = false;
 
                     startPlaybackIndicator();
                 } else {
@@ -1077,6 +1083,8 @@ export async function fetchAndLoadCloudflareData(spacecraft, dataset, startTimeI
                         playPauseBtn.classList.remove('pause-active');
                         playPauseBtn.classList.add('play-active');
                     }
+                    const loopBtn4 = document.getElementById('loopBtn');
+                    if (loopBtn4) loopBtn4.disabled = false;
                     if (isSharedSession) {
                         playPauseBtn?.classList.add('pulse-attention');
                     }

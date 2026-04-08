@@ -1,0 +1,20 @@
+{
+  "dataset_id": "DN_MAGN-L2-HIRES_G19",
+  "label": "GOES-19 MAG 10 Hz",
+  "cataloged_at": "2026-03-27T23:35:33.681891",
+  "time_range": {
+    "start": "2025-06-01",
+    "end": "2025-12-31"
+  },
+  "summary": {
+    "total_intervals": 1,
+    "total_gaps": 0,
+    "boundaries_sharpened": true
+  },
+  "intervals": [
+    {
+      "start_iso": "2025-06-01T00:00:00.000Z",
+      "end_iso": "2025-12-31T23:59:59.000Z"
+    }
+  ]
+}

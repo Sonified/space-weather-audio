@@ -4,7 +4,7 @@
  */
 
 import * as State from './audio-state.js';
-import { PlaybackState } from './audio-state.js';
+import { PlaybackState, onPlaybackStateChange } from './audio-state.js';
 import { drawFrequencyAxis, positionAxisCanvas, resizeAxisCanvas, initializeAxisPlaybackRate, getYPositionForFrequencyScaled, getScaleTransitionState, getLogScaleMinFreq } from './spectrogram-axis-renderer.js';
 import { handleSpectrogramSelection, isInFrequencySelectionMode, getStandaloneFeatures, saveStandaloneFeatures, startFrequencySelection, getFlatFeatureNumber, deleteStandaloneFeature, renderStandaloneFeaturesList, updateFeature } from './feature-tracker.js';
 import { renderCompleteSpectrogram, clearCompleteSpectrogram, isCompleteSpectrogramRendered, renderCompleteSpectrogramForRegion, updateSpectrogramViewport, updateSpectrogramViewportFromZoom, resetSpectrogramState, updateElasticFriendInBackground, onColormapChanged, setScrollZoomHiRes } from './main-window-renderer.js';
@@ -15,6 +15,7 @@ import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
 import { animateScaleTransition } from './spectrogram-axis-renderer.js';
 import { startPlaybackIndicator, buildWaveformColorLUT, drawWaveformFromMinMax, rebuildWaveformColormapTexture } from './minimap-window-renderer.js';
 import { seekToPosition, pausePlayback, getCurrentPosition } from './audio-player.js';
+import { enableIsolation, disableIsolation, updateIsolationFrequencies } from './audio-worklet-init.js';
 import { setColormap, getCurrentColormap, updateAccentColors } from './colormaps.js';
 
 // RAF loop to keep feature boxes in sync with the axis scale transition animation
@@ -718,6 +719,19 @@ function handleBoxDragMove(e, canvas) {
 
             redrawCanvasBoxes();
             syncPopupFieldsFromBox(box);
+
+            // Update isolation mask + filter cutoffs if this is the isolated box
+            if (isolatedFeatureBox &&
+                isolatedFeatureBox.regionIndex === box.regionIndex &&
+                isolatedFeatureBox.featureIndex === box.featureIndex) {
+                // Keep reference in sync (rebuild may have created a new object)
+                isolatedFeatureBox = box;
+                const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
+                const baseSampleRateEl = document.getElementById('baseSampleRate');
+                const playbackSampleRate = baseSampleRateEl ? parseFloat(baseSampleRateEl.value) : 44100;
+                const speedup = playbackSampleRate / originalSampleRate;
+                updateIsolationFrequencies(box.lowFreq * speedup, box.highFreq * speedup);
+            }
         }
         return true;
     }
@@ -803,40 +817,45 @@ let featurePopupEl = null;
 let featurePopupCleanup = null; // stores outside-click / keydown listeners for teardown
 let popupFeatureBox = null;     // { regionIndex, featureIndex } of the popup's feature
 let popupLastSide = null;       // 'left' or 'right' — tracks which side popup is on
+let popupDetailsOpen = false;   // true while Details is expanded — locks vertical position
 let popupPinOffset = null;      // { dx, dy } drag offset from computed pinned position
 
 // ── Feature play button state ──
 let featurePlaybackRAF = null;
 let featurePlaybackEndTime = null; // audio seconds at which to auto-stop
 
-/**
- * Play a feature: seek to just before it, play through, auto-stop just after.
- * Always restarts from the beginning (not a toggle).
- */
-function playFeature(startTimeISO, endTimeISO) {
-    if (!State.dataStartTime || !State.totalAudioDuration) return;
+// ── Feature isolation state ──
+let isolatedFeatureBox = null; // The box currently being isolated (for overlay dimming + audio filter)
+let lastIsolatedFeatureId = null; // { regionIndex, featureIndex } — remembers which feature had isolation on
 
-    // Cancel any existing feature playback monitor
+// When playback starts during isolation, auto-stop at the box boundary.
+// If playhead is at/past the end, jump back to the feature start.
+onPlaybackStateChange((newState) => {
+    if (newState === PlaybackState.PLAYING && isolatedFeatureBox) {
+        if (State.dataStartTime && isolatedFeatureBox.endTime && isolatedFeatureBox.startTime) {
+            const dataStartMs = State.dataStartTime.getTime();
+            const isoStartSec = (new Date(isolatedFeatureBox.startTime).getTime() - dataStartMs) / 1000;
+            const isoEndSec = (new Date(isolatedFeatureBox.endTime).getTime() - dataStartMs) / 1000;
+            const pos = getCurrentPosition();
+            if (pos >= isoEndSec || pos < isoStartSec) {
+                seekToPosition(isoStartSec, true);
+                return; // seekToPosition will fire another PLAYING event
+            }
+        }
+        startIsolationEndStop();
+    }
+});
+
+/**
+ * Start a RAF monitor that auto-pauses playback when it reaches endTimeSec.
+ */
+function startPlaybackEndMonitor(endTimeSec) {
     if (featurePlaybackRAF) {
         cancelAnimationFrame(featurePlaybackRAF);
         featurePlaybackRAF = null;
     }
+    featurePlaybackEndTime = endTimeSec;
 
-    const dataStartMs = State.dataStartTime.getTime();
-    const featureStartSec = (new Date(startTimeISO).getTime() - dataStartMs) / 1000;
-    const featureEndSec = (new Date(endTimeISO).getTime() - dataStartMs) / 1000;
-
-    // Add padding (0.5s before/after), clamped to audio bounds
-    const padding = 0.5;
-    const paddedStart = Math.max(0, featureStartSec - padding);
-    const paddedEnd = Math.min(State.totalAudioDuration, featureEndSec + padding);
-
-    featurePlaybackEndTime = paddedEnd;
-
-    // Seek and start playing
-    seekToPosition(paddedStart, true);
-
-    // Monitor playback position and auto-stop when we reach the end
     function monitorPlayback() {
         if (State.playbackState !== PlaybackState.PLAYING) {
             featurePlaybackRAF = null;
@@ -853,6 +872,40 @@ function playFeature(startTimeISO, endTimeISO) {
         featurePlaybackRAF = requestAnimationFrame(monitorPlayback);
     }
     featurePlaybackRAF = requestAnimationFrame(monitorPlayback);
+}
+
+/**
+ * If isolation mode is active, compute the end-stop time from the isolated box
+ * and start the playback monitor. Call this after any seek/play action.
+ */
+function startIsolationEndStop() {
+    if (!isolatedFeatureBox || !State.dataStartTime || !State.totalAudioDuration) return;
+    const dataStartMs = State.dataStartTime.getTime();
+    const endSec = (new Date(isolatedFeatureBox.endTime).getTime() - dataStartMs) / 1000;
+    const padding = 0.5;
+    const paddedEnd = Math.min(State.totalAudioDuration, endSec + padding);
+    startPlaybackEndMonitor(paddedEnd);
+}
+
+/**
+ * Play a feature: seek to just before it, play through, auto-stop just after.
+ * Always restarts from the beginning (not a toggle).
+ */
+function playFeature(startTimeISO, endTimeISO) {
+    if (!State.dataStartTime || !State.totalAudioDuration) return;
+
+    const dataStartMs = State.dataStartTime.getTime();
+    const featureStartSec = (new Date(startTimeISO).getTime() - dataStartMs) / 1000;
+    const featureEndSec = (new Date(endTimeISO).getTime() - dataStartMs) / 1000;
+
+    // Add padding (0.5s before/after), clamped to audio bounds
+    const padding = 0.5;
+    const paddedStart = Math.max(0, featureStartSec - padding);
+    const paddedEnd = Math.min(State.totalAudioDuration, featureEndSec + padding);
+
+    // Seek and start playing
+    seekToPosition(paddedStart, true);
+    startPlaybackEndMonitor(paddedEnd);
 }
 
 /**
@@ -939,9 +992,16 @@ export function closeFeaturePopup() {
         featurePopupEl.remove();
         featurePopupEl = null;
     }
+    popupDetailsOpen = false;
     if (featurePopupCleanup) {
         featurePopupCleanup();
         featurePopupCleanup = null;
+    }
+    // Always disable isolation visually/audibly on close, but remember the feature
+    if (isolatedFeatureBox) {
+        disableIsolation();
+        isolatedFeatureBox = null;
+        redrawCanvasBoxes();
     }
     popupFeatureBox = null;
     popupPinOffset = null;
@@ -1018,6 +1078,11 @@ function positionPopupBesideRect(popup, sr, offset) {
         top += offset.dy;
     }
 
+    // When Details is open, keep the current top so popup grows downward
+    if (popupDetailsOpen && popup.style.top) {
+        top = parseFloat(popup.style.top);
+    }
+
     // Clamp to viewport
     const pad = 8;
     left = Math.max(pad, Math.min(left, window.innerWidth - popupRect.width - pad));
@@ -1035,6 +1100,16 @@ function positionPopupBesideRect(popup, sr, offset) {
 function showFeaturePopup(box) {
     // Close any existing popup first
     closeFeaturePopup();
+
+    // Opening a different feature clears isolation
+    if (isolatedFeatureBox &&
+        (isolatedFeatureBox.regionIndex !== box.regionIndex ||
+         isolatedFeatureBox.featureIndex !== box.featureIndex)) {
+        disableIsolation();
+        isolatedFeatureBox = null;
+        lastIsolatedFeatureId = null;
+        redrawCanvasBoxes();
+    }
 
     // Track which feature this popup belongs to
     popupFeatureBox = { regionIndex: box.regionIndex, featureIndex: box.featureIndex };
@@ -1055,7 +1130,7 @@ function showFeaturePopup(box) {
     popup.innerHTML = `
         <div class="feature-popup-header">
             <!-- Play triangle vertical position: adjust top:-Npx on the button inline style -->
-            <span class="feature-popup-title" style="display:flex;align-items:center">Feature <strong>${flatNum}</strong> <button class="feature-popup-play" title="Play this feature from the beginning" data-start="${feature.startTime}" data-end="${feature.endTime}" style="position:relative;top:-2px">&#9654;</button></span>
+            <span class="feature-popup-title" style="display:flex;align-items:center">Feature <strong>${flatNum}</strong> <button class="feature-popup-play" title="Play this feature from the beginning" data-start="${feature.startTime}" data-end="${feature.endTime}" style="position:relative;top:-2px">&#9654;</button><button class="feature-popup-isolate" title="Isolate: bandpass filter to this feature's frequency range" data-low-freq="${feature.lowFreq || ''}" data-high-freq="${feature.highFreq || ''}">Isolate</button></span>
             <div class="feature-popup-header-buttons">
                 <span class="feature-popup-gear" role="button" aria-label="Feature settings" style="display:${isAdvanced ? 'inline-flex' : 'none'}">&#9881;</span>
                 ${canDelete ? '<button class="feature-popup-delete" title="Delete this feature"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>' : ''}
@@ -1229,7 +1304,7 @@ function showFeaturePopup(box) {
     }, { passive: false });
 
     // Close button
-    popup.querySelector('.feature-popup-close').addEventListener('click', closeFeaturePopup);
+    popup.querySelector('.feature-popup-close').addEventListener('click', () => closeFeaturePopup());
 
     // Animated details open/close
     const detailsEl = popup.querySelector('.feature-popup-details');
@@ -1245,7 +1320,10 @@ function showFeaturePopup(box) {
                     detailsEl.removeAttribute('open');
                     content.style.gridTemplateRows = '';
                     content.style.opacity = '';
+                    popupDetailsOpen = false;
                 }, { once: true });
+            } else {
+                popupDetailsOpen = true;
             }
         });
     }
@@ -1255,6 +1333,87 @@ function showFeaturePopup(box) {
         e.stopPropagation();
         const btn = e.currentTarget;
         playFeature(btn.dataset.start, btn.dataset.end);
+    });
+
+    // Isolate button — crossfade to bandpass-filtered audio path
+    const isolateBtn = popup.querySelector('.feature-popup-isolate');
+    // Auto-restore isolation if this feature was previously isolated
+    if (lastIsolatedFeatureId &&
+        lastIsolatedFeatureId.regionIndex === box.regionIndex &&
+        lastIsolatedFeatureId.featureIndex === box.featureIndex &&
+        !isolatedFeatureBox) {
+        // Re-enable isolation
+        const lf = parseFloat(feature.lowFreq);
+        const hf = parseFloat(feature.highFreq);
+        if (isFinite(lf) && isFinite(hf) && lf < hf) {
+            const origRate = State.currentMetadata?.original_sample_rate || 100;
+            const baseEl = document.getElementById('baseSampleRate');
+            const playRate = baseEl ? parseFloat(baseEl.value) : 44100;
+            const spd = playRate / origRate;
+            enableIsolation(lf * spd, hf * spd);
+            isolatedFeatureBox = completedSelectionBoxes.find(b =>
+                b.regionIndex === box.regionIndex && b.featureIndex === box.featureIndex) || box;
+            isolateBtn.classList.add('active');
+            // Jump playhead to feature start if outside
+            if (State.dataStartTime && isolatedFeatureBox.startTime && isolatedFeatureBox.endTime) {
+                const dataStartMs = State.dataStartTime.getTime();
+                const isoStartSec = (new Date(isolatedFeatureBox.startTime).getTime() - dataStartMs) / 1000;
+                const isoEndSec = (new Date(isolatedFeatureBox.endTime).getTime() - dataStartMs) / 1000;
+                const pos = getCurrentPosition();
+                if (pos < isoStartSec || pos > isoEndSec) {
+                    seekToPosition(isoStartSec, State.playbackState === PlaybackState.PLAYING);
+                }
+            }
+            redrawCanvasBoxes();
+        }
+    } else if (isolatedFeatureBox && isolatedFeatureBox.regionIndex === box.regionIndex &&
+        isolatedFeatureBox.featureIndex === box.featureIndex) {
+        isolateBtn.classList.add('active');
+    }
+    isolateBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const btn = e.currentTarget;
+        const isActive = btn.classList.toggle('active');
+
+        if (isActive) {
+            const lowFreq = parseFloat(feature.lowFreq);
+            const highFreq = parseFloat(feature.highFreq);
+            if (!isFinite(lowFreq) || !isFinite(highFreq) || lowFreq >= highFreq) return btn.classList.remove('active');
+
+            // Convert data-domain Hz → audio-domain Hz
+            const originalSampleRate = State.currentMetadata?.original_sample_rate || 100;
+            const baseSampleRateEl = document.getElementById('baseSampleRate');
+            const playbackSampleRate = baseSampleRateEl ? parseFloat(baseSampleRateEl.value) : 44100;
+            const speedup = playbackSampleRate / originalSampleRate;
+
+            const hpAudio = lowFreq * speedup;
+            const lpAudio = highFreq * speedup;
+
+            enableIsolation(hpAudio, lpAudio);
+            // Use the full completedSelectionBoxes entry (box from getBoxAtPoint is sparse)
+            isolatedFeatureBox = completedSelectionBoxes.find(b =>
+                b.regionIndex === box.regionIndex && b.featureIndex === box.featureIndex) || box;
+            lastIsolatedFeatureId = { regionIndex: box.regionIndex, featureIndex: box.featureIndex };
+
+            // If playhead is outside the feature, jump to its start
+            if (State.dataStartTime && isolatedFeatureBox.startTime && isolatedFeatureBox.endTime) {
+                const dataStartMs = State.dataStartTime.getTime();
+                const isoStartSec = (new Date(isolatedFeatureBox.startTime).getTime() - dataStartMs) / 1000;
+                const isoEndSec = (new Date(isolatedFeatureBox.endTime).getTime() - dataStartMs) / 1000;
+                const pos = getCurrentPosition();
+                if (pos < isoStartSec || pos > isoEndSec) {
+                    const isPlaying = State.playbackState === PlaybackState.PLAYING;
+                    seekToPosition(isoStartSec, isPlaying);
+                }
+            }
+
+            redrawCanvasBoxes();
+        } else {
+            disableIsolation();
+            isolatedFeatureBox = null;
+            lastIsolatedFeatureId = null;
+            redrawCanvasBoxes();
+        }
     });
 
     // Delete button with confirmation (only present when canDelete is true)
@@ -1494,8 +1653,49 @@ function rebuildCanvasBoxesFromFeatures() {
         }
     });
 
+    // Re-link isolatedFeatureBox to the new object (rebuild breaks the old reference)
+    if (isolatedFeatureBox) {
+        isolatedFeatureBox = completedSelectionBoxes.find(b =>
+            b.regionIndex === isolatedFeatureBox.regionIndex &&
+            b.featureIndex === isolatedFeatureBox.featureIndex) || null;
+        if (!isolatedFeatureBox) disableIsolation();
+    }
+
     // Redraw with rebuilt boxes
     redrawCanvasBoxes();
+}
+
+/**
+ * Draw isolation dimming overlay: semi-transparent dark layer with a clear cutout
+ * over the isolated feature box. Call AFTER clearing the canvas and BEFORE drawing boxes.
+ */
+function drawIsolationDimming(ctx) {
+    if (!isolatedFeatureBox || !spectrogramOverlayCanvas) { return; }
+    const rect = getBoxDeviceRect(isolatedFeatureBox);
+    if (!rect) return;
+
+    const w = spectrogramOverlayCanvas.width;
+    const h = spectrogramOverlayCanvas.height;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+
+    // Draw four rectangles around the cutout (avoids using clip/compositing)
+    const bx = Math.max(0, rect.x);
+    const by = Math.max(0, rect.y);
+    const bx2 = Math.min(w, rect.x + rect.w);
+    const by2 = Math.min(h, rect.y + rect.h);
+
+    // Top strip (full width, above box)
+    if (by > 0) ctx.fillRect(0, 0, w, by);
+    // Bottom strip (full width, below box)
+    if (by2 < h) ctx.fillRect(0, by2, w, h - by2);
+    // Left strip (between top and bottom strips)
+    if (bx > 0) ctx.fillRect(0, by, bx, by2 - by);
+    // Right strip (between top and bottom strips)
+    if (bx2 < w) ctx.fillRect(bx2, by, w - bx2, by2 - by);
+
+    ctx.restore();
 }
 
 /**
@@ -1504,6 +1704,9 @@ function rebuildCanvasBoxesFromFeatures() {
 function redrawCanvasBoxes() {
     if (spectrogramOverlayCtx && spectrogramOverlayCanvas) {
         spectrogramOverlayCtx.clearRect(0, 0, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
+
+        // Isolation dimming: darken everything outside the isolated feature
+        drawIsolationDimming(spectrogramOverlayCtx);
 
         // Skip drawing if feature boxes are hidden
         const fbCheckbox = document.getElementById('featureBoxesVisible');
@@ -1573,6 +1776,9 @@ export function updateCanvasAnnotations() {
 
     if (spectrogramOverlayCtx && spectrogramOverlayCanvas) {
         spectrogramOverlayCtx.clearRect(0, 0, spectrogramOverlayCanvas.width, spectrogramOverlayCanvas.height);
+
+        // Isolation dimming: darken everything outside the isolated feature
+        drawIsolationDimming(spectrogramOverlayCtx);
 
         // Fade in feature boxes after spectrogram is ready
         if (featureBoxReadyToShow && featureBoxOpacity < 1) {
@@ -2389,8 +2595,15 @@ export function setupSpectrogramSelection() {
                 const timestamp = zoomState.pixelToTimestamp(clickX, canvasRect.width);
                 const dataStartMs = State.dataStartTime.getTime();
                 const dataSpanMs = State.dataEndTime.getTime() - dataStartMs;
-                const fraction = (timestamp.getTime() - dataStartMs) / dataSpanMs;
-                const targetPosition = fraction * State.totalAudioDuration;
+                let fraction = (timestamp.getTime() - dataStartMs) / dataSpanMs;
+                let targetPosition = fraction * State.totalAudioDuration;
+                // In isolation mode: click left of feature = jump to start, click right = ignore
+                if (isolatedFeatureBox && isolatedFeatureBox.startTime && isolatedFeatureBox.endTime) {
+                    const isoStartSec = (new Date(isolatedFeatureBox.startTime).getTime() - dataStartMs) / 1000;
+                    const isoEndSec = (new Date(isolatedFeatureBox.endTime).getTime() - dataStartMs) / 1000;
+                    if (targetPosition > isoEndSec) return;
+                    if (targetPosition < isoStartSec) targetPosition = isoStartSec;
+                }
                 const clamped = Math.max(0, Math.min(targetPosition, State.totalAudioDuration));
                 State.setCurrentAudioPosition(clamped);
                 if (State.audioContext) {
@@ -2746,8 +2959,15 @@ export function setupSpectrogramSelection() {
                     const timestamp = zoomState.pixelToTimestamp(releaseX, canvasRect.width);
                     const dataStartMs = State.dataStartTime.getTime();
                     const dataSpanMs = State.dataEndTime.getTime() - dataStartMs;
-                    const fraction = (timestamp.getTime() - dataStartMs) / dataSpanMs;
-                    const targetPosition = fraction * State.totalAudioDuration;
+                    let fraction = (timestamp.getTime() - dataStartMs) / dataSpanMs;
+                    let targetPosition = fraction * State.totalAudioDuration;
+                    // In isolation mode: click left of feature = jump to start, click right = ignore
+                    if (isolatedFeatureBox && isolatedFeatureBox.startTime && isolatedFeatureBox.endTime) {
+                        const isoStartSec = (new Date(isolatedFeatureBox.startTime).getTime() - dataStartMs) / 1000;
+                        const isoEndSec = (new Date(isolatedFeatureBox.endTime).getTime() - dataStartMs) / 1000;
+                        if (targetPosition > isoEndSec) return;
+                        if (targetPosition < isoStartSec) targetPosition = isoStartSec;
+                    }
                     const clamped = Math.max(0, Math.min(targetPosition, State.totalAudioDuration));
                     State.setCurrentAudioPosition(clamped);
                     if (State.audioContext) {

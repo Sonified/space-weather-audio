@@ -1361,9 +1361,9 @@ export function applySharedSession(shareData) {
         const endDate = new Date(session.time_range.end);
 
         document.getElementById('startDate').value = startDate.toISOString().slice(0, 10);
-        document.getElementById('startTime').value = startDate.toISOString().slice(11, 23);
+        document.getElementById('startTime').value = startDate.toISOString().slice(11, 23).replace(/\.0+$/, '');
         document.getElementById('endDate').value = endDate.toISOString().slice(0, 10);
-        document.getElementById('endTime').value = endDate.toISOString().slice(11, 23);
+        document.getElementById('endTime').value = endDate.toISOString().slice(11, 23).replace(/\.0+$/, '');
     }
 
     // Set data type (options are already populated by updateDatasetOptions above)

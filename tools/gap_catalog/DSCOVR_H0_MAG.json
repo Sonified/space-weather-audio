@@ -1,0 +1,75 @@
+{
+  "dataset_id": "DSCOVR_H0_MAG",
+  "label": "DSCOVR Fluxgate MAG",
+  "cataloged_at": "2026-03-27T23:36:16.749292",
+  "time_range": {
+    "start": "2016-03-01",
+    "end": "2025-12-31"
+  },
+  "summary": {
+    "total_intervals": 7,
+    "total_gaps": 6,
+    "boundaries_sharpened": true
+  },
+  "intervals": [
+    {
+      "start_iso": "2016-03-01T00:00:00.000Z",
+      "end_iso": "2019-06-27T23:59:59.000Z",
+      "end_epoch_raw": 63728899199500.0,
+      "end_precise": "2019-06-27T23:59:59.500",
+      "cadence_ns": 1000000000.0
+    },
+    {
+      "start_iso": "2020-02-06T00:00:00.000Z",
+      "end_iso": "2020-02-07T23:59:59.000Z",
+      "start_epoch_raw": 63748166400500.0,
+      "start_precise": "2020-02-06T00:00:00.500",
+      "cadence_ns": 1000000000.0,
+      "end_epoch_raw": 63748339199500.0,
+      "end_precise": "2020-02-07T23:59:59.500"
+    },
+    {
+      "start_iso": "2020-02-10T00:00:00.000Z",
+      "end_iso": "2020-02-13T23:59:59.000Z",
+      "start_epoch_raw": 63748512000500.0,
+      "start_precise": "2020-02-10T00:00:00.500",
+      "cadence_ns": 1000000000.0,
+      "end_epoch_raw": 63748857599500.0,
+      "end_precise": "2020-02-13T23:59:59.500"
+    },
+    {
+      "start_iso": "2020-02-15T00:00:00.000Z",
+      "end_iso": "2020-02-15T23:59:59.000Z",
+      "start_epoch_raw": 63748944000500.0,
+      "start_precise": "2020-02-15T00:00:00.500",
+      "cadence_ns": 1000000000.0,
+      "end_epoch_raw": 63749030399500.0,
+      "end_precise": "2020-02-15T23:59:59.500"
+    },
+    {
+      "start_iso": "2020-02-18T00:00:00.000Z",
+      "end_iso": "2020-02-21T23:59:59.000Z",
+      "start_epoch_raw": 63749203200500.0,
+      "start_precise": "2020-02-18T00:00:00.500",
+      "cadence_ns": 1000000000.0,
+      "end_epoch_raw": 63749548799500.0,
+      "end_precise": "2020-02-21T23:59:59.500"
+    },
+    {
+      "start_iso": "2020-02-24T00:00:00.000Z",
+      "end_iso": "2025-07-15T23:59:59.000Z",
+      "start_epoch_raw": 63749721600500.0,
+      "start_precise": "2020-02-24T00:00:00.500",
+      "cadence_ns": 1000000000.0,
+      "end_epoch_raw": 63919843199500.0,
+      "end_precise": "2025-07-15T23:59:59.500"
+    },
+    {
+      "start_iso": "2025-10-02T00:00:00.000Z",
+      "end_iso": "2025-12-31T23:59:59.000Z",
+      "start_epoch_raw": 63926582400500.0,
+      "start_precise": "2025-10-02T00:00:00.500",
+      "cadence_ns": 1000000000.0
+    }
+  ]
+}

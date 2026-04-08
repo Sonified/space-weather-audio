@@ -1,0 +1,75 @@
+{
+  "dataset_id": "MMS2_FGM_SRVY_L2",
+  "label": "MMS2 FGM Survey",
+  "cataloged_at": "2026-04-05T17:34:22.488767",
+  "time_range": {
+    "start": "2015-09-01",
+    "end": "2025-12-31"
+  },
+  "summary": {
+    "total_intervals": 7,
+    "total_gaps": 6,
+    "boundaries_sharpened": true
+  },
+  "intervals": [
+    {
+      "start_iso": "2015-09-01T00:00:03.000Z",
+      "end_iso": "2019-08-17T22:17:13.000Z",
+      "end_epoch_raw": 6.193523029387945e+17,
+      "end_precise": "2019-08-17T22:17:13.754",
+      "cadence_ns": 125002112.0
+    },
+    {
+      "start_iso": "2019-08-28T00:11:34.000Z",
+      "end_iso": "2020-08-08T11:12:25.000Z",
+      "start_epoch_raw": 6.202231633731233e+17,
+      "start_precise": "2019-08-28T00:11:34.189",
+      "cadence_ns": 62501120.0,
+      "end_epoch_raw": 6.501572143784064e+17,
+      "end_precise": "2020-08-08T11:12:25.194"
+    },
+    {
+      "start_iso": "2020-08-19T01:07:33.000Z",
+      "end_iso": "2021-08-02T02:06:59.000Z",
+      "start_epoch_raw": 6.510713228703421e+17,
+      "start_precise": "2020-08-19T01:07:33.686",
+      "cadence_ns": 62501120.0,
+      "end_epoch_raw": 6.811420885189588e+17,
+      "end_precise": "2021-08-02T02:06:59.334"
+    },
+    {
+      "start_iso": "2021-08-13T10:23:39.000Z",
+      "end_iso": "2022-07-25T23:42:23.000Z",
+      "start_epoch_raw": 6.821222882764529e+17,
+      "start_precise": "2021-08-13T10:23:39.092",
+      "cadence_ns": 62500992.0,
+      "end_epoch_raw": 7.12064612903451e+17,
+      "end_precise": "2022-07-25T23:42:23.719"
+    },
+    {
+      "start_iso": "2022-08-08T18:06:38.000Z",
+      "end_iso": "2023-10-11T00:00:11.000Z",
+      "start_epoch_raw": 7.13254067483007e+17,
+      "start_precise": "2022-08-08T18:06:38.299",
+      "cadence_ns": 62500736.0,
+      "end_epoch_raw": 7.502544802031169e+17,
+      "end_precise": "2023-10-11T00:00:11.019"
+    },
+    {
+      "start_iso": "2023-10-12T00:00:04.000Z",
+      "end_iso": "2025-09-04T00:42:50.000Z",
+      "start_epoch_raw": 7.503408738554799e+17,
+      "start_precise": "2023-10-12T00:00:04.671",
+      "cadence_ns": 62500736.0,
+      "end_epoch_raw": 8.102186392601399e+17,
+      "end_precise": "2025-09-04T00:42:50.076"
+    },
+    {
+      "start_iso": "2025-09-18T20:48:11.000Z",
+      "end_iso": "2026-01-01T00:00:04.000Z",
+      "start_epoch_raw": 8.11500560673121e+17,
+      "start_precise": "2025-09-18T20:48:11.489",
+      "cadence_ns": 125001088.0
+    }
+  ]
+}

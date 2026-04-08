@@ -102,6 +102,518 @@ export async function loadSavedSpacecraft() {
     // Restore saved date/time settings
     loadSavedDateTime(prefGroupOpen);
 
+    // Enhance date inputs with segmented editing (YYYY / MM / DD)
+    enhanceDateInput('startDate', 'startDatePicker');
+    enhanceDateInput('endDate', 'endDatePicker');
+
+    // Enhance time inputs with segmented editing (HH / MM / SS)
+    enhanceTimeInput(document.getElementById('startTime'));
+    enhanceTimeInput(document.getElementById('endTime'));
+
+    // Clean any residual .000 from values (localStorage, HTML defaults, etc.)
+    for (const id of ['startTime', 'endTime']) {
+        const el = document.getElementById(id);
+        if (el) el.value = el.value.replace(/\.0+$/, '');
+    }
+
+}
+
+/**
+ * Enhance a text input to behave like a segmented date picker.
+ * Format: YYYY-MM-DD  Segments: YYYY(0-3) - MM(5-6) - DD(8-9)
+ * Calendar button opens the hidden native date picker; selection syncs back.
+ * Tab from the last segment (DD) advances to the next focusable input.
+ */
+function enhanceDateInput(textId, pickerId) {
+    const input = document.getElementById(textId);
+    const picker = document.getElementById(pickerId);
+    const calBtn = input?.closest('.date-wrap')?.querySelector('.cal-btn');
+    if (!input) return;
+
+    // Segment definitions: [startIndex, endIndex]
+    const SEGS = [[0, 4], [5, 7], [8, 10]]; // YYYY, MM, DD
+
+    let activeSeg = 0;
+    let digitBuf = '';
+
+    function ensureFormat() {
+        const val = input.value;
+        const match = val.match(/^(\d{1,4})-?(\d{0,2})-?(\d{0,2})$/);
+        if (!match) { input.value = '2021-01-01'; return; }
+        const y = (match[1] || '2021').padStart(4, '0');
+        const m = (match[2] || '01').padStart(2, '0');
+        const d = (match[3] || '01').padStart(2, '0');
+        input.value = `${y}-${m}-${d}`;
+    }
+
+    function selectSeg(idx, keepBuf) {
+        const newSeg = Math.max(0, Math.min(2, idx));
+        if (!keepBuf || newSeg !== activeSeg) digitBuf = '';
+        activeSeg = newSeg;
+        const [start, end] = SEGS[activeSeg];
+        input.setSelectionRange(start, end);
+    }
+
+    function segFromCursor() {
+        const pos = input.selectionStart;
+        if (pos <= 4) return 0;
+        if (pos <= 7) return 1;
+        return 2;
+    }
+
+    function setSegValue(idx, numStr) {
+        const [start, end] = SEGS[idx];
+        const width = end - start;
+        let padded = numStr.padStart(width, '0').slice(0, width);
+        // Clamp values
+        if (idx === 1) { // month 01-12
+            let n = Math.min(Math.max(parseInt(padded, 10) || 0, 0), 12);
+            padded = String(n).padStart(2, '0');
+        } else if (idx === 2) { // day 01-31
+            let n = Math.min(Math.max(parseInt(padded, 10) || 0, 0), 31);
+            padded = String(n).padStart(2, '0');
+        }
+        const val = input.value;
+        input.value = val.slice(0, start) + padded + val.slice(end);
+    }
+
+    function advanceToNextInput() {
+        // Find the next focusable input after the date-wrap
+        const wrap = input.closest('.date-wrap');
+        if (!wrap) return false;
+        // Look for the next .time-wrap or input sibling
+        let el = wrap.nextElementSibling;
+        while (el) {
+            const target = el.querySelector?.('input[type="text"]') || (el.tagName === 'INPUT' ? el : null);
+            if (target) {
+                target.focus();
+                if (target._timeSegmented) target._timeSegmented.selectSegment(0);
+                else target.select();
+                return true;
+            }
+            el = el.nextElementSibling;
+        }
+        return false;
+    }
+
+    // Calendar button → open native picker
+    if (calBtn && picker) {
+        calBtn.addEventListener('click', () => {
+            picker.value = input.value;
+            picker.showPicker();
+        });
+        picker.addEventListener('change', () => {
+            input.value = picker.value;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+    }
+
+    let clickPending = false;
+    input.addEventListener('mousedown', () => { clickPending = true; });
+    input.addEventListener('mouseup', () => {
+        clickPending = false;
+        ensureFormat();
+        selectSeg(segFromCursor());
+    });
+    input.addEventListener('focus', () => {
+        if (clickPending) return; // mouseup will handle it
+        ensureFormat();
+        selectSeg(activeSeg);
+    });
+
+    input.addEventListener('blur', () => {
+        activeSeg = 0;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    input.addEventListener('keydown', (e) => {
+        const key = e.key;
+
+        if (key === 'Tab') {
+            if (!e.shiftKey && activeSeg < 2) {
+                e.preventDefault();
+                selectSeg(activeSeg + 1);
+                return;
+            } else if (!e.shiftKey && activeSeg === 2) {
+                // Last segment — advance to the time input
+                if (advanceToNextInput()) { e.preventDefault(); }
+                return;
+            } else if (e.shiftKey && activeSeg > 0) {
+                e.preventDefault();
+                selectSeg(activeSeg - 1);
+                return;
+            }
+            return;
+        }
+
+        if (key === 'ArrowRight') {
+            e.preventDefault();
+            if (activeSeg < 2) selectSeg(activeSeg + 1);
+            return;
+        }
+        if (key === 'ArrowLeft') {
+            e.preventDefault();
+            if (activeSeg > 0) selectSeg(activeSeg - 1);
+            return;
+        }
+
+        if (key === 'ArrowUp' || key === 'ArrowDown') {
+            e.preventDefault();
+            const [start, end] = SEGS[activeSeg];
+            let n = parseInt(input.value.slice(start, end), 10) || 0;
+            n += key === 'ArrowUp' ? 1 : -1;
+            if (activeSeg === 0) { // year — no wrap
+                n = Math.max(2000, Math.min(2099, n));
+            } else if (activeSeg === 1) { // month
+                if (n < 1) n = 12; if (n > 12) n = 1;
+            } else { // day
+                if (n < 1) n = 31; if (n > 31) n = 1;
+            }
+            setSegValue(activeSeg, String(n));
+            selectSeg(activeSeg);
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            return;
+        }
+
+        if (/^\d$/.test(key)) {
+            e.preventDefault();
+            const width = activeSeg === 0 ? 4 : 2;
+            digitBuf += key;
+
+            if (digitBuf.length < width) {
+                const preview = digitBuf.padEnd(width, '0');
+                setSegValue(activeSeg, preview);
+                selectSeg(activeSeg, true);
+            } else {
+                setSegValue(activeSeg, digitBuf);
+                digitBuf = '';
+                if (activeSeg < 2) selectSeg(activeSeg + 1);
+                else selectSeg(activeSeg);
+            }
+
+            // Auto-advance month/day if first digit is too high
+            if (activeSeg === 1 && digitBuf.length === 1 && parseInt(key, 10) > 1) {
+                // Month can't be 20+, so single digit like 3 → 03, advance
+                setSegValue(activeSeg, '0' + key);
+                digitBuf = '';
+                selectSeg(activeSeg + 1);
+            } else if (activeSeg === 2 && digitBuf.length === 1 && parseInt(key, 10) > 3) {
+                // Day can't be 40+, so single digit like 5 → 05, advance
+                setSegValue(activeSeg, '0' + key);
+                digitBuf = '';
+                selectSeg(activeSeg);
+            }
+            return;
+        }
+
+        if (key === '-') {
+            e.preventDefault();
+            if (activeSeg < 2) selectSeg(activeSeg + 1);
+            return;
+        }
+
+        if (key === 'Backspace') {
+            e.preventDefault();
+            const width = activeSeg === 0 ? 4 : 2;
+            setSegValue(activeSeg, '0'.repeat(width));
+            digitBuf = '';
+            selectSeg(activeSeg);
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            return;
+        }
+
+        if (key === 'Enter') { e.preventDefault(); input.blur(); return; }
+
+        if (!e.metaKey && !e.ctrlKey && key.length === 1) {
+            e.preventDefault();
+        }
+    });
+
+    input._dateSegmented = { selectSegment: selectSeg };
+}
+
+/**
+ * Enhance a text input to behave like a segmented time picker.
+ * Segments: HH : MM : SS  (positions 0-1, 3-4, 6-7)
+ * Click selects the segment under the cursor. Typing fills and auto-advances.
+ * Tab/ArrowRight advance to next segment; Shift+Tab/ArrowLeft go back.
+ * Milliseconds (.mmm) are accepted if typed but not shown by default.
+ */
+function enhanceTimeInput(input) {
+    if (!input) return;
+
+    // Segments 0-2 are always present: HH(0-1) : MM(3-4) : SS(6-7)
+    // Segment 3 (ms) is dynamic: .mmm(8-12) — only appears when user types '.'
+    const BASE_SEGS = [[0, 2], [3, 5], [6, 8]];
+    let activeSeg = 0;
+    let digitBuf = '';
+    let msMode = false;   // whether .mmm suffix is currently showing
+    let msEdited = false;  // whether user actually typed ms digits
+
+    function hasMs() { return input.value.length > 8 && input.value[8] === '.'; }
+
+    function stripMs() {
+        if (hasMs()) input.value = input.value.slice(0, 8);
+        msMode = false;
+        msEdited = false;
+    }
+
+    function addMs() {
+        if (!hasMs()) input.value = input.value.slice(0, 8) + '.000';
+        msMode = true;
+        msEdited = false;
+    }
+
+    function getSegs() {
+        if (msMode || hasMs()) return [...BASE_SEGS, [9, 12]];
+        return BASE_SEGS;
+    }
+
+    function ensureFormat() {
+        const val = input.value;
+        const match = val.match(/^(\d{0,2}):?(\d{0,2}):?(\d{0,2})(\.(\d{0,3}))?$/);
+        if (!match) { input.value = '00:00:00'; return; }
+        const h = (match[1] || '00').padStart(2, '0');
+        const m = (match[2] || '00').padStart(2, '0');
+        const s = (match[3] || '00').padStart(2, '0');
+        const msRaw = match[5] ? match[5].padEnd(3, '0') : '';
+        const msNonZero = msRaw && msRaw !== '000';
+        const ms = msNonZero ? '.' + msRaw : '';
+        input.value = `${h}:${m}:${s}${ms}`;
+        msMode = msNonZero;
+    }
+
+    function selectSeg(idx, keepBuf) {
+        const segs = getSegs();
+        const maxIdx = segs.length - 1;
+        const newSeg = Math.max(0, Math.min(maxIdx, idx));
+        if (!keepBuf || newSeg !== activeSeg) digitBuf = '';
+        activeSeg = newSeg;
+        const [start, end] = segs[activeSeg];
+        input.setSelectionRange(start, end);
+    }
+
+    function segFromCursor() {
+        const pos = input.selectionStart;
+        if (pos <= 2) return 0;
+        if (pos <= 5) return 1;
+        if (pos <= 7) return 2;
+        if (pos >= 8) {
+            if (!hasMs()) addMs();
+            return 3;
+        }
+        return 2;
+    }
+
+    function setSegValue(idx, numStr) {
+        if (idx === 3) {
+            // Milliseconds segment — 3 digits, no clamping needed (000-999)
+            const padded = numStr.padEnd(3, '0').slice(0, 3);
+            input.value = input.value.slice(0, 9) + padded;
+            return;
+        }
+        const maxes = [23, 59, 59];
+        let n = Math.min(parseInt(numStr, 10) || 0, maxes[idx]);
+        const padded = String(n).padStart(2, '0');
+        const val = input.value;
+        const [start, end] = BASE_SEGS[idx];
+        input.value = val.slice(0, start) + padded + val.slice(end);
+    }
+
+    let clickPending = false;
+    input.addEventListener('mousedown', () => { clickPending = true; });
+    input.addEventListener('mouseup', () => {
+        clickPending = false;
+        if (!msMode) ensureFormat();
+        const seg = segFromCursor();
+        if (msMode && seg < 3 && !msEdited) stripMs();
+        selectSeg(seg);
+    });
+    input.addEventListener('focus', () => {
+        if (clickPending) return;
+        ensureFormat();
+        selectSeg(activeSeg);
+    });
+
+    // Blur → strip .000 if user didn't edit ms, then notify
+    input.addEventListener('blur', () => {
+        if (msMode && !msEdited) stripMs();
+        if (hasMs() && input.value.slice(9) === '000') stripMs();
+        activeSeg = 0;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    input.addEventListener('keydown', (e) => {
+        const key = e.key;
+        const segs = getSegs();
+        const maxSeg = segs.length - 1;
+
+        // Tab: move between segments, then leave the input
+        if (key === 'Tab') {
+            if (!e.shiftKey && activeSeg < maxSeg) {
+                e.preventDefault();
+                selectSeg(activeSeg + 1);
+                return;
+            } else if (!e.shiftKey && activeSeg >= maxSeg) {
+                // Forward Tab from last segment — find next date or button
+                if (msMode && !msEdited) stripMs();
+                if (hasMs() && input.value.slice(9) === '000') stripMs();
+                const wrap = input.closest('.time-wrap');
+                if (wrap) {
+                    let el = wrap.nextElementSibling;
+                    while (el) {
+                        // Check for a label (skip it), date-wrap, or button
+                        const target = el.querySelector?.('input[type="text"]') ||
+                                       (el.tagName === 'INPUT' ? el : null) ||
+                                       (el.tagName === 'BUTTON' ? el : null);
+                        if (target) {
+                            e.preventDefault();
+                            target.focus();
+                            if (target._dateSegmented) target._dateSegmented.selectSegment(0);
+                            else if (target._timeSegmented) target._timeSegmented.selectSegment(0);
+                            return;
+                        }
+                        el = el.nextElementSibling;
+                    }
+                }
+                return;
+            } else if (e.shiftKey && activeSeg > 0) {
+                e.preventDefault();
+                if (activeSeg === 3 && !msEdited) stripMs();
+                selectSeg(activeSeg - 1);
+                return;
+            } else if (e.shiftKey && activeSeg === 0) {
+                // Shift+Tab from HH → go back to date input's DD segment
+                const wrap = input.closest('.time-wrap');
+                const dateWrap = wrap?.previousElementSibling;
+                const dateInput = dateWrap?.querySelector?.('input[type="text"]');
+                if (dateInput?._dateSegmented) {
+                    e.preventDefault();
+                    dateInput.focus();
+                    dateInput._dateSegmented.selectSegment(2);
+                    return;
+                }
+            }
+            // Leaving the input — clean up ms if needed
+            if (msMode && !msEdited) stripMs();
+            if (hasMs() && input.value.slice(9) === '000') stripMs();
+            return;
+        }
+
+        // Arrow keys: navigate segments
+        if (key === 'ArrowRight') {
+            e.preventDefault();
+            if (activeSeg < maxSeg) selectSeg(activeSeg + 1);
+            return;
+        }
+        if (key === 'ArrowLeft') {
+            e.preventDefault();
+            if (activeSeg > 0) {
+                if (activeSeg === 3 && !msEdited) stripMs();
+                selectSeg(activeSeg - 1);
+            }
+            return;
+        }
+
+        // Up/Down: increment/decrement current segment
+        if (key === 'ArrowUp' || key === 'ArrowDown') {
+            e.preventDefault();
+            if (activeSeg === 3) {
+                let n = parseInt(input.value.slice(9, 12), 10) || 0;
+                n += key === 'ArrowUp' ? 1 : -1;
+                if (n < 0) n = 999; if (n > 999) n = 0;
+                setSegValue(3, String(n).padStart(3, '0'));
+                msEdited = true;
+                selectSeg(3);
+            } else {
+                const [start, end] = BASE_SEGS[activeSeg];
+                const maxes = [23, 59, 59];
+                let n = parseInt(input.value.slice(start, end), 10) || 0;
+                n += key === 'ArrowUp' ? 1 : -1;
+                if (n < 0) n = maxes[activeSeg];
+                if (n > maxes[activeSeg]) n = 0;
+                setSegValue(activeSeg, String(n));
+                selectSeg(activeSeg);
+            }
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            return;
+        }
+
+        // Period: enter ms mode when on seconds segment
+        if (key === '.') {
+            e.preventDefault();
+            if (activeSeg === 2) {
+                addMs();
+                selectSeg(3);
+            }
+            return;
+        }
+
+        // Digits
+        if (/^\d$/.test(key)) {
+            e.preventDefault();
+
+            // Ms segment: 3 digits, fill left-to-right
+            if (activeSeg === 3) {
+                digitBuf += key;
+                msEdited = true;
+                if (digitBuf.length < 3) {
+                    setSegValue(3, digitBuf.padEnd(3, '0'));
+                    selectSeg(3, true);
+                } else {
+                    setSegValue(3, digitBuf);
+                    digitBuf = '';
+                    selectSeg(3);
+                }
+                return;
+            }
+
+            // HH/MM/SS segments: 2 digits
+            digitBuf += key;
+            if (digitBuf.length === 1) {
+                setSegValue(activeSeg, key + '0');
+                selectSeg(activeSeg, true);
+            } else {
+                setSegValue(activeSeg, digitBuf);
+                digitBuf = '';
+                if (activeSeg < 2) selectSeg(activeSeg + 1);
+                else selectSeg(activeSeg);
+            }
+            return;
+        }
+
+        // Colon: advance to next segment
+        if (key === ':') {
+            e.preventDefault();
+            if (activeSeg < 2) selectSeg(activeSeg + 1);
+            return;
+        }
+
+        // Backspace: clear current segment (or exit ms mode)
+        if (key === 'Backspace') {
+            e.preventDefault();
+            if (activeSeg === 3) {
+                stripMs();
+                selectSeg(2);
+            } else {
+                setSegValue(activeSeg, '00');
+                digitBuf = '';
+                selectSeg(activeSeg);
+            }
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            return;
+        }
+
+        if (key === 'Enter') { e.preventDefault(); input.blur(); return; }
+
+        // Block all other character input (allow Cmd+C, Cmd+V, etc.)
+        if (!e.metaKey && !e.ctrlKey && key.length === 1) {
+            e.preventDefault();
+        }
+    });
+
+    // Expose API for external callers (e.g. date Tab handler)
+    input._timeSegmented = { selectSegment: selectSeg };
 }
 
 /**
@@ -123,13 +635,13 @@ function loadSavedDateTime(groupOpen) {
         startDate.value = savedStartDate;
     }
     if (savedStartTime && startTime) {
-        startTime.value = savedStartTime;
+        startTime.value = savedStartTime.replace(/\.0+$/, '');
     }
     if (savedEndDate && endDate) {
         endDate.value = savedEndDate;
     }
     if (savedEndTime && endTime) {
-        endTime.value = savedEndTime;
+        endTime.value = savedEndTime.replace(/\.0+$/, '');
     }
 
     if ((savedStartDate || savedEndDate) && window.pm?.data) {

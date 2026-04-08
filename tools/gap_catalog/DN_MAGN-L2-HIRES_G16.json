@@ -1,0 +1,111 @@
+{
+  "dataset_id": "DN_MAGN-L2-HIRES_G16",
+  "label": "GOES-16 MAG 10 Hz",
+  "cataloged_at": "2026-03-27T23:35:31.302178",
+  "time_range": {
+    "start": "2018-08-01",
+    "end": "2025-12-31"
+  },
+  "summary": {
+    "total_intervals": 11,
+    "total_gaps": 10,
+    "boundaries_sharpened": true
+  },
+  "intervals": [
+    {
+      "start_iso": "2018-08-29T00:00:00.000Z",
+      "end_iso": "2018-09-01T23:59:59.000Z",
+      "end_epoch_raw": 63703065599900.0,
+      "end_precise": "2018-09-01T23:59:59.900",
+      "cadence_ns": 100000000.0
+    },
+    {
+      "start_iso": "2018-09-05T00:00:00.000Z",
+      "end_iso": "2018-12-17T23:59:59.000Z",
+      "start_epoch_raw": 63703324800000.0,
+      "start_precise": "2018-09-05T00:00:00.000",
+      "cadence_ns": 100000000.0,
+      "end_epoch_raw": 63712310399900.0,
+      "end_precise": "2018-12-17T23:59:59.900"
+    },
+    {
+      "start_iso": "2018-12-19T00:00:00.000Z",
+      "end_iso": "2018-12-31T23:59:59.000Z",
+      "start_epoch_raw": 63712396800000.0,
+      "start_precise": "2018-12-19T00:00:00.000",
+      "cadence_ns": 100000000.0,
+      "end_epoch_raw": 63713519999900.0,
+      "end_precise": "2018-12-31T23:59:59.900"
+    },
+    {
+      "start_iso": "2019-03-19T00:00:00.000Z",
+      "end_iso": "2019-03-31T23:59:59.000Z",
+      "start_epoch_raw": 63720172800001.0,
+      "start_precise": "2019-03-19T00:00:00.001",
+      "cadence_ns": 100000000.0,
+      "end_epoch_raw": 63721295999900.0,
+      "end_precise": "2019-03-31T23:59:59.900"
+    },
+    {
+      "start_iso": "2019-04-02T00:00:00.000Z",
+      "end_iso": "2019-04-13T23:59:59.000Z",
+      "start_epoch_raw": 63721382400000.0,
+      "start_precise": "2019-04-02T00:00:00.000",
+      "cadence_ns": 100000000.0,
+      "end_epoch_raw": 63722419199900.0,
+      "end_precise": "2019-04-13T23:59:59.900"
+    },
+    {
+      "start_iso": "2019-04-15T00:00:00.000Z",
+      "end_iso": "2019-06-10T23:59:59.000Z",
+      "start_epoch_raw": 63722505600000.0,
+      "start_precise": "2019-04-15T00:00:00.000",
+      "cadence_ns": 100000000.0,
+      "end_epoch_raw": 63727430399900.0,
+      "end_precise": "2019-06-10T23:59:59.900"
+    },
+    {
+      "start_iso": "2019-06-13T00:00:00.000Z",
+      "end_iso": "2019-07-23T23:59:59.000Z",
+      "start_epoch_raw": 63727603200000.0,
+      "start_precise": "2019-06-13T00:00:00.000",
+      "cadence_ns": 100000000.0,
+      "end_epoch_raw": 63731145599900.0,
+      "end_precise": "2019-07-23T23:59:59.900"
+    },
+    {
+      "start_iso": "2019-07-26T00:00:00.000Z",
+      "end_iso": "2019-07-28T23:59:59.000Z",
+      "start_epoch_raw": 63731318400000.0,
+      "start_precise": "2019-07-26T00:00:00.000",
+      "cadence_ns": 100000000.0,
+      "end_epoch_raw": 63731577599900.0,
+      "end_precise": "2019-07-28T23:59:59.900"
+    },
+    {
+      "start_iso": "2019-07-30T00:00:00.000Z",
+      "end_iso": "2024-06-23T23:59:59.000Z",
+      "start_epoch_raw": 63731664000000.0,
+      "start_precise": "2019-07-30T00:00:00.000",
+      "cadence_ns": 100000000.0,
+      "end_epoch_raw": 63886406399900.0,
+      "end_precise": "2024-06-23T23:59:59.900"
+    },
+    {
+      "start_iso": "2024-06-27T00:00:00.000Z",
+      "end_iso": "2024-07-01T23:59:59.000Z",
+      "start_epoch_raw": 63886665600001.0,
+      "start_precise": "2024-06-27T00:00:00.001",
+      "cadence_ns": 100000000.0,
+      "end_epoch_raw": 63887097599900.0,
+      "end_precise": "2024-07-01T23:59:59.900"
+    },
+    {
+      "start_iso": "2024-07-03T00:00:00.000Z",
+      "end_iso": "2025-04-07T23:59:59.000Z",
+      "start_epoch_raw": 63887184000000.0,
+      "start_precise": "2024-07-03T00:00:00.000",
+      "cadence_ns": 100000000.0
+    }
+  ]
+}

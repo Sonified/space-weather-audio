@@ -145,7 +145,7 @@ async function renderHiResViewport() {
  */
 function onWheel(e) {
     const canvas = e.currentTarget;
-    const isNavBar = canvas.id === 'waveform';
+    const isNavBar = canvas.id === 'waveform' || canvas.id === 'minimap';
 
     // Check which axes are enabled
     const vScrollSelect = document.getElementById(isNavBar ? 'navBarScroll' : 'mainWindowScroll');

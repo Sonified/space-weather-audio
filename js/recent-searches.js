@@ -39,6 +39,10 @@ export async function loadRecentSearches() {
 
         refreshSelectById('recentSearches');
         console.log(`📋 Loaded ${recentSearches.length} recent searches from cache`);
+        if (recentSearches.length > 0) {
+            const top = recentSearches[0];
+            console.log(`📋 Top entry — display: "${formatCacheEntryForDisplay(top)}" | stored: ${JSON.stringify({ spacecraft: top.spacecraft, dataset: top.dataset, startTime: top.startTime, endTime: top.endTime })}`);
+        }
         startMemoryMonitoring();
     } catch (e) {
         console.warn('Could not load recent searches:', e);
@@ -67,9 +71,9 @@ export async function restoreRecentSearch(selectedOption) {
         const startDateStr = startDate.toISOString().split('T')[0];
         const endDateStr = endDate.toISOString().split('T')[0];
 
-        // Format for time inputs (HH:MM:SS.mmm)
-        const startTimeStr = startDate.toISOString().split('T')[1].replace('Z', '');
-        const endTimeStr = endDate.toISOString().split('T')[1].replace('Z', '');
+        // Format for time inputs (HH:MM:SS, with .mmm only if non-zero)
+        const startTimeStr = startDate.toISOString().split('T')[1].replace('Z', '').replace(/\.0+$/, '');
+        const endTimeStr = endDate.toISOString().split('T')[1].replace('Z', '').replace(/\.0+$/, '');
 
         // Populate form fields - ORDER MATTERS!
         // 1. Set spacecraft first

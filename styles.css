@@ -756,7 +756,7 @@ button {
 }
 
 .btn-action:hover:not(:disabled) {
-    transform: translateY(-1px);
+    transform: var(--btn-lift, translateY(-1px));
     box-shadow: 0 5px 12px rgba(102, 126, 234, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15);
     background: linear-gradient(135deg, #7a8ef0 0%, #8a5fb5 100%);
 }
@@ -907,23 +907,25 @@ button.play-active:hover:not(:disabled) {
     background: linear-gradient(135deg, #6b5a7a 0%, #4a3d5a 100%);
 }
 
-#loopBtn, #loopBtn:disabled {
-    cursor: pointer !important;
+#loopBtn:not(.loop-active) {
+    color: #bbb;
+    transition: background 0.2s, box-shadow 0.2s;
 }
 
 #loopBtn:not(.loop-active):hover:not(:disabled) {
-    background: linear-gradient(135deg, #7b6a8a 0%, #5a4d6a 100%);
+    background: linear-gradient(135deg, #666 0%, #555 100%);
+    color: #ccc;
 }
 
-/* Loop button ON state - vibrant purple (original) */
+/* Loop button ON state - matches Fetch Data gradient */
 .btn-action.loop-active {
-    background: linear-gradient(135deg, #9b6bc9 0%, #7a4ba9 100%);
-    box-shadow: 0 0 8px rgba(155, 107, 201, 0.4);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 0 8px rgba(102, 126, 234, 0.4);
 }
 
 .btn-action.loop-active:hover:not(:disabled) {
-    background: linear-gradient(135deg, #ab7bd9 0%, #8a5bb9 100%);
-    box-shadow: 0 0 12px rgba(155, 107, 201, 0.5);
+    background: linear-gradient(135deg, #7690f0 0%, #8655b2 100%);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 0 12px rgba(102, 126, 234, 0.5);
 }
 
 .status {
@@ -966,10 +968,14 @@ button.play-active:hover:not(:disabled) {
     isolation: isolate; /* Creates new stacking context */
 }
 
-/* Ensure text content is above pseudo-elements */
-.status.loading > * {
+/* Ensure wrapped loading text stays above animated overlays */
+.status.loading .status-message {
     position: relative;
     z-index: 10;
+    display: block;
+    width: 100%;
+    color: inherit;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.2), 0 0 12px rgba(255, 255, 255, 0.12);
 }
 
 .status.loading::before {
@@ -3831,6 +3837,37 @@ select.csel-native {
 .feature-popup-play:active {
     transform: none;
 }
+.feature-popup-isolate {
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    outline: 0;
+    box-shadow: none;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    padding: 2px 7px;
+    margin-left: 6px;
+    border-radius: 3px;
+    line-height: 1.4;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.feature-popup-isolate:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.8);
+    border-color: rgba(255, 255, 255, 0.25);
+}
+.feature-popup-isolate.active {
+    background: rgba(58, 144, 112, 0.35);
+    color: #4cb88a;
+    border-color: rgba(76, 184, 138, 0.5);
+}
+.feature-popup-isolate.active:hover {
+    background: rgba(58, 144, 112, 0.45);
+}
 .feature-popup-close {
     background: none;
     border: none;
@@ -4829,4 +4866,3 @@ html:not([data-advanced]) .study-page .spectrogram-controls {
     border: 1px solid rgba(255, 255, 255, 0.15) !important;
     border-radius: 3px;
 }
-

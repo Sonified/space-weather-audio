@@ -1,0 +1,76 @@
+{
+  "dataset_id": "THA_L2_FGM",
+  "label": "THEMIS-A FGM",
+  "cataloged_at": "2026-03-27T22:39:02.589170",
+  "time_range": {
+    "start": "2007-02-01",
+    "end": "2025-12-31"
+  },
+  "summary": {
+    "total_intervals": 9,
+    "total_gaps": 8,
+    "boundaries_sharpened": true
+  },
+  "intervals": [
+    {
+      "start_iso": "2007-02-23T00:00:00.000Z",
+      "end_iso": "2007-04-02T00:00:00.000Z"
+    },
+    {
+      "start_iso": "2007-04-03T00:00:00.000Z",
+      "end_iso": "2007-04-26T00:00:00.000Z"
+    },
+    {
+      "start_iso": "2007-05-01T00:00:00.000Z",
+      "end_iso": "2011-02-06T00:00:00.000Z",
+      "start_epoch_raw": 63345211986.0,
+      "start_precise": "2007-05-01T04:13:06.681",
+      "end_epoch_raw": 63464169604.0,
+      "end_precise": "2011-02-06T00:00:04.932",
+      "cadence_ns": 1000000.0
+    },
+    {
+      "start_iso": "2011-02-07T00:00:00.000Z",
+      "end_iso": "2018-03-09T00:00:00.000Z",
+      "start_epoch_raw": 63464256056.0,
+      "start_precise": "2011-02-07T00:00:56.941",
+      "cadence_ns": 1000000.0
+    },
+    {
+      "start_iso": "2018-03-20T00:00:00.000Z",
+      "end_iso": "2021-08-05T00:00:00.000Z",
+      "start_epoch_raw": 63688738330.0,
+      "start_precise": "2018-03-20T04:12:10.431",
+      "end_epoch_raw": 63795254415.0,
+      "end_precise": "2021-08-04T00:00:15.318"
+    },
+    {
+      "start_iso": "2021-08-14T00:00:00.000Z",
+      "end_iso": "2023-10-20T00:00:00.000Z",
+      "start_epoch_raw": 63796156841.0,
+      "start_precise": "2021-08-14T10:40:41.712",
+      "end_epoch_raw": 63864892831.0,
+      "end_precise": "2023-10-19T00:00:31.294"
+    },
+    {
+      "start_iso": "2023-10-26T00:00:00.000Z",
+      "end_iso": "2024-05-12T00:00:00.000Z",
+      "end_epoch_raw": 63882604804.0,
+      "end_precise": "2024-05-11T00:00:04.912"
+    },
+    {
+      "start_iso": "2024-05-14T00:00:00.000Z",
+      "end_iso": "2025-03-30T00:00:00.000Z",
+      "start_epoch_raw": 63882939135.0,
+      "start_precise": "2024-05-14T20:52:15.894",
+      "end_epoch_raw": 63910440052.0,
+      "end_precise": "2025-03-29T04:00:52.738"
+    },
+    {
+      "start_iso": "2025-03-31T00:00:00.000Z",
+      "end_iso": "2026-01-01T00:00:00.000Z",
+      "start_epoch_raw": 63910668806.0,
+      "start_precise": "2025-03-31T19:33:26.556"
+    }
+  ]
+}

@@ -262,11 +262,9 @@ export function toggleLoop() {
     if (State.isLooping) {
         btn.classList.remove('secondary');
         btn.classList.add('loop-active');
-        btn.textContent = 'Loop: Enabled';
         console.log('🔁 Looping enabled');
     } else {
         btn.classList.remove('loop-active');
-        btn.textContent = 'Loop: Disabled';
         console.log('🔁 Looping disabled');
     }
     

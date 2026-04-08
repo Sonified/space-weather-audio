@@ -1371,6 +1371,48 @@ export default {
       }
 
       // =======================================================================
+      // Gap Catalog: /api/gap-catalog/:datasetId
+      // Serves pre-computed gap catalogs with millisecond-precise boundaries
+      // Stored in R2 at gap_catalog/{datasetId}.json
+      // =======================================================================
+      const gapCatalogMatch = path.match(/^\/api\/gap-catalog\/([A-Za-z0-9_\-]+)$/);
+      if (gapCatalogMatch && request.method === 'GET') {
+        const datasetId = gapCatalogMatch[1];
+        const cacheKey = new Request(url.toString(), request);
+        const cache = caches.default;
+
+        // Check edge cache first
+        let response = await cache.match(cacheKey);
+        if (response) return response;
+
+        const obj = await env.BUCKET.get(`gap_catalog/${datasetId}.json`);
+        if (!obj) {
+          return json({ error: 'Gap catalog not found for dataset' }, 404);
+        }
+        response = new Response(obj.body, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'public, max-age=86400',
+            ...CORS_HEADERS,
+          },
+        });
+        // Store in edge cache (non-blocking)
+        ctx.waitUntil(cache.put(cacheKey, response.clone()));
+        return response;
+      }
+
+      // List available gap catalogs: GET /api/gap-catalog
+      if (path === '/api/gap-catalog' && request.method === 'GET') {
+        const listed = await env.BUCKET.list({ prefix: 'gap_catalog/' });
+        const catalogs = listed.objects.map(obj => ({
+          dataset_id: obj.key.replace('gap_catalog/', '').replace('.json', ''),
+          size: obj.size,
+          uploaded: obj.uploaded,
+        }));
+        return json({ catalogs });
+      }
+
+      // =======================================================================
       // Proxy everything else to GitHub Pages
       // =======================================================================
       const githubPagesUrl = 'https://sonified.github.io/space-weather-audio';

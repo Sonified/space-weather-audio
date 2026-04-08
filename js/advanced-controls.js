@@ -34,6 +34,10 @@ export function initializeAdvancedControls() {
     // Inject gear popover content into shell divs
     injectGearPopovers();
 
+    // Button lift on hover
+    const buttonLift = false;
+    document.documentElement.style.setProperty('--btn-lift', buttonLift ? 'translateY(-1px)' : 'none');
+
     // Persist all navigation panel controls to localStorage
     const navControls = [
         { id: 'viewingMode', key: 'emic_viewing_mode', type: 'select' },
@@ -306,9 +310,10 @@ export function initializeAdvancedControls() {
         // Sync checkbox
         if (advancedCheckbox) advancedCheckbox.checked = isAdvanced;
 
-        // Gears, hamburger, questionnaires: advanced only (EMIC only — Space Weather Portal controls via CSS)
+        // Gears: always visible on live portal, advanced-only in study/local
         const gearContainers = document.querySelectorAll('.panel-gear');
-        gearContainers.forEach(g => g.style.display = isAdvanced ? 'block' : 'none');
+        const alwaysShowGears = !isStudyMode() && !isLocalEnvironment();
+        gearContainers.forEach(g => g.style.display = (alwaysShowGears || isAdvanced) ? 'block' : 'none');
         if (isStudyMode()) {
             const hBtn = document.getElementById('hamburgerBtn');
             if (hBtn) hBtn.style.display = isAdvanced ? 'block' : 'none';

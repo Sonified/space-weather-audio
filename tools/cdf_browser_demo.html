@@ -1,0 +1,1564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📡</text></svg>">
+    <title>CDF Browser Parser — Proof of Concept</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'SF Mono', 'Consolas', monospace; background: #0a0a1a; color: #e0e0e0; padding: 2rem; }
+        h1 { color: #7eb8ff; margin-bottom: 0.5rem; font-size: 1.4rem; }
+        .subtitle { color: #888; margin-bottom: 2rem; font-size: 0.85rem; }
+
+        .drop-zone {
+            border: 2px dashed #444;
+            border-radius: 12px;
+            padding: 3rem;
+            text-align: center;
+            margin-bottom: 2rem;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: #7eb8ff;
+            background: rgba(126, 184, 255, 0.05);
+        }
+        .drop-zone p { font-size: 1.1rem; color: #aaa; }
+        .drop-zone input { display: none; }
+
+        #output {
+            white-space: pre-wrap; font-size: 0.82rem; line-height: 1.5;
+            max-height: 150px; overflow-y: auto;
+            background: #111; border: 1px solid #222; border-radius: 6px;
+            padding: 0.5rem 0.75rem; margin-bottom: 0.5rem;
+        }
+        .section { color: #7eb8ff; font-weight: bold; margin-top: 1rem; }
+        .var-name { color: #f0c040; }
+        .data-type { color: #a0d0a0; }
+        .dim-info { color: #c0a0e0; }
+        .error { color: #ff6060; }
+        .success { color: #60ff90; }
+
+        #plot-area { margin-top: 2rem; }
+        .plot-row {
+            display: flex; align-items: stretch; margin-bottom: 0.75rem; gap: 0;
+        }
+        .plot-sidebar {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-width: 56px; gap: 4px;
+        }
+        .plot-sidebar .plot-label {
+            color: #f0c040; font-size: 0.75rem; font-weight: bold; writing-mode: horizontal-tb;
+            text-align: center; line-height: 1.1;
+        }
+        .plot-play-btn {
+            width: 32px; height: 32px; border-radius: 50%; border: none; cursor: pointer;
+            background: #2a5a3a; color: #60ff90; font-size: 14px; display: flex;
+            align-items: center; justify-content: center; padding: 0;
+        }
+        .plot-play-btn:hover { background: #3a7a4a; }
+        .plot-play-btn.playing { background: #5a2a2a; color: #ff6060; }
+        .plot-wrap {
+            flex: 1; position: relative; background: #f5f5f0; border-radius: 6px;
+            overflow: hidden; min-height: 0; cursor: pointer;
+        }
+        .plot-canvas {
+            width: 100%; height: 100px; display: block;
+        }
+        .plot-playhead {
+            position: absolute; top: 0; bottom: 0; width: 1.5px; background: #e03030;
+            pointer-events: none; z-index: 1; display: none;
+        }
+
+        #audio-controls { margin-top: 2rem; }
+        button {
+            background: #1a3a5c;
+            color: #7eb8ff;
+            border: 1px solid #2a5a8c;
+            padding: 0.5rem 1.2rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.85rem;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        button:hover { background: #2a4a6c; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        select {
+            background: #1a1a2a;
+            color: #e0e0e0;
+            border: 1px solid #333;
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 0.85rem;
+            margin-right: 0.5rem;
+        }
+        label { font-size: 0.85rem; color: #aaa; margin-right: 0.5rem; }
+    </style>
+</head>
+<body>
+    <!-- Dev-only: gap test presets, top-right corner -->
+    <div id="gapPresets" style="display:none; position:fixed; top:0.5rem; right:0.5rem; z-index:100; font-size:0.75rem;">
+        <select id="gapPresetSelect" style="background:#2a1a1a; color:#ff9060; border:1px solid #553322; padding:0.3rem 0.5rem; border-radius:4px; font-family:inherit; font-size:0.75rem;">
+            <option value="">Gap test presets...</option>
+            <option value="PSP_FLD_L2_MAG_RTN|psp_fld_l2_mag_RTN|2020-01-01T00:00|3600">PSP RTN: 2h data then 9h gap (Jan 1)</option>
+            <option value="PSP_FLD_L2_MAG_RTN|psp_fld_l2_mag_RTN|2020-01-01T00:00|86400">PSP RTN: full day, Swiss cheese (Jan 1)</option>
+            <option value="PSP_FLD_L2_MAG_RTN|psp_fld_l2_mag_RTN|2020-01-07T06:00|21600">PSP RTN: 6h window, one block mid-gap (Jan 7)</option>
+            <option value="PSP_FLD_L2_MAG_RTN|psp_fld_l2_mag_RTN|2020-01-01T01:00|7200">PSP RTN: data ends mid-request, trailing gap (Jan 1 01:00-03:00)</option>
+            <option value="PSP_FLD_L2_MAG_RTN|psp_fld_l2_mag_RTN|2020-01-08T22:00|7200">PSP RTN: 2h crossing midnight gap (Jan 8-9)</option>
+            <option value="DN_MAGN-L2-HIRES_G16|b_gse|2022-01-21T00:00|3600">GOES-16: no gaps, baseline (Jan 21)</option>
+        </select>
+    </div>
+    <h1>CDF Browser Parser</h1>
+    <p class="subtitle">Fetch NASA CDAWeb magnetometer data, parse CDF binary client-side, and audify — zero server, zero dependencies</p>
+
+    <!-- Hidden but still functional for drag-and-drop / local files -->
+    <div id="localFileSection" style="display:none;">
+        <select id="presetSelect">
+            <option value="goes16_1h_cdf.cdf">goes16_1h_cdf.cdf (2,480 KB)</option>
+            <option value="goes16_10m_cdf.cdf">goes16_10m_cdf.cdf (1,978 KB)</option>
+        </select>
+        <button id="loadPresetBtn">Load</button>
+        <label class="drop-zone" id="dropZone">
+            <input type="file" id="fileInput" accept=".cdf" style="display:none;">
+        </label>
+    </div>
+
+    <div style="margin-bottom: 1.5rem; padding: 1rem; background: #111; border-radius: 8px; border: 1px solid #222;">
+        <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+            <select id="cdawebDataset" style="min-width:200px;">
+                <optgroup label="GOES Magnetometer">
+                    <option value="DN_MAGN-L2-HIRES_G16|b_gse">GOES-16 MAG 10Hz (b_gse)</option>
+                    <option value="DN_MAGN-L2-HIRES_G19|b_gse">GOES-19 MAG 10Hz (b_gse)</option>
+                </optgroup>
+                <optgroup label="Parker Solar Probe">
+                    <option value="PSP_FLD_L2_MAG_RTN|psp_fld_l2_mag_RTN">PSP MAG RTN (full cadence)</option>
+                    <option value="PSP_FLD_L2_MAG_RTN_4_SA_PER_CYC|psp_fld_l2_mag_RTN_4_Sa_per_Cyc">PSP MAG RTN (4 Sa/cyc)</option>
+                </optgroup>
+            </select>
+            <label style="color:#888;">Start:</label>
+            <input type="datetime-local" id="cdawebStart" style="background:#1a1a2a; color:#e0e0e0; border:1px solid #333; padding:0.3rem 0.5rem; border-radius:4px; font-family:inherit; font-size:0.8rem;">
+            <label style="color:#888;">End:</label>
+            <input type="datetime-local" id="cdawebEnd" style="background:#1a1a2a; color:#e0e0e0; border:1px solid #333; padding:0.3rem 0.5rem; border-radius:4px; font-family:inherit; font-size:0.8rem;">
+            <select id="cdawebDuration" style="min-width:80px;">
+                <option value="600">10 min</option>
+                <option value="1800">30 min</option>
+                <option value="3600" selected>1 hour</option>
+                <option value="7200">2 hours</option>
+                <option value="21600">6 hours</option>
+                <option value="86400">1 day</option>
+            </select>
+            <button id="fetchCdawebBtn">Fetch CDF</button>
+            <button id="fetchAudifiedBtn" style="background:#2a5a2a; border-color:#3a8a3a;">Fetch Audified Data</button>
+        </div>
+        <div id="fetchStatus" style="color:#888; font-size:0.8rem; margin-top:0.4rem;"></div>
+    </div>
+
+    <div id="output"></div>
+    <div id="diagnostics-bar" style="display:none; margin-top:0.5rem; margin-bottom:1rem;">
+        <button id="copyJsonBtn">Copy Diagnostics JSON</button>
+        <span id="copyStatus" style="color:#60ff90; font-size:0.8rem; margin-left:0.5rem;"></span>
+    </div>
+    <div id="plot-area"></div>
+    <div id="audio-controls" style="display:none;">
+        <label>Variable:</label>
+        <select id="varSelect"></select>
+        <label>Sample Rate:</label>
+        <select id="rateSelect">
+            <option value="2000">2 kHz (slow)</option>
+            <option value="4000">4 kHz</option>
+            <option value="8000" selected>8 kHz</option>
+            <option value="22050">22 kHz</option>
+            <option value="44100">44.1 kHz (fast)</option>
+        </select>
+        <button id="playBtn" disabled>Play</button>
+        <button id="downloadBtn" disabled>Download WAV</button>
+    </div>
+
+    <script>
+    // ============================================================
+    // Minimal CDF v3 Parser — Browser-native, zero dependencies
+    // ============================================================
+
+    class CDFReader {
+        constructor(arrayBuffer) {
+            this.buf = arrayBuffer;
+            this.view = new DataView(arrayBuffer);
+            this.version = null;
+            this.encoding = null;
+            this.majority = null;  // 'row' or 'column'
+            this.variables = [];   // parsed variable metadata
+            this._parseMagic();
+            this._parseCDR();
+            this._parseGDR();
+            this._parseVariables();
+        }
+
+        // --- Magic number ---
+        _parseMagic() {
+            const magic = this.view.getUint32(0);
+            if (magic === 0xcdf30001) {
+                this.version = 3;
+            } else if (magic === 0xcdf26002) {
+                this.version = 2;
+            } else {
+                throw new Error(`Not a CDF file (magic: 0x${magic.toString(16)})`);
+            }
+            const compFlag = this.view.getUint32(4);
+            this.compressed = compFlag !== 0x0000ffff;
+            if (this.compressed) {
+                throw new Error('Compressed CDF files not yet supported — use uncompressed export from CDAWeb');
+            }
+        }
+
+        // CDF data type codes → byte sizes and JS typed array constructors
+        static DATA_TYPES = {
+            1:  { name: 'CDF_INT1',    size: 1, signed: true },
+            2:  { name: 'CDF_INT2',    size: 2, signed: true },
+            4:  { name: 'CDF_INT4',    size: 4, signed: true },
+            8:  { name: 'CDF_INT8',    size: 8, signed: true },
+            11: { name: 'CDF_UINT1',   size: 1, signed: false },
+            12: { name: 'CDF_UINT2',   size: 2, signed: false },
+            14: { name: 'CDF_UINT4',   size: 4, signed: false },
+            21: { name: 'CDF_REAL4',   size: 4, float: true },
+            22: { name: 'CDF_REAL8',   size: 8, float: true },
+            31: { name: 'CDF_EPOCH',   size: 8, float: true },   // milliseconds since 0000-01-01
+            32: { name: 'CDF_EPOCH16', size: 16, float: true },
+            33: { name: 'CDF_TT2000',  size: 8, signed: true },  // nanoseconds since J2000
+            41: { name: 'CDF_BYTE',    size: 1, signed: true },
+            44: { name: 'CDF_FLOAT',   size: 4, float: true },
+            45: { name: 'CDF_DOUBLE',  size: 8, float: true },
+            51: { name: 'CDF_CHAR',    size: 1, char: true },
+            52: { name: 'CDF_UCHAR',   size: 1, char: true },
+        };
+
+        // Record type constants
+        static RECORD_TYPES = {
+            CDR: 1, GDR: 2, rVDR: 3, ADR: 4, AgrEDR: 5, VXR: 6,
+            VVR: 7, zVDR: 8, AzEDR: 9, CCR: 10, CPR: 11, SPR: 12,
+            CVVR: 13
+        };
+
+        // --- CDR (CDF Descriptor Record) ---
+        _parseCDR() {
+            // CDR starts at offset 8 (after magic + compress flag)
+            // In CDF v3: first 8 bytes of any record = RecordSize (8 bytes)
+            // Then RecordType (4 bytes)
+            const off = 8;
+            const recordSize = this._getInt64(off);
+            const recordType = this.view.getInt32(off + 8, false);  // big-endian
+
+            if (recordType !== CDFReader.RECORD_TYPES.CDR) {
+                throw new Error(`Expected CDR record (type 1), got type ${recordType}`);
+            }
+
+            // CDR fields (CDF v3, offsets relative to record start):
+            // +12: GDR offset (8 bytes)
+            // +20: Version (4 bytes)
+            // +24: Release (4 bytes)
+            // +28: Encoding (4 bytes)
+            // +32: Flags (4 bytes)
+            // +40: Increment (4 bytes)
+            this.gdrOffset = this._getInt64(off + 12);
+            const version = this.view.getInt32(off + 20, false);
+            const release = this.view.getInt32(off + 24, false);
+            this.encoding = this.view.getInt32(off + 28, false);
+            const flags = this.view.getInt32(off + 32, false);
+            this.majority = (flags & 1) ? 'row' : 'column';
+
+            this.cdfVersionStr = `${version}.${release}`;
+        }
+
+        // --- GDR (Global Descriptor Record) ---
+        _parseGDR() {
+            const off = this.gdrOffset;
+            const recordType = this.view.getInt32(off + 8, false);
+
+            if (recordType !== CDFReader.RECORD_TYPES.GDR) {
+                throw new Error(`Expected GDR record (type 2), got type ${recordType}`);
+            }
+
+            // GDR fields (CDF v3):
+            // +12: first rVDR offset (8 bytes)
+            // +20: first zVDR offset (8 bytes)
+            // +28: first ADR offset (8 bytes)
+            // +36: EOF offset (8 bytes)
+            // +44: numRvars (4 bytes)
+            // +48: numAttrs (4 bytes)
+            // +52: maxRrec (4 bytes) — not useful
+            // +56: numRdims (4 bytes)
+            // +60: numZvars (4 bytes)
+            // +68: leapSecondLastUpdated (4 bytes)
+            // +72+: rDimSizes
+            this.firstRvdrOffset = this._getInt64(off + 12);
+            this.firstZvdrOffset = this._getInt64(off + 20);
+            this.firstAdrOffset = this._getInt64(off + 28);
+            this.numRvars = this.view.getInt32(off + 44, false);
+            this.numAttrs = this.view.getInt32(off + 48, false);
+            this.numRdims = this.view.getInt32(off + 56, false);
+            this.numZvars = this.view.getInt32(off + 60, false);
+        }
+
+        // --- Parse all zVariables (and rVariables) ---
+        _parseVariables() {
+            this.variables = [];
+
+            // Parse zVariables
+            let offset = this.firstZvdrOffset;
+            for (let i = 0; i < this.numZvars; i++) {
+                if (offset <= 0 || offset >= this.buf.byteLength) break;
+                const v = this._parseVDR(offset, 'z');
+                this.variables.push(v);
+                offset = v._nextVdrOffset;
+            }
+
+            // Parse rVariables
+            offset = this.firstRvdrOffset;
+            for (let i = 0; i < this.numRvars; i++) {
+                if (offset <= 0 || offset >= this.buf.byteLength) break;
+                const v = this._parseVDR(offset, 'r');
+                this.variables.push(v);
+                offset = v._nextVdrOffset;
+            }
+        }
+
+        // --- Parse a VDR (Variable Descriptor Record) ---
+        _parseVDR(off, scope) {
+            const recordSize = this._getInt64(off);
+            const recordType = this.view.getInt32(off + 8, false);
+
+            // VDR fields (CDF v3):
+            // +12: next VDR offset (8 bytes)
+            // +20: data type (4 bytes)
+            // +24: max record (4 bytes)
+            // +28: head VXR offset (8 bytes)
+            // +36: last VXR offset (8 bytes)
+            // +44: flags (4 bytes)
+            // +48: sRecords (4 bytes)
+            // +52: rfuB (4 bytes)
+            // +56: rfuC (4 bytes)
+            // +60: rfuF (4 bytes)
+            // +64: numElems (4 bytes) — elements per value (usually 1 for numeric, N for strings)
+            // +68: varNum (4 bytes)
+            // +72: CPR/SPR offset (8 bytes)
+            // +80: blockingFactor (4 bytes)
+            // +84: name (256 bytes, null-terminated)
+            // +340: if zVar, numDims (4 bytes) + dimSizes + dimVarys
+            const nextVdrOffset = this._getInt64(off + 12);
+            const dataType = this.view.getInt32(off + 20, false);
+            const maxRec = this.view.getInt32(off + 24, false);
+            const headVxrOffset = this._getInt64(off + 28);
+            const flags = this.view.getInt32(off + 44, false);
+            const numElems = this.view.getInt32(off + 64, false);
+            const varNum = this.view.getInt32(off + 68, false);
+
+            // Variable name: 256 bytes starting at offset 84
+            const nameBytes = new Uint8Array(this.buf, off + 84, 256);
+            let name = '';
+            for (let i = 0; i < 256; i++) {
+                if (nameBytes[i] === 0) break;
+                name += String.fromCharCode(nameBytes[i]);
+            }
+
+            // For zVariables, dimensions come after the name
+            let numDims = 0;
+            let dimSizes = [];
+            if (scope === 'z') {
+                const dimOff = off + 340;
+                numDims = this.view.getInt32(dimOff, false);
+                for (let d = 0; d < numDims; d++) {
+                    dimSizes.push(this.view.getInt32(dimOff + 4 + d * 4, false));
+                }
+            }
+
+            const typeInfo = CDFReader.DATA_TYPES[dataType] || { name: `UNKNOWN(${dataType})`, size: 0 };
+            const recVariance = !!(flags & 1);  // bit 0 = record variance
+            const isCompressed = !!(flags & 4);  // bit 2 = compression
+
+            return {
+                name: name.trim(),
+                scope,
+                dataType,
+                dataTypeName: typeInfo.name,
+                elementSize: typeInfo.size,
+                numElems,
+                maxRec,
+                numDims,
+                dimSizes,
+                recVariance,
+                isCompressed,
+                headVxrOffset,
+                _nextVdrOffset: nextVdrOffset,
+                _offset: off,
+            };
+        }
+
+        // --- Read variable data (async for gzip decompression) ---
+        async varget(varName) {
+            const v = this.variables.find(x => x.name === varName);
+            if (!v) throw new Error(`Variable "${varName}" not found`);
+
+            const typeInfo = CDFReader.DATA_TYPES[v.dataType];
+            if (!typeInfo) throw new Error(`Unsupported data type: ${v.dataType}`);
+
+            // Calculate elements per record
+            let elemsPerRec = v.numElems;
+            for (const d of v.dimSizes) elemsPerRec *= d;
+            const bytesPerRec = elemsPerRec * typeInfo.size;
+            const numRecords = v.maxRec + 1;
+
+            // Walk VXR → VVR/CVVR chain to collect data
+            const allData = [];
+            await this._walkVXR(v.headVxrOffset, allData, typeInfo, bytesPerRec, elemsPerRec);
+
+            // Flatten
+            const result = new Float64Array(numRecords * elemsPerRec);
+            let idx = 0;
+            for (const chunk of allData) {
+                for (let i = 0; i < chunk.length; i++) {
+                    if (idx < result.length) result[idx++] = chunk[i];
+                }
+            }
+            return { data: result, numRecords, elemsPerRec, variable: v };
+        }
+
+        // Walk VXR (Variable indeX Record) chain — async for CVVR decompression
+        async _walkVXR(offset, allData, typeInfo, bytesPerRec, elemsPerRec) {
+            if (offset <= 0 || offset >= this.buf.byteLength) return;
+
+            const recordSize = this._getInt64(offset);
+            const recordType = this.view.getInt32(offset + 8, false);
+
+            if (recordType !== CDFReader.RECORD_TYPES.VXR) return;
+
+            const nextVxrOffset = this._getInt64(offset + 12);
+            const numEntries = this.view.getInt32(offset + 20, false);
+            const numUsed = this.view.getInt32(offset + 24, false);
+
+            const firstArr = [];
+            const lastArr = [];
+            const offsetArr = [];
+
+            let pos = offset + 28;
+            for (let i = 0; i < numEntries; i++) {
+                firstArr.push(this.view.getInt32(pos, false));
+                pos += 4;
+            }
+            for (let i = 0; i < numEntries; i++) {
+                lastArr.push(this.view.getInt32(pos, false));
+                pos += 4;
+            }
+            for (let i = 0; i < numEntries; i++) {
+                offsetArr.push(this._getInt64(pos));
+                pos += 8;
+            }
+
+            for (let i = 0; i < numUsed; i++) {
+                const entryOffset = offsetArr[i];
+                if (entryOffset <= 0 || entryOffset >= this.buf.byteLength) continue;
+
+                const entryType = this.view.getInt32(entryOffset + 8, false);
+
+                if (entryType === CDFReader.RECORD_TYPES.VVR) {
+                    // VVR: uncompressed data starts at offset + 12
+                    const dataStart = entryOffset + 12;
+                    const numRecs = lastArr[i] - firstArr[i] + 1;
+                    const chunk = this._readValues(dataStart, numRecs * elemsPerRec, typeInfo);
+                    allData.push(chunk);
+                } else if (entryType === CDFReader.RECORD_TYPES.CVVR) {
+                    // Compressed VVR — gzip decompress using browser DecompressionStream
+                    const cSize = this._getInt64(entryOffset + 16);
+                    const compressedBytes = new Uint8Array(this.buf, entryOffset + 24, cSize);
+
+                    const decompressed = await this._decompressGzip(compressedBytes);
+                    const numRecs = lastArr[i] - firstArr[i] + 1;
+                    const chunk = this._readValuesFromBuffer(decompressed, numRecs * elemsPerRec, typeInfo);
+                    allData.push(chunk);
+                } else if (entryType === CDFReader.RECORD_TYPES.VXR) {
+                    await this._walkVXR(entryOffset, allData, typeInfo, bytesPerRec, elemsPerRec);
+                }
+            }
+
+            if (nextVxrOffset > 0 && nextVxrOffset < this.buf.byteLength) {
+                await this._walkVXR(nextVxrOffset, allData, typeInfo, bytesPerRec, elemsPerRec);
+            }
+        }
+
+        // Decompress gzip using browser-native DecompressionStream
+        async _decompressGzip(compressedBytes) {
+            const ds = new DecompressionStream('gzip');
+            const writer = ds.writable.getWriter();
+            const reader = ds.readable.getReader();
+
+            writer.write(compressedBytes);
+            writer.close();
+
+            const chunks = [];
+            let totalLen = 0;
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                totalLen += value.byteLength;
+            }
+
+            // Concatenate chunks
+            const result = new Uint8Array(totalLen);
+            let offset = 0;
+            for (const chunk of chunks) {
+                result.set(chunk, offset);
+                offset += chunk.byteLength;
+            }
+            return result.buffer;
+        }
+
+        // Read values from a standalone ArrayBuffer (decompressed data)
+        _readValuesFromBuffer(buffer, count, typeInfo) {
+            const view = new DataView(buffer);
+            const result = new Float64Array(count);
+
+            for (let i = 0; i < count; i++) {
+                const pos = i * typeInfo.size;
+                if (pos + typeInfo.size > buffer.byteLength) break;
+
+                if (typeInfo.float && typeInfo.size === 8) {
+                    result[i] = view.getFloat64(pos, false);
+                } else if (typeInfo.float && typeInfo.size === 4) {
+                    result[i] = view.getFloat32(pos, false);
+                } else if (typeInfo.signed && typeInfo.size === 4) {
+                    result[i] = view.getInt32(pos, false);
+                } else if (typeInfo.signed && typeInfo.size === 2) {
+                    result[i] = view.getInt16(pos, false);
+                } else if (typeInfo.signed && typeInfo.size === 1) {
+                    result[i] = view.getInt8(pos);
+                } else if (!typeInfo.signed && typeInfo.size === 4) {
+                    result[i] = view.getUint32(pos, false);
+                } else if (!typeInfo.signed && typeInfo.size === 2) {
+                    result[i] = view.getUint16(pos, false);
+                } else if (!typeInfo.signed && typeInfo.size === 1) {
+                    result[i] = view.getUint8(pos);
+                } else if (typeInfo.size === 8 && typeInfo.signed) {
+                    const hi = view.getInt32(pos, false);
+                    const lo = view.getUint32(pos + 4, false);
+                    result[i] = hi * 0x100000000 + lo;
+                }
+            }
+            return result;
+        }
+
+        // Read N values of a given type from a byte offset
+        _readValues(offset, count, typeInfo) {
+            const result = new Float64Array(count);
+            let pos = offset;
+
+            for (let i = 0; i < count; i++) {
+                if (pos + typeInfo.size > this.buf.byteLength) break;
+
+                if (typeInfo.float && typeInfo.size === 8) {
+                    result[i] = this.view.getFloat64(pos, false);  // big-endian (network encoding)
+                } else if (typeInfo.float && typeInfo.size === 4) {
+                    result[i] = this.view.getFloat32(pos, false);
+                } else if (typeInfo.signed && typeInfo.size === 4) {
+                    result[i] = this.view.getInt32(pos, false);
+                } else if (typeInfo.signed && typeInfo.size === 2) {
+                    result[i] = this.view.getInt16(pos, false);
+                } else if (typeInfo.signed && typeInfo.size === 1) {
+                    result[i] = this.view.getInt8(pos);
+                } else if (!typeInfo.signed && typeInfo.size === 4) {
+                    result[i] = this.view.getUint32(pos, false);
+                } else if (!typeInfo.signed && typeInfo.size === 2) {
+                    result[i] = this.view.getUint16(pos, false);
+                } else if (!typeInfo.signed && typeInfo.size === 1) {
+                    result[i] = this.view.getUint8(pos);
+                } else if (typeInfo.size === 8 && typeInfo.signed) {
+                    // INT8 / TT2000: read as BigInt, convert to Number
+                    const hi = this.view.getInt32(pos, false);
+                    const lo = this.view.getUint32(pos + 4, false);
+                    result[i] = hi * 0x100000000 + lo;
+                }
+
+                pos += typeInfo.size;
+            }
+            return result;
+        }
+
+        // Read 8-byte big-endian integer (CDF v3 uses 8-byte offsets)
+        _getInt64(offset) {
+            const hi = this.view.getInt32(offset, false);
+            const lo = this.view.getUint32(offset + 4, false);
+            return hi * 0x100000000 + lo;
+        }
+
+        // Get variable names (filtered to numeric, non-metadata)
+        getNumericVarNames() {
+            return this.variables
+                .filter(v => {
+                    const t = CDFReader.DATA_TYPES[v.dataType];
+                    return t && (t.float || t.signed || (!t.signed && !t.char)) && v.maxRec > 0;
+                })
+                .map(v => v.name);
+        }
+    }
+
+    // ============================================================
+    // WAV writer (same as Python version, but in JS)
+    // ============================================================
+
+    function createWAV(channelData, sampleRate) {
+        const numChannels = channelData.length;
+        const numSamples = channelData[0].length;
+        const bitsPerSample = 16;
+        const bytesPerSample = bitsPerSample / 8;
+        const blockAlign = numChannels * bytesPerSample;
+        const byteRate = sampleRate * blockAlign;
+        const dataSize = numSamples * blockAlign;
+        const bufferSize = 44 + dataSize;
+
+        const buffer = new ArrayBuffer(bufferSize);
+        const view = new DataView(buffer);
+        const writeStr = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+
+        writeStr(0, 'RIFF');
+        view.setUint32(4, bufferSize - 8, true);
+        writeStr(8, 'WAVE');
+        writeStr(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);  // PCM
+        view.setUint16(22, numChannels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, byteRate, true);
+        view.setUint16(32, blockAlign, true);
+        view.setUint16(34, bitsPerSample, true);
+        writeStr(36, 'data');
+        view.setUint32(40, dataSize, true);
+
+        let offset = 44;
+        for (let i = 0; i < numSamples; i++) {
+            for (let ch = 0; ch < numChannels; ch++) {
+                let sample = Math.round(channelData[ch][i] * 32767);
+                sample = Math.max(-32768, Math.min(32767, sample));
+                view.setInt16(offset, sample, true);
+                offset += 2;
+            }
+        }
+        return buffer;
+    }
+
+    function normalizeToFloat(data) {
+        let min = Infinity, max = -Infinity;
+        for (let i = 0; i < data.length; i++) {
+            if (isFinite(data[i])) {
+                if (data[i] < min) min = data[i];
+                if (data[i] > max) max = data[i];
+            }
+        }
+        const range = max - min || 1;
+        const result = new Float64Array(data.length);
+        for (let i = 0; i < data.length; i++) {
+            result[i] = isFinite(data[i]) ? (2 * (data[i] - min) / range - 1) * 0.9 : 0;
+        }
+        // Taper: 256-sample cosine fade in/out to avoid clicks
+        const taper = Math.min(256, Math.floor(data.length / 4));
+        for (let i = 0; i < taper; i++) {
+            const g = 0.5 * (1 - Math.cos(Math.PI * i / taper));
+            result[i] *= g;
+            result[data.length - 1 - i] *= g;
+        }
+        return result;
+    }
+
+    // ============================================================
+    // UI
+    // ============================================================
+
+    const output = document.getElementById('output');
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const plotArea = document.getElementById('plot-area');
+    const audioControls = document.getElementById('audio-controls');
+    const varSelect = document.getElementById('varSelect');
+    const rateSelect = document.getElementById('rateSelect');
+    const playBtn = document.getElementById('playBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+
+    const presetSelect = document.getElementById('presetSelect');
+    const loadPresetBtn = document.getElementById('loadPresetBtn');
+    const diagnosticsBar = document.getElementById('diagnostics-bar');
+    const copyJsonBtn = document.getElementById('copyJsonBtn');
+    const copyStatus = document.getElementById('copyStatus');
+    const cdawebDataset = document.getElementById('cdawebDataset');
+    const cdawebStart = document.getElementById('cdawebStart');
+    const cdawebEnd = document.getElementById('cdawebEnd');
+    const cdawebDuration = document.getElementById('cdawebDuration');
+    const fetchCdawebBtn = document.getElementById('fetchCdawebBtn');
+    const fetchAudifiedBtn = document.getElementById('fetchAudifiedBtn');
+    const fetchStatus = document.getElementById('fetchStatus');
+
+    let currentCDF = null;
+    let parsedVarData = {};
+    let lastDiagnostics = null;
+
+    // Dev-only: gap test presets
+    const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    if (isLocal) {
+        document.getElementById('gapPresets').style.display = 'block';
+        document.getElementById('gapPresetSelect').addEventListener('change', (e) => {
+            if (!e.target.value) return;
+            const [datasetVar, , start, dur] = e.target.value.split('|');
+            const varName = e.target.value.split('|')[1];
+            // Set dataset dropdown
+            const dsValue = `${datasetVar}|${varName}`;
+            if (cdawebDataset.querySelector(`option[value="${dsValue}"]`)) {
+                cdawebDataset.value = dsValue;
+            }
+            // Set start time & duration
+            cdawebStart.value = start;
+            cdawebDuration.value = dur;
+            updateEndTime();
+            e.target.value = '';
+        });
+    }
+
+    // Restore last-used file from localStorage
+    const lastFile = localStorage.getItem('cdf_demo_last_file');
+    if (lastFile) {
+        const opt = presetSelect.querySelector(`option[value="${lastFile}"]`);
+        if (opt) presetSelect.value = lastFile;
+    }
+
+    // Default start time: known-good date with data
+    // (CDAWeb archival data lags — recent dates may 404)
+    const savedStart = localStorage.getItem('cdf_demo_cdaweb_start');
+    cdawebStart.value = savedStart || '2022-01-21T00:00';
+
+    // When duration changes, auto-set end time
+    function updateEndTime() {
+        if (cdawebStart.value) {
+            const start = new Date(cdawebStart.value);
+            const end = new Date(start.getTime() + parseInt(cdawebDuration.value) * 1000);
+            cdawebEnd.value = end.toISOString().slice(0, 16);
+        }
+    }
+    cdawebStart.addEventListener('change', updateEndTime);
+    cdawebDuration.addEventListener('change', updateEndTime);
+    updateEndTime();
+
+    function log(text, className = '') {
+        const span = document.createElement('span');
+        span.className = className;
+        span.textContent = text + '\n';
+        output.appendChild(span);
+        output.scrollTop = output.scrollHeight;
+    }
+
+    // Load preset CDF file (relative path)
+    async function loadPreset() {
+        const filename = presetSelect.value;
+        localStorage.setItem('cdf_demo_last_file', filename);
+        log(`Fetching ${filename}...`);
+        try {
+            const response = await fetch(filename);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const blob = await response.blob();
+            const file = new File([blob], filename);
+            await handleFile(file, null);
+        } catch (err) {
+            log(`Failed to fetch ${filename}: ${err.message}`, 'error');
+            log('Make sure you are serving this from a local dev server (python dev_server.py)', 'error');
+        }
+    }
+
+    loadPresetBtn.addEventListener('click', loadPreset);
+
+    // --- CDAWeb fetch ---
+    const CDASWS_BASE = 'https://cdaweb.gsfc.nasa.gov/WS/cdasr/1';
+
+    // Convert local datetime-local value to CDAWeb format (yyyyMMddTHHmmssZ)
+    function toCDAWebTime(dtLocalValue) {
+        // datetime-local gives us "YYYY-MM-DDTHH:MM" in local time
+        // CDAWeb wants UTC — parse as local, convert to UTC ISO, strip punctuation
+        const d = new Date(dtLocalValue);
+        return d.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+    }
+
+    async function fetchFromCDAWeb() {
+        const [dataset, variable] = cdawebDataset.value.split('|');
+        const startStr = toCDAWebTime(cdawebStart.value);
+        const endStr = toCDAWebTime(cdawebEnd.value);
+
+        // Remember the start time
+        localStorage.setItem('cdf_demo_cdaweb_start', cdawebStart.value);
+
+        fetchStatus.style.color = '#888';
+        fetchStatus.textContent = `Requesting ${dataset} ${startStr}...`;
+        fetchCdawebBtn.disabled = true;
+
+        const apiUrl = `${CDASWS_BASE}/dataviews/sp_phys/datasets/${dataset}/data/${startStr},${endStr}/${variable}?format=cdf`;
+
+        try {
+            // Step 1: Get CDF file URL from CDAWeb API
+            const t0 = performance.now();
+            fetchStatus.textContent = 'Querying CDAWeb API...';
+            const apiResp = await fetch(apiUrl, { headers: { 'Accept': 'application/json' } });
+
+            const result = await apiResp.json();
+
+            // CDAWeb returns 200 with error messages for "no data"
+            if (result?.Error?.length) {
+                throw new Error(result.Error[0] + ' — try an earlier date (archival data has a lag)');
+            }
+            if (!result?.FileDescription?.length) {
+                throw new Error('No files returned — try a different time range or earlier date');
+            }
+
+            const cdfUrl = result.FileDescription[0].Name;
+            const fileSize = result.FileDescription[0].Length;
+            const apiTime = performance.now() - t0;
+
+            // Log full API response to see all available fields
+            log(`\n--- CDAWeb API Response (format=cdf) ---`, 'section');
+            log(JSON.stringify(result, null, 2));
+            fetchStatus.textContent = `API: ${apiTime.toFixed(0)}ms — downloading ${(fileSize / 1024).toFixed(0)} KB...`;
+
+            // Step 2: Download the CDF file
+            const t1 = performance.now();
+            const cdfResp = await fetch(cdfUrl);
+            if (!cdfResp.ok) throw new Error(`CDF download failed: HTTP ${cdfResp.status}`);
+
+            const blob = await cdfResp.blob();
+            const dlTime = performance.now() - t1;
+            const filename = cdfUrl.split('/').pop() || `${dataset}.cdf`;
+            fetchStatus.textContent = `Downloaded ${(blob.size / 1024).toFixed(0)} KB in ${dlTime.toFixed(0)}ms — parsing...`;
+
+            // Step 3: Parse it — pass requested time range for trimming
+            const file = new File([blob], filename);
+            const reqStart = new Date(cdawebStart.value).getTime();
+            const reqEnd = reqStart + parseInt(cdawebDuration.value) * 1000;
+            // Convert JS ms (since 1970) to CDF_EPOCH ms (since 0 AD)
+            const CDF_EPOCH_OFFSET = 62167219200000;
+            await handleFile(file, { startEpoch: reqStart + CDF_EPOCH_OFFSET, endEpoch: reqEnd + CDF_EPOCH_OFFSET });
+
+            // Inject fetch timing into diagnostics
+            if (lastDiagnostics) {
+                lastDiagnostics.timing.cdawebApiMs = +apiTime.toFixed(1);
+                lastDiagnostics.timing.cdawebDownloadMs = +dlTime.toFixed(1);
+                lastDiagnostics.timing.cdawebTotalMs = +(apiTime + dlTime).toFixed(1);
+                lastDiagnostics.cdaweb = { dataset, start: cdawebStart.value, durationSec: +cdawebDuration.value, cdfUrl, fileSizeReported: fileSize };
+            }
+
+            fetchStatus.textContent = `${filename} — ${(blob.size / 1024).toFixed(0)} KB (API: ${apiTime.toFixed(0)}ms, download: ${dlTime.toFixed(0)}ms)`;
+            fetchStatus.style.color = '#60ff90';
+        } catch (err) {
+            fetchStatus.textContent = err.message;
+            fetchStatus.style.color = '#ff6060';
+            log(`CDAWeb: ${err.message}`, 'error');
+        } finally {
+            fetchCdawebBtn.disabled = false;
+        }
+    }
+
+    fetchCdawebBtn.addEventListener('click', fetchFromCDAWeb);
+
+    // Fetch pre-audified WAV files directly from CDAWeb (format=audio)
+    async function fetchAudifiedData() {
+        const [dataset, variable] = cdawebDataset.value.split('|');
+        const startStr = toCDAWebTime(cdawebStart.value);
+        const endStr = toCDAWebTime(cdawebEnd.value);
+
+        localStorage.setItem('cdf_demo_cdaweb_start', cdawebStart.value);
+
+        fetchStatus.style.color = '#888';
+        fetchStatus.textContent = `Requesting audified ${dataset}...`;
+        fetchAudifiedBtn.disabled = true;
+
+        const apiUrl = `${CDASWS_BASE}/dataviews/sp_phys/datasets/${dataset}/data/${startStr},${endStr}/${variable}?format=audio`;
+
+        const diag = {
+            mode: 'audified',
+            dataset,
+            variable,
+            start: cdawebStart.value,
+            durationSec: +cdawebDuration.value,
+            timestamp: new Date().toISOString(),
+            userAgent: navigator.userAgent,
+            timing: {},
+            files: [],
+            errors: [],
+        };
+
+        try {
+            // Step 1: API query
+            const t0 = performance.now();
+            fetchStatus.textContent = 'Querying CDAWeb audio API...';
+            const apiResp = await fetch(apiUrl, { headers: { 'Accept': 'application/json' } });
+            const result = await apiResp.json();
+
+            if (result?.Error?.length) {
+                throw new Error(result.Error[0] + ' — try an earlier date');
+            }
+            if (!result?.FileDescription?.length) {
+                throw new Error('No audio files returned');
+            }
+
+            const apiTime = performance.now() - t0;
+            diag.timing.apiMs = +apiTime.toFixed(1);
+            diag.timing.fileCount = result.FileDescription.length;
+
+            // Capture the FULL API response — every field CDAWeb sends back
+            diag.apiResponse = result;
+
+            log(`\n--- CDAWeb API Response (format=audio) ---`, 'section');
+            log(JSON.stringify(result, null, 2));
+
+            fetchStatus.textContent = `API: ${apiTime.toFixed(0)}ms — downloading ${result.FileDescription.length} WAV file(s)...`;
+
+            // Step 2: Download all WAV files
+            const t1 = performance.now();
+            let totalBytes = 0;
+            for (const fileDesc of result.FileDescription) {
+                const wavUrl = fileDesc.Name;
+                const filename = wavUrl.split('/').pop() || 'audio.wav';
+                const tDl = performance.now();
+
+                const wavResp = await fetch(wavUrl);
+                if (!wavResp.ok) throw new Error(`WAV download failed: HTTP ${wavResp.status} for ${filename}`);
+
+                const wavBlob = await wavResp.blob();
+                const dlMs = performance.now() - tDl;
+                totalBytes += wavBlob.size;
+
+                diag.files.push({
+                    name: filename,
+                    sizeKB: +(wavBlob.size / 1024).toFixed(1),
+                    downloadMs: +dlMs.toFixed(1),
+                    url: wavUrl,
+                    mimeType: fileDesc.MimeType || 'audio/wav',
+                    length: fileDesc.Length,
+                });
+
+                // Auto-download each WAV
+                const url = URL.createObjectURL(wavBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(url);
+
+                fetchStatus.textContent = `Downloaded ${filename} (${(wavBlob.size / 1024).toFixed(0)} KB in ${dlMs.toFixed(0)}ms)`;
+            }
+
+            const totalDlTime = performance.now() - t1;
+            const totalTime = performance.now() - t0;
+            diag.timing.totalDownloadMs = +totalDlTime.toFixed(1);
+            diag.timing.totalMs = +totalTime.toFixed(1);
+            diag.timing.totalSizeKB = +(totalBytes / 1024).toFixed(1);
+
+            lastDiagnostics = diag;
+            diagnosticsBar.style.display = 'block';
+
+            fetchStatus.textContent = `${result.FileDescription.length} WAV file(s) downloaded — ${(totalBytes / 1024).toFixed(0)} KB total (API: ${apiTime.toFixed(0)}ms, download: ${totalDlTime.toFixed(0)}ms)`;
+            fetchStatus.style.color = '#60ff90';
+
+            log(`\n--- Audified Data (format=audio) ---`, 'section');
+            log(`API: ${apiTime.toFixed(0)}ms, Download: ${totalDlTime.toFixed(0)}ms, Total: ${totalTime.toFixed(0)}ms`);
+            for (const f of diag.files) {
+                log(`  ${f.name}: ${f.sizeKB} KB in ${f.downloadMs.toFixed(0)}ms`, 'success');
+            }
+        } catch (err) {
+            diag.errors.push({ error: err.message });
+            lastDiagnostics = diag;
+            diagnosticsBar.style.display = 'block';
+            fetchStatus.textContent = err.message;
+            fetchStatus.style.color = '#ff6060';
+            log(`CDAWeb audio: ${err.message}`, 'error');
+        } finally {
+            fetchAudifiedBtn.disabled = false;
+        }
+    }
+
+    fetchAudifiedBtn.addEventListener('click', fetchAudifiedData);
+
+    // Enter key loads selected preset
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            loadPreset();
+        }
+    });
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0], null);
+    });
+    fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFile(fileInput.files[0], null); });
+
+    async function handleFile(file, requestedRange) {
+        output.textContent = '';
+        plotArea.innerHTML = '';
+        parsedVarData = {};
+        lastDiagnostics = null;
+        diagnosticsBar.style.display = 'none';
+
+        log(`Loading ${file.name} (${(file.size / 1024).toFixed(1)} KB)...`);
+        const t0 = performance.now();
+
+        const diag = {
+            file: file.name,
+            fileSizeKB: +(file.size / 1024).toFixed(1),
+            timestamp: new Date().toISOString(),
+            userAgent: navigator.userAgent,
+            timing: {},
+            cdf: {},
+            variables: [],
+            errors: [],
+        };
+
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const t1 = performance.now();
+            diag.timing.fileReadMs = +(t1 - t0).toFixed(1);
+            log(`File read: ${(t1 - t0).toFixed(0)}ms`);
+
+            currentCDF = new CDFReader(arrayBuffer);
+            const t2 = performance.now();
+            diag.timing.headerParseMs = +(t2 - t1).toFixed(1);
+            log(`CDF parsed: ${(t2 - t1).toFixed(0)}ms`, 'success');
+
+            diag.cdf = {
+                version: currentCDF.cdfVersionStr,
+                majority: currentCDF.majority,
+                encoding: currentCDF.encoding,
+                zVars: currentCDF.numZvars,
+                rVars: currentCDF.numRvars,
+                attributes: currentCDF.numAttrs,
+            };
+
+            log(`\nCDF v${currentCDF.cdfVersionStr}, ${currentCDF.majority}-major, encoding=${currentCDF.encoding}`, 'section');
+            log(`Variables: ${currentCDF.numZvars} zVars, ${currentCDF.numRvars} rVars, ${currentCDF.numAttrs} attributes`);
+
+            log('\n--- Variables ---', 'section');
+            for (const v of currentCDF.variables) {
+                const dims = v.numDims > 0 ? ` [${v.dimSizes.join('×')}]` : '';
+                const recs = v.maxRec >= 0 ? ` (${v.maxRec + 1} records)` : ' (no records)';
+                log(`  ${v.name}`, 'var-name');
+                log(`    type: ${v.dataTypeName}${dims}${recs}  ${v.recVariance ? 'varying' : 'non-varying'}${v.isCompressed ? ' COMPRESSED' : ''}`, 'data-type');
+            }
+
+            // Extract numeric variables with data
+            const numericVars = currentCDF.getNumericVarNames();
+            log(`\n--- Extracting ${numericVars.length} numeric variables ---`, 'section');
+
+            // If we have a requested time range, extract Epoch first to compute trim indices
+            let trimStart = 0, trimEnd = -1;
+            const epochName = numericVars.find(n => n.toLowerCase() === 'epoch');
+            if (requestedRange && epochName) {
+                const epochResult = await currentCDF.varget(epochName);
+                parsedVarData[epochName] = epochResult;
+                const epochData = epochResult.data;
+
+                // Binary search for first index >= startEpoch
+                trimStart = 0;
+                for (let i = 0; i < epochData.length; i++) {
+                    if (epochData[i] >= requestedRange.startEpoch) { trimStart = i; break; }
+                }
+                // Binary search for last index <= endEpoch
+                trimEnd = epochData.length - 1;
+                for (let i = epochData.length - 1; i >= 0; i--) {
+                    if (epochData[i] <= requestedRange.endEpoch) { trimEnd = i; break; }
+                }
+
+                const fullCount = epochData.length;
+                const trimCount = trimEnd - trimStart + 1;
+
+                // Trim Epoch itself
+                epochResult.data = epochData.slice(trimStart, trimEnd + 1);
+                epochResult.numRecords = trimCount;
+
+                log(`  Trimming to requested range: records ${trimStart}–${trimEnd} of ${fullCount} (${trimCount} kept)`, 'success');
+                diag.trimmed = { fullRecords: fullCount, keptRecords: trimCount, trimStart, trimEnd };
+            }
+
+            varSelect.innerHTML = '';
+            for (const name of numericVars) {
+                try {
+                    const t3 = performance.now();
+                    let result;
+                    if (parsedVarData[name]) {
+                        result = parsedVarData[name]; // Already extracted (Epoch)
+                    } else {
+                        result = await currentCDF.varget(name);
+
+                        // Trim to match Epoch range if applicable
+                        if (requestedRange && epochName && trimEnd >= 0 && result.numRecords > trimEnd) {
+                            const epr = result.elemsPerRec;
+                            result.data = result.data.slice(trimStart * epr, (trimEnd + 1) * epr);
+                            result.numRecords = trimEnd - trimStart + 1;
+                        }
+
+                        parsedVarData[name] = result;
+                    }
+                    const t4 = performance.now();
+
+                    // Stats
+                    let min = Infinity, max = -Infinity, sum = 0, count = 0;
+                    for (let i = 0; i < result.data.length; i++) {
+                        const v = result.data[i];
+                        if (isFinite(v)) {
+                            if (v < min) min = v;
+                            if (v > max) max = v;
+                            sum += v;
+                            count++;
+                        }
+                    }
+                    const mean = count > 0 ? sum / count : 0;
+
+                    const varDiag = {
+                        name,
+                        dataType: result.variable.dataTypeName,
+                        records: result.numRecords,
+                        elemsPerRec: result.elemsPerRec,
+                        totalValues: result.data.length,
+                        compressed: result.variable.isCompressed,
+                        dims: result.variable.dimSizes,
+                        parseMs: +(t4 - t3).toFixed(1),
+                        stats: { min: +min.toFixed(4), max: +max.toFixed(4), mean: +mean.toFixed(4), finiteCount: count },
+                    };
+                    diag.variables.push(varDiag);
+
+                    log(`  ${name}: ${result.numRecords} recs × ${result.elemsPerRec} elems = ${result.data.length} values  [${min.toFixed(3)} .. ${max.toFixed(3)}]  parsed in ${(t4 - t3).toFixed(0)}ms`, 'data-type');
+
+                    // Add to dropdown — split multi-component variables
+                    if (result.elemsPerRec > 1) {
+                        for (let comp = 0; comp < Math.min(result.elemsPerRec, 4); comp++) {
+                            const opt = document.createElement('option');
+                            opt.value = `${name}[${comp}]`;
+                            opt.textContent = `${name}[${comp}] (${result.numRecords} samples)`;
+                            varSelect.appendChild(opt);
+                        }
+                    } else {
+                        const opt = document.createElement('option');
+                        opt.value = name;
+                        opt.textContent = `${name} (${result.data.length} samples)`;
+                        varSelect.appendChild(opt);
+                    }
+
+                    // Plot it
+                    plotVariable(name, result.data, result.elemsPerRec);
+                } catch (err) {
+                    diag.errors.push({ variable: name, error: err.message });
+                    log(`  ${name}: SKIP — ${err.message}`, 'error');
+                }
+            }
+
+            const totalTime = performance.now() - t0;
+            diag.timing.totalMs = +totalTime.toFixed(1);
+            diag.timing.dataExtractionMs = +(totalTime - diag.timing.fileReadMs - diag.timing.headerParseMs).toFixed(1);
+            log(`\nTotal: ${totalTime.toFixed(0)}ms`, 'success');
+
+            lastDiagnostics = diag;
+            diagnosticsBar.style.display = 'block';
+
+            if (numericVars.length > 0) {
+                audioControls.style.display = 'block';
+                playBtn.disabled = false;
+                downloadBtn.disabled = false;
+            }
+        } catch (err) {
+            diag.errors.push({ error: err.message });
+            lastDiagnostics = diag;
+            diagnosticsBar.style.display = 'block';
+            log(`\nERROR: ${err.message}`, 'error');
+            console.error(err);
+        }
+    }
+
+    copyJsonBtn.addEventListener('click', async () => {
+        if (!lastDiagnostics) return;
+        const json = JSON.stringify(lastDiagnostics, null, 2);
+        await navigator.clipboard.writeText(json);
+        copyStatus.textContent = 'Copied!';
+        setTimeout(() => { copyStatus.textContent = ''; }, 2000);
+    });
+
+    // Shared across all plot play buttons — only one plays at a time
+    let activePlayer = null;
+    const PLOT_BASE_RATE = 44100;
+
+    function plotVariable(name, data, elemsPerRec) {
+        const numRecs = data.length / elemsPerRec;
+
+        // Detect if this variable is an epoch type (for y-axis date formatting)
+        const varInfo = parsedVarData[name];
+        const isEpochType = varInfo && varInfo.variable &&
+            (varInfo.variable.dataTypeName === 'CDF_EPOCH' || varInfo.variable.dataTypeName === 'CDF_EPOCH16');
+        const CDF_EPOCH_OFFSET = 62167219200000;
+
+        // Try to find Epoch data for x-axis time labels
+        const epochVar = parsedVarData['Epoch'] || parsedVarData['epoch'];
+        const epochData = epochVar ? epochVar.data : null;
+
+        for (let comp = 0; comp < Math.min(elemsPerRec, 4); comp++) {
+            const compLabel = elemsPerRec > 1 ? `${name}[${comp}]` : name;
+
+            // Row container: sidebar + plot
+            const row = document.createElement('div');
+            row.className = 'plot-row';
+
+            // Sidebar: label + play button
+            const sidebar = document.createElement('div');
+            sidebar.className = 'plot-sidebar';
+            const label = document.createElement('div');
+            label.className = 'plot-label';
+            label.textContent = compLabel;
+            sidebar.appendChild(label);
+
+            const playBtn = document.createElement('button');
+            playBtn.className = 'plot-play-btn';
+            playBtn.innerHTML = '&#9654;';
+            playBtn.title = `Play ${compLabel}`;
+            sidebar.appendChild(playBtn);
+            row.appendChild(sidebar);
+
+            // Plot wrapper
+            const wrap = document.createElement('div');
+            wrap.className = 'plot-wrap';
+
+            const canvas = document.createElement('canvas');
+            canvas.className = 'plot-canvas';
+
+            const playhead = document.createElement('div');
+            playhead.className = 'plot-playhead';
+
+            wrap.appendChild(canvas);
+            wrap.appendChild(playhead);
+            row.appendChild(wrap);
+            plotArea.appendChild(row);
+
+            // Measure actual container width AFTER it's in the DOM — prevents horizontal stretch
+            const dpr = window.devicePixelRatio || 1;
+            const cssW = wrap.clientWidth;
+            const cssH = 100;
+            canvas.width = cssW * dpr;
+            canvas.height = cssH * dpr;
+            canvas.style.width = cssW + 'px';
+            canvas.style.height = cssH + 'px';
+
+            // Extract component data
+            const compData = new Float64Array(numRecs);
+            for (let i = 0; i < numRecs; i++) {
+                compData[i] = data[i * elemsPerRec + comp];
+            }
+
+            // Find range
+            let min = Infinity, max = -Infinity;
+            for (let i = 0; i < compData.length; i++) {
+                if (isFinite(compData[i])) {
+                    if (compData[i] < min) min = compData[i];
+                    if (compData[i] > max) max = compData[i];
+                }
+            }
+            const range = max - min || 1;
+
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            // All coordinates now in CSS pixels (ctx is scaled by dpr)
+            const padL = 10, padR = isEpochType ? 140 : 60, padT = 8, padB = 20;
+            const plotW = cssW - padL - padR;
+            const plotH = cssH - padT - padB;
+
+            // Compute padding percentages for playhead positioning
+            const padLPct = (padL / cssW) * 100;
+            const plotWPct = (plotW / cssW) * 100;
+
+            // Background
+            ctx.fillStyle = '#f5f5f0';
+            ctx.fillRect(0, 0, cssW, cssH);
+
+            // Y-axis ticks (labels on right)
+            ctx.fillStyle = '#555';
+            ctx.strokeStyle = '#ddd';
+            ctx.font = '11px monospace';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            const yTicks = 4;
+            for (let i = 0; i <= yTicks; i++) {
+                const frac = i / yTicks;
+                const val = max - frac * range;
+                const y = padT + frac * plotH;
+                ctx.beginPath();
+                ctx.moveTo(padL, y);
+                ctx.lineTo(padL + plotW, y);
+                ctx.stroke();
+                let yLabel;
+                if (isEpochType) {
+                    const d = new Date(val - CDF_EPOCH_OFFSET);
+                    yLabel = d.toISOString().replace('T', ' ').substring(0, 19);
+                } else {
+                    yLabel = val.toFixed(1);
+                }
+                ctx.fillText(yLabel, padL + plotW + 5, y);
+            }
+
+            // X-axis ticks (time if Epoch available, else sample index)
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.strokeStyle = '#ddd';
+            const xTicks = 6;
+            for (let i = 0; i <= xTicks; i++) {
+                const frac = i / xTicks;
+                const x = padL + frac * plotW;
+                ctx.beginPath();
+                ctx.moveTo(x, padT);
+                ctx.lineTo(x, padT + plotH);
+                ctx.stroke();
+
+                let tickLabel;
+                if (epochData && epochData.length >= numRecs) {
+                    const idx = Math.floor(frac * (numRecs - 1));
+                    // CDF_EPOCH = ms since 0 AD; convert to JS Date (ms since 1970)
+                    const jsMs = epochData[idx] - 62167219200000;
+                    const d = new Date(jsMs);
+                    tickLabel = d.toISOString().substring(11, 19); // HH:MM:SS
+                } else {
+                    tickLabel = Math.floor(frac * numRecs).toString();
+                }
+                ctx.fillStyle = '#555';
+                ctx.fillText(tickLabel, x, padT + plotH + 3);
+            }
+
+            // Draw waveform
+            ctx.strokeStyle = '#1a6aaa';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            for (let px = 0; px < plotW; px++) {
+                const idx = Math.floor(px * compData.length / plotW);
+                const val = compData[idx];
+                if (!isFinite(val)) continue;
+                const x = padL + px;
+                const y = padT + (1 - (val - min) / range) * plotH;
+                if (px === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            // Plot border
+            ctx.strokeStyle = '#bbb';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(padL, padT, plotW, plotH);
+
+            // --- Playback wiring (uses shared activePlayer) ---
+            const localState = { source: null, actx: null, gain: null, startSample: 0, rateChangeTime: 0, playRate: 1 };
+
+            function localElapsedSamples() {
+                if (!localState.actx) return 0;
+                const wall = localState.actx.currentTime - localState.rateChangeTime;
+                return localState.startSample + wall * PLOT_BASE_RATE * localState.playRate;
+            }
+
+            function localStop() {
+                if (!localState.source) return;
+                if (localState.gain && localState.actx) {
+                    // Always quick 25ms fade out to avoid clicks
+                    const now = localState.actx.currentTime;
+                    localState.gain.gain.setValueAtTime(localState.gain.gain.value, now);
+                    localState.gain.gain.linearRampToValueAtTime(0, now + 0.025);
+                    const src = localState.source;
+                    const actxRef = localState.actx;
+                    setTimeout(() => { try { src.stop(); actxRef.close(); } catch(e){} }, 35);
+                } else {
+                    try { localState.source.stop(); } catch(e){}
+                    try { localState.actx.close(); } catch(e){}
+                }
+                localState.source = null;
+                localState.actx = null;
+                localState.gain = null;
+                playBtn.innerHTML = '&#9654;';
+                playBtn.classList.remove('playing');
+                playhead.style.display = 'none';
+                if (activePlayer === localState) activePlayer = null;
+            }
+
+            // Start playing from a fractional position (0–1)
+            function playFrom(startFrac) {
+                // Stop self if already playing
+                if (localState.source) localStop();
+
+                // Stop any other playing plot with a quick fade
+                if (activePlayer && activePlayer.stopFn) {
+                    activePlayer.stopFn();
+                }
+
+                const mono = extractComponent(data, elemsPerRec, comp);
+                const normalized = normalizeToFloat(mono);
+                const totalSamples = normalized.length;
+                const offsetSample = Math.floor(startFrac * totalSamples);
+
+                const actx = new AudioContext({ sampleRate: PLOT_BASE_RATE });
+                const buffer = actx.createBuffer(1, totalSamples, PLOT_BASE_RATE);
+                const ch = buffer.getChannelData(0);
+                for (let i = 0; i < totalSamples; i++) ch[i] = normalized[i];
+
+                const gainNode = actx.createGain();
+                gainNode.connect(actx.destination);
+                // Fade in over 25ms
+                gainNode.gain.setValueAtTime(0, actx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(1, actx.currentTime + 0.025);
+
+                const source = actx.createBufferSource();
+                source.buffer = buffer;
+                localState.playRate = parseInt(rateSelect.value) / PLOT_BASE_RATE;
+                source.playbackRate.value = localState.playRate;
+                source.connect(gainNode);
+                // Start from offset (in seconds at base rate)
+                const offsetSec = offsetSample / PLOT_BASE_RATE;
+                source.start(0, offsetSec);
+
+                localState.source = source;
+                localState.actx = actx;
+                localState.gain = gainNode;
+                localState.rateChangeTime = actx.currentTime;
+                localState.startSample = offsetSample;
+                localState.stopFn = localStop;
+                activePlayer = localState;
+
+                playBtn.innerHTML = '&#9632;';
+                playBtn.classList.add('playing');
+                playhead.style.display = 'block';
+
+                function updatePlayhead() {
+                    if (!localState.source) return;
+                    const frac = Math.min(localElapsedSamples() / totalSamples, 1);
+                    playhead.style.left = (padLPct + frac * plotWPct) + '%';
+                    if (frac < 1) requestAnimationFrame(updatePlayhead);
+                    else localStop();
+                }
+                requestAnimationFrame(updatePlayhead);
+
+                source.onended = () => { if (localState.source === source) localStop(); };
+            }
+
+            // Play button: toggle from start
+            playBtn.addEventListener('click', () => {
+                if (localState.source) { localStop(); return; }
+                playFrom(0);
+            });
+
+            // Click on plot → seek + play from that position
+            wrap.addEventListener('click', (e) => {
+                const rect = wrap.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const wrapW = rect.width;
+                // Convert click position to fraction within the plot area (accounting for padding)
+                const padLFrac = padL / cssW;
+                const padRFrac = padR / cssW;
+                const plotFrac = (clickX / wrapW - padLFrac) / (1 - padLFrac - padRFrac);
+                const frac = Math.max(0, Math.min(1, plotFrac));
+                playFrom(frac);
+            });
+
+            // Rate change while this plot is playing
+            rateSelect.addEventListener('change', () => {
+                if (!localState.source) return;
+                localState.startSample = localElapsedSamples();
+                localState.rateChangeTime = localState.actx.currentTime;
+                localState.playRate = parseInt(rateSelect.value) / PLOT_BASE_RATE;
+                localState.source.playbackRate.value = localState.playRate;
+            });
+        }
+    }
+
+    // Spacebar: toggle active player
+    document.addEventListener('keydown', (e) => {
+        if (e.code !== 'Space') return;
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+        e.preventDefault();
+        if (activePlayer && activePlayer.stopFn) {
+            activePlayer.stopFn(false);
+        }
+    });
+
+    // Resolve "b_gse[1]" → { varName: "b_gse", comp: 1 } or "Epoch" → { varName: "Epoch", comp: -1 }
+    function resolveVarSelect(value) {
+        const m = value.match(/^(.+)\[(\d+)\]$/);
+        if (m) return { varName: m[1], comp: parseInt(m[2]) };
+        return { varName: value, comp: -1 };
+    }
+
+    function extractComponent(data, elemsPerRec, comp) {
+        const numRecs = data.length / elemsPerRec;
+        const out = new Float64Array(numRecs);
+        const offset = comp >= 0 ? comp : 0;
+        for (let i = 0; i < numRecs; i++) out[i] = data[i * elemsPerRec + offset];
+        return out;
+    }
+
+    // --- Audio playback ---
+    playBtn.addEventListener('click', () => {
+        const { varName, comp } = resolveVarSelect(varSelect.value);
+        const rate = parseInt(rateSelect.value);
+        if (!parsedVarData[varName]) return;
+
+        const { data, elemsPerRec } = parsedVarData[varName];
+        const mono = extractComponent(data, elemsPerRec, comp);
+
+        const tAudify = performance.now();
+        const normalized = normalizeToFloat(mono);
+
+        const ctx = new AudioContext({ sampleRate: rate });
+        const buffer = ctx.createBuffer(1, normalized.length, rate);
+        const channelData = buffer.getChannelData(0);
+        for (let i = 0; i < normalized.length; i++) channelData[i] = normalized[i];
+
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.start();
+
+        const audifyMs = performance.now() - tAudify;
+        const label = varSelect.value;
+        if (lastDiagnostics) {
+            lastDiagnostics.timing.audifyMs = +audifyMs.toFixed(1);
+            lastDiagnostics.audify = { variable: label, samples: normalized.length, sampleRate: rate, durationSec: +(normalized.length / rate).toFixed(1) };
+        }
+
+        log(`Playing ${label} — ${normalized.length} samples @ ${rate} Hz = ${(normalized.length / rate).toFixed(1)}s (audify: ${audifyMs.toFixed(0)}ms)`, 'success');
+    });
+
+    downloadBtn.addEventListener('click', () => {
+        const { varName, comp } = resolveVarSelect(varSelect.value);
+        const rate = parseInt(rateSelect.value);
+        if (!parsedVarData[varName]) return;
+
+        const { data, elemsPerRec } = parsedVarData[varName];
+        const label = varSelect.value;
+
+        let channels;
+        if (comp >= 0) {
+            // Single component selected — mono WAV
+            channels = [normalizeToFloat(extractComponent(data, elemsPerRec, comp))];
+        } else {
+            // Scalar variable — mono WAV
+            channels = [normalizeToFloat(extractComponent(data, elemsPerRec, 0))];
+        }
+
+        const wavBuffer = createWAV(channels, rate);
+        const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${label}_${rate}Hz.wav`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        log(`Downloaded ${label} — ${channels[0].length} samples @ ${rate} Hz`, 'success');
+    });
+    </script>
+</body>
+</html>

@@ -763,12 +763,22 @@ export async function openParticipantInfoModal() {
 
     // Wire close button
     const closeBtn = modal.querySelector('.modal-close');
+    const closeModal = () => {
+        hideModal(modal);
+        fadeOutOverlay();
+    };
     if (closeBtn) {
-        closeBtn.onclick = () => {
-            hideModal(modal);
-            fadeOutOverlay();
-        };
+        closeBtn.onclick = closeModal;
     }
+
+    // ESC key closes the modal
+    const onEsc = (e) => {
+        if (e.key === 'Escape') {
+            closeModal();
+            document.removeEventListener('keydown', onEsc);
+        }
+    };
+    document.addEventListener('keydown', onEsc);
 
     fadeInOverlay();
     showModal(modal);

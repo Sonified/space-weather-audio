@@ -1,0 +1,30 @@
+{
+  "dataset_id": "AC_H3_MFI",
+  "label": "ACE MFI 1-sec",
+  "cataloged_at": "2026-03-27T23:35:44.569200",
+  "time_range": {
+    "start": "1997-09-01",
+    "end": "2025-12-31"
+  },
+  "summary": {
+    "total_intervals": 2,
+    "total_gaps": 1,
+    "boundaries_sharpened": true
+  },
+  "intervals": [
+    {
+      "start_iso": "1998-01-01T00:00:00.000Z",
+      "end_iso": "2008-10-25T23:59:59.000Z",
+      "end_epoch_raw": 63392198399867.19,
+      "end_precise": "2008-10-25T23:59:59.867",
+      "cadence_ns": 1000000000.0
+    },
+    {
+      "start_iso": "2009-01-01T00:00:00.000Z",
+      "end_iso": "2025-12-31T23:59:59.000Z",
+      "start_epoch_raw": 63397987200890.0,
+      "start_precise": "2009-01-01T00:00:00.890",
+      "cadence_ns": 1000000000.0
+    }
+  ]
+}

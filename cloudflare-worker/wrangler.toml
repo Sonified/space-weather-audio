@@ -21,6 +21,12 @@ binding = "DB"
 database_name = "study-db"
 database_id = "11e25f65-bd80-4a0d-a0e2-6d774ee11e8b"
 
+# D1 database binding — CDAWeb gap catalog (ms-precise data availability intervals)
+[[d1_databases]]
+binding = "GAP_CATALOG"
+database_name = "cdaweb-gap-catalogue"
+database_id = "c02c7705-3593-484e-9154-04ebd0e7bbd6"
+
 [vars]
 FRONTEND_URL = "https://spaceweather.now.audio"
 SHARE_EXPIRY_DAYS = "90"

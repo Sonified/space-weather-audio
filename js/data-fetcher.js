@@ -29,6 +29,18 @@ import { log, logGroup, logGroupEnd } from './logger.js';
 // Debug flag for chunk loading logs (set to true to enable detailed logging)
 const DEBUG_CHUNKS = false;
 
+// AbortController for in-flight CDAWeb requests — allows cancellation when user navigates away
+let activeCDAWebController = null;
+
+/** Abort any in-flight CDAWeb fetch (called from startStreaming before a new load) */
+export function abortCDAWebFetch() {
+    if (activeCDAWebController) {
+        activeCDAWebController.abort();
+        activeCDAWebController = null;
+        console.log('🛑 Cancelled in-flight CDAWeb request');
+    }
+}
+
 // CDAWeb API Configuration
 const CDASWS_BASE_URL = 'https://cdaweb.gsfc.nasa.gov/WS/cdasr/1';
 const DATAVIEW = 'sp_phys';  // Space Physics dataview
@@ -243,25 +255,30 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
 
     console.log('🌐 Fetching from CDAWeb API');
 
+    // Set up abort controller so this fetch can be cancelled (e.g., user picks a cached search)
+    activeCDAWebController = new AbortController();
+    const signal = activeCDAWebController.signal;
+
     // Convert to basic ISO 8601 format (required by CDASWS)
     const startTimeBasic = toBasicISO8601(startTime);
     const endTimeBasic = toBasicISO8601(endTime);
-    
+
     // Get variable name for dataset
     const variable = DATASET_VARIABLES[dataset] || dataset;
-    
+
     // Build API URL with cache buster to force fresh temporary files from CDAWeb
     const cacheBuster = Date.now();
     const apiUrl = `${CDASWS_BASE_URL}/dataviews/${DATAVIEW}/datasets/${dataset}/data/${startTimeBasic},${endTimeBasic}/${variable}?format=audio&_=${cacheBuster}`;
 
     console.log(`📡 CDAWeb API: ${apiUrl}`);
-    
+
     const fetchStartTime = performance.now();
-    
+
     try {
         // Fetch from CDAWeb API
         const response = await fetch(apiUrl, {
             method: 'GET',
+            signal,
             headers: {
                 'Accept': 'application/json'
             }
@@ -269,7 +286,17 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
         
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`CDAWeb API error (HTTP ${response.status}): ${errorText.substring(0, 200)}`);
+            console.error(`CDAWeb API error (HTTP ${response.status}):`, errorText.substring(0, 500));
+            const msgs = {
+                400: 'Hmm, something looks off. Double-check your date/time range and dataset.',
+                403: 'CDAWeb isn\'t allowing this request right now. Try again shortly.',
+                404: 'No data found for this dataset and time range.',
+                500: 'CDAWeb server error. Try again in a moment.',
+                502: 'CDAWeb is temporarily unreachable. Try again shortly.',
+                503: 'CDAWeb is temporarily unavailable. Try again in a few minutes.',
+            };
+            const friendly = `(${response.status}) ${msgs[response.status] || 'CDAWeb returned an error.'}`;
+            throw new Error(friendly);
         }
         
         const result = await response.json();
@@ -303,15 +330,53 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
         console.log(`📥 Downloading WAV file: ${audioFileUrl}`);
         console.log(`📊 CDAWeb FileInfo:`, fileInfo);
 
-        // Download first WAV file immediately (user's requested component)
-        const wavResponse = await fetch(audioFileUrl);
+        // Download first WAV file with streaming progress
+        const wavResponse = await fetch(audioFileUrl, { signal });
         if (!wavResponse.ok) {
             throw new Error(`Failed to download WAV file (HTTP ${wavResponse.status})`);
         }
 
-        const wavBlob = await wavResponse.blob();
-        const totalFetchTime = performance.now() - fetchStartTime;
+        const expectedSize = fileInfo.Length; // CDAWeb API gives us file size upfront
+        const statusEl = document.getElementById('status');
+        let wavBlob;
 
+        if (expectedSize && wavResponse.body) {
+            // Kill the dots animation from streaming.js so our progress text isn't overwritten
+            if (State.loadingInterval) {
+                clearInterval(State.loadingInterval);
+                State.setLoadingInterval(null);
+            }
+
+            // Stream with progress tracking
+            const reader = wavResponse.body.getReader();
+            const chunks = [];
+            let receivedBytes = 0;
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                receivedBytes += value.length;
+                if (statusEl) {
+                    const receivedKB = (receivedBytes / 1024).toFixed(0);
+                    const totalKB = (expectedSize / 1024).toFixed(0);
+                    statusEl.textContent = `Receiving ${receivedKB} of ${totalKB} KB`;
+                }
+            }
+
+            const allChunks = new Uint8Array(receivedBytes);
+            let offset = 0;
+            for (const chunk of chunks) {
+                allChunks.set(chunk, offset);
+                offset += chunk.length;
+            }
+            wavBlob = new Blob([allChunks], { type: 'audio/wav' });
+        } else {
+            // Fallback: no Length or no ReadableStream support
+            wavBlob = await wavResponse.blob();
+        }
+
+        const totalFetchTime = performance.now() - fetchStartTime;
         console.log(`✅ WAV downloaded: ${(wavBlob.size / 1024).toFixed(2)} KB in ${totalFetchTime.toFixed(0)}ms`);
 
         // Prepare metadata for caching
@@ -346,9 +411,15 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
         }
 
         // Decode and return immediately (user doesn't wait for other components)
+        activeCDAWebController = null; // Fetch complete, nothing to abort
         return await decodeWAVBlob(wavBlob, { spacecraft, dataset, startTime, endTime, metadata });
-        
+
     } catch (error) {
+        activeCDAWebController = null;
+        if (error.name === 'AbortError') {
+            console.log('🛑 CDAWeb fetch was cancelled');
+            throw error; // Let caller handle quietly
+        }
         console.error('❌ CDAWeb fetch error:', error);
         throw error;
     }
@@ -864,6 +935,8 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
                     playPauseBtn.classList.remove('play-active', 'secondary');
                     playPauseBtn.classList.add('pause-active');
                 }
+                const loopBtn = document.getElementById('loopBtn');
+                if (loopBtn) loopBtn.disabled = false;
             } else {
                 if (isSharedSession) {
                     console.log(`🔗 Shared session loaded - waiting for user to click Play`);
@@ -885,6 +958,8 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
                         playPauseBtn.classList.add('pulse-attention');
                     }
                 }
+                const loopBtn2 = document.getElementById('loopBtn');
+                if (loopBtn2) loopBtn2.disabled = false;
 
                 // Show "ready to play" status for shared sessions
                 if (isSharedSession) {

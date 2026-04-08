@@ -160,9 +160,16 @@ export function setStretchStartTime(value) { stretchStartTime = value; }
 export function setStretchStartPosition(value) { stretchStartPosition = value; }
 export function setWaveletPreRendered(value) { waveletPreRendered = value; }
 export function setPaulStretchGain(value) { paulStretchGain = value; }
+// ── Playback state change listeners ──
+const playbackStateListeners = new Set();
+/** Subscribe to playback state changes. Returns an unsubscribe function. */
+export function onPlaybackStateChange(fn) { playbackStateListeners.add(fn); return () => playbackStateListeners.delete(fn); }
+
 export function setPlaybackState(value) {
-    // console.log(`🔧 setPlaybackState(${value}) - previous state: ${playbackState}`);
+    const prev = playbackState;
     playbackState = value;
+    // Always notify: even PLAYING→PLAYING (e.g. seek while playing) is meaningful
+    playbackStateListeners.forEach(fn => fn(value, prev));
 }
 export function setIsLooping(value) { isLooping = value; }
 export function setCurrentPlaybackRate(value) { currentPlaybackRate = value; }
