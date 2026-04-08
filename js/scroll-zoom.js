@@ -150,8 +150,8 @@ function onWheel(e) {
     // Check which axes are enabled
     const vScrollSelect = document.getElementById(isNavBar ? 'navBarScroll' : 'mainWindowScroll');
     const hScrollSelect = document.getElementById(isNavBar ? 'navBarHScroll' : 'mainWindowHScroll');
-    const vZoomEnabled = vScrollSelect && vScrollSelect.value === 'zoom';
-    const hPanEnabled = hScrollSelect && hScrollSelect.value === 'pan';
+    const vZoomEnabled = !vScrollSelect || vScrollSelect.value === 'zoom';
+    const hPanEnabled = !hScrollSelect || hScrollSelect.value === 'pan';
 
     // Sticky gesture direction: first event picks the axis normally,
     // then switching requires a 2:1 ratio to prevent accidental flips mid-pan.
