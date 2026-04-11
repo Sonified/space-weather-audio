@@ -250,11 +250,7 @@ export function setCrossfadePower(power) { crossfadePower = power; }
  * @param {number} numBins — height of the texture (frequency axis)
  */
 export function setDetoneMaskData(data, numFrames, numBins) {
-    console.log(`🎛️ [setDetoneMaskData] called: ${numFrames}×${numBins}, hasNode=${!!detoneMaskTexNode}, hasMesh=${!!detoneMaskMesh}`);
-    if (!detoneMaskTexNode) {
-        console.warn(`🎛️ [setDetoneMaskData] detoneMaskTexNode is null — scene not initialized?`);
-        return;
-    }
+    if (!detoneMaskTexNode) return;
     if (detoneMaskTexture) detoneMaskTexture.dispose();
 
     detoneMaskTexture = new THREE.DataTexture(
@@ -269,8 +265,6 @@ export function setDetoneMaskData(data, numFrames, numBins) {
     detoneMaskTexNode.value = detoneMaskTexture;
     detoneMaskWidth = numFrames;
     detoneMaskHeight = numBins;
-    console.warn(`🎛️ [setDetoneMaskData] texture assigned, mesh visible=${detoneMaskMesh?.visible}, alpha=${uDetoneMaskAlpha?.value}`);
-    // Trigger render
     renderFrame();
 }
 
@@ -278,7 +272,6 @@ export function setDetoneMaskData(data, numFrames, numBins) {
 export function setDetoneMaskAlpha(alpha) {
     if (uDetoneMaskAlpha) {
         uDetoneMaskAlpha.value = Math.max(0, Math.min(1, alpha));
-        console.warn(`🎛️ [setDetoneMaskAlpha] ${alpha} (uniform=${uDetoneMaskAlpha.value})`);
         // Force render via renderFrame so mask gets positioned in world space
         renderPending = false;  // clear stuck flag
         renderFrame();
@@ -1205,9 +1198,6 @@ async function renderFrozenWaveformStrip(viewStartSec, viewEndSec) {
 let renderPending = false;
 
 async function renderFrame() {
-    if (uDetoneMaskAlpha && uDetoneMaskAlpha.value > 0) {
-        console.warn(`🟢 [renderFrame] ENTRY — hasRenderer=${!!threeRenderer} hasScene=${!!scene} hasCam=${!!camera} pending=${renderPending}`);
-    }
     if (!threeRenderer || !scene || !camera) return;
     if (renderPending) return;
     renderPending = true;
