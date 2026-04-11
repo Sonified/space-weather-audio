@@ -27,6 +27,16 @@ const RIDGE_TIME_TOL        = 40;    // bridge gaps up to N frames (≈ 1 s at h
 const RIDGE_MIN_EXTENT_FRAC = 0.20;  // require ≥ 20% of the fetch duration to keep
 const RIDGE_MAX_PRINT       = 12;    // cap the diagnostic list
 
+// Second-pass: collinear chaining for drifting tones buried in noise.
+// A fast-drifting spin tone may show up as many short fragments whose bin
+// jumps and time gaps exceed the main-pass tolerances. If those fragments
+// lie on a single line (low RMS residual after refitting), they're almost
+// certainly one ridge — promote them back to "keep".
+const CHAIN_RESIDUAL_TOL    = 20.0;  // Hz — ~2 STFT bins at 10.77 Hz/bin
+const CHAIN_MIN_FRAGMENTS   = 2;     // need at least this many fragments to form a chain
+const CHAIN_MIN_POINTS      = 10;    // need enough detection points for a stable fit
+const CHAIN_MAX_OVERLAP     = 10;    // frames of allowed time overlap between linked fragments
+
 function fft(real, imag, n) {
     for (let i = 1, j = 0; i < n; i++) {
         let bit = n >> 1;
@@ -179,15 +189,23 @@ self.onmessage = function(e) {
     for (const ridge of ridges) {
         ridge.extent = ridge.lastFrame - ridge.firstFrame + 1;
 
-        // Linear regression freq = a·t + b over all confirmed points in the ridge
-        let sT = 0, sF = 0, sTT = 0, sTF = 0, n = 0;
+        // Collect (t, f) points once — reused by the chain pass below
+        const pts = []; // flat [t0, f0, t1, f1, …]
         for (const run of ridge.runs) {
             const freq = run.bin * hzPerBinRidge;
             for (let fi = run.start; fi <= run.end; fi++) {
                 if (confirmed[run.bin * numFrames + fi]) {
-                    sT += fi; sF += freq; sTT += fi * fi; sTF += fi * freq; n++;
+                    pts.push(fi, freq);
                 }
             }
+        }
+        ridge.points = pts;
+
+        // Linear regression freq = a·t + b
+        let sT = 0, sF = 0, sTT = 0, sTF = 0;
+        const n = pts.length / 2;
+        for (let i = 0; i < pts.length; i += 2) {
+            sT += pts[i]; sF += pts[i+1]; sTT += pts[i]*pts[i]; sTF += pts[i]*pts[i+1];
         }
         if (n >= 2) {
             const denom = n * sTT - sT * sT;
@@ -202,14 +220,83 @@ self.onmessage = function(e) {
     }
     ridges.sort((a, b) => b.extent - a.extent);
 
-    // 4. Diagnostic print
+    // 4. Initial extent threshold → candidate keep flag
     const minExtent = Math.max(1, Math.floor(numFrames * RIDGE_MIN_EXTENT_FRAC));
+    for (const ridge of ridges) ridge.keep = ridge.extent >= minExtent;
+
+    // 4b. Second pass: collinear chaining of rejected fragments
+    // For each pair of rejected candidate ridges, fit a single line to their
+    // combined points. If the RMS residual is small, they're collinear → union
+    // them into a chain. Promote any chain whose temporal extent clears minExtent.
+    function fitLine(pointArrays) {
+        let sT = 0, sF = 0, sTT = 0, sTF = 0, n = 0;
+        for (const pts of pointArrays) {
+            for (let i = 0; i < pts.length; i += 2) {
+                sT += pts[i]; sF += pts[i+1]; sTT += pts[i]*pts[i]; sTF += pts[i]*pts[i+1];
+                n++;
+            }
+        }
+        if (n < 2) return { slope: 0, intercept: 0, residual: Infinity, n };
+        const denom = n * sTT - sT * sT;
+        const slope = denom !== 0 ? (n * sTF - sT * sF) / denom : 0;
+        const intercept = (sF - slope * sT) / n;
+        let ss = 0;
+        for (const pts of pointArrays) {
+            for (let i = 0; i < pts.length; i += 2) {
+                const r = pts[i+1] - (slope * pts[i] + intercept);
+                ss += r * r;
+            }
+        }
+        return { slope, intercept, residual: Math.sqrt(ss / n), n };
+    }
+
+    const chainCandidates = ridges.filter(r => !r.keep && r.points.length >= 6);
+    chainCandidates.sort((a, b) => a.firstFrame - b.firstFrame);
+    const chainParent = new Int32Array(chainCandidates.length);
+    for (let i = 0; i < chainCandidates.length; i++) chainParent[i] = i;
+    function cfind(i) { while (chainParent[i] !== i) { chainParent[i] = chainParent[chainParent[i]]; i = chainParent[i]; } return i; }
+    for (let i = 0; i < chainCandidates.length; i++) {
+        for (let j = i + 1; j < chainCandidates.length; j++) {
+            const A = chainCandidates[i];
+            const B = chainCandidates[j];
+            const overlap = Math.min(A.lastFrame, B.lastFrame) - Math.max(A.firstFrame, B.firstFrame);
+            if (overlap > CHAIN_MAX_OVERLAP) continue; // too much time overlap — probably unrelated
+            const fit = fitLine([A.points, B.points]);
+            if (fit.residual < CHAIN_RESIDUAL_TOL) {
+                const ri = cfind(i), rj = cfind(j);
+                if (ri !== rj) chainParent[ri] = rj;
+            }
+        }
+    }
+
+    const chainGroups = new Map();
+    for (let i = 0; i < chainCandidates.length; i++) {
+        const cid = cfind(i);
+        if (!chainGroups.has(cid)) chainGroups.set(cid, []);
+        chainGroups.get(cid).push(chainCandidates[i]);
+    }
+    const promotedChains = [];
+    for (const group of chainGroups.values()) {
+        if (group.length < CHAIN_MIN_FRAGMENTS) continue;
+        const firstFrame = Math.min(...group.map(r => r.firstFrame));
+        const lastFrame  = Math.max(...group.map(r => r.lastFrame));
+        const totalPoints = group.reduce((s, r) => s + r.points.length / 2, 0);
+        const chainExtent = lastFrame - firstFrame + 1;
+        if (chainExtent < minExtent || totalPoints < CHAIN_MIN_POINTS) continue;
+        const fit = fitLine(group.map(r => r.points));
+        if (fit.residual >= CHAIN_RESIDUAL_TOL) continue;
+        // Promote every fragment in the chain
+        for (const r of group) r.keep = true;
+        promotedChains.push({ group, firstFrame, lastFrame, chainExtent, fit });
+    }
+
+    // 5. Diagnostic print
     console.log(`🎛️ [ridge filter] BEFORE: ${confirmedCountBefore} detections across ${binRuns.length} bin-runs → ${ridges.length} ridges`);
     console.log(`🎛️ [ridge filter] numFrames=${numFrames}, minExtent=${minExtent} frames (${(RIDGE_MIN_EXTENT_FRAC * 100).toFixed(0)}% of fetch)`);
     const printCount = Math.min(RIDGE_MAX_PRINT, ridges.length);
     for (let i = 0; i < printCount; i++) {
         const r = ridges[i];
-        const kept = r.extent >= minExtent ? '✅' : '❌';
+        const kept = r.keep ? '✅' : '❌';
         const pct = (100 * r.extent / numFrames).toFixed(1);
         const eq = `freq = ${r.slope.toExponential(2)}·t + ${r.intercept.toFixed(2)}`;
         console.log(
@@ -222,15 +309,25 @@ self.onmessage = function(e) {
     if (ridges.length > printCount) {
         console.log(`  … and ${ridges.length - printCount} shorter ridges`);
     }
+    for (const pc of promotedChains) {
+        const binLo = Math.min(...pc.group.map(r => r.binLo));
+        const binHi = Math.max(...pc.group.map(r => r.binHi));
+        const pct = (100 * pc.chainExtent / numFrames).toFixed(1);
+        const eq = `freq = ${pc.fit.slope.toExponential(2)}·t + ${pc.fit.intercept.toFixed(2)}`;
+        console.log(
+            `  🔗 CHAIN promoted: ${pc.group.length} fragments, bins[${binLo}-${binHi}] ` +
+            `frames[${pc.firstFrame}-${pc.lastFrame}] extent=${pc.chainExtent} (${pct}%) ` +
+            `residual=${pc.fit.residual.toFixed(2)}Hz [${eq}]`
+        );
+    }
 
-    // 5. Apply the filter: zero out confirmed[] for runs in rejected ridges
+    // 6. Apply the filter: zero out confirmed[] for runs in rejected ridges
     let confirmedCountAfter = 0;
     for (const ridge of ridges) {
-        const keep = ridge.extent >= minExtent;
         for (const run of ridge.runs) {
             for (let fi = run.start; fi <= run.end; fi++) {
                 if (confirmed[run.bin * numFrames + fi]) {
-                    if (!keep) {
+                    if (!ridge.keep) {
                         confirmed[run.bin * numFrames + fi] = 0;
                     } else {
                         confirmedCountAfter++;
