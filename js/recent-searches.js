@@ -96,6 +96,8 @@ export async function restoreRecentSearch(selectedOption) {
         console.log(`🔍 Restored recent search: ${selectedOption.textContent}`);
 
         // Automatically fetch the data from cache
+        // Flag so startStreaming knows to abort any in-flight CDAWeb fetch
+        window.__fromRecentSearch = true;
         const startBtn = document.getElementById('startBtn');
         if (startBtn && !startBtn.disabled) {
             console.log(`🚀 Auto-fetching restored search data...`);

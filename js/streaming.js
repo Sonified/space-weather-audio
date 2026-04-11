@@ -35,17 +35,24 @@ export function getHasPerformedFirstFetch() {
  */
 export async function startStreaming(event, config = null) {
     if (_streamingInProgress) {
-        // A fetch is already running — abort it so the new request can take over
-        // (e.g., user picked a cached search while CDAWeb was generating audio)
-        abortCDAWebFetch();
-        console.log('⏭️ Cancelling in-progress fetch for new request');
-        // Wait briefly for the old fetch to unwind and release the guard
-        await new Promise(r => setTimeout(r, 50));
-        if (_streamingInProgress) {
-            console.warn('⚠️ Previous fetch still unwinding — ignoring duplicate call');
+        // If this came from the recent searches dropdown, abort the in-flight
+        // fetch so the cached result can load immediately
+        if (window.__fromRecentSearch) {
+            window.__fromRecentSearch = false;
+            abortCDAWebFetch();
+            console.log('⏭️ Cancelling in-progress fetch for cached search');
+            await new Promise(r => setTimeout(r, 100));
+            if (_streamingInProgress) {
+                console.warn('⚠️ Previous fetch still unwinding');
+                return;
+            }
+        } else {
+            // Normal duplicate click — just ignore it
+            console.log('⏭️ Fetch already in progress, ignoring duplicate click');
             return;
         }
     }
+    window.__fromRecentSearch = false;
     _streamingInProgress = true;
     try {
         if (event) {

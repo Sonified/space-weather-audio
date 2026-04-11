@@ -7,7 +7,7 @@ import { clearCompleteSpectrogram, aggressiveCleanup } from './main-window-rende
 import { clearWaveformRenderer, startPlaybackIndicator } from './minimap-window-renderer.js';
 import { cancelZoomTransitionRAF, stopZoomTransition } from './minimap-x-axis-renderer.js';
 import { cleanupKeyboardShortcuts } from './keyboard-shortcuts.js';
-import { stopOscilloscope } from './oscilloscope-renderer.js';
+import { stopOscilloscope, initOscilloscope } from './oscilloscope-renderer.js';
 import { exitOverheatMode } from './core/flame-engine.js';
 
 /**
@@ -100,6 +100,13 @@ export function setupLifecycleHandlers() {
 
                         // Redraw all feature boxes on fresh canvas
                         redrawAllCanvasFeatureBoxes();
+
+                        // Restart oscilloscope + its data feed from analyser
+                        initOscilloscope();
+                        // Re-kick data collection if analyser exists
+                        import('./audio-worklet-init.js').then(m => {
+                            if (m.restartOscilloscopeData) m.restartOscilloscopeData();
+                        });
 
                         // Restart playhead if playing when tab becomes visible again
                         if (State.playbackState === PlaybackState.PLAYING) {
