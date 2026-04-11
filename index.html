@@ -39,7 +39,7 @@
             r.style.background = a.pageBg;
         })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20260411.224822">
+    <link rel="stylesheet" href="styles.css?v=20260411.225822">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         /* Segmented date/time input wrappers */
@@ -350,6 +350,17 @@
                         <option value="2">bn (Normal)</option>
                     </select>
                 </div>
+                <script>
+                    // Restore saved component selection on page load so the dropdown
+                    // reflects localStorage before data fetch populates it dynamically.
+                    (function() {
+                        try {
+                            var s = document.getElementById('componentSelector');
+                            var saved = parseInt(localStorage.getItem('selectedComponent') || '0', 10);
+                            if (s && saved >= 0 && saved < s.options.length) s.selectedIndex = saved;
+                        } catch (e) {}
+                    })();
+                </script>
 
                 <div style="display: none; align-items: center; flex: 1 1 auto; min-width: 200px; max-width: min(500px, 100%); gap: 10px; padding: 0 20px; box-sizing: border-box;">
                     <label for="waveformFilterSlider" id="waveformFilterLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Adjust drift removal aggressiveness"><span id="waveformFilterValue">0.9974</span></label>
@@ -607,13 +618,23 @@
 
     <!-- Custom selects: load + upgrade IMMEDIATELY so first paint shows styled dropdowns -->
     <script src="js/custom-select.js"></script>
-    <script>window.__customSelect.upgradeAllSelects();</script>
+    <script>
+        window.__customSelect.upgradeAllSelects();
+        // Reveal de-tone + component selector AFTER the upgrade so first paint shows
+        // the final (custom-wrapped) widths — no layout jump from native → custom swap.
+        (function() {
+            var dc = document.getElementById('denoiseContainer');
+            var cc = document.getElementById('componentSelectorContainer');
+            if (dc) dc.style.display = 'flex';
+            if (cc) cc.style.display = 'flex';
+        })();
+    </script>
 
     <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- APPLICATION LAYER: Main app code (might break during beta) -->
     <!-- ═══════════════════════════════════════════════════════════ -->
     <script>window.__t0 = performance.now(); console.log('⏱️ module script tag reached at', window.__t0.toFixed(1), 'ms');</script>
-    <script type="module" src="js/main.js?v=20260411.224822"></script>
+    <script type="module" src="js/main.js?v=20260411.225822"></script>
 
     <!-- Responsive spectrogram height: fill viewport so bottom edge sits at window edge -->
     <script>

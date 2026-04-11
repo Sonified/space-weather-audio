@@ -322,11 +322,14 @@ export function initializeAdvancedControls() {
         if (questionnairesPanel) questionnairesPanel.style.display = isAdvanced ? '' : 'none';
         if (!isAdvanced) closeSettingsDrawer();
 
-        // Component selector + de-trend: advanced only
+        // Component selector + de-trend: advanced only.
+        // Must use 'flex' explicitly — '' would clear the inline style and fall
+        // back to the element's default display (block for div), breaking the
+        // inner flex row layout and shifting the selector horizontally.
         const compContainer = document.getElementById('componentSelectorContainer');
-        if (compContainer) compContainer.style.display = isAdvanced ? '' : 'none';
+        if (compContainer) compContainer.style.display = isAdvanced ? 'flex' : 'none';
         const detrendContainer = document.getElementById('detrendContainer');
-        if (detrendContainer) detrendContainer.style.display = isAdvanced ? '' : 'none';
+        if (detrendContainer) detrendContainer.style.display = isAdvanced ? 'flex' : 'none';
 
         // Spectrogram controls (FFT, colormap, freq scale): advanced-only in EMIC, always visible in Space Weather Portal
         const spectrogramControls = document.querySelector('.spectrogram-controls');
