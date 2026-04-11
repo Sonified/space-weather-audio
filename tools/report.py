@@ -152,10 +152,66 @@ def check_running():
     return len(pids) > 0, pids
 
 
+VOICES = [
+    "a golden retriever",
+    "a barber who's seen everything",
+    "an Olympic gymnastics coach",
+    "a grandmother who just learned to text",
+    "a jazz DJ at 2am",
+    "a pilot making announcements",
+    "a nature documentary narrator",
+    "a used car salesman",
+    "a yoga instructor",
+    "a drill sergeant",
+    "a wine sommelier",
+    "a toddler explaining their day",
+    "a sports commentator",
+    "a pirate captain",
+    "a therapist",
+    "a surfer",
+    "an auctioneer",
+    "a librarian",
+    "a mob boss",
+    "Shakespeare",
+    "a weather forecaster",
+    "a kindergarten teacher",
+    "a noir detective",
+    "a conspiracy theorist",
+    "a grandpa telling a war story",
+    "a motivational speaker at 6am",
+    "a Michelin star chef",
+    "a spaceflight mission control operator",
+    "a horse race announcer",
+    "a stoned philosopher",
+]
+
+
+def pick_voice():
+    """Pick a voice, avoiding repeats until the pool is exhausted."""
+    used_path = Path(__file__).parent / '.report_voices_used.json'
+    used = []
+    if used_path.exists():
+        try:
+            used = json.loads(used_path.read_text())
+        except Exception:
+            used = []
+
+    available = [v for v in VOICES if v not in used]
+    if not available:
+        used = []
+        available = VOICES[:]
+
+    voice = random.choice(available)
+    used.append(voice)
+    used_path.write_text(json.dumps(used))
+    return voice
+
+
 def main():
     data = parse_log()
     is_running, pids = check_running()
     now = datetime.now()
+    voice = pick_voice()
 
     run_start = data['run_start']
     last_ts = data['last_ts']
@@ -172,6 +228,9 @@ def main():
     print('=' * 72)
     print('  MMS1 FGM BURST SHARPENING — PROGRESS REPORT')
     print('=' * 72)
+    # Pre-announce the voice so the delivery isn't a guessing game
+    voice_label = voice[0].upper() + voice[1:]
+    print(f'  🎙️  {voice_label} says:')
     print()
 
     # Status
@@ -211,6 +270,19 @@ def main():
     print(f'  This run:        {unique_gaps:,} gaps touched (log)')
     print(f'  Sharpenings:     {data["total_sharpenings"]:,} successful')
     print(f'  Errors:          {data["total_errors"]:,} (fell back to inventory precision)')
+
+    # SPH — sharpens per hour for the most recent hour bucket with data
+    sorted_hour_keys = sorted(data['hours'].keys())
+    if sorted_hour_keys:
+        last_key = sorted_hour_keys[-1]
+        last_h = data['hours'][last_key]
+        hour_start = datetime.strptime(last_key, '%Y-%m-%d %H:00')
+        hour_end = hour_start + timedelta(hours=1)
+        eff_start = max(hour_start, run_start)
+        eff_end = min(hour_end, last_ts if last_ts else now)
+        dur_hr = max((eff_end - eff_start).total_seconds() / 3600, 0.001)
+        sph = last_h['sharpenings'] / dur_hr
+        print(f'  SPH (last hr):   {sph:,.0f} sharpens/hour  ({last_h["sharpenings"]:,} in {dur_hr:.2f}h)')
     print()
 
     # Rate limiting
@@ -279,58 +351,6 @@ def main():
     print()
     print('=' * 72)
     print()
-
-    # Pick a random voice for Claude to deliver the results in
-    VOICES = [
-        "a golden retriever",
-        "a barber who's seen everything",
-        "an Olympic gymnastics coach",
-        "a grandmother who just learned to text",
-        "a jazz DJ at 2am",
-        "a pilot making announcements",
-        "a nature documentary narrator",
-        "a used car salesman",
-        "a yoga instructor",
-        "a drill sergeant",
-        "a wine sommelier",
-        "a toddler explaining their day",
-        "a sports commentator",
-        "a pirate captain",
-        "a therapist",
-        "a surfer",
-        "an auctioneer",
-        "a librarian",
-        "a mob boss",
-        "Shakespeare",
-        "a weather forecaster",
-        "a kindergarten teacher",
-        "a noir detective",
-        "a conspiracy theorist",
-        "a grandpa telling a war story",
-        "a motivational speaker at 6am",
-        "a Michelin star chef",
-        "a spaceflight mission control operator",
-        "a horse race announcer",
-        "a stoned philosopher",
-    ]
-
-    # Track used voices so they don't repeat
-    used_path = Path(__file__).parent / '.report_voices_used.json'
-    used = []
-    if used_path.exists():
-        try:
-            used = json.loads(used_path.read_text())
-        except Exception:
-            used = []
-
-    available = [v for v in VOICES if v not in used]
-    if not available:
-        used = []
-        available = VOICES[:]
-
-    voice = random.choice(available)
-    used.append(voice)
-    used_path.write_text(json.dumps(used))
 
     print(f'  CLAUDE: Summarize these results like {voice}. Keep it to 2-3 sentences.')
     print()
