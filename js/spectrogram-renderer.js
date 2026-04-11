@@ -1547,6 +1547,35 @@ function showFeaturePopup(box) {
         return val;
     }
 
+    // Clamp low/high frequency inputs so they can't cross each other.
+    // Fires on blur/Enter (not on every keystroke) so the user can still
+    // type intermediate values like "120" on the way to "1200".
+    function clampFreqInputs(changedKey) {
+        const lowInput = popup.querySelector('input[data-key="lowFreq"]');
+        const highInput = popup.querySelector('input[data-key="highFreq"]');
+        if (!lowInput || !highInput) return;
+        const low = parseFloat(lowInput.value);
+        const high = parseFloat(highInput.value);
+        if (!isFinite(low) || !isFinite(high)) return;
+        if (low >= high) {
+            // Snap the one the user just edited to the boundary so they see it.
+            if (changedKey === 'lowFreq') {
+                lowInput.value = (high - 0.001).toFixed(3);
+            } else {
+                highInput.value = (low + 0.001).toFixed(3);
+            }
+            // Mirror into the feature object + redraw
+            const features = getStandaloneFeatures();
+            const f = features[box.featureIndex];
+            if (f) {
+                f.lowFreq = lowInput.value;
+                f.highFreq = highInput.value;
+            }
+            redrawAllCanvasFeatureBoxes();
+            updateSaveState();
+        }
+    }
+
     // Live-update feature box as user edits time/frequency fields
     popup.querySelectorAll('input[data-key]').forEach(input => {
         input.addEventListener('input', () => {
@@ -1563,6 +1592,13 @@ function showFeaturePopup(box) {
             redrawAllCanvasFeatureBoxes();
             updateSaveState();
         });
+        // Clamp on blur / Enter for frequency inputs only
+        if (input.dataset.key === 'lowFreq' || input.dataset.key === 'highFreq') {
+            input.addEventListener('blur', () => clampFreqInputs(input.dataset.key));
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') clampFreqInputs(input.dataset.key);
+            });
+        }
     });
 
     // Save logic
