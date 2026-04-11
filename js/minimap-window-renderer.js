@@ -1311,8 +1311,11 @@ export async function drawWaveform() {
         State.setTotalAudioDuration(samplesLength / sampleRate);
     }
 
-    // Upload samples to GPU texture (the shader handles everything)
-    const samples = State.completeSamplesArray || State.getCompleteSamplesArray();
+    // Upload samples to GPU texture (the shader handles everything).
+    // Visual waveform shows the ORIGINAL field shape — playback uses the
+    // DC-removed version via State.completeSamplesArray, but the display
+    // should match what the raw time series actually looks like.
+    const samples = window.rawWaveformData || State.completeSamplesArray || State.getCompleteSamplesArray();
     await uploadWaveformSamples(samples);
 
     // Compute viewport from zoom state and render with current minimap mode

@@ -713,21 +713,31 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             console.log(`   instrument_nyquist: ${audioData.instrument.nyquist.toFixed(4)} Hz (for Y-axis)`);
         }
         
-        // Apply de-trending before rendering if checkbox is checked
-        const removeDCChecked = document.getElementById('removeDCOffset')?.checked;
-        if (removeDCChecked) {
+        // DC removal for PLAYBACK only — waveform/spectrogram get the original samples
+        // This prevents DC offset from wasting headroom in the audio output
+        {
             const { removeDCOffset: detrend, normalize: norm } = await import('./minimap-window-renderer.js');
-            const slider = document.getElementById('waveformFilterSlider');
-            const sliderVal = slider ? parseInt(slider.value) : 95;
-            const alpha = 0.95 + (sliderVal / 100) * (0.9999 - 0.95);
-            // Back up raw data before de-trending
             window.rawWaveformData = new Float32Array(audioData.samples);
-            audioData.samples = norm(detrend(audioData.samples, alpha));
-            console.log(`🎛️ Pre-render de-trend applied (α=${alpha.toFixed(4)})`);
+
+            // Playback buffer: always DC-removed + normalized
+            const playbackSamples = norm(detrend(new Float32Array(audioData.samples), 0.999));
+            // Store playback version in a separate global for denoise to access
+            window._playbackSamples = playbackSamples;
+
+            // If de-trend checkbox is checked, also process display samples
+            const removeDCChecked = document.getElementById('removeDCOffset')?.checked;
+            if (removeDCChecked) {
+                const slider = document.getElementById('waveformFilterSlider');
+                const sliderVal = slider ? parseInt(slider.value) : 95;
+                const alpha = 0.95 + (sliderVal / 100) * (0.9999 - 0.95);
+                audioData.samples = norm(detrend(audioData.samples, alpha));
+                console.log(`🎛️ De-trend applied (α=${alpha.toFixed(4)})`);
+            }
+            // else: audioData.samples stays raw — waveform shows original field shape
         }
 
-        // Set state
-        State.setCompleteSamplesArray(audioData.samples);
+        // Set state — playback uses DC-removed, everything else uses audioData.samples
+        State.setCompleteSamplesArray(window._playbackSamples);
         State.setOriginalAudioBlob(audioData.originalBlob);
         State.setDataStartTime(audioData.time.start);
         State.setDataEndTime(audioData.time.end);
@@ -803,7 +813,7 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             State.waveformWorker.postMessage({
                 type: 'add-samples',
                 samples: audioData.samples,
-                rawSamples: audioData.samples // For CDAWeb, samples are already normalized, use same for raw
+                rawSamples: window.rawWaveformData
             });
             // console.log(`🔍 [PIPELINE] Samples sent to waveform worker`);
         } else {
