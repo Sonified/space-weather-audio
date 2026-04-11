@@ -39,7 +39,7 @@
             r.style.background = a.pageBg;
         })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20260411.232041">
+    <link rel="stylesheet" href="styles.css?v=20260411.233254">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         /* Segmented date/time input wrappers */
@@ -410,6 +410,10 @@
                         <input type="checkbox" id="playOnClick" checked style="width: 20px; height: 20px; cursor: pointer;">
                         <label for="playOnClick" style="margin-bottom: 0; cursor: pointer; font-weight: 700; font-size: 14px; color: #ffe8e8; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap;">Play on Click</label>
                     </div>
+                    <div id="detoneQContainer" style="display: flex; align-items: center; gap: 6px;" title="De-tone notch filter Q — higher = narrower notch (BW ≈ f0/Q)">
+                        <label for="detoneQSlider" style="white-space: nowrap;">De-tone Q: <span id="detoneQValue">100</span></label>
+                        <input type="range" id="detoneQSlider" min="2" max="1000" step="1" value="100" style="width: 120px;">
+                    </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <label for="annotationMode">Annotations:</label>
                         <select id="annotationMode">
@@ -634,7 +638,7 @@
     <!-- APPLICATION LAYER: Main app code (might break during beta) -->
     <!-- ═══════════════════════════════════════════════════════════ -->
     <script>window.__t0 = performance.now(); console.log('⏱️ module script tag reached at', window.__t0.toFixed(1), 'ms');</script>
-    <script type="module" src="js/main.js?v=20260411.232041"></script>
+    <script type="module" src="js/main.js?v=20260411.233254"></script>
 
     <!-- Responsive spectrogram height: fill viewport so bottom edge sits at window edge -->
     <script>

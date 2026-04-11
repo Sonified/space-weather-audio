@@ -6,7 +6,7 @@
 
 import * as State from './audio-state.js';
 import { getAudioData } from './cdaweb-cache.js';
-import { toggleDenoise, runDenoise, isDenoiseActive } from './spin-tone-denoise.js';
+import { toggleDenoise, runDenoise, isDenoiseActive, setDenoiseQ } from './spin-tone-denoise.js';
 
 // Store component count and cached blobs
 let componentCount = 0;
