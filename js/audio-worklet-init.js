@@ -10,6 +10,7 @@ import { updatePlaybackSpeed, primeStretchProcessors, cancelAllRAFLoops } from '
 import { drawWaveformWithSelection, startPlaybackIndicator } from './minimap-window-renderer.js';
 import { isStudyMode } from './master-modes.js';
 import { setStatusText } from './status-text.js';
+import { initDenoise, getDenoiseNode } from './spin-tone-denoise.js';
 
 // ── Isolation filter nodes (set during audio graph init) ──
 let _isolateNodes = null;
@@ -74,6 +75,10 @@ let oscilloscopeAnalyserBuffer = null;
  * Start collecting post-volume audio data from analyser node for oscilloscope visualization
  * This reads from the analyser node which is connected AFTER the gain node, so it shows volume-adjusted audio
  */
+export function restartOscilloscopeData() {
+    if (State.analyserNode) startOscilloscopeDataCollection(State.analyserNode);
+}
+
 function startOscilloscopeDataCollection(analyserNode) {
     if (!analyserNode) return;
 
@@ -189,6 +194,9 @@ export async function initAudioWorklet() {
         }
     }
 
+    // Init denoise (offline processing — no audio graph node needed)
+    initDenoise();
+
     const worklet = new AudioWorkletNode(State.audioContext, 'audio-processor');
     State.setWorkletNode(worklet);
 
@@ -233,8 +241,11 @@ export async function initAudioWorklet() {
     isolateLP.frequency.value = 20000; // Default passthrough
     isolateLP.Q.value = 0.7071;
 
+    if (!isStudyMode()) console.groupEnd(); // close [AUDIO] group so GRAPH logs are visible
+
     // Audio graph: worklet → sourceGain → masterGain → [dual isolation path] → outputNode → analyser + destination
     //              stretchNode → stretchGain → masterGain (connected when stretch activates)
+    // Denoise is offline — swap-buffer crossfade, no audio graph node needed
     worklet.connect(sourceGain);
     sourceGain.connect(gain);
     stretchGain.connect(gain);

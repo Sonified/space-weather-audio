@@ -39,7 +39,7 @@
             r.style.background = a.pageBg;
         })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20260408.082508">
+    <link rel="stylesheet" href="styles.css?v=20260411.222734">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         /* Segmented date/time input wrappers */
@@ -297,6 +297,10 @@
                 <div id="volumeContainer" style="display: flex; align-items: center; flex: 1 1 auto; min-width: 180px; max-width: min(350px, 100%); gap: 10px; padding: 0 15px 0 5px; box-sizing: border-box;">
                     <label for="volumeSlider" id="volumeLabel" style="font-weight: 600; white-space: nowrap; font-size: 18px; flex-shrink: 0; cursor: pointer; user-select: none;" title="Click to reset to 1.0">Volume: <span id="volumeValue">1.0</span></label>
                     <input type="range" id="volumeSlider" min="0" max="200" step="1" value="100" style="flex: 1; min-width: 0;">
+                </div>
+                <div id="denoiseContainer" style="display: none; align-items: center; gap: 6px; padding: 0 10px 0 0;">
+                    <label for="denoiseToggle" style="font-weight: 600; white-space: nowrap; font-size: 16px; flex-shrink: 0; cursor: pointer; user-select: none;">De-tone:</label>
+                    <input type="checkbox" id="denoiseToggle" style="width: 18px; height: 18px; cursor: pointer;">
                 </div>
                 <div id="componentSelectorContainer" style="display: none; align-items: center; gap: 8px; padding: 0 15px 0 5px;">
                     <label for="componentSelector" style="font-weight: 600; white-space: nowrap; font-size: 16px; flex-shrink: 0;">Component:</label>
@@ -569,7 +573,7 @@
     <!-- APPLICATION LAYER: Main app code (might break during beta) -->
     <!-- ═══════════════════════════════════════════════════════════ -->
     <script>window.__t0 = performance.now(); console.log('⏱️ module script tag reached at', window.__t0.toFixed(1), 'ms');</script>
-    <script type="module" src="js/main.js?v=20260408.082508"></script>
+    <script type="module" src="js/main.js?v=20260411.222734"></script>
 
     <!-- Responsive spectrogram height: fill viewport so bottom edge sits at window edge -->
     <script>

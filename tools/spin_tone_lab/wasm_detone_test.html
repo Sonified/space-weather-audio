@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html><head><title>WASM De-Tone Test</title></head>
+<body>
+<h3>WASM De-Tone Test</h3>
+<button id="play" disabled>Play A/B (2s raw → 2s cleaned)</button>
+<pre id="log"></pre>
+<script type="module">
+const log = (s) => { document.getElementById('log').textContent += s + '\n'; console.log(s); };
+
+// ── FFT ─────────────────────────────────────────────────────────────
+function fft(real, imag, n) {
+    for (let i = 1, j = 0; i < n; i++) {
+        let bit = n >> 1;
+        while (j & bit) { j ^= bit; bit >>= 1; }
+        j ^= bit;
+        if (i < j) {
+            [real[i], real[j]] = [real[j], real[i]];
+            [imag[i], imag[j]] = [imag[j], imag[i]];
+        }
+    }
+    for (let len = 2; len <= n; len *= 2) {
+        const ang = -2 * Math.PI / len;
+        const wR = Math.cos(ang), wI = Math.sin(ang);
+        for (let i = 0; i < n; i += len) {
+            let curR = 1, curI = 0;
+            for (let j = 0; j < len / 2; j++) {
+                const uR = real[i+j], uI = imag[i+j];
+                const vR = real[i+j+len/2]*curR - imag[i+j+len/2]*curI;
+                const vI = real[i+j+len/2]*curI + imag[i+j+len/2]*curR;
+                real[i+j] = uR+vR; imag[i+j] = uI+vI;
+                real[i+j+len/2] = uR-vR; imag[i+j+len/2] = uI-vI;
+                const nR = curR*wR - curI*wI; curI = curR*wI + curI*wR; curR = nR;
+            }
+        }
+    }
+}
+
+try {
+    const t0 = performance.now();
+
+    // ── Load WAV ────────────────────────────────────────────────────
+    const resp = await fetch('psp_magrtn_Br.wav');
+    const buf = await resp.arrayBuffer();
+    const view = new DataView(buf);
+    const sr = view.getUint32(24, true);
+    const numSamples = (buf.byteLength - 44) / 2;
+    const samples = new Float32Array(numSamples);
+    for (let i = 0; i < numSamples; i++) {
+        samples[i] = view.getInt16(44 + i*2, true) / 32768.0;
+    }
+
+    // DC removal — bidirectional EMA (matches main page algorithm)
+    const alpha = 0.995;
+    const warmup = Math.min(numSamples, Math.ceil(3 / (1 - alpha)));
+    let initFwd = 0;
+    for (let i = 0; i < warmup; i++) initFwd += samples[i];
+    initFwd /= warmup;
+    let initBwd = 0;
+    for (let i = numSamples - warmup; i < numSamples; i++) initBwd += samples[i];
+    initBwd /= warmup;
+
+    const fwd = new Float32Array(numSamples);
+    let mean = initFwd;
+    for (let i = 0; i < numSamples; i++) { mean = alpha*mean + (1-alpha)*samples[i]; fwd[i] = mean; }
+    const bwd = new Float32Array(numSamples);
+    mean = initBwd;
+    for (let i = numSamples-1; i >= 0; i--) { mean = alpha*mean + (1-alpha)*samples[i]; bwd[i] = mean; }
+    for (let i = 0; i < numSamples; i++) samples[i] -= (fwd[i] + bwd[i]) * 0.5;
+    // Edge taper
+    const taper = Math.min(Math.ceil(numSamples * 0.001), warmup);
+    for (let i = 0; i < taper; i++) {
+        const w = 0.5 * (1 - Math.cos(Math.PI * i / taper));
+        samples[i] *= w;
+        samples[numSamples-1-i] *= w;
+    }
+    // Normalize
+    let peak = 0;
+    for (let i = 0; i < numSamples; i++) peak = Math.max(peak, Math.abs(samples[i]));
+    if (peak > 0) for (let i = 0; i < numSamples; i++) samples[i] *= 0.95 / peak;
+    log(`Loaded: ${numSamples} samples, ${sr} Hz, ${(numSamples/sr).toFixed(1)}s`);
+
+    // ── Load WASM ───────────────────────────────────────────────────
+    const wasmResp = await fetch('detone.wasm');
+    const wasmBuf = await wasmResp.arrayBuffer();
+    const { instance } = await WebAssembly.instantiate(wasmBuf, {
+        env: { memory: new WebAssembly.Memory({ initial: 2 }) },
+        wasi_snapshot_preview1: {
+            proc_exit: () => {},
+            fd_close: () => 0, fd_seek: () => 0, fd_write: () => 0,
+        },
+    });
+    const wasm = instance.exports;
+    const wasmMem = wasm.memory;
+    log(`WASM loaded: ${wasmBuf.byteLength} bytes`);
+
+    // Init WASM filter bank
+    wasm.init(sr, 40.0);
+
+    // ── STFT detection (same as before) ─────────────────────────────
+    const tDet0 = performance.now();
+    const WIN = 4096, HOP = WIN/4, TON_W = 15, THRESH = 6.0;
+    const ACCUM_A = 6, ACCUM_THRESH = 0.35, MAX_TONES = 8;
+    const numFrames = Math.floor((numSamples - WIN) / HOP) + 1;
+    const numBins = WIN/2 + 1;
+
+    const hann = new Float32Array(WIN);
+    for (let i = 0; i < WIN; i++) hann[i] = 0.5*(1-Math.cos(2*Math.PI*i/WIN));
+
+    // Compute STFT + tonality in one pass (no full spectrogram storage)
+    // Per frame: compute FFT, score tonality, keep top-N frequencies
+    const toneFreqsPerFrame = new Float32Array(numFrames * MAX_TONES); // flat [frame*MAX + tone]
+    const toneCountPerFrame = new Uint8Array(numFrames);
+
+    // First pass: compute bin means for 1/f flattening (need all frames)
+    const pdb = new Float32Array(numBins * numFrames);
+    for (let fi = 0; fi < numFrames; fi++) {
+        const off = fi * HOP;
+        const real = new Float32Array(WIN), imag = new Float32Array(WIN);
+        for (let i = 0; i < WIN; i++) real[i] = (samples[off+i]||0) * hann[i];
+        fft(real, imag, WIN);
+        for (let b = 0; b < numBins; b++) {
+            pdb[b*numFrames+fi] = 20*Math.log10(Math.sqrt(real[b]*real[b]+imag[b]*imag[b])+1e-12);
+        }
+    }
+    // Flatten
+    for (let b = 0; b < numBins; b++) {
+        let s = 0; const base = b * numFrames;
+        for (let f = 0; f < numFrames; f++) s += pdb[base+f];
+        const mean = s / numFrames;
+        for (let f = 0; f < numFrames; f++) pdb[base+f] -= mean;
+    }
+    // Tonality + accumulation
+    const tonality = new Float32Array(numBins * numFrames);
+    for (let fi = 0; fi < numFrames; fi++) {
+        for (let b = 0; b < numBins; b++) {
+            const val = pdb[b*numFrames+fi];
+            const lo = Math.max(0, b - TON_W), hi = Math.min(numBins, b + TON_W + 1);
+            let sum = 0;
+            for (let bb = lo; bb < hi; bb++) sum += pdb[bb*numFrames+fi];
+            tonality[b*numFrames+fi] = val - sum / (hi - lo);
+        }
+    }
+    // Bidirectional accumulation
+    const confirmed = new Uint8Array(numBins * numFrames);
+    for (let b = 0; b < numBins; b++) {
+        for (let fi = 0; fi < numFrames; fi++) {
+            // Forward
+            const fLo = Math.max(0, fi - ACCUM_A);
+            let fCount = 0, fTotal = fi - fLo + 1;
+            for (let f = fLo; f <= fi; f++) if (tonality[b*numFrames+f] >= THRESH) fCount++;
+            // Backward
+            const bHi = Math.min(numFrames-1, fi + ACCUM_A);
+            let bCount = 0, bTotal = bHi - fi + 1;
+            for (let f = fi; f <= bHi; f++) if (tonality[b*numFrames+f] >= THRESH) bCount++;
+            if (fCount/fTotal >= ACCUM_THRESH && bCount/bTotal >= ACCUM_THRESH) {
+                confirmed[b*numFrames+fi] = 1;
+            }
+        }
+    }
+    // Extract top-N per frame
+    let totalDetections = 0;
+    for (let fi = 0; fi < numFrames; fi++) {
+        const candidates = [];
+        for (let b = 0; b < numBins; b++) {
+            if (confirmed[b*numFrames+fi]) {
+                candidates.push({ freq: b * sr / WIN, score: tonality[b*numFrames+fi] });
+            }
+        }
+        candidates.sort((a,b) => b.score - a.score);
+        const n = Math.min(candidates.length, MAX_TONES);
+        toneCountPerFrame[fi] = n;
+        for (let k = 0; k < n; k++) {
+            toneFreqsPerFrame[fi * MAX_TONES + k] = candidates[k].freq;
+        }
+        totalDetections += n;
+    }
+    log(`Detection: ${(performance.now()-tDet0).toFixed(0)} ms, ${totalDetections} detections (${(totalDetections/numFrames).toFixed(1)}/frame)`);
+
+    // ── WASM notch filtering (static buffers, no malloc) ──────────
+    const tFilt0 = performance.now();
+    const output = new Float32Array(samples);  // copy
+
+    const tonePtr = wasm.get_tone_input_ptr();
+    const audioPtr = wasm.get_audio_buf_ptr();
+    const audioBufSize = wasm.get_audio_buf_size();
+
+    for (let fi = 0; fi < numFrames; fi++) {
+        const start = fi * HOP;
+        const end = Math.min(start + HOP, numSamples);
+        const chunkLen = end - start;
+        if (chunkLen <= 0) break;
+
+        // Write tone frequencies into WASM static buffer
+        const nt = toneCountPerFrame[fi];
+        const toneView = new Float32Array(wasmMem.buffer, tonePtr, MAX_TONES);
+        for (let k = 0; k < MAX_TONES; k++) {
+            toneView[k] = k < nt ? toneFreqsPerFrame[fi * MAX_TONES + k] : 0;
+        }
+        wasm.update_tones(tonePtr, nt);
+
+        // Copy chunk into WASM static audio buffer, process, copy back
+        const audioView = new Float32Array(wasmMem.buffer, audioPtr, chunkLen);
+        audioView.set(output.subarray(start, end));
+        wasm.process_buf(chunkLen);
+        output.set(new Float32Array(wasmMem.buffer, audioPtr, chunkLen), start);
+    }
+    const tFilt = performance.now() - tFilt0;
+    log(`WASM filtering: ${tFilt.toFixed(0)} ms`);
+    log(`Total: ${(performance.now()-t0).toFixed(0)} ms`);
+
+    // ── Playback ────────────────────────────────────────────────────
+    const playBtn = document.getElementById('play');
+    playBtn.disabled = false;
+    playBtn.onclick = async () => {
+        const ctx = new AudioContext({ sampleRate: sr });
+        const clipLen = 2 * sr;
+        // Find a moment with high tonal activity
+        let bestFrame = 0, bestScore = 0;
+        for (let fi = 0; fi < numFrames; fi++) {
+            if (toneCountPerFrame[fi] > bestScore) {
+                bestScore = toneCountPerFrame[fi];
+                bestFrame = fi;
+            }
+        }
+        const center = bestFrame * HOP;
+        const lo = Math.max(0, center - clipLen);
+        const hi = Math.min(numSamples, center + clipLen);
+
+        // 2s raw + 2s clean with crossfade
+        const raw = samples.slice(lo, hi);
+        const clean = output.slice(lo, hi);
+        const fadeN = Math.floor(sr * 0.15);
+        for (let i = 0; i < fadeN; i++) {
+            raw[raw.length - fadeN + i] *= 1 - i/fadeN;
+            clean[i] *= i/fadeN;
+        }
+        const combo = new Float32Array(raw.length + clean.length);
+        combo.set(raw);
+        combo.set(clean, raw.length);
+
+        // Normalize
+        let pk = 0;
+        for (let i = 0; i < combo.length; i++) pk = Math.max(pk, Math.abs(combo[i]));
+        if (pk > 0) for (let i = 0; i < combo.length; i++) combo[i] *= 0.7 / pk;
+
+        const abuf = ctx.createBuffer(1, combo.length, sr);
+        abuf.getChannelData(0).set(combo);
+        const src = ctx.createBufferSource();
+        src.buffer = abuf;
+        src.connect(ctx.destination);
+        src.start();
+        log('Playing A/B...');
+    };
+
+    log('RESULT:' + JSON.stringify({ detections: totalDetections, wasmFilterMs: tFilt }));
+
+} catch(e) {
+    log('ERROR: ' + e.message);
+    console.error(e);
+}
+</script>
+</body></html>

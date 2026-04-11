@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html><head><title>GPU De-Tone Test</title></head>
+<body>
+<h3>GPU De-Tone Test</h3>
+<pre id="log"></pre>
+<script type="module">
+const log = (s) => { document.getElementById('log').textContent += s + '\n'; console.log(s); };
+
+// ── FFT (Cooley-Tukey, in-place) ────────────────────────────────────
+function fft(real, imag, n) {
+    for (let i = 1, j = 0; i < n; i++) {
+        let bit = n >> 1;
+        while (j & bit) { j ^= bit; bit >>= 1; }
+        j ^= bit;
+        if (i < j) {
+            [real[i], real[j]] = [real[j], real[i]];
+            [imag[i], imag[j]] = [imag[j], imag[i]];
+        }
+    }
+    for (let len = 2; len <= n; len *= 2) {
+        const ang = -2 * Math.PI / len;
+        const wR = Math.cos(ang), wI = Math.sin(ang);
+        for (let i = 0; i < n; i += len) {
+            let curR = 1, curI = 0;
+            for (let j = 0; j < len / 2; j++) {
+                const uR = real[i+j], uI = imag[i+j];
+                const vR = real[i+j+len/2]*curR - imag[i+j+len/2]*curI;
+                const vI = real[i+j+len/2]*curI + imag[i+j+len/2]*curR;
+                real[i+j] = uR+vR; imag[i+j] = uI+vI;
+                real[i+j+len/2] = uR-vR; imag[i+j+len/2] = uI-vI;
+                const nR = curR*wR - curI*wI; curI = curR*wI + curI*wR; curR = nR;
+            }
+        }
+    }
+}
+
+try {
+    // ── Load WAV ────────────────────────────────────────────────────
+    const t0 = performance.now();
+    const resp = await fetch('psp_magrtn_Br.wav');
+    const buf = await resp.arrayBuffer();
+    const view = new DataView(buf);
+    const sr = view.getUint32(24, true);
+    const numSamples = (buf.byteLength - 44) / 2;
+    const samples = new Float32Array(numSamples);
+    for (let i = 0; i < numSamples; i++) {
+        samples[i] = view.getInt16(44 + i*2, true) / 32768.0;
+    }
+    log(`Loaded: ${numSamples} samples, ${sr} Hz, ${(numSamples/sr).toFixed(1)}s`);
+
+    // ── WebGPU init ─────────────────────────────────────────────────
+    if (!navigator.gpu) throw new Error('WebGPU not available');
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) throw new Error('No adapter');
+    const device = await adapter.requestDevice();
+    log(`GPU: ${adapter.info?.device || adapter.info?.description || 'ready'}`);
+
+    // ── Config ──────────────────────────────────────────────────────
+    const WIN = 4096, HOP = WIN/4, TONALITY_W = 15, THRESH = 6.0;
+    const ACCUM_A = 6, ACCUM_THRESH = 0.35;
+    const numFrames = Math.floor((numSamples - WIN) / HOP) + 1;
+    const numBins = WIN/2 + 1;
+    const totalCells = numBins * numFrames;
+    log(`STFT: ${numBins} bins x ${numFrames} frames = ${totalCells} cells`);
+
+    // ── CPU STFT (would use existing GPU FFT in production) ─────────
+    const tFFT0 = performance.now();
+    const hann = new Float32Array(WIN);
+    for (let i = 0; i < WIN; i++) hann[i] = 0.5*(1-Math.cos(2*Math.PI*i/WIN));
+
+    const pdb = new Float32Array(totalCells);
+    for (let fi = 0; fi < numFrames; fi++) {
+        const off = fi * HOP;
+        const real = new Float32Array(WIN), imag = new Float32Array(WIN);
+        for (let i = 0; i < WIN; i++) real[i] = (samples[off+i]||0) * hann[i];
+        fft(real, imag, WIN);
+        for (let b = 0; b < numBins; b++) {
+            pdb[b*numFrames+fi] = 20*Math.log10(Math.sqrt(real[b]*real[b]+imag[b]*imag[b])+1e-12);
+        }
+    }
+    log(`CPU STFT: ${(performance.now()-tFFT0).toFixed(0)} ms`);
+
+    // ── 1/f flatten (CPU) ───────────────────────────────────────────
+    const tFlat0 = performance.now();
+    for (let b = 0; b < numBins; b++) {
+        let s = 0; const base = b * numFrames;
+        for (let f = 0; f < numFrames; f++) s += pdb[base+f];
+        const mean = s / numFrames;
+        for (let f = 0; f < numFrames; f++) pdb[base+f] -= mean;
+    }
+    log(`1/f flatten: ${(performance.now()-tFlat0).toFixed(0)} ms`);
+
+    // ── GPU Pass 1: Tonality scoring ────────────────────────────────
+    const tGPU0 = performance.now();
+
+    const pdbBuf = device.createBuffer({ size: pdb.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    device.queue.writeBuffer(pdbBuf, 0, pdb);
+
+    // Tonality output (pass 1 writes, pass 2 reads)
+    const tonBuf = device.createBuffer({ size: totalCells * 4, usage: GPUBufferUsage.STORAGE });
+    // Confirmed output (pass 2 writes, readback)
+    const confBuf = device.createBuffer({ size: totalCells * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+    const readBuf = device.createBuffer({ size: totalCells * 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+
+    // Pass 1: tonality = val - local_mean_in_freq_neighborhood
+    const pass1Shader = device.createShaderModule({ code: `
+        @group(0) @binding(0) var<storage, read> pdb: array<f32>;
+        @group(0) @binding(1) var<storage, read_write> tonality: array<f32>;
+
+        const NB: u32 = ${numBins}u;
+        const NF: u32 = ${numFrames}u;
+        const W: u32 = ${TONALITY_W}u;
+
+        @compute @workgroup_size(256)
+        fn main(@builtin(global_invocation_id) gid: vec3u) {
+            let idx = gid.x;
+            if (idx >= NB * NF) { return; }
+            let bin = idx / NF;
+            let frame = idx % NF;
+            let val = pdb[idx];
+
+            let lo = select(bin - W, 0u, bin < W);
+            let hi = min(bin + W + 1u, NB);
+            var sum: f32 = 0.0;
+            for (var b = lo; b < hi; b++) {
+                sum += pdb[b * NF + frame];
+            }
+            tonality[idx] = val - sum / f32(hi - lo);
+        }
+    `});
+
+    // Pass 2: bidirectional temporal accumulation
+    // For each cell: count how many of the ±A neighboring frames are tonal
+    // Confirmed = both forward and backward fractions >= ACCUM_THRESH
+    const pass2Shader = device.createShaderModule({ code: `
+        @group(0) @binding(0) var<storage, read> tonality: array<f32>;
+        @group(0) @binding(1) var<storage, read_write> confirmed: array<f32>;
+
+        const NB: u32 = ${numBins}u;
+        const NF: u32 = ${numFrames}u;
+        const A: u32 = ${ACCUM_A}u;
+        const THRESH: f32 = ${THRESH};
+        const ACC_THRESH: f32 = ${ACCUM_THRESH};
+
+        @compute @workgroup_size(256)
+        fn main(@builtin(global_invocation_id) gid: vec3u) {
+            let idx = gid.x;
+            if (idx >= NB * NF) { return; }
+            let bin = idx / NF;
+            let frame = idx % NF;
+
+            // Forward: count tonal frames in [frame-A, frame]
+            let fwd_lo = select(frame - A, 0u, frame < A);
+            var fwd_count: u32 = 0u;
+            for (var f = fwd_lo; f <= frame; f++) {
+                if (tonality[bin * NF + f] >= THRESH) { fwd_count++; }
+            }
+            let fwd_frac = f32(fwd_count) / f32(frame - fwd_lo + 1u);
+
+            // Backward: count tonal frames in [frame, frame+A]
+            let bwd_hi = min(frame + A, NF - 1u);
+            var bwd_count: u32 = 0u;
+            for (var f2 = frame; f2 <= bwd_hi; f2++) {
+                if (tonality[bin * NF + f2] >= THRESH) { bwd_count++; }
+            }
+            let bwd_frac = f32(bwd_count) / f32(bwd_hi - frame + 1u);
+
+            confirmed[idx] = select(0.0, tonality[idx], fwd_frac >= ACC_THRESH && bwd_frac >= ACC_THRESH);
+        }
+    `});
+
+    // Layouts + pipelines
+    const bgl1 = device.createBindGroupLayout({ entries: [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' }},
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' }},
+    ]});
+    const pipe1 = device.createComputePipeline({
+        layout: device.createPipelineLayout({ bindGroupLayouts: [bgl1] }),
+        compute: { module: pass1Shader, entryPoint: 'main' },
+    });
+    const bg1 = device.createBindGroup({ layout: bgl1, entries: [
+        { binding: 0, resource: { buffer: pdbBuf }},
+        { binding: 1, resource: { buffer: tonBuf }},
+    ]});
+
+    const bgl2 = device.createBindGroupLayout({ entries: [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' }},
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' }},
+    ]});
+    const pipe2 = device.createComputePipeline({
+        layout: device.createPipelineLayout({ bindGroupLayouts: [bgl2] }),
+        compute: { module: pass2Shader, entryPoint: 'main' },
+    });
+    const bg2 = device.createBindGroup({ layout: bgl2, entries: [
+        { binding: 0, resource: { buffer: tonBuf }},
+        { binding: 1, resource: { buffer: confBuf }},
+    ]});
+
+    const wg = Math.ceil(totalCells / 256);
+
+    const enc = device.createCommandEncoder();
+    // Pass 1: tonality
+    const p1 = enc.beginComputePass();
+    p1.setPipeline(pipe1); p1.setBindGroup(0, bg1); p1.dispatchWorkgroups(wg); p1.end();
+    // Pass 2: accumulation
+    const p2 = enc.beginComputePass();
+    p2.setPipeline(pipe2); p2.setBindGroup(0, bg2); p2.dispatchWorkgroups(wg); p2.end();
+    // Readback
+    enc.copyBufferToBuffer(confBuf, 0, readBuf, 0, totalCells * 4);
+    device.queue.submit([enc.finish()]);
+
+    await readBuf.mapAsync(GPUMapMode.READ);
+    const confirmed = new Float32Array(readBuf.getMappedRange().slice(0));
+    readBuf.unmap();
+
+    const tGPU = performance.now() - tGPU0;
+
+    // ── Count ───────────────────────────────────────────────────────
+    let detections = 0;
+    for (let i = 0; i < confirmed.length; i++) {
+        if (confirmed[i] > 0) detections++;
+    }
+    const avg = detections / numFrames;
+
+    log(`GPU pass 1 (tonality) + pass 2 (accumulation): ${tGPU.toFixed(1)} ms`);
+    log(`Detections: ${detections} (avg ${avg.toFixed(1)}/frame)`);
+    log(`Total: ${(performance.now()-t0).toFixed(0)} ms`);
+    log('RESULT:' + JSON.stringify({ detections, avgPerFrame: avg, gpuMs: tGPU }));
+
+} catch(e) {
+    log('ERROR: ' + e.message);
+    console.error(e);
+}
+</script>
+</body></html>

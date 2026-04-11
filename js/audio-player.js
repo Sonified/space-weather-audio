@@ -13,6 +13,7 @@ import { updateAxisForPlaybackSpeed } from './spectrogram-axis-renderer.js';
 import { drawSpectrogram, startVisualization, redrawAllCanvasFeatureBoxes } from './spectrogram-renderer.js';
 import { zoomState } from './zoom-state.js';
 import { getCurrentPlaybackBoundaries, isAtBoundaryEnd, getRestartPosition, formatBoundaries } from './playback-boundaries.js';
+import { syncDenoisePosition } from './spin-tone-denoise.js';
 import { setPlayingState } from './oscilloscope-renderer.js';
 import { updateSpectrogramViewport } from './main-window-renderer.js';
 import { updateAllFeatureBoxPositions } from './spectrogram-feature-boxes.js';
@@ -1021,6 +1022,9 @@ export function seekToPosition(targetPosition, shouldStartPlayback = false) {
         State.setLastWorkletPosition(targetPosition);
         State.setLastWorkletUpdateTime(State.audioContext.currentTime);
         State.setLastUpdateTime(State.audioContext.currentTime);
+
+        // Sync denoise worklet sample counter to new position
+        syncDenoisePosition(targetPosition);
         
         // 🏎️ AUTONOMOUS: Tell the active processor to seek
         if (State.stretchActive && State.stretchNode) {

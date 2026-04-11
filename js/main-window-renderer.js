@@ -38,6 +38,15 @@ let camera = null;
 let material = null;
 let mesh = null;
 
+// Detone mask overlay (Option A: separate mesh on top)
+let detoneMaskTexture = null;
+let detoneMaskMesh = null;
+let detoneMaskMaterial = null;
+let detoneMaskTexNode = null;
+let uDetoneMaskAlpha = null;
+let detoneMaskWidth = 0;
+let detoneMaskHeight = 0;
+
 // Textures
 let fullMagnitudeTexture = null;     // Full-view FFT magnitudes
 let regionMagnitudeTexture = null;   // Region FFT magnitudes (HQ)
@@ -230,6 +239,51 @@ let crossfadePower = 1.0;             // 1=linear (trilinear), 2=S-curve, 4+=sha
 
 export function setLevelTransitionMode(mode) { levelTransitionMode = mode; }
 export function setCrossfadePower(power) { crossfadePower = power; }
+
+/**
+ * Upload a 2D detone mask: rows = freq bins (0..numBins-1), cols = time frames.
+ * Values are 0..255 — 0 = no mask, 255 = full mask (will dim the spectrogram).
+ * Texture is sampled with the same UV/freq-remap as the spectrogram → automatic alignment.
+ *
+ * @param {Uint8Array} data — length = numBins * numFrames, layout [bin*numFrames + frame]
+ * @param {number} numFrames — width of the texture (time axis)
+ * @param {number} numBins — height of the texture (frequency axis)
+ */
+export function setDetoneMaskData(data, numFrames, numBins) {
+    console.log(`🎛️ [setDetoneMaskData] called: ${numFrames}×${numBins}, hasNode=${!!detoneMaskTexNode}, hasMesh=${!!detoneMaskMesh}`);
+    if (!detoneMaskTexNode) {
+        console.warn(`🎛️ [setDetoneMaskData] detoneMaskTexNode is null — scene not initialized?`);
+        return;
+    }
+    if (detoneMaskTexture) detoneMaskTexture.dispose();
+
+    detoneMaskTexture = new THREE.DataTexture(
+        data, numFrames, numBins, THREE.RedFormat, THREE.UnsignedByteType
+    );
+    detoneMaskTexture.minFilter = THREE.LinearFilter;
+    detoneMaskTexture.magFilter = THREE.LinearFilter;
+    detoneMaskTexture.wrapS = THREE.ClampToEdgeWrapping;
+    detoneMaskTexture.wrapT = THREE.ClampToEdgeWrapping;
+    detoneMaskTexture.needsUpdate = true;
+
+    detoneMaskTexNode.value = detoneMaskTexture;
+    detoneMaskWidth = numFrames;
+    detoneMaskHeight = numBins;
+    console.warn(`🎛️ [setDetoneMaskData] texture assigned, mesh visible=${detoneMaskMesh?.visible}, alpha=${uDetoneMaskAlpha?.value}`);
+    // Trigger render
+    renderFrame();
+}
+
+/** 0 = invisible, 1 = full mask. Animatable for crossfading on toggle. */
+export function setDetoneMaskAlpha(alpha) {
+    if (uDetoneMaskAlpha) {
+        uDetoneMaskAlpha.value = Math.max(0, Math.min(1, alpha));
+        console.warn(`🎛️ [setDetoneMaskAlpha] ${alpha} (uniform=${uDetoneMaskAlpha.value})`);
+        // Force render via renderFrame so mask gets positioned in world space
+        renderPending = false;  // clear stuck flag
+        renderFrame();
+    }
+}
 
 /**
  * Adjust spectrogram gain (brightness) and contrast in real time.
@@ -842,6 +896,62 @@ async function initThreeScene() {
         });
     }
 
+    // ─── Detone mask overlay mesh ────────────────────────────────────
+    // Subtractive layer that rides on top of the spectrogram. Same orthographic
+    // camera, same frequency remap → zoom/pan handled automatically.
+    {
+        uDetoneMaskAlpha = uniform(0.0);  // 0 = invisible, 1 = full mask
+
+        // Placeholder texture (replaced by setDetoneMaskData)
+        detoneMaskTexture = new THREE.DataTexture(
+            new Uint8Array([0]), 1, 1, THREE.RedFormat, THREE.UnsignedByteType
+        );
+        detoneMaskTexture.minFilter = THREE.LinearFilter;
+        detoneMaskTexture.magFilter = THREE.LinearFilter;
+        detoneMaskTexture.wrapS = THREE.ClampToEdgeWrapping;
+        detoneMaskTexture.wrapT = THREE.ClampToEdgeWrapping;
+        detoneMaskTexture.needsUpdate = true;
+
+        // TSL NodeMaterial — required for WebGPU backend
+        const maskMat = new THREE.MeshBasicNodeMaterial();
+        maskMat.transparent = true;
+        maskMat.depthTest = false;
+        maskMat.depthWrite = false;
+        maskMat.side = THREE.DoubleSide;
+        // Subtractive blending: dst = dst * (1 - src.a)
+        // → src.a controls how much the underlying spectrogram gets darkened
+        maskMat.blending = THREE.CustomBlending;
+        maskMat.blendSrc = THREE.ZeroFactor;
+        maskMat.blendDst = THREE.OneMinusSrcAlphaFactor;
+        maskMat.blendEquation = THREE.AddEquation;
+
+        // Sample mask texture using same UV/freq remap as the spectrogram
+        const { texU: mTexU, texV: mTexV, effectiveY: mEffY } = buildFreqRemapNodes();
+        const maskUV = vec2(mTexU, mTexV);
+        detoneMaskTexNode = tslTexture(detoneMaskTexture, maskUV);
+
+        // Output color is irrelevant (blend uses alpha only). Alpha = mask × user alpha.
+        const maskSample = detoneMaskTexNode.r;
+        const overlayAlpha = maskSample.mul(uDetoneMaskAlpha);
+        maskMat.colorNode = select(
+            mEffY.greaterThan(1.0), vec4(0.0, 0.0, 0.0, 0.0),
+            vec4(0.0, 0.0, 0.0, overlayAlpha)
+        );
+
+        const maskGeom = new THREE.PlaneGeometry(2, 2);
+        detoneMaskMesh = new THREE.Mesh(maskGeom, maskMat);
+        detoneMaskMesh.renderOrder = 999;
+        detoneMaskMesh.visible = true;
+        detoneMaskMesh.frustumCulled = false;
+        detoneMaskMesh.scale.set(0.5, 0.5, 1);
+        detoneMaskMesh.position.set(0.5, 0.5, 0);
+        detoneMaskMaterial = maskMat;
+        scene.add(detoneMaskMesh);
+        console.log('🟣🟣🟣 [init] MASK MESH ADDED — pos:', detoneMaskMesh.position, 'scale:', detoneMaskMesh.scale, 'visible:', detoneMaskMesh.visible, 'renderOrder:', detoneMaskMesh.renderOrder);
+        console.log('🟣🟣🟣 [init] scene.children count:', scene.children.length);
+        console.log('🟣🟣🟣 [init] camera:', camera.left, camera.right, camera.top, camera.bottom, 'pos.z:', camera.position.z);
+    }
+
     // WebGPU device loss handler
     if (threeRenderer.backend?.device) {
         threeRenderer.backend.device.lost.then((info) => {
@@ -1095,6 +1205,9 @@ async function renderFrozenWaveformStrip(viewStartSec, viewEndSec) {
 let renderPending = false;
 
 async function renderFrame() {
+    if (uDetoneMaskAlpha && uDetoneMaskAlpha.value > 0) {
+        console.warn(`🟢 [renderFrame] ENTRY — hasRenderer=${!!threeRenderer} hasScene=${!!scene} hasCam=${!!camera} pending=${renderPending}`);
+    }
     if (!threeRenderer || !scene || !camera) return;
     if (renderPending) return;
     renderPending = true;
@@ -1195,6 +1308,15 @@ async function renderFrame() {
             if (waveformMesh) waveformMesh.visible = false;
             if (frozenWF.quad) frozenWF.quad.visible = false;
             if (wfCenterLineMesh) wfCenterLineMesh.visible = false;
+        }
+
+        // Position mask mesh to cover the FULL data range (not just the visible viewport).
+        // UV (0..1) maps 1:1 to the full texture, so the camera's frustum clipping
+        // automatically shows the right slice at any zoom level.
+        if (detoneMaskMesh && uDetoneMaskAlpha && uDetoneMaskAlpha.value > 0
+            && State.dataStartTime && State.dataEndTime) {
+            const totalSec = (State.dataEndTime.getTime() - State.dataStartTime.getTime()) / 1000;
+            positionMeshWorldSpace(detoneMaskMesh, 0, totalSec);
         }
 
         await threeRenderer.renderAsync(scene, camera);
