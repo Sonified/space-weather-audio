@@ -8,46 +8,59 @@ Ground rules this round:
 
 ---
 
-## Bug 1 — Waveform shows DC-removed samples, should show original
+## ✅ Bug 1 — Waveform shows original (FIXED)
 
-**Expected:** waveform display shows the *original* time series (with DC drift intact) while playback uses the DC-removed + normalized version. User wants to *see* the raw signal while *hearing* the cleaned one.
-
-**Actual:** waveform shows the DC-removed version. Previous agent claimed "fixed" multiple times without ever verifying — never printed what the waveform worker actually received.
-
-**Why this one first:** single data path, and fixing it forces us to map exactly how samples flow from `data-fetcher.js` → playback vs → waveform worker. That knowledge unlocks Bug 2.
-
-**Diagnostic plan (do this BEFORE any fix):**
-1. Print at the branch point in `js/data-fetcher.js` — the moment `audioData.samples` and `window._playbackSamples` diverge. Log `samples[0..5]` and mean for both.
-2. Print at the waveform worker entry — whatever `postMessage` hands it. Log `samples[0..5]` and mean.
-3. Print at `State.setCompleteSamplesArray` call site — what goes into playback.
-4. Robert reloads, pastes the three log blocks. Now we *know* which branch the waveform is eating.
-
-**Only then** edit the branch that's wrong.
+Visual waveform now reads `window.rawWaveformData` in `drawWaveform()`; playback still goes through `window._playbackSamples` (DC-removed + normalized). See commit `e9e1ca1`.
 
 ---
 
-## Bug 2 — Switching components then switching back loads data differently
+## ✅ Bug 2 — Component switch round-trip (FIXED)
 
-**Expected:** Br → Bt → Br should leave Br identical to its first load.
+Three stacked bugs in `switchComponent`:
+1. WAV header not patched to 44.1 kHz → browser resampled, doubling sample count.
+2. Raw samples handed to State/worklet without `detrend+norm` → 16× louder on round-trip.
+3. `changeWaveformFilter()` fired a second `swap-buffer` with `normalize(raw)`, stomping the detrended buffer. Replaced with direct `drawWaveform()`.
 
-**Actual:** something changes on the round-trip. Robert to specify *which* surface looks different (audio? waveform? spectrogram?) once we're on this bug.
-
-**Likely suspects (to verify, not assume):**
-- Stale `window._playbackSamples` / `window.rawWaveformData` from the prior component bleeding into the new one.
-- `switchComponent` re-running DC removal on already-processed samples (double detrend).
-- Cached state in `audio-state.js` not cleared between components.
-
-**We tackle this after Bug 1 because** the Bug 1 diagnostic prints will already have mapped the load path — we'll re-use the same prints inside `switchComponent` to see what changes on the round-trip.
+See commit `a4d885a`.
 
 ---
 
 ## Bug 3 — De-tone is too aggressive, removing data not just tones
 
-**Symptom:** The de-tone pipeline is filtering more than just the spacecraft spin tones — real signal is getting eaten.
+**Symptom:** The de-tone pipeline is filtering more than just the spacecraft spin tones — real signal features are getting eaten.
 
-**Not starting this yet.** Flagged so we don't forget. Likely levers when we get here:
-- Detection: `TONALITY_THRESH` in `workers/denoise-detect-worker.js` (currently 10 dB — maybe too permissive).
-- Notch width: `MASK_HALF_WIDTH` / notch Q in the WASM filter.
-- Frame count threshold (min run length before a "tone" is committed).
+**Core idea for the fix (per Robert):** spin tones are *long-lived* narrowband ridges — they persist across minutes or the entire fetch window, even if they pulse in and out periodically. Real physical signal features tend to be much shorter in duration. So after detection, trace each tone as a *ridge* along the time axis and measure its **total lifetime** (arc length along the time-frequency ridge, *including gaps* — it's the whole arc that matters, not any one instantaneous segment). If the lifetime is below some threshold, reject the tone: it's probably real.
 
-Defer until Bugs 1 & 2 are actually verified-fixed.
+**Implementation sketch (to refine when we start):**
+1. After the per-frame tonality detection in `workers/denoise-detect-worker.js`, run a post-pass that clusters detections into ridges.
+2. Two detections belong to the same ridge if they're close in frequency (say ±2 bins) and within a gap tolerance on time (e.g. up to N frames apart — we want to bridge the "pulsing" gaps).
+3. For each ridge, compute total temporal extent (end_frame − start_frame), and also total active frames (number of frames containing a detection). Both are useful; extent is the "arc length including gaps" Robert described.
+4. Reject ridges whose extent is shorter than a configurable threshold (maybe "at least 20% of the fetch duration" as a starting point — tune empirically).
+5. Only the surviving ridges feed the mask + WASM notch filter.
+
+**Other levers already available (useful but secondary):**
+- `TONALITY_THRESH` in `workers/denoise-detect-worker.js` (currently 10 dB).
+- `MASK_HALF_WIDTH` / notch Q in the WASM filter.
+- Frame count threshold (min run length before a "tone" is committed — this is a weaker version of the ridge-lifetime idea).
+
+**Diagnostic plan before fixing:**
+- Pick a dataset where Robert can *see* which detected frequencies are real signal vs spin tone.
+- Print the detection table (freq, frame count) and overlay the cluster output so we can visually confirm what the ridge tracker is bundling.
+- Only then tune thresholds.
+
+---
+
+## Task 4 — Clamp low/high frequency inputs so they can't cross
+
+**Symptom:** when the user types a new value into the low or high frequency input, nothing stops them from setting the low frequency *higher* than the high (or vice versa), producing an inverted range that breaks the display.
+
+**What we want:**
+- On `change` / `blur` of the low-freq input, clamp its value to `≤ high - ε` (where ε is one step, or just "strictly less").
+- On `change` / `blur` of the high-freq input, clamp its value to `≥ low + ε`.
+- If the user types a crossing value, snap back to the boundary rather than silently rejecting — they should *see* what happened.
+- Consider also a min/max floor/ceiling from the instrument's actual Nyquist so they can't go negative or above the sample rate/2.
+
+**Implementation notes:**
+- First step: locate the actual DOM ids for the low/high freq inputs (not obvious from a quick grep — only `minFreqMultiplier` and `highpassFreq` turned up, which don't look like the pair Robert means). Could be inside a drawer/modal that loads lazily.
+- Wire two `input` / `change` listeners that mutually clamp.
+- Make sure the clamp fires on Enter, blur, and any programmatic set.

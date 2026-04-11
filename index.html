@@ -39,7 +39,7 @@
             r.style.background = a.pageBg;
         })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20260411.222815">
+    <link rel="stylesheet" href="styles.css?v=20260411.224822">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         /* Segmented date/time input wrappers */
@@ -93,6 +93,32 @@
         }
 
         /* Settings drawer styles in styles.css */
+
+        /* Instant tooltip pinned over just the de-tone checkbox */
+        .denoise-tip-anchor { position: relative; display: inline-flex; }
+        .denoise-tip-anchor::after {
+            content: attr(data-tip);
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1a1a2e;
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            visibility: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            z-index: 10000;
+        }
+        .denoise-tip-anchor:hover::after {
+            opacity: 1;
+            visibility: visible;
+        }
     </style>
 </head>
 <body class="solar-portal">
@@ -300,8 +326,22 @@
                 </div>
                 <div id="denoiseContainer" style="display: none; align-items: center; gap: 6px; padding: 0 10px 0 0;">
                     <label for="denoiseToggle" style="font-weight: 600; white-space: nowrap; font-size: 16px; flex-shrink: 0; cursor: pointer; user-select: none;">De-tone:</label>
-                    <input type="checkbox" id="denoiseToggle" style="width: 18px; height: 18px; cursor: pointer;">
+                    <span class="denoise-tip-anchor" data-tip="Experimental: results may vary">
+                        <input type="checkbox" id="denoiseToggle" style="width: 18px; height: 18px; cursor: pointer;">
+                    </span>
                 </div>
+                <script>
+                    // Restore saved de-tone checkbox state on page load so the visual
+                    // reflects localStorage before any data fetch completes. The
+                    // detection/runDenoise hand-off still happens in component-selector.js
+                    // once samples are loaded.
+                    (function() {
+                        try {
+                            var t = document.getElementById('denoiseToggle');
+                            if (t) t.checked = localStorage.getItem('detoneEnabled') === 'true';
+                        } catch (e) {}
+                    })();
+                </script>
                 <div id="componentSelectorContainer" style="display: none; align-items: center; gap: 8px; padding: 0 15px 0 5px;">
                     <label for="componentSelector" style="font-weight: 600; white-space: nowrap; font-size: 16px; flex-shrink: 0;">Component:</label>
                     <select id="componentSelector" style="min-width: 120px;">
@@ -573,7 +613,7 @@
     <!-- APPLICATION LAYER: Main app code (might break during beta) -->
     <!-- ═══════════════════════════════════════════════════════════ -->
     <script>window.__t0 = performance.now(); console.log('⏱️ module script tag reached at', window.__t0.toFixed(1), 'ms');</script>
-    <script type="module" src="js/main.js?v=20260411.222815"></script>
+    <script type="module" src="js/main.js?v=20260411.224822"></script>
 
     <!-- Responsive spectrogram height: fill viewport so bottom edge sits at window edge -->
     <script>
