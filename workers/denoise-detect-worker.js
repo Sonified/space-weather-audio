@@ -17,6 +17,16 @@ const ACCUM_FRAMES    = 6;
 const ACCUM_THRESH    = 0.35;
 const MAX_TONES       = 8;
 
+// ── Ridge filter tuning ──────────────────────────────────────────────────────
+// Spin tones trace long near-horizontal ridges across the whole fetch window.
+// Real data features tend to show up as short isolated blobs. Cluster confirmed
+// detections into ridges and reject anything shorter than RIDGE_MIN_EXTENT_FRAC
+// of the fetch duration.
+const RIDGE_BIN_TOL         = 2;     // merge runs within ±N bins (allows slow drift)
+const RIDGE_TIME_TOL        = 40;    // bridge gaps up to N frames (≈ 1 s at hop=1024)
+const RIDGE_MIN_EXTENT_FRAC = 0.20;  // require ≥ 20% of the fetch duration to keep
+const RIDGE_MAX_PRINT       = 12;    // cap the diagnostic list
+
 function fft(real, imag, n) {
     for (let i = 1, j = 0; i < n; i++) {
         let bit = n >> 1;
@@ -107,6 +117,129 @@ self.onmessage = function(e) {
             }
         }
     }
+
+    // ── Ridge filter ─────────────────────────────────────────────────────────
+    // Collect per-bin runs of confirmed frames, cluster them into ridges via
+    // union-find, linear-regress freq vs time for each ridge, and reject any
+    // ridge whose temporal extent is below RIDGE_MIN_EXTENT_FRAC of the fetch.
+    const hzPerBinRidge = sampleRate / WIN_SIZE;
+
+    // 1. Per-bin runs
+    const binRuns = []; // { bin, start, end, active }
+    for (let b = 0; b < numBins; b++) {
+        let inRun = false, runStart = -1, runActive = 0;
+        for (let fi = 0; fi < numFrames; fi++) {
+            if (confirmed[b * numFrames + fi]) {
+                if (!inRun) { inRun = true; runStart = fi; runActive = 0; }
+                runActive++;
+            } else if (inRun) {
+                binRuns.push({ bin: b, start: runStart, end: fi - 1, active: runActive });
+                inRun = false;
+            }
+        }
+        if (inRun) binRuns.push({ bin: b, start: runStart, end: numFrames - 1, active: runActive });
+    }
+    const confirmedCountBefore = binRuns.reduce((s, r) => s + r.active, 0);
+
+    // 2. Cluster via union-find: merge runs within ±RIDGE_BIN_TOL bins whose
+    //    time intervals either overlap or sit within RIDGE_TIME_TOL frames.
+    binRuns.sort((a, b) => a.bin - b.bin || a.start - b.start);
+    const parent = new Int32Array(binRuns.length);
+    for (let i = 0; i < binRuns.length; i++) parent[i] = i;
+    function find(i) { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; }
+    function union(i, j) { const ri = find(i), rj = find(j); if (ri !== rj) parent[ri] = rj; }
+    for (let i = 0; i < binRuns.length; i++) {
+        for (let j = i + 1; j < binRuns.length; j++) {
+            if (binRuns[j].bin - binRuns[i].bin > RIDGE_BIN_TOL) break;
+            // Gap between intervals: 0 or negative = overlap; positive = separation
+            const gap = Math.max(binRuns[i].start, binRuns[j].start) - Math.min(binRuns[i].end, binRuns[j].end);
+            if (gap <= RIDGE_TIME_TOL) union(i, j);
+        }
+    }
+
+    // 3. Group runs by ridge ID, compute per-ridge metrics + linear regression
+    const ridgeMap = new Map();
+    for (let i = 0; i < binRuns.length; i++) {
+        const rid = find(i);
+        if (!ridgeMap.has(rid)) {
+            ridgeMap.set(rid, {
+                runs: [], firstFrame: Infinity, lastFrame: -Infinity,
+                binLo: Infinity, binHi: -Infinity, totalActive: 0
+            });
+        }
+        const ridge = ridgeMap.get(rid);
+        ridge.runs.push(binRuns[i]);
+        if (binRuns[i].start < ridge.firstFrame) ridge.firstFrame = binRuns[i].start;
+        if (binRuns[i].end > ridge.lastFrame) ridge.lastFrame = binRuns[i].end;
+        if (binRuns[i].bin < ridge.binLo) ridge.binLo = binRuns[i].bin;
+        if (binRuns[i].bin > ridge.binHi) ridge.binHi = binRuns[i].bin;
+        ridge.totalActive += binRuns[i].active;
+    }
+    const ridges = [...ridgeMap.values()];
+    for (const ridge of ridges) {
+        ridge.extent = ridge.lastFrame - ridge.firstFrame + 1;
+
+        // Linear regression freq = a·t + b over all confirmed points in the ridge
+        let sT = 0, sF = 0, sTT = 0, sTF = 0, n = 0;
+        for (const run of ridge.runs) {
+            const freq = run.bin * hzPerBinRidge;
+            for (let fi = run.start; fi <= run.end; fi++) {
+                if (confirmed[run.bin * numFrames + fi]) {
+                    sT += fi; sF += freq; sTT += fi * fi; sTF += fi * freq; n++;
+                }
+            }
+        }
+        if (n >= 2) {
+            const denom = n * sTT - sT * sT;
+            ridge.slope = denom !== 0 ? (n * sTF - sT * sF) / denom : 0;
+            ridge.intercept = (sF - ridge.slope * sT) / n;
+        } else {
+            ridge.slope = 0;
+            ridge.intercept = n ? sF : 0;
+        }
+        ridge.meanFreq = ridge.intercept + ridge.slope * ((ridge.firstFrame + ridge.lastFrame) / 2);
+        ridge.driftHz = ridge.slope * (ridge.lastFrame - ridge.firstFrame); // total drift over lifetime
+    }
+    ridges.sort((a, b) => b.extent - a.extent);
+
+    // 4. Diagnostic print
+    const minExtent = Math.max(1, Math.floor(numFrames * RIDGE_MIN_EXTENT_FRAC));
+    console.log(`🎛️ [ridge filter] BEFORE: ${confirmedCountBefore} detections across ${binRuns.length} bin-runs → ${ridges.length} ridges`);
+    console.log(`🎛️ [ridge filter] numFrames=${numFrames}, minExtent=${minExtent} frames (${(RIDGE_MIN_EXTENT_FRAC * 100).toFixed(0)}% of fetch)`);
+    const printCount = Math.min(RIDGE_MAX_PRINT, ridges.length);
+    for (let i = 0; i < printCount; i++) {
+        const r = ridges[i];
+        const kept = r.extent >= minExtent ? '✅' : '❌';
+        const pct = (100 * r.extent / numFrames).toFixed(1);
+        const eq = `freq = ${r.slope.toExponential(2)}·t + ${r.intercept.toFixed(2)}`;
+        console.log(
+            `  ${kept} ridge #${i}: bins[${r.binLo}-${r.binHi}] frames[${r.firstFrame}-${r.lastFrame}] ` +
+            `extent=${r.extent} (${pct}%) active=${r.totalActive} ` +
+            `meanFreq=${r.meanFreq.toFixed(2)}Hz drift=${r.driftHz.toFixed(3)}Hz ` +
+            `[${eq}]`
+        );
+    }
+    if (ridges.length > printCount) {
+        console.log(`  … and ${ridges.length - printCount} shorter ridges`);
+    }
+
+    // 5. Apply the filter: zero out confirmed[] for runs in rejected ridges
+    let confirmedCountAfter = 0;
+    for (const ridge of ridges) {
+        const keep = ridge.extent >= minExtent;
+        for (const run of ridge.runs) {
+            for (let fi = run.start; fi <= run.end; fi++) {
+                if (confirmed[run.bin * numFrames + fi]) {
+                    if (!keep) {
+                        confirmed[run.bin * numFrames + fi] = 0;
+                    } else {
+                        confirmedCountAfter++;
+                    }
+                }
+            }
+        }
+    }
+    console.log(`🎛️ [ridge filter] AFTER: ${confirmedCountAfter} detections survive (dropped ${confirmedCountBefore - confirmedCountAfter})`);
 
     // Extract top-N per frame
     // Physical constraints: DC (bin 0) is not a tone, Nyquist edge is an artifact,
