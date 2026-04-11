@@ -6,6 +6,7 @@
 
 import * as State from './audio-state.js';
 import { getAudioData } from './cdaweb-cache.js';
+import { toggleDenoise, runDenoise, isDenoiseActive } from './spin-tone-denoise.js';
 
 // Store component count and cached blobs
 let componentCount = 0;
@@ -91,7 +92,9 @@ function getLabelsForSpacecraft() {
  */
 export function initializeComponentSelector(fileUrls, metadata = {}) {
     componentCount = fileUrls?.length || 0;
-    currentComponentIndex = 0;
+    // Restore last selected component from localStorage (clamped to valid range)
+    const savedIdx = parseInt(localStorage.getItem('selectedComponent') || '0', 10);
+    currentComponentIndex = (componentCount > 0 && savedIdx >= 0 && savedIdx < componentCount) ? savedIdx : 0;
     cachedComponentBlobs = [];
 
     // Store identifiers for cache lookup
@@ -125,9 +128,56 @@ export function initializeComponentSelector(fileUrls, metadata = {}) {
         container.style.opacity = '1';
         container.style.pointerEvents = 'auto';
 
-        // console.log(`📊 Component selector initialized with ${componentCount} components`);
+        // Show denoise toggle
+        const denoiseContainer = document.getElementById('denoiseContainer');
+        if (denoiseContainer) {
+            denoiseContainer.style.display = 'flex';
+            // Wire up toggle (only once)
+            const toggle = document.getElementById('denoiseToggle');
+            if (toggle && !toggle._denoiseWired) {
+                toggle._denoiseWired = true;
+                // Restore saved state from localStorage
+                const savedDetone = localStorage.getItem('detoneEnabled') === 'true';
+                toggle.checked = savedDetone;
+
+                toggle.addEventListener('change', (e) => {
+                    const active = e.target.checked;
+                    localStorage.setItem('detoneEnabled', active ? 'true' : 'false');
+                    toggleDenoise(active);
+                    if (active) {
+                        const samples = State.getCompleteSamplesArray?.() || State.completeSamplesArray;
+                        if (samples && samples.length > 0) {
+                            const sr = State.audioContext?.sampleRate || 44100;
+                            runDenoise(samples, sr);
+                        }
+                    }
+                    e.target.blur();
+                });
+            }
+
+            // If saved state was on, kick off detection immediately for the loaded data
+            if (toggle && toggle.checked) {
+                toggleDenoise(true);
+                const samples = State.getCompleteSamplesArray?.() || State.completeSamplesArray;
+                if (samples && samples.length > 0) {
+                    const sr = State.audioContext?.sampleRate || 44100;
+                    runDenoise(samples, sr);
+                }
+            }
+        }
+
+        // If saved component is not the default (index 0), switch to it now
+        // The data pipeline always loads index 0 first; we follow up with the saved choice
+        if (currentComponentIndex !== 0) {
+            // Mark internal state as 0 so switchComponent knows it's a real switch
+            const targetIdx = currentComponentIndex;
+            currentComponentIndex = 0;
+            setTimeout(() => switchComponent(targetIdx), 100);
+        }
     } else {
         container.style.display = 'none';
+        const denoiseContainer = document.getElementById('denoiseContainer');
+        if (denoiseContainer) denoiseContainer.style.display = 'none';
     }
 }
 
@@ -209,9 +259,23 @@ export async function switchComponent(componentIndex) {
             throw new Error(`Component ${componentIndex} not available in cache. The CDAWeb temporary files may have expired. Please reload the data.`);
         }
 
-        // Decode the WAV file
-        const offlineContext = new (window.AudioContext || window.webkitAudioContext)();
+        // Decode the WAV file — MUST patch the header to 44.1 kHz first, same as
+        // the initial load path in data-fetcher.js/decodeWAVBlob. Without this,
+        // the browser resamples 22 kHz → 44.1 kHz, doubling the sample count and
+        // breaking everything downstream (audio, spectrogram range, waveform).
         const arrayBuffer = await wavBlob.arrayBuffer();
+        {
+            const headerView = new DataView(arrayBuffer);
+            const origSampleRate = headerView.getUint32(24, true);
+            const numChannels = headerView.getUint16(22, true);
+            const bitsPerSample = headerView.getUint16(34, true);
+            const targetSampleRate = 44100;
+            if (origSampleRate !== targetSampleRate) {
+                headerView.setUint32(24, targetSampleRate, true);
+                headerView.setUint32(28, targetSampleRate * numChannels * (bitsPerSample / 8), true);
+            }
+        }
+        const offlineContext = new (window.AudioContext || window.webkitAudioContext)();
         const audioBuffer = await offlineContext.decodeAudioData(arrayBuffer);
         await offlineContext.close();
 
@@ -220,8 +284,23 @@ export async function switchComponent(componentIndex) {
 
         if (window.pm?.data) console.log(`   📊 Loaded ${samples.length.toLocaleString()} samples for ${labels[componentIndex]}`);
 
-        // Update state with new samples (KEEP time range and regions intact!)
-        State.setCompleteSamplesArray(samples);
+        // Apply the same detrend+normalize pipeline as the initial load
+        // (data-fetcher.js). Without this, switching to a component with a big
+        // DC offset (e.g. Br ≈ -0.8) lands 16× louder than the first load.
+        const { removeDCOffset: detrend, normalize: norm } = await import('./minimap-window-renderer.js');
+        const rawSamples = new Float32Array(samples);
+        const playbackSamples = norm(detrend(new Float32Array(samples), 0.999));
+        window.rawWaveformData = rawSamples;
+        window._playbackSamples = playbackSamples;
+
+        // Update state with playback version (DC-removed, normalized) — matches initial load
+        State.setCompleteSamplesArray(playbackSamples);
+
+        // Re-run denoise detection if active — use AUDIO sample rate, not data sample rate
+        if (isDenoiseActive()) {
+            const sr = State.audioContext?.sampleRate || 44100;
+            setTimeout(() => runDenoise(playbackSamples, sr), 100);
+        }
 
         // NOTE: We do NOT update dataStartTime, dataEndTime, or clear regions
         // Those represent the SAME time period across all components
@@ -230,17 +309,17 @@ export async function switchComponent(componentIndex) {
         if (State.waveformWorker) {
             // Reset worker to clear old samples (otherwise it appends!)
             State.waveformWorker.postMessage({ type: 'reset' });
-            // Now add the new component's samples
+            // Worker gets playback for processed path, raw for visual (matches initial load contract)
             State.waveformWorker.postMessage({
                 type: 'add-samples',
-                samples: samples,
-                rawSamples: samples
+                samples: playbackSamples,
+                rawSamples: rawSamples
             });
         }
 
         // Send to AudioWorklet - use dual-buffer crossfade for seamless switching
         if (State.workletNode) {
-            if (window.pm?.audio) console.log(`   🔊 Sending ${samples.length.toLocaleString()} samples to AudioWorklet for crossfade...`);
+            if (window.pm?.audio) console.log(`   🔊 Sending ${playbackSamples.length.toLocaleString()} samples to AudioWorklet for crossfade...`);
 
             // Use swap-buffer for seamless crossfade (no clicks!)
             // The worklet will:
@@ -249,7 +328,7 @@ export async function switchComponent(componentIndex) {
             // 3. After crossfade, pending becomes primary
             State.workletNode.port.postMessage({
                 type: 'swap-buffer',
-                samples: samples,
+                samples: playbackSamples,
                 sampleRate: State.currentMetadata?.original_sample_rate || 100
             });
             if (window.pm?.audio) console.log(`   🔊 Initiated crossfade swap (50ms equal-power crossfade)`);
@@ -258,7 +337,7 @@ export async function switchComponent(componentIndex) {
             if (State.stretchActive && State.stretchNode) {
                 State.stretchNode.port.postMessage({
                     type: 'load-audio',
-                    data: { samples: Array.from(samples) }
+                    data: { samples: Array.from(playbackSamples) }
                 });
             }
 
@@ -267,10 +346,11 @@ export async function switchComponent(componentIndex) {
             console.warn(`   ⚠️ No workletNode available!`);
         }
 
-        // Update raw waveform backup and apply de-trend if active
-        window.rawWaveformData = new Float32Array(samples);
-        const { changeWaveformFilter } = await import('./minimap-window-renderer.js');
-        changeWaveformFilter();
+        // rawWaveformData already set above. Redraw minimap directly — do NOT call
+        // changeWaveformFilter(): it would normalize(raw) and send its own swap-buffer,
+        // stomping the detrended+normalized buffer we just installed.
+        const { drawWaveform } = await import('./minimap-window-renderer.js');
+        drawWaveform();
 
         // 🔄 SPECTROGRAM CROSSFADE: Use same pattern as frequency scale change
         // (capture old, reset state, render new, animate crossfade)
@@ -285,6 +365,7 @@ export async function switchComponent(componentIndex) {
         await renderCompleteSpectrogram();
 
         currentComponentIndex = componentIndex;
+        localStorage.setItem('selectedComponent', String(componentIndex));
         if (window.pm?.render) {
             console.log(`✅ Component switched to ${labels[componentIndex]}`);
             console.log(`   ✅ Regions and time range preserved`);
