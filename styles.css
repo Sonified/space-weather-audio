@@ -954,12 +954,12 @@ button.play-active:hover:not(:disabled) {
 .status.loading {
     background: linear-gradient(
         90deg,
-        rgba(102, 126, 234, 0.4) 0%,
-        rgba(180, 190, 255, 0.8) 50%,
-        rgba(102, 126, 234, 0.4) 100%
+        rgb(170, 185, 250) 0%,
+        rgb(215, 225, 255) 50%,
+        rgb(170, 185, 250) 100%
     );
     background-size: 200% 100%;
-    animation: shimmer 1.5s ease-in-out infinite;
+    animation: shimmer 3s ease-in-out infinite;
     border-color: rgba(80, 80, 80, 0.9) !important;
     color: #1a1a3e !important;
     font-weight: 700 !important;
@@ -988,12 +988,12 @@ button.play-active:hover:not(:disabled) {
     background: linear-gradient(
         90deg,
         transparent,
-        rgba(255, 255, 255, 0.15) 30%,
-        rgba(255, 255, 255, 0.2) 50%,
-        rgba(255, 255, 255, 0.15) 70%,
+        rgba(255, 255, 255, 0.075) 30%,
+        rgba(255, 255, 255, 0.1) 50%,
+        rgba(255, 255, 255, 0.075) 70%,
         transparent
     );
-    animation: shimmerSweep 1.5s ease-in-out infinite, pulseBrighten 1s ease-in-out infinite;
+    animation: shimmerSweep 3s ease-in-out infinite, pulseBrighten 2s ease-in-out infinite;
     z-index: 0;
     pointer-events: none;
 }
@@ -1009,11 +1009,11 @@ button.play-active:hover:not(:disabled) {
         45deg,
         transparent,
         transparent 10px,
-        rgba(102, 126, 234, 0.3) 10px,
-        rgba(102, 126, 234, 0.3) 20px
+        rgba(255, 255, 255, 0.175) 10px,
+        rgba(255, 255, 255, 0.175) 20px
     );
     background-size: 28px 28px;
-    animation: stripeMove 1.2s linear infinite, pulseBrighten 1s ease-in-out infinite;
+    animation: stripeMove 2.4s linear infinite, pulseBrighten 2s ease-in-out infinite;
     pointer-events: none;
     z-index: 0;
 }

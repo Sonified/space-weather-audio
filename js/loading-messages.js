@@ -40,7 +40,7 @@ export const PSP_FACTS = [
     'At closest approach, PSP flies within 3.8 million miles of the sun...',
     'In 2024 it exceeded 430,000 mph, the fastest human-made object ever...',
     'PSP uses seven Venus gravity assists to tighten its orbit...',
-    'Carries four instrument suites: FIELDS, WISPR, SWEAP, and IS⊙IS...',
+    'PSP carries four instrument suites: FIELDS, WISPR, SWEAP, and IS⊙IS...',
     'WISPR captured the first images from inside the sun\'s corona...',
     'In 2019 PSP discovered magnetic field reversals nicknamed "switchbacks"...',
     'PSP operates autonomously during solar encounters...',
