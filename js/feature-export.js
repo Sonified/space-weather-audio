@@ -18,6 +18,7 @@
 
 import * as State from './audio-state.js';
 import { getStandaloneFeatures } from './feature-tracker.js';
+import { isDenoiseActive, getCleanedSamples } from './spin-tone-denoise.js';
 
 // ── localStorage keys for last-used format preferences ────────────────────
 const LS_FEATURE_FORMAT = 'featureDownloadFormat';     // 'json' | 'csv'
@@ -54,13 +55,29 @@ function flagFromFeature(f, key) {
 
 // ── Metadata export (JSON / CSV) ───────────────────────────────────────────
 function buildFeatureRows() {
-    const features = getStandaloneFeatures() || [];
+    const features = (getStandaloneFeatures() || []).slice().sort((a, b) => {
+        const ta = new Date(a.startTime).getTime();
+        const tb = new Date(b.startTime).getTime();
+        return (isFinite(ta) ? ta : 0) - (isFinite(tb) ? tb : 0);
+    });
     const { spacecraft, dataset, startIso, endIso } = currentFetchLabel();
-    const component = document.getElementById('componentSelector')?.value ?? null;
+    const selectorEl = document.getElementById('componentSelector');
+    const componentIndex = selectorEl?.value ?? null;
+    const rawName = selectorEl?.selectedOptions?.[0]?.textContent?.trim() || null;
+    // Drop any parenthetical coordinate hint ("br (Radial)" → "br") and
+    // capitalize the leading axis letter ("br" → "Br").
+    const componentName = rawName
+        ? rawName.replace(/\s*\(.*\)\s*$/, '').replace(/^([a-z])/, (c) => c.toUpperCase())
+        : null;
 
     return features.map((f, i) => ({
         index: i + 1,
-        d1Id: flagFromFeature(f, 'd1Id'),
+        spacecraft,
+        fetchStart: startIso,
+        fetchEnd: endIso,
+        dataset,
+        componentIndex,
+        componentName,
         startTime: flagFromFeature(f, 'startTime'),
         endTime: flagFromFeature(f, 'endTime'),
         lowFreqHz: f.lowFreq !== undefined && f.lowFreq !== null && f.lowFreq !== ''
@@ -69,11 +86,7 @@ function buildFeatureRows() {
             ? Number(f.highFreq) : null,
         confidence: flagFromFeature(f, 'confidence'),
         notes: flagFromFeature(f, 'notes'),
-        component,
-        spacecraft,
-        dataset,
-        fetchStart: startIso,
-        fetchEnd: endIso,
+        d1Id: flagFromFeature(f, 'd1Id'),
     }));
 }
 
@@ -98,7 +111,7 @@ function exportFeaturesAsCSV() {
     const rows = buildFeatureRows();
     if (rows.length === 0) { alert('No features to download — draw a feature box first.'); return; }
     const { spacecraft, dataset, safeStart, safeEnd } = currentFetchLabel();
-    const header = ['index','d1Id','startTime','endTime','lowFreqHz','highFreqHz','confidence','notes','component','spacecraft','dataset','fetchStart','fetchEnd'];
+    const header = ['index','spacecraft','fetchStart','fetchEnd','dataset','componentIndex','componentName','startTime','endTime','lowFreqHz','highFreqHz','confidence','notes','d1Id'];
     const escape = (v) => {
         if (v === null || v === undefined) return '';
         const s = String(v);
@@ -141,11 +154,16 @@ function featureToSampleRange(feature) {
     const sampleStart = Math.max(0, Math.floor(startSec * samplesPerRealSec));
     const sampleEnd   = Math.min(totalSamples, Math.ceil(endSec * samplesPerRealSec));
     if (sampleEnd <= sampleStart) return null;
-    return { sampleStart, sampleEnd, sampleRate: Math.round(samplesPerRealSec) || 44100 };
+    const playbackSampleRate = State.audioContext?.sampleRate || 44100;
+    return { sampleStart, sampleEnd, sampleRate: playbackSampleRate };
 }
 
 function getSourceSamples() {
-    // Prefer raw (what the instrument recorded); fall back to playback.
+    // If de-tone is active and cleaned samples exist, use those
+    if (isDenoiseActive()) {
+        const cleaned = getCleanedSamples();
+        if (cleaned && cleaned.length > 0) return cleaned;
+    }
     if (window.rawWaveformData && window.rawWaveformData.length > 0) return window.rawWaveformData;
     return State.completeSamplesArray || State.getCompleteSamplesArray?.() || null;
 }
@@ -204,14 +222,33 @@ function offlineIsolation(samples, sampleRate, lowHz, highHz) {
     return afterLP;
 }
 
-function encodeWAV(samples, sampleRate) {
-    // Normalize to peak 0.98 so different features don't clip relative to each other
+function removeDC(buf) {
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) sum += buf[i];
+    const dc = sum / buf.length;
+    for (let i = 0; i < buf.length; i++) buf[i] -= dc;
+}
+
+function taper(buf, sampleRate) {
+    const len = Math.min(Math.floor(sampleRate * 0.05), Math.floor(buf.length / 2));
+    for (let i = 0; i < len; i++) {
+        const g = 0.5 * (1 - Math.cos(Math.PI * i / len));
+        buf[i] *= g;
+        buf[buf.length - 1 - i] *= g;
+    }
+}
+
+function normalize(buf) {
     let peak = 0;
-    for (let i = 0; i < samples.length; i++) {
-        const a = Math.abs(samples[i]);
+    for (let i = 0; i < buf.length; i++) {
+        const a = Math.abs(buf[i]);
         if (a > peak) peak = a;
     }
     const scale = peak > 0 ? 0.98 / peak : 1;
+    for (let i = 0; i < buf.length; i++) buf[i] *= scale;
+}
+
+function encodeWAV(samples, sampleRate) {
 
     const numSamples = samples.length;
     const buffer = new ArrayBuffer(44 + numSamples * 2);
@@ -236,7 +273,7 @@ function encodeWAV(samples, sampleRate) {
 
     let offset = 44;
     for (let i = 0; i < numSamples; i++) {
-        const s = Math.max(-1, Math.min(1, samples[i] * scale));
+        const s = Math.max(-1, Math.min(1, samples[i]));
         view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
         offset += 2;
     }
@@ -250,7 +287,8 @@ function featureAudioFilename(feature, idx, mode) {
     const hi = feature.highFreq !== undefined ? Math.round(Number(feature.highFreq)) : 0;
     const component = document.getElementById('componentSelector')?.value ?? '';
     const pad = String(idx + 1).padStart(2, '0');
-    return `feature_${pad}_${mode}_${start}_${lo}-${hi}Hz_${label.spacecraft}_${component || label.dataset}.wav`;
+    const detone = isDenoiseActive() ? '_detone' : '';
+    return `feature_${pad}_${mode}${detone}_${start}_${lo}-${hi}Hz_${label.spacecraft}_${component || label.dataset}.wav`;
 }
 
 async function exportFeatureAudio(mode /* 'isolated' | 'full' */) {
@@ -264,14 +302,20 @@ async function exportFeatureAudio(mode /* 'isolated' | 'full' */) {
         const f = features[i];
         const range = featureToSampleRange(f);
         if (!range) continue;
-        let slice = source.subarray(range.sampleStart, range.sampleEnd);
+        let slice = new Float32Array(source.subarray(range.sampleStart, range.sampleEnd));
+        // Pipeline: DC removal → filter → taper → normalize
+        removeDC(slice);
         if (mode === 'isolated') {
             const lo = Number(f.lowFreq);
             const hi = Number(f.highFreq);
             if (isFinite(lo) && isFinite(hi) && hi > lo) {
-                slice = offlineIsolation(slice, range.sampleRate, lo, hi);
+                const origRate = State.currentMetadata?.original_sample_rate || 100;
+                const speedup = range.sampleRate / origRate;
+                slice = offlineIsolation(slice, range.sampleRate, lo * speedup, hi * speedup);
             }
         }
+        taper(slice, range.sampleRate);
+        normalize(slice);
         const wav = encodeWAV(slice, range.sampleRate);
         clips.push({ name: featureAudioFilename(f, i, mode), blob: wav });
     }
@@ -290,7 +334,8 @@ async function exportFeatureAudio(mode /* 'isolated' | 'full' */) {
     const zip = new JSZip();
     for (const c of clips) zip.file(c.name, c.blob);
     const zipBlob = await zip.generateAsync({ type: 'blob' });
-    triggerBlobDownload(zipBlob, `features_audio_${mode}_${label.spacecraft}_${label.dataset}_${label.safeStart}_${label.safeEnd}.zip`);
+    const detone = isDenoiseActive() ? '_detone' : '';
+    triggerBlobDownload(zipBlob, `features_audio_${mode}${detone}_${label.spacecraft}_${label.dataset}_${label.safeStart}_${label.safeEnd}.zip`);
 }
 
 // ── Split-button wiring ────────────────────────────────────────────────────
@@ -308,12 +353,17 @@ function wireSplitButton({ mainId, chevronId, menuId, labelId, storageKey, optio
     mainBtn.addEventListener('click', (e) => {
         e.preventDefault();
         onClick(current());
+        // Blur so Space still toggles play/pause (the keyboard shortcut
+        // defers when any visible button has focus).
+        mainBtn.blur();
     });
 
     chevron.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
+        // Toggle open/closed on chevron click
         menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+        chevron.blur();
     });
 
     menu.querySelectorAll('.split-btn-option').forEach(opt => {
@@ -321,17 +371,20 @@ function wireSplitButton({ mainId, chevronId, menuId, labelId, storageKey, optio
             e.preventDefault();
             const val = opt.dataset.format || opt.dataset.mode;
             if (val) {
+                // Only change the mode + persist + update label.
+                // Export fires ONLY when the main button is clicked.
                 localStorage.setItem(storageKey, val);
                 setLabel();
                 menu.style.display = 'none';
-                onClick(val);
             }
+            opt.blur();
         });
     });
-
-    // Close menu when clicking outside
+    // Also close the menu on any click outside the split-button cluster.
     document.addEventListener('click', (e) => {
-        if (!menu.contains(e.target) && e.target !== chevron) menu.style.display = 'none';
+        if (menu.style.display === 'none') return;
+        if (menu.contains(e.target) || chevron.contains(e.target) || mainBtn.contains(e.target)) return;
+        menu.style.display = 'none';
     });
 }
 

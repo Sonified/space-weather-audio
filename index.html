@@ -39,7 +39,7 @@
             r.style.background = a.pageBg;
         })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20260412.025347">
+    <link rel="stylesheet" href="styles.css?v=20260412.045345">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         /* Segmented date/time input wrappers */
@@ -501,10 +501,10 @@
             <!-- Feature exports: split buttons (main click + chevron to pick format) -->
             <div class="split-btn" id="downloadFeaturesSplit" style="display: inline-flex; position: relative;">
                 <button type="button" id="downloadFeaturesBtn" class="audio-btn audio-btn-download" title="Download feature metadata">
-                    📋 Features: <span id="downloadFeaturesFormat">JSON</span>
+                    📋 Feature Metadata: <span id="downloadFeaturesFormat" style="display:inline-block; min-width:3.2ch; text-align:left;">JSON</span>
                 </button>
                 <button type="button" id="downloadFeaturesChevron" class="audio-btn audio-btn-download" title="Choose format" style="padding-left: 6px; padding-right: 6px;">▾</button>
-                <div id="downloadFeaturesMenu" class="split-btn-menu" style="display: none; position: absolute; top: 100%; right: 0; margin-top: 4px; background: #1a1a2e; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 4px; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.5); white-space: nowrap;">
+                <div id="downloadFeaturesMenu" class="split-btn-menu" style="display: none; position: absolute; bottom: 100%; right: 0; margin-bottom: 4px; background: #1a1a2e; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 4px; z-index: 200; box-shadow: 0 -4px 12px rgba(0,0,0,0.5); white-space: nowrap;">
                     <button type="button" data-format="json" class="split-btn-option" style="display: block; width: 100%; text-align: left; padding: 6px 14px; background: none; border: none; color: #fff; font-size: 13px; cursor: pointer; border-radius: 4px;">JSON</button>
                     <button type="button" data-format="csv" class="split-btn-option" style="display: block; width: 100%; text-align: left; padding: 6px 14px; background: none; border: none; color: #fff; font-size: 13px; cursor: pointer; border-radius: 4px;">CSV</button>
                 </div>
@@ -512,10 +512,10 @@
 
             <div class="split-btn" id="exportFeatureAudioSplit" style="display: inline-flex; position: relative;">
                 <button type="button" id="exportFeatureAudioBtn" class="audio-btn audio-btn-download" title="Export per-feature audio clips">
-                    🎚️ Audio: <span id="exportFeatureAudioMode">Isolated</span>
+                    🎚️ Feature Audio: <span id="exportFeatureAudioMode" style="display:inline-block; min-width:6.2ch; text-align:left;">Isolated</span>
                 </button>
                 <button type="button" id="exportFeatureAudioChevron" class="audio-btn audio-btn-download" title="Choose export mode" style="padding-left: 6px; padding-right: 6px;">▾</button>
-                <div id="exportFeatureAudioMenu" class="split-btn-menu" style="display: none; position: absolute; top: 100%; right: 0; margin-top: 4px; background: #1a1a2e; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 4px; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.5); white-space: nowrap;">
+                <div id="exportFeatureAudioMenu" class="split-btn-menu" style="display: none; position: absolute; bottom: 100%; right: 0; margin-bottom: 4px; background: #1a1a2e; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 4px; z-index: 200; box-shadow: 0 -4px 12px rgba(0,0,0,0.5); white-space: nowrap;">
                     <button type="button" data-mode="isolated" class="split-btn-option" style="display: block; width: 100%; text-align: left; padding: 6px 14px; background: none; border: none; color: #fff; font-size: 13px; cursor: pointer; border-radius: 4px;">Isolated (band-passed)</button>
                     <button type="button" data-mode="full" class="split-btn-option" style="display: block; width: 100%; text-align: left; padding: 6px 14px; background: none; border: none; color: #fff; font-size: 13px; cursor: pointer; border-radius: 4px;">Full spectrum</button>
                 </div>
@@ -672,7 +672,7 @@
     <!-- APPLICATION LAYER: Main app code (might break during beta) -->
     <!-- ═══════════════════════════════════════════════════════════ -->
     <script>window.__t0 = performance.now(); if (window.pm?.init) console.log('⏱️ module script tag reached at', window.__t0.toFixed(1), 'ms');</script>
-    <script type="module" src="js/main.js?v=20260412.025347"></script>
+    <script type="module" src="js/main.js?v=20260412.045345"></script>
 
     <!-- Responsive spectrogram height: fill viewport so bottom edge sits at window edge -->
     <script>
@@ -737,7 +737,7 @@
     if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
         const panel = document.createElement('div');
         panel.id = 'msgTestPanel';
-        panel.style.cssText = 'position:fixed;bottom:10px;right:10px;background:#1a1a2e;border:1px solid #444;border-radius:8px;padding:12px;z-index:9999;font-size:13px;color:#ccc;display:flex;gap:8px;align-items:center;';
+        panel.style.cssText = 'position:fixed;bottom:10px;left:10px;background:#1a1a2e;border:1px solid #444;border-radius:8px;padding:12px;z-index:9999;font-size:13px;color:#ccc;display:flex;gap:8px;align-items:center;';
         panel.innerHTML = `
             <select id="msgTestTime" style="padding:4px;background:#222;color:#ccc;border:1px solid #555;border-radius:4px;">
                 <option value="5">5s</option>
@@ -757,30 +757,15 @@
         document.getElementById('msgTestBtn').addEventListener('click', async () => {
             const elapsed = parseInt(document.getElementById('msgTestTime').value) * 1000;
             const sc = document.getElementById('spacecraft')?.value || 'PSP';
-            const { GENERAL_FACTS, PATIENCE_MESSAGES, SPACECRAFT_FACTS, PSP_FACTS, WIND_FACTS, MMS_FACTS, THEMIS_FACTS, SOLO_FACTS, GOES_FACTS } = await import('./js/loading-messages.js');
-            const scMap = { PSP: PSP_FACTS, Wind: WIND_FACTS, MMS: MMS_FACTS, THEMIS: THEMIS_FACTS, SolO: SOLO_FACTS, GOES: GOES_FACTS };
-            const specific = scMap[sc] || [];
-            const pChance = elapsed < 30000 ? 0 : elapsed < 50000 ? 0.25 : elapsed < 70000 ? 0.33 : 0.5;
-            let pool;
-            if (elapsed < 5000) {
-                pool = ['CDAWeb is now preparing your audio files'];
-            } else if (Math.random() < pChance && PATIENCE_MESSAGES.length) {
-                pool = PATIENCE_MESSAGES;
-            } else if (specific.length && Math.random() < 0.5) {
-                pool = specific;
-            } else {
-                pool = GENERAL_FACTS;
-            }
-            const msg = pool[Math.floor(Math.random() * pool.length)];
-            const statusEl = document.getElementById('status');
-            if (statusEl) {
-                statusEl.innerHTML = '<span class="status-message"></span>';
-                statusEl.querySelector('.status-message').textContent = msg;
-                statusEl.className = 'status loading';
-            }
+            const { simulateLoadingMessages } = await import('./js/loading-messages.js');
+            // Run the real rotation for ~30s starting from the selected elapsed point
+            simulateLoadingMessages(sc, elapsed, 30000);
         });
 
-        document.getElementById('msgTestFlame').addEventListener('click', () => {
+        document.getElementById('msgTestFlame').addEventListener('click', async () => {
+            const sc = document.getElementById('spacecraft')?.value || 'PSP';
+            const { stopLoadingMessages, simulateLoadingMessages } = await import('./js/loading-messages.js');
+            stopLoadingMessages();
             const statusEl = document.getElementById('status');
             if (statusEl) {
                 statusEl.innerHTML = '<span class="status-message"></span>';
@@ -789,8 +774,10 @@
             }
             if (window.enterOverheatMode) {
                 window.enterOverheatMode();
-                setTimeout(() => window.exitOverheatMode(), 4000);
+                setTimeout(() => window.exitOverheatMode(), 3000);
             }
+            // After the flame effect, hand off to the real rotation in the 30s+ zone
+            setTimeout(() => simulateLoadingMessages(sc, 33000, 30000), 3000);
         });
     }
     </script>

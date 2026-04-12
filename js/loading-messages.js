@@ -281,9 +281,9 @@ function showNextMessage(statusEl, spacecraft, startTime) {
         setLoadingStatus(statusEl, message);
         import('./core/flame-engine.js').then(({ enterOverheatMode, exitOverheatMode }) => {
             enterOverheatMode();
-            setTimeout(() => exitOverheatMode(), 4000);
+            setTimeout(() => exitOverheatMode(), 3000);
         }).catch(() => {});
-        activeTimer = setTimeout(() => showNextMessage(statusEl, spacecraft, startTime), 4000);
+        activeTimer = setTimeout(() => showNextMessage(statusEl, spacecraft, startTime), 3000);
         return;
     }
 
@@ -332,6 +332,23 @@ export function startLoadingMessages(spacecraft) {
         setLoadingStatus(statusEl, message);
         scheduleNext(statusEl, spacecraft, startTime);
     }, 5000);
+}
+
+/**
+ * Simulate the real rotation for the tester panel. Backdates startTime so
+ * the very first message lands at `elapsedStartMs`, then lets the normal
+ * algorithm run live. Auto-stops after `durationMs`.
+ */
+export function simulateLoadingMessages(spacecraft, elapsedStartMs, durationMs) {
+    stopLoadingMessages();
+    firstPatienceFired = false;
+    shown.clear();
+    const statusEl = document.getElementById('status');
+    if (!statusEl) return;
+    statusEl.className = 'status loading';
+    const startTime = Date.now() - elapsedStartMs;
+    showNextMessage(statusEl, spacecraft, startTime);
+    setTimeout(() => stopLoadingMessages(), durationMs);
 }
 
 /**

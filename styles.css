@@ -954,9 +954,9 @@ button.play-active:hover:not(:disabled) {
 .status.loading {
     background: linear-gradient(
         90deg,
-        rgb(170, 185, 250) 0%,
-        rgb(215, 225, 255) 50%,
-        rgb(170, 185, 250) 100%
+        rgb(90, 115, 210) 0%,
+        rgb(130, 160, 240) 50%,
+        rgb(90, 115, 210) 100%
     );
     background-size: 200% 100%;
     animation: shimmer 3s ease-in-out infinite;

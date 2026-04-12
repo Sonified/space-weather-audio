@@ -202,5 +202,6 @@ export function toggleDenoise(active) {
 }
 
 export function isDenoiseActive() { return denoiseActive; }
+export function getCleanedSamples() { return cleanedSamples; }
 export function getDenoiseNode() { return null; }
 export function syncDenoisePosition() {}
