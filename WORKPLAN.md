@@ -64,3 +64,39 @@ See commit `a4d885a`.
 - First step: locate the actual DOM ids for the low/high freq inputs (not obvious from a quick grep — only `minFreqMultiplier` and `highpassFreq` turned up, which don't look like the pair Robert means). Could be inside a drawer/modal that loads lazily.
 - Wire two `input` / `change` listeners that mutually clamp.
 - Make sure the clamp fires on Enter, blur, and any programmatic set.
+
+---
+
+## Task 5 — "Download all feature data" button
+
+**What:** Add a button at the bottom of the page that exports every tracked feature's data in one click.
+
+**Payload sketch:** one JSON (or ZIP of JSONs) containing, per feature:
+- Time range (startTime, endTime, UTC)
+- Frequency range (lowFreq, highFreq, Hz)
+- Component (Br/Bt/Bn/etc.) + dataset + spacecraft + fetch window
+- Confidence pill, notes, any other metadata from `getStandaloneFeatures()`
+- Optionally the raw sample slice covering the feature (or a pointer to the source)
+
+**Implementation notes:**
+- Hook into the existing standalone-features store (`feature-tracker.js`).
+- Button placement: bottom bar, next to "Download Audio" or wherever other exports live.
+- File naming: `features_<spacecraft>_<dataset>_<start>_<end>.json`.
+- Consider CSV side-output for spreadsheet users.
+
+---
+
+## Task 6 — Export features as audio files
+
+**What:** For each tracked feature, produce a WAV clip containing *just that feature's audio* — time-sliced to the feature's window, optionally frequency-filtered to its band.
+
+**Modes to consider:**
+- **Time-only:** slice the detrended+normalized audio buffer to `[startTime, endTime]`. Simplest, good for playback in external DAWs.
+- **Time + band-pass:** apply a biquad bandpass matching `[lowFreq, highFreq]` before slicing. Isolates the feature from surrounding noise.
+- **Bundle mode:** ZIP of all feature clips at once, mirroring Task 5's naming convention.
+
+**Implementation notes:**
+- Audio source: `window._playbackSamples` (what the user actually heard) or `window.rawWaveformData` (what the instrument actually recorded) — likely offer both.
+- WAV encoding: we already have WAV-aware code in `data-fetcher.js` (header patch logic) and `audio-download.js` — reuse.
+- Hook from the feature popup's gear menu for per-feature export, plus a batch export from the bottom-bar button.
+- Think about sample rate: export at instrument rate (accurate timing) vs 44.1 kHz (broader compatibility).
