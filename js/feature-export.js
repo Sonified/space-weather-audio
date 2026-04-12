@@ -287,7 +287,7 @@ function featureAudioFilename(feature, idx, mode) {
     const hi = feature.highFreq !== undefined ? Math.round(Number(feature.highFreq)) : 0;
     const component = document.getElementById('componentSelector')?.value ?? '';
     const pad = String(idx + 1).padStart(2, '0');
-    const detone = isDenoiseActive() ? '_detone' : '';
+    const detone = isDenoiseActive() ? '_de-tone' : '';
     return `feature_${pad}_${mode}${detone}_${start}_${lo}-${hi}Hz_${label.spacecraft}_${component || label.dataset}.wav`;
 }
 
@@ -334,7 +334,7 @@ async function exportFeatureAudio(mode /* 'isolated' | 'full' */) {
     const zip = new JSZip();
     for (const c of clips) zip.file(c.name, c.blob);
     const zipBlob = await zip.generateAsync({ type: 'blob' });
-    const detone = isDenoiseActive() ? '_detone' : '';
+    const detone = isDenoiseActive() ? '_de-tone' : '';
     triggerBlobDownload(zipBlob, `features_audio_${mode}${detone}_${label.spacecraft}_${label.dataset}_${label.safeStart}_${label.safeEnd}.zip`);
 }
 
