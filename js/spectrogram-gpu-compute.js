@@ -571,10 +571,12 @@ export class SpectrogramGPUCompute {
                 externalDevice = null; // fall through to create own device
             }
         }
+        let ownAdapter = null;
         if (!externalDevice) {
             const adapter = await navigator.gpu.requestAdapter({
                 powerPreference: 'high-performance'
             });
+            ownAdapter = adapter;
             if (!adapter) {
                 throw new Error('No WebGPU adapter available');
             }
@@ -663,8 +665,8 @@ export class SpectrogramGPUCompute {
                     `%c[GPU Compute] Initialized (shared device from renderer)`,
                     'color: #4CAF50; font-weight: bold'
                 );
-            } else {
-                const adapterInfo = await adapter.requestAdapterInfo();
+            } else if (ownAdapter && ownAdapter.requestAdapterInfo) {
+                const adapterInfo = await ownAdapter.requestAdapterInfo();
                 console.log(
                     `%c[GPU Compute] Initialized: ${adapterInfo.vendor} ${adapterInfo.architecture || adapterInfo.device || ''}`,
                     'color: #4CAF50; font-weight: bold'
