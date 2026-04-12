@@ -156,7 +156,10 @@ export function initializeComponentSelector(fileUrls, metadata = {}) {
                     localStorage.setItem('detoneEnabled', active ? 'true' : 'false');
                     toggleDenoise(active);
                     if (active) {
-                        const samples = State.getCompleteSamplesArray?.() || State.completeSamplesArray;
+                        // Detection must run on the detrended+normalized audio buffer,
+                        // NOT State.completeSamplesArray (which holds the raw display samples).
+                        // Raw samples carry huge DC offsets that drown out the tonal ridges.
+                        const samples = window._playbackSamples;
                         if (samples && samples.length > 0) {
                             const sr = State.audioContext?.sampleRate || 44100;
                             runDenoise(samples, sr);
@@ -169,7 +172,7 @@ export function initializeComponentSelector(fileUrls, metadata = {}) {
             // If saved state was on, kick off detection immediately for the loaded data
             if (toggle && toggle.checked) {
                 toggleDenoise(true);
-                const samples = State.getCompleteSamplesArray?.() || State.completeSamplesArray;
+                const samples = window._playbackSamples;
                 if (samples && samples.length > 0) {
                     const sr = State.audioContext?.sampleRate || 44100;
                     runDenoise(samples, sr);

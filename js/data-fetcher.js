@@ -906,10 +906,15 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             const shouldAutoResume = !isSharedSession && autoPlayChecked;
             // console.log(`🔗 [SHARED SESSION DEBUG] isSharedSession=${isSharedSession}, shouldAutoResume=${shouldAutoResume}`);
 
-            for (let i = 0; i < audioData.samples.length; i += WORKLET_CHUNK_SIZE) {
-                const chunkSize = Math.min(WORKLET_CHUNK_SIZE, audioData.samples.length - i);
+            // Stream the DETRENDED+NORMALIZED buffer to the worklet, not
+            // audioData.samples (which is raw now that we split playback/display).
+            // Otherwise de-tone's later swap-buffer crossfade races against raw
+            // chunks that are already queued, and the first-play output is raw.
+            const playbackBuffer = window._playbackSamples || audioData.samples;
+            for (let i = 0; i < playbackBuffer.length; i += WORKLET_CHUNK_SIZE) {
+                const chunkSize = Math.min(WORKLET_CHUNK_SIZE, playbackBuffer.length - i);
                 // Copy slice to new ArrayBuffer for independent GC
-                const slice = audioData.samples.slice(i, i + chunkSize);
+                const slice = playbackBuffer.slice(i, i + chunkSize);
                 const chunk = new Float32Array(slice);
 
                 State.workletNode.port.postMessage({

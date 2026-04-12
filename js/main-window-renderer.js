@@ -46,6 +46,11 @@ let detoneMaskTexNode = null;
 let uDetoneMaskAlpha = null;
 let detoneMaskWidth = 0;
 let detoneMaskHeight = 0;
+// Pending mask state — applied as soon as the mesh/texNode is created.
+// Detection can finish before initThreeScene runs on the very first fetch;
+// without this stash the mask would silently drop the first pass's data.
+let _pendingDetoneMaskData = null;
+let _pendingDetoneMaskAlpha = null;
 
 // Textures
 let fullMagnitudeTexture = null;     // Full-view FFT magnitudes
@@ -250,7 +255,11 @@ export function setCrossfadePower(power) { crossfadePower = power; }
  * @param {number} numBins — height of the texture (frequency axis)
  */
 export function setDetoneMaskData(data, numFrames, numBins) {
-    if (!detoneMaskTexNode) return;
+    if (!detoneMaskTexNode) {
+        // Scene not built yet — stash it. initThreeScene will flush.
+        _pendingDetoneMaskData = { data, numFrames, numBins };
+        return;
+    }
     if (detoneMaskTexture) detoneMaskTexture.dispose();
 
     detoneMaskTexture = new THREE.DataTexture(
@@ -270,12 +279,15 @@ export function setDetoneMaskData(data, numFrames, numBins) {
 
 /** 0 = invisible, 1 = full mask. Animatable for crossfading on toggle. */
 export function setDetoneMaskAlpha(alpha) {
-    if (uDetoneMaskAlpha) {
-        uDetoneMaskAlpha.value = Math.max(0, Math.min(1, alpha));
-        // Force render via renderFrame so mask gets positioned in world space
-        renderPending = false;  // clear stuck flag
-        renderFrame();
+    if (!uDetoneMaskAlpha) {
+        // Uniform not created yet — stash it. initThreeScene will flush.
+        _pendingDetoneMaskAlpha = alpha;
+        return;
     }
+    uDetoneMaskAlpha.value = Math.max(0, Math.min(1, alpha));
+    // Force render via renderFrame so mask gets positioned in world space
+    renderPending = false;  // clear stuck flag
+    renderFrame();
 }
 
 /**
@@ -943,6 +955,20 @@ async function initThreeScene() {
         console.log('🟣🟣🟣 [init] MASK MESH ADDED — pos:', detoneMaskMesh.position, 'scale:', detoneMaskMesh.scale, 'visible:', detoneMaskMesh.visible, 'renderOrder:', detoneMaskMesh.renderOrder);
         console.log('🟣🟣🟣 [init] scene.children count:', scene.children.length);
         console.log('🟣🟣🟣 [init] camera:', camera.left, camera.right, camera.top, camera.bottom, 'pos.z:', camera.position.z);
+
+        // Flush any mask state that arrived before the scene was ready.
+        // Detection can complete before initThreeScene on the very first fetch,
+        // so setDetoneMaskData / setDetoneMaskAlpha stash their args if called early.
+        if (_pendingDetoneMaskData) {
+            const { data, numFrames, numBins } = _pendingDetoneMaskData;
+            _pendingDetoneMaskData = null;
+            setDetoneMaskData(data, numFrames, numBins);
+        }
+        if (_pendingDetoneMaskAlpha !== null) {
+            const a = _pendingDetoneMaskAlpha;
+            _pendingDetoneMaskAlpha = null;
+            setDetoneMaskAlpha(a);
+        }
     }
 
     // WebGPU device loss handler
@@ -1567,13 +1593,14 @@ async function computeFFTToTexture(audioData, fftSize, numTimeSlices, hopSize, s
 // ─── Main render function: full view ────────────────────────────────────────
 
 export async function renderCompleteSpectrogram(skipViewportUpdate = false, forceFullView = false) {
-    if (!isStudyMode()) {
+    const _rlog = !isStudyMode() && window.pm?.rendering;
+    if (_rlog) {
         console.groupCollapsed('[RENDER] Three.js Spectrogram');
         console.log('renderCompleteSpectrogram called:', { skipViewportUpdate, forceFullView });
     }
 
     if (State.getCompleteSamplesLength() === 0) {
-        if (!isStudyMode()) {
+        if (_rlog) {
             console.log('No audio data available');
             console.groupEnd();
         }
@@ -1581,7 +1608,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
     }
 
     if (renderingInProgress) {
-        if (!isStudyMode()) {
+        if (_rlog) {
             console.log('Rendering already in progress');
             console.groupEnd();
         }
@@ -1591,7 +1618,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
     // If inside a region, render that instead (unless forceFullView)
     if (!forceFullView && zoomState.isInRegion()) {
         const regionRange = zoomState.getRegionRange();
-        if (!isStudyMode()) console.groupEnd();
+        if (_rlog) console.groupEnd();
         const dataStartMs = State.dataStartTime ? State.dataStartTime.getTime() : 0;
         const startSeconds = (regionRange.startTime.getTime() - dataStartMs) / 1000;
         const endSeconds = (regionRange.endTime.getTime() - dataStartMs) / 1000;
@@ -1600,7 +1627,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
 
     // Skip if already rendered (unless forcing full view)
     if (!forceFullView && completeSpectrogramRendered) {
-        if (!isStudyMode()) {
+        if (_rlog) {
             console.log('Already rendered');
             console.groupEnd();
         }
@@ -1633,7 +1660,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
     if (!canvas) {
         console.error('Three.js renderer not initialized');
         renderingInProgress = false;
-        if (!isStudyMode()) console.groupEnd();
+        if (_rlog) console.groupEnd();
         return;
     }
 
@@ -1644,7 +1671,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         const startTime = performance.now();
         const sampleRate = 44100;
 
-        if (!isStudyMode()) {
+        if (_rlog) {
             console.log(`Rendering spectrogram: ${totalSamples.toLocaleString()} samples (${(totalSamples / sampleRate).toFixed(2)}s)`);
         }
 
@@ -1753,7 +1780,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
 
             if (window.pm?.rendering) console.log(`🔺 Pyramid-only mode: pyramid started, computing full FFT for mini-map...`);
             const elapsed = performance.now() - startTime;
-            if (!isStudyMode()) {
+            if (_rlog) {
                 console.log(`Spectrogram (pyramid init) in ${elapsed.toFixed(0)}ms`);
             }
 
@@ -1769,7 +1796,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
             const ok = await computeFullFFT();
             if (!ok) {
                 renderingInProgress = false;
-                if (!isStudyMode()) console.groupEnd();
+                if (_rlog) console.groupEnd();
                 return;
             }
 
@@ -1793,7 +1820,7 @@ export async function renderCompleteSpectrogram(skipViewportUpdate = false, forc
         console.error('Error rendering spectrogram:', error);
     } finally {
         renderingInProgress = false;
-        if (!isStudyMode()) console.groupEnd();
+        if (_rlog) console.groupEnd();
     }
 }
 
@@ -2135,7 +2162,7 @@ export function updateSpectrogramViewport(playbackRate) {
     }
 
     if (!material || !threeRenderer) {
-        if (!isStudyMode()) {
+        if (!isStudyMode() && window.pm?.init) {
             console.log('updateSpectrogramViewport: Not initialized');
         }
         return;
@@ -2536,7 +2563,7 @@ export function clearCompleteSpectrogram() {
         return;
     }
 
-    if (!isStudyMode()) {
+    if (!isStudyMode() && window.pm?.rendering) {
         console.groupCollapsed('[CLEANUP] Three.js Spectrogram');
     }
 
@@ -2665,7 +2692,7 @@ export function clearCompleteSpectrogram() {
     }
 
     logMemory('After cleanup');
-    if (!isStudyMode()) {
+    if (!isStudyMode() && window.pm?.rendering) {
         console.log('Three.js spectrogram cleanup complete');
         console.groupEnd();
     }
