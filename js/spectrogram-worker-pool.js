@@ -17,7 +17,7 @@ export class SpectrogramWorkerPool {
         this.maxActive = this.numWorkers; // How many workers can run concurrently (reduced during interaction)
         
         // Only log in dev/personal modes, not study mode
-        if (!isStudyMode()) {
+        if (!isStudyMode() && window.pm?.init) {
             console.log(`🏭 Creating worker pool with ${this.numWorkers} workers (${navigator.hardwareConcurrency} CPU cores detected)`);
         }
     }
@@ -58,7 +58,7 @@ export class SpectrogramWorkerPool {
         this.initialized = true;
         
         // Only log in dev/personal modes, not study mode
-        if (!isStudyMode()) {
+        if (!isStudyMode() && window.pm?.init) {
             console.log(`✅ Worker pool initialized with ${this.numWorkers} workers`);
         }
     }

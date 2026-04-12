@@ -2367,7 +2367,7 @@ export function initWaveformWorker() {
         }
     };
     
-    if (!isStudyMode()) {
+    if (!isStudyMode() && window.pm?.init) {
         console.log('🎨 Waveform worker initialized');
     }
 }

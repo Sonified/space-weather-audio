@@ -919,7 +919,7 @@ export function disposePyramid() {
     }
     computeBackend = null;
 
-    console.log('🔺 Pyramid disposed');
+    if (window.pm?.rendering) console.log('🔺 Pyramid disposed');
 }
 
 /**

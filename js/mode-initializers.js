@@ -118,13 +118,13 @@ export async function initializeSolarPortalMode() {
     const hasUsername = participantId && participantId.trim() !== '';
 
     if (!hasUsername) {
-        console.log('👤 No username found - opening participant setup');
+        if (window.pm?.init) console.log('👤 No username found - opening participant setup');
         // Wait a bit for modals to initialize, then open participant modal
         setTimeout(() => {
             openParticipantModal();
         }, 500);
     } else {
-        console.log(`✅ Welcome back, ${participantId}`);
+        if (window.pm?.init) console.log(`✅ Welcome back, ${participantId}`);
         // Show instruction to click Fetch Data (only if not a shared session)
         const isSharedSession = sessionStorage.getItem('isSharedSession') === 'true';
         if (!isSharedSession) {
@@ -140,7 +140,7 @@ export async function initializeSolarPortalMode() {
         }
     }
 
-    console.log('✅ Space Weather Portal mode ready');
+    if (window.pm?.init) console.log('✅ Space Weather Portal mode ready');
 }
 
 /**

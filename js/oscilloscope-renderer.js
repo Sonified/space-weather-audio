@@ -358,7 +358,7 @@ export function stopOscilloscope() {
     }
     
     isInitialized = false;
-    console.log('🛑 Oscilloscope stopped');
+    if (window.pm?.data) console.log('🛑 Oscilloscope stopped');
 }
 
 /**

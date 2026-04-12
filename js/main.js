@@ -4,7 +4,7 @@
  * Main orchestration: initialization, startStreaming, event handlers
  */
 
-console.log(`⏱️ main.js TOP-OF-FILE at ${(performance.now()).toFixed(1)}ms (module tree loading...)`);
+if (window.pm?.init) console.log(`⏱️ main.js TOP-OF-FILE at ${(performance.now()).toFixed(1)}ms (module tree loading...)`);
 
 import * as State from './audio-state.js';
 import { togglePlayPause, toggleLoop, changePlaybackSpeed, changeVolume, resetSpeedTo1, resetVolumeTo1, updatePlaybackSpeed, downloadAudio, switchStretchAlgorithm, calculateSliderForSpeed } from './audio-player.js';
@@ -42,7 +42,9 @@ export { startStreaming } from './streaming.js';
 
 // Main initialization function
 async function initializeMainApp() {
-    const _t = (label) => console.log(`⏱️ [${(performance.now()).toFixed(1)}ms] ${label}`);
+    const _t = (label) => {
+        if (window.pm?.init) console.log(`⏱️ [${(performance.now()).toFixed(1)}ms] ${label}`);
+    };
     _t('initializeMainApp() START');
 
     // Capture wheel events on canvases immediately to prevent page scroll before data loads
@@ -264,7 +266,7 @@ async function initializeMainApp() {
 
     const sliderValueFor1x = calculateSliderForSpeed(1.0);
     document.getElementById('playbackSpeed').value = sliderValueFor1x;
-    if (!isStudyMode()) {
+    if (!isStudyMode() && window.pm?.init) {
         console.log(`Initialized playback speed slider at position ${sliderValueFor1x} for 1.0x speed`);
     }
     
@@ -287,10 +289,12 @@ async function initializeMainApp() {
                 label = 'Test: ' + pid;
                 style = 'color: #fff; background: #1565C0; font-size: 13px; font-weight: bold; padding: 3px 10px; border-radius: 4px;';
             } else {
-                label = 'Participant: ' + pid;
+                // "Participant" is EMIC-study terminology. Everywhere else
+                // (portal, local, etc.) just say "User".
+                label = (isStudyMode() ? 'Participant: ' : 'User: ') + pid;
                 style = 'color: #fff; background: #2E7D32; font-size: 13px; font-weight: bold; padding: 3px 10px; border-radius: 4px;';
             }
-            console.log('%c' + label, style);
+            if (window.pm?.init) console.log('%c' + label, style);
         }
         if (logGroup('init', 'v2.0 App Ready')) {
             console.log('📌 v2.0 (2026-02-12) Three.js GPU-accelerated rendering');
@@ -459,7 +463,7 @@ async function initializeMainApp() {
         }
     });
     
-    if (!isStudyMode()) {
+    if (!isStudyMode() && window.pm?.init) {
         console.log('✅ Event listeners added for fetch button re-enabling');
     }
     
@@ -659,7 +663,7 @@ async function initializeMainApp() {
 } // End initializeMainApp
 
 // Call initialization when DOM is ready
-console.log(`⏱️ main.js BOTTOM (imports done) at ${performance.now().toFixed(1)}ms | readyState=${document.readyState}`);
+if (window.pm?.init) console.log(`⏱️ main.js BOTTOM (imports done) at ${performance.now().toFixed(1)}ms | readyState=${document.readyState}`);
 if (document.readyState === 'loading') {
     // DOM is still loading, wait for DOMContentLoaded
     console.log(`⏱️ Waiting for DOMContentLoaded...`);
@@ -669,7 +673,7 @@ if (document.readyState === 'loading') {
     });
 } else {
     // DOM is already loaded (interactive or complete), initialize immediately
-    console.log(`⏱️ DOM already ready, calling initializeMainApp immediately`);
+    if (window.pm?.init) console.log(`⏱️ DOM already ready, calling initializeMainApp immediately`);
     initializeMainApp();
 }
 

@@ -3104,7 +3104,7 @@ export function setupSpectrogramSelection() {
     // User can press Escape to manually cancel if needed
     
     spectrogramSelectionSetup = true;
-    if (!isStudyMode()) {
+    if (!isStudyMode() && window.pm?.init) {
         console.log('🎯 Spectrogram frequency selection enabled');
     }
 }

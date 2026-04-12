@@ -68,7 +68,7 @@ export async function loadSavedSpacecraft() {
     // Validate against SPACECRAFT_DATASETS (space weather mode)
     if (savedSpacecraft && SPACECRAFT_DATASETS[savedSpacecraft]) {
         spacecraftSelect.value = savedSpacecraft;
-        if (!isStudyMode()) {
+        if (!isStudyMode() && window.pm?.init) {
             console.log(`Spacecraft: ${savedSpacecraft}`);
         }
         // Update the Data dropdown to match the restored spacecraft
@@ -78,7 +78,7 @@ export async function loadSavedSpacecraft() {
         const firstOption = spacecraftSelect.options[0]?.value || 'PSP';
         spacecraftSelect.value = firstOption;
         localStorage.setItem('selectedSpacecraft', firstOption);
-        console.log(`Spacecraft: ${firstOption} (default)`);
+        if (window.pm?.init) console.log(`Spacecraft: ${firstOption} (default)`);
         updateDatasetOptions();
     }
 
@@ -93,7 +93,7 @@ export async function loadSavedSpacecraft() {
             // Save the friendly label so inline script can show it instantly next load
             const selectedOpt = dataTypeSelect.options[dataTypeSelect.selectedIndex];
             if (selectedOpt) localStorage.setItem('selectedDataTypeLabel', selectedOpt.textContent);
-            if (!isStudyMode()) {
+            if (!isStudyMode() && window.pm?.init) {
                 console.log(`Data type: ${savedDataType}`);
             }
         }

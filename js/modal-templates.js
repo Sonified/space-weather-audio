@@ -472,7 +472,7 @@ export async function initializeModals() {
     
     modalsInitialized = true;
     // Only log in dev/personal modes, not study mode
-    if (!isStudyMode()) {
+    if (!isStudyMode() && window.pm?.init) {
         console.log('📋 Modals initialized and injected into DOM');
     }
 }

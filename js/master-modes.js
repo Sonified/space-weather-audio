@@ -31,7 +31,7 @@ export function getCurrentModeConfig() {
 
 export function initializeMasterMode() {
     // Startup log for portal mode
-    if (!isStudyPage && isLocalEnvironment()) {
+    if (!isStudyPage && isLocalEnvironment() && window.pm?.init) {
         console.log('🌍 Space Weather Portal (LOCAL)');
     }
 }

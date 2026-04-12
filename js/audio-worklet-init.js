@@ -184,12 +184,12 @@ export async function initAudioWorklet() {
             State.setAudioContext(ctx);
         }
 
-        if (!isStudyMode()) {
+        if (!isStudyMode() && window.pm?.audio) {
             console.groupCollapsed('🎵 [AUDIO] Audio Context Setup');
             console.log(`🎵 [${Math.round(performance.now() - window.streamingStartTime)}ms] Created new AudioContext (sampleRate: ${State.audioContext.sampleRate} Hz, latency: playback)`);
         }
     } else {
-        if (!isStudyMode()) {
+        if (!isStudyMode() && window.pm?.audio) {
             console.groupCollapsed('🎵 [AUDIO] Audio Context Setup');
         }
     }
@@ -241,7 +241,7 @@ export async function initAudioWorklet() {
     isolateLP.frequency.value = 20000; // Default passthrough
     isolateLP.Q.value = 0.7071;
 
-    if (!isStudyMode()) console.groupEnd(); // close [AUDIO] group so GRAPH logs are visible
+    if (!isStudyMode() && window.pm?.audio) console.groupEnd(); // close [AUDIO] group so GRAPH logs are visible
 
     // Audio graph: worklet → sourceGain → masterGain → [dual isolation path] → outputNode → analyser + destination
     //              stretchNode → stretchGain → masterGain (connected when stretch activates)
@@ -285,14 +285,13 @@ export async function initAudioWorklet() {
 
     // Log audio output latency for debugging sync issues
     // Only log in dev/personal modes, not study mode
-    if (!isStudyMode()) {
+    if (!isStudyMode() && window.pm?.audio) {
         console.log(`🔊 Audio latency: output=${State.audioContext.outputLatency ? (State.audioContext.outputLatency * 1000).toFixed(1) : 'undefined'}ms, base=${(State.audioContext.baseLatency * 1000).toFixed(1)}ms`);
 
         // The outputLatency might be 0 or undefined on some browsers
         // The real latency is often the render quantum (128 samples) plus base latency
         const estimatedLatency = State.audioContext.baseLatency || (128 / 44100);
         console.log(`🔊 Estimated total latency: ${(estimatedLatency * 1000).toFixed(1)}ms`);
-        console.groupEnd(); // End Audio Context Setup
     }
 
     worklet.port.onmessage = (event) => {

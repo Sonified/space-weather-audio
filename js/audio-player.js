@@ -47,7 +47,7 @@ export function cancelAllRAFLoops() {
     if (resizeRAFRef !== null) {
         cancelAnimationFrame(resizeRAFRef);
         resizeRAFRef = null;
-        console.log('🧹 Cancelled resize RAF');
+        if (window.pm?.data) console.log('🧹 Cancelled resize RAF');
     }
     // 🔥 FIX: Cancel crossfade animation RAF if active
     if (State.crossfadeAnimation !== null) {

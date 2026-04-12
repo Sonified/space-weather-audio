@@ -70,7 +70,7 @@ export async function startStreaming(event, config = null) {
         }
 
         // Group cleanup operations
-        if (!isStudyMode()) {
+        if (!isStudyMode() && window.pm?.data) {
             console.groupCollapsed('🧹 [CLEANUP] Preparing for New Data');
         }
 
@@ -99,7 +99,7 @@ export async function startStreaming(event, config = null) {
             zoomState.currentViewStartTime = null;
             zoomState.currentViewEndTime = null;
             zoomState.activeRegionId = null;
-            if (!isStudyMode()) {
+            if (!isStudyMode() && window.pm?.data) {
                 console.log('🔄 Reset zoom state for new data');
             }
         }
@@ -116,13 +116,13 @@ export async function startStreaming(event, config = null) {
         if (State.waveformWorker) {
             State.waveformWorker.onmessage = null;  // Break closure chain
             State.waveformWorker.terminate();
-            if (!isStudyMode()) {
+            if (!isStudyMode() && window.pm?.data) {
                 console.log('🧹 Terminated waveform worker');
             }
         }
         initWaveformWorker();
 
-        if (!isStudyMode()) {
+        if (!isStudyMode() && window.pm?.data) {
             console.groupEnd(); // End Cleanup
         }
 
@@ -157,8 +157,10 @@ export async function startStreaming(event, config = null) {
             const sv = spacecraftEl?.value, dv = dataTypeEl?.value;
             const sd = startDateEl?.value, st = startTimeEl?.value;
             const ed = endDateEl?.value, et = endTimeEl?.value;
-            console.log(`⏱️ [FETCH] spacecraft=${sv} dataset=${dv} selectedIndex=${dataTypeEl?.selectedIndex} options=${Array.from(dataTypeEl?.options||[]).map(o=>o.value).join(',')}`);
-            console.log(`⏱️ [FETCH] range: ${sd}T${st} → ${ed}T${et}`);
+            if (window.pm?.data) {
+                console.log(`⏱️ [FETCH] spacecraft=${sv} dataset=${dv} selectedIndex=${dataTypeEl?.selectedIndex} options=${Array.from(dataTypeEl?.options||[]).map(o=>o.value).join(',')}`);
+                console.log(`⏱️ [FETCH] range: ${sd}T${st} → ${ed}T${et}`);
+            }
 
             if (!sv || !dv || !sd || !st || !ed || !et) {
                 alert('Please fill in all fields (spacecraft, dataset, start date/time, end date/time)');

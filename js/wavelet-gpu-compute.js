@@ -1408,7 +1408,7 @@ export class WaveletGPUCompute {
 
         this.initialized = true;
 
-        if (!isStudyMode()) {
+        if (!isStudyMode() && window.pm?.init) {
             console.log(
                 `%c[Wavelet GPU] Initialized (${this.ownsDevice ? 'own' : 'shared'} device, ` +
                 `${(this.maxOutputBytes / 1024 / 1024).toFixed(0)}MB max buffer)`,
@@ -1656,7 +1656,7 @@ export class WaveletGPUCompute {
         const invMs = (tInvFFT - tMorlet).toFixed(1);
         const totalMs = (tInvFFT - t0).toFixed(1);
 
-        console.log(
+        if (window.pm?.rendering) console.log(
             `%c[Wavelet GPU] ${transform.toUpperCase()}: ${numScales} ${transform === 'cqt' ? 'bins' : 'scales'}, Npad=${Npad} (${logN} stages) in ${totalMs}ms ` +
             `(setup: ${setupMs}, upload: ${uploadMs}, fwdFFT: ${fwdMs}, morlet: ${mulMs}, invFFT: ${invMs}ms) ` +
             `[${(cwtBufferBytes / 1024 / 1024).toFixed(1)}MB coefficients, ~${totalGpuMB.toFixed(0)}MB peak GPU]`,

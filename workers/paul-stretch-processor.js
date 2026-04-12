@@ -319,15 +319,19 @@ class PaulStretchProcessor extends AudioWorkletProcessor {
                     this.sourcePosition = 0;
                     this.resetBuffers();
 
-                    // RMS measurement — what audio did paul actually receive?
-                    let sumSq = 0, peak = 0;
-                    for (let i = 0; i < this.sourceBuffer.length; i++) {
-                        sumSq += this.sourceBuffer[i] * this.sourceBuffer[i];
-                        const a = Math.abs(this.sourceBuffer[i]);
-                        if (a > peak) peak = a;
+                    // Debug: RMS + peak of received samples — flip to true only when investigating
+                    // audio level bugs, since it scans the full buffer on every swap.
+                    const DEBUG_PAUL_RX = false;
+                    if (DEBUG_PAUL_RX) {
+                        let sumSq = 0, peak = 0;
+                        for (let i = 0; i < this.sourceBuffer.length; i++) {
+                            sumSq += this.sourceBuffer[i] * this.sourceBuffer[i];
+                            const a = Math.abs(this.sourceBuffer[i]);
+                            if (a > peak) peak = a;
+                        }
+                        const rms = Math.sqrt(sumSq / this.sourceBuffer.length);
+                        console.log(`🔊 [PAUL WORKLET] Received ${this.sourceBuffer.length} samples — RMS: ${rms.toFixed(6)}, peak: ${peak.toFixed(6)}`);
                     }
-                    const rms = Math.sqrt(sumSq / this.sourceBuffer.length);
-                    console.log(`🔊 [PAUL WORKLET] Received ${this.sourceBuffer.length} samples — RMS: ${rms.toFixed(6)}, peak: ${peak.toFixed(6)}`);
 
                     this.port.postMessage({ type: 'loaded', duration: data.samples.length / sampleRate });
                     break;

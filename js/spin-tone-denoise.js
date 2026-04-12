@@ -39,11 +39,12 @@ export async function initDenoise() {
     });
     wasmInstance = instance.exports;
     wasmMemory = wasmInstance.memory;
-    console.log('🎛️ Denoise WASM ready (offline mode)');
+    if (window.pm?.init) console.log('🎛️ Denoise WASM ready (offline mode)');
 
     detectWorker = new Worker('workers/denoise-detect-worker.js');
     detectWorker.onmessage = (e) => {
         if (e.data.type === 'result') {
+            // Headline detection summary — always visible.
             console.log(`🎛️ Detection: ${e.data.totalDetections} tones in ${e.data.numFrames} frames — ${e.data.elapsed.toFixed(0)}ms`);
             _buildMask(e.data.toneFreqs, e.data.toneCounts, e.data.numFrames);
             _applyNotches(e.data.toneFreqs, e.data.toneCounts, e.data.numFrames);
@@ -81,15 +82,18 @@ function _buildMask(toneFreqs, toneCounts, numFrames) {
             }
         }
     }
-    console.log(`🎛️ [_buildMask] sr=${sampleRate} hzPerBin=${hzPerBin.toFixed(2)} numFrames=${numFrames} numBins=${MASK_NUM_BINS} nonZeroCells=${nonZero}`);
+    if (window.pm?.data) {
+        console.log(`🎛️ [_buildMask] sr=${sampleRate} hzPerBin=${hzPerBin.toFixed(2)} numFrames=${numFrames} numBins=${MASK_NUM_BINS} nonZeroCells=${nonZero}`);
+    }
 
     setDetoneMaskData(data, numFrames, MASK_NUM_BINS);
-    console.log(`🎛️ [_buildMask] called setDetoneMaskData with ${data.length} bytes — denoiseActive=${denoiseActive}`);
+    if (window.pm?.data) {
+        console.log(`🎛️ [_buildMask] called setDetoneMaskData with ${data.length} bytes — denoiseActive=${denoiseActive}`);
+    }
 
     // If denoise is already active, make sure the mask is visible
     if (denoiseActive) {
         setDetoneMaskAlpha(1.0);
-        console.log(`🎛️ [_buildMask] set alpha to 1.0`);
     }
 }
 
@@ -153,7 +157,7 @@ function _applyNotches(toneFreqs, toneCounts, numFrames) {
 
     cleanedSamples = output;
     processing = false;
-    console.log(`🎛️ WASM filtering: ${(performance.now() - t0).toFixed(0)}ms`);
+    if (window.pm?.audio) console.log(`🎛️ WASM filtering: ${(performance.now() - t0).toFixed(0)}ms`);
 
     if (denoiseActive) _sendCleanedToWorklet();
     delete window._denoiseSR;
@@ -168,7 +172,7 @@ function _sendCleanedToWorklet() {
         samples: cleanedSamples,
         sampleRate: State.currentMetadata?.original_sample_rate || 100,
     });
-    console.log('🎛️ Crossfaded to cleaned audio');
+    if (window.pm?.audio) console.log('🎛️ Crossfaded to cleaned audio');
 }
 
 function _sendOriginalToWorklet() {
@@ -180,22 +184,20 @@ function _sendOriginalToWorklet() {
         samples: preprocessedSamples,
         sampleRate: State.currentMetadata?.original_sample_rate || 100,
     });
-    console.log('🎛️ Crossfaded to original (preprocessed) audio');
+    if (window.pm?.audio) console.log('🎛️ Crossfaded to original (preprocessed) audio');
 }
 
 // ── Toggle ──────────────────────────────────────────────────────────────────
 
 export function toggleDenoise(active) {
     denoiseActive = active;
-    console.log(`🎛️ [toggleDenoise] active=${active} hasCleanedSamples=${!!cleanedSamples}`);
+    if (window.pm?.audio) console.log(`🎛️ [toggleDenoise] active=${active} hasCleanedSamples=${!!cleanedSamples}`);
     if (active && cleanedSamples) {
         _sendCleanedToWorklet();
         setDetoneMaskAlpha(1.0);
-        console.log(`🎛️ [toggleDenoise] alpha → 1.0`);
     } else if (!active) {
         _sendOriginalToWorklet();
         setDetoneMaskAlpha(0.0);
-        console.log(`🎛️ [toggleDenoise] alpha → 0.0`);
     }
 }
 

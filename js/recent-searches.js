@@ -38,10 +38,12 @@ export async function loadRecentSearches() {
         });
 
         refreshSelectById('recentSearches');
-        console.log(`📋 Loaded ${recentSearches.length} recent searches from cache`);
-        if (recentSearches.length > 0) {
-            const top = recentSearches[0];
-            console.log(`📋 Top entry — display: "${formatCacheEntryForDisplay(top)}" | stored: ${JSON.stringify({ spacecraft: top.spacecraft, dataset: top.dataset, startTime: top.startTime, endTime: top.endTime })}`);
+        if (window.pm?.init) {
+            console.log(`📋 Loaded ${recentSearches.length} recent searches from cache`);
+            if (recentSearches.length > 0) {
+                const top = recentSearches[0];
+                console.log(`📋 Top entry — display: "${formatCacheEntryForDisplay(top)}" | stored: ${JSON.stringify({ spacecraft: top.spacecraft, dataset: top.dataset, startTime: top.startTime, endTime: top.endTime })}`);
+            }
         }
         startMemoryMonitoring();
     } catch (e) {
