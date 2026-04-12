@@ -92,9 +92,15 @@ function getLabelsForSpacecraft() {
  */
 export function initializeComponentSelector(fileUrls, metadata = {}) {
     componentCount = fileUrls?.length || 0;
-    // Restore last selected component from localStorage (clamped to valid range)
+    // The data-fetcher already loaded the preferred component (via localStorage),
+    // and reports which index that was via metadata.initialIndex. Trust it —
+    // currentComponentIndex = initialIndex means no auto-switch race.
     const savedIdx = parseInt(localStorage.getItem('selectedComponent') || '0', 10);
-    currentComponentIndex = (componentCount > 0 && savedIdx >= 0 && savedIdx < componentCount) ? savedIdx : 0;
+    const metaInitial = metadata.initialIndex;
+    const effective = (metaInitial !== undefined && metaInitial !== null)
+        ? metaInitial
+        : (componentCount > 0 && savedIdx >= 0 && savedIdx < componentCount ? savedIdx : 0);
+    currentComponentIndex = effective;
     cachedComponentBlobs = [];
 
     // Store identifiers for cache lookup
@@ -124,6 +130,11 @@ export function initializeComponentSelector(fileUrls, metadata = {}) {
         }
 
         selector.value = currentComponentIndex;
+        // Refresh the custom-select wrapper so its trigger label picks up the
+        // rebuilt options and the current selection.
+        if (window.__customSelect?.refreshSelectById) {
+            window.__customSelect.refreshSelectById('componentSelector');
+        }
         container.style.display = 'flex';
         container.style.opacity = '1';
         container.style.pointerEvents = 'auto';
@@ -166,14 +177,9 @@ export function initializeComponentSelector(fileUrls, metadata = {}) {
             }
         }
 
-        // If saved component is not the default (index 0), switch to it now
-        // The data pipeline always loads index 0 first; we follow up with the saved choice
-        if (currentComponentIndex !== 0) {
-            // Mark internal state as 0 so switchComponent knows it's a real switch
-            const targetIdx = currentComponentIndex;
-            currentComponentIndex = 0;
-            setTimeout(() => switchComponent(targetIdx), 100);
-        }
+        // No auto-switch: the data-fetcher already loaded the preferred
+        // component via localStorage, so currentComponentIndex already matches
+        // what's rendered. No second render pass, no GPU race.
     } else {
         container.style.display = 'none';
         const denoiseContainer = document.getElementById('denoiseContainer');
@@ -293,8 +299,11 @@ export async function switchComponent(componentIndex) {
         window.rawWaveformData = rawSamples;
         window._playbackSamples = playbackSamples;
 
-        // Update state with playback version (DC-removed, normalized) — matches initial load
-        State.setCompleteSamplesArray(playbackSamples);
+        // State holds the RAW samples so the spectrogram renders the original
+        // field shape. Audio pipeline uses window._playbackSamples directly.
+        State.setCompleteSamplesArraySilent(rawSamples);
+        const { primeStretchProcessors } = await import('./audio-player.js');
+        primeStretchProcessors(playbackSamples);
 
         // Re-run denoise detection if active — use AUDIO sample rate, not data sample rate
         if (isDenoiseActive()) {

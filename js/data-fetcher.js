@@ -175,9 +175,9 @@ async function fetchFromCloudflareAudioCache(spacecraft, dataset, startTime, end
  * @returns {Promise<Object>} Object containing decoded audio samples and metadata
  */
 // ✅ ACTIVE PATH - This is the primary data fetching function used for CDAWeb audio
-export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) {
-    if (window.pm?.data) console.log(`🛰️ Fetching CDAWeb audio: ${spacecraft} ${dataset} ${startTime} to ${endTime}`);
-    
+export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime, preferredIndex = 0) {
+    if (window.pm?.data) console.log(`🛰️ Fetching CDAWeb audio: ${spacecraft} ${dataset} ${startTime} to ${endTime} (preferredIndex=${preferredIndex})`);
+
     // Check if user wants to bypass local cache
     const bypassLocalCache = document.getElementById('drawerBypassCache')?.checked;
 
@@ -207,11 +207,14 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
             console.log(`🔄 Re-fetching from CDAWeb API to get fresh URLs for all components...`);
             // Fall through to fetch fresh data - don't use incomplete cache
         } else {
-            // Cache is complete, use it
-            if (window.pm?.audio) console.groupCollapsed(`🎵 [DECODE] WAV from cache`);
-            const decoded = await decodeWAVBlob(cached.wavBlob, cached);
+            // Cache is complete — pick the preferred component's blob if available
+            const clampedIdx = Math.max(0, Math.min(preferredIndex, cachedBlobsArray.length - 1));
+            const preferredBlob = cachedBlobsArray[clampedIdx] instanceof Blob ? cachedBlobsArray[clampedIdx] : cached.wavBlob;
+            if (window.pm?.audio) console.groupCollapsed(`🎵 [DECODE] WAV from cache (component ${clampedIdx})`);
+            const decoded = await decodeWAVBlob(preferredBlob, cached);
+            decoded.initialIndex = clampedIdx;
             if (window.pm?.audio) {
-                console.log(`✅ Cache load complete: ${decoded.playback.totalSamples.toLocaleString()} samples decoded`);
+                console.log(`✅ Cache load complete: ${decoded.playback.totalSamples.toLocaleString()} samples decoded (index ${clampedIdx})`);
                 console.log(`📊 Decoded allFileUrls:`, decoded.allFileUrls);
                 console.groupEnd();
             }
@@ -228,10 +231,11 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
             const cfResult = await fetchFromCloudflareAudioCache(spacecraft, dataset, startTime, endTime);
             if (cfResult) {
                 console.log('☁️ Loaded from Cloudflare audio cache');
+                const cfIdx = Math.max(0, Math.min(preferredIndex, cfResult.blobs.length - 1));
                 // Store in local IndexedDB too so future loads are instant
                 await storeAudioData({
                     spacecraft, dataset, startTime, endTime,
-                    wavBlob: cfResult.blobs[0],
+                    wavBlob: cfResult.blobs[0],  // cache primary still stored as blob 0
                     allComponentBlobs: cfResult.blobs,
                     metadata: {
                         fileSize: cfResult.blobs[0].size,
@@ -240,13 +244,15 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
                         allComponentsDownloaded: true
                     }
                 });
-                return await decodeWAVBlob(cfResult.blobs[0], {
+                const decoded = await decodeWAVBlob(cfResult.blobs[cfIdx], {
                     spacecraft, dataset, startTime, endTime,
                     metadata: {
                         allFileUrls: cfResult.blobs.map((_, i) => `cloudflare-cache:${i}`),
                         allComponentsDownloaded: true
                     }
                 });
+                decoded.initialIndex = cfIdx;
+                return decoded;
             }
         } catch (cfError) {
             console.warn('☁️ Cloudflare audio cache unavailable:', cfError.message);
@@ -323,8 +329,11 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
         const allFileUrls = result.FileDescription.map(f => f.Name);
         const allFileInfo = result.FileDescription;
 
-        // Get first audio file for initial playback
-        const fileInfo = result.FileDescription[0];
+        // Download the preferred component directly so we don't fetch+render
+        // component 0 only to swap it out immediately. preferredIndex comes from
+        // the saved selectedComponent in localStorage.
+        const freshIdx = Math.max(0, Math.min(preferredIndex, result.FileDescription.length - 1));
+        const fileInfo = result.FileDescription[freshIdx];
         const audioFileUrl = fileInfo.Name;
 
         console.log(`📥 Downloading WAV file: ${audioFileUrl}`);
@@ -391,14 +400,16 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
             allComponentsDownloaded: allFileUrls.length === 1 // Only one component = already complete
         };
 
-        // Cache first component immediately (so user can start listening)
+        // Cache the component we just downloaded at its correct slot
+        const initialBlobArray = new Array(allFileUrls.length);
+        initialBlobArray[freshIdx] = wavBlob;
         await storeAudioData({
             spacecraft,
             dataset,
             startTime,
             endTime,
-            wavBlob,
-            allComponentBlobs: [wavBlob], // Start with just the first blob
+            wavBlob,  // primary blob (used by cache-load fallback)
+            allComponentBlobs: initialBlobArray,
             metadata
         });
 
@@ -406,13 +417,15 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
         if (allFileUrls.length > 1) {
             downloadRemainingComponentsInBackground(
                 spacecraft, dataset, startTime, endTime,
-                allFileUrls, wavBlob
+                allFileUrls, wavBlob, freshIdx
             );
         }
 
         // Decode and return immediately (user doesn't wait for other components)
         activeCDAWebController = null; // Fetch complete, nothing to abort
-        return await decodeWAVBlob(wavBlob, { spacecraft, dataset, startTime, endTime, metadata });
+        const decoded = await decodeWAVBlob(wavBlob, { spacecraft, dataset, startTime, endTime, metadata });
+        decoded.initialIndex = freshIdx;
+        return decoded;
 
     } catch (error) {
         activeCDAWebController = null;
@@ -435,31 +448,30 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime) 
  * @param {Array<string>} allFileUrls - All component URLs from CDAWeb
  * @param {Blob} firstBlob - Already downloaded first component blob
  */
-async function downloadRemainingComponentsInBackground(spacecraft, dataset, startTime, endTime, allFileUrls, firstBlob) {
-    console.log(`🔄 Background: Downloading ${allFileUrls.length - 1} remaining component(s)...`);
+async function downloadRemainingComponentsInBackground(spacecraft, dataset, startTime, endTime, allFileUrls, firstBlob, firstIndex = 0) {
+    console.log(`🔄 Background: Downloading ${allFileUrls.length - 1} remaining component(s) (already have index ${firstIndex})`);
 
-    // Start with the first blob we already have
-    const allBlobs = [firstBlob];
+    // Pre-size the blob array and drop the already-downloaded blob into its slot
+    const allBlobs = new Array(allFileUrls.length);
+    allBlobs[firstIndex] = firstBlob;
 
-    // Download remaining components in parallel
-    const remainingUrls = allFileUrls.slice(1);
-    const downloadPromises = remainingUrls.map(async (url, index) => {
-        const componentIndex = index + 1; // 0 is already downloaded
+    // Download all OTHER components in parallel
+    const downloadPromises = allFileUrls.map((url, componentIndex) => {
+        if (componentIndex === firstIndex) return Promise.resolve({ index: componentIndex, blob: firstBlob, success: true });
         const labels = ['br', 'bt', 'bn'];
         const label = labels[componentIndex] || `component ${componentIndex}`;
-
-        try {
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
+        return (async () => {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const blob = await response.blob();
+                console.log(`   ✅ Background: Downloaded ${label} (${(blob.size / 1024).toFixed(1)} KB)`);
+                return { index: componentIndex, blob, success: true };
+            } catch (error) {
+                console.warn(`   ⚠️ Background: Failed to download ${label}: ${error.message}`);
+                return { index: componentIndex, blob: null, success: false };
             }
-            const blob = await response.blob();
-            console.log(`   ✅ Background: Downloaded ${label} (${(blob.size / 1024).toFixed(1)} KB)`);
-            return { index: componentIndex, blob, success: true };
-        } catch (error) {
-            console.warn(`   ⚠️ Background: Failed to download ${label}: ${error.message}`);
-            return { index: componentIndex, blob: null, success: false };
-        }
+        })();
     });
 
     const results = await Promise.all(downloadPromises);
@@ -472,7 +484,7 @@ async function downloadRemainingComponentsInBackground(spacecraft, dataset, star
     }
 
     // Update cache with all component blobs
-    const successCount = results.filter(r => r.success).length + 1; // +1 for first blob
+    const successCount = results.filter(r => r.success).length;
     if (successCount === allFileUrls.length) {
         await updateCacheWithAllComponents(spacecraft, dataset, startTime, endTime, allBlobs);
         console.log(`✅ Background: All ${allBlobs.length} components cached and ready for switching`);
@@ -671,9 +683,15 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
     
     try {
         if (window.pm?.data) console.log(`📡 ${logTime()} Fetching CDAWeb audio data...`);
-        
+
+        // Read the saved component index up front so the fetch pulls down the
+        // right file immediately — no more downloading Br, rendering it, then
+        // swapping it out for the saved component.
+        const savedComponentIndex = parseInt(localStorage.getItem('selectedComponent') || '0', 10);
+        const preferredIndex = isFinite(savedComponentIndex) && savedComponentIndex >= 0 ? savedComponentIndex : 0;
+
         // Fetch and decode audio from CDAWeb (includes caching)
-        const audioData = await fetchCDAWebAudio(spacecraft, dataset, startTimeISO, endTimeISO);
+        const audioData = await fetchCDAWebAudio(spacecraft, dataset, startTimeISO, endTimeISO, preferredIndex);
         
         if (window.pm?.data) console.log(`✅ ${logTime()} Audio decoded: ${audioData.playback.totalSamples.toLocaleString()} samples`);
         
@@ -736,8 +754,15 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
             // else: audioData.samples stays raw — waveform shows original field shape
         }
 
-        // Set state — playback uses DC-removed, everything else uses audioData.samples
-        State.setCompleteSamplesArray(window._playbackSamples);
+        // State holds the RAW samples so the spectrogram tiles see the original
+        // field shape. DC removal is purely an audio-processing concern — it
+        // should never reach the visual. The audio path (stretch processors,
+        // worklet swap-buffer) explicitly uses window._playbackSamples instead.
+        State.setCompleteSamplesArraySilent(window.rawWaveformData);
+        // Prime the stretch processors with the detrended+normalized buffer
+        // that the audio pipeline actually plays.
+        const { primeStretchProcessors } = await import('./audio-player.js');
+        primeStretchProcessors(window._playbackSamples);
         State.setOriginalAudioBlob(audioData.originalBlob);
         State.setDataStartTime(audioData.time.start);
         State.setDataEndTime(audioData.time.end);
@@ -775,12 +800,16 @@ export async function fetchAndLoadCDAWebData(spacecraft, dataset, startTimeISO, 
         if (audioData.allFileUrls && audioData.allFileUrls.length > 1) {
             if (window.pm?.data) console.log(`Multiple files detected - initializing selector`);
             const { initializeComponentSelector } = await import('./component-selector.js');
-            // Pass metadata so component selector can look up cached blobs
+            // Pass metadata so component selector can look up cached blobs.
+            // initialIndex = which component was actually loaded by the fetcher
+            // (derived from localStorage), so the selector doesn't kick off a
+            // redundant switchComponent call afterward.
             initializeComponentSelector(audioData.allFileUrls, {
                 spacecraft,
                 dataset,
                 startTime: startTimeISO,
-                endTime: endTimeISO
+                endTime: endTimeISO,
+                initialIndex: audioData.initialIndex ?? 0
             });
         } else {
             if (window.pm?.data) console.log(`Single file - hiding selector`);
