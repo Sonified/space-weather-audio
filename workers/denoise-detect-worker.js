@@ -338,80 +338,71 @@ self.onmessage = function(e) {
     }
     console.log(`🎛️ [ridge filter] AFTER: ${confirmedCountAfter} detections survive (dropped ${confirmedCountBefore - confirmedCountAfter})`);
 
-    // Extract top-N per frame
-    // Physical constraints: DC (bin 0) is not a tone, Nyquist edge is an artifact,
-    // and very low / very high bins are dominated by spectral slope artifacts
+    // ── Emit continuous tones from kept-ridge regressions ────────────────────
+    // Instead of top-N-per-frame from the noisy confirmed[] matrix, we drive
+    // the output tone table directly from each kept ridge's linear regression.
+    // For every frame in a ridge's lifetime we emit freq = slope·t + intercept,
+    // giving us a perfectly smooth notch track with no gaps or speckles.
+    // Chains promoted in step 4b need one fit across all their fragments so the
+    // line is the chain's line, not any individual fragment's.
     const toneFreqs = new Float32Array(numFrames * MAX_TONES);
     const toneCounts = new Uint8Array(numFrames);
     const hzPerBin = sampleRate / WIN_SIZE;
     const minBin = Math.max(1, Math.ceil(50 / hzPerBin));       // skip below ~50 Hz
     const maxBin = Math.min(numBins - 2, Math.floor(8000 / hzPerBin)); // skip above ~8 kHz
+
+    // Build the list of "emitters" — one per independent line.
+    // Primary-pass ridges that weren't chain-promoted get their own emitter.
+    // Chain-promoted fragments share one emitter (the chain's combined fit).
+    const emitters = [];
+    const chainedRidgeIds = new Set();
+    for (const pc of promotedChains) {
+        const firstFrame = pc.firstFrame;
+        const lastFrame = pc.lastFrame;
+        emitters.push({
+            slope: pc.fit.slope,
+            intercept: pc.fit.intercept,
+            firstFrame,
+            lastFrame,
+            label: `chain(${pc.group.length})`
+        });
+        for (const r of pc.group) chainedRidgeIds.add(r);
+    }
+    for (const ridge of ridges) {
+        if (!ridge.keep) continue;
+        if (chainedRidgeIds.has(ridge)) continue; // already covered by its chain
+        // Skip DC-bin ridges (bin 0, freq 0) — they're artifacts, not tones.
+        if (ridge.binHi === 0) continue;
+        emitters.push({
+            slope: ridge.slope,
+            intercept: ridge.intercept,
+            firstFrame: ridge.firstFrame,
+            lastFrame: ridge.lastFrame,
+            label: `ridge`
+        });
+    }
+
+    // Emit one tone per emitter for the ENTIRE fetch — once we're confident a
+    // line is a spin tone, extrapolate it from frame 0 to numFrames-1 so the
+    // notch runs continuously end-to-end, not just inside the detected window.
+    const minFreq = minBin * hzPerBin;
+    const maxFreq = maxBin * hzPerBin;
     let totalDetections = 0;
-
-    for (let fi = 0; fi < numFrames; fi++) {
-        const candidates = [];
-        for (let b = minBin; b <= maxBin; b++) {
-            if (confirmed[b * numFrames + fi]) {
-                candidates.push({ freq: b * hzPerBin, score: tonality[b * numFrames + fi] });
-            }
-        }
-        candidates.sort((a, b) => b.score - a.score);
-        const n = Math.min(candidates.length, MAX_TONES);
-        toneCounts[fi] = n;
-        for (let k = 0; k < n; k++) {
-            toneFreqs[fi * MAX_TONES + k] = candidates[k].freq;
-        }
-        totalDetections += n;
-    }
-
-    // ── Gap filling: sustain confirmed tones through noisy bursts ──────────
-    // For each frequency bin that was confirmed, find runs of presence,
-    // and fill gaps up to GAP_FILL frames by holding the last known frequency.
-    const GAP_FILL = 40;  // ~1 second at hop=1024/44100
-    const MIN_RUN = 10;   // minimum consecutive frames to establish a tone
-
-    // Build per-bin presence runs
-    for (let b = minBin; b <= maxBin; b++) {
-        // Find runs of confirmed frames for this bin
-        let runStart = -1;
-        let gapStart = -1;
-        let inRun = false;
-        let runLength = 0;
-
-        for (let fi = 0; fi <= numFrames; fi++) {
-            const isConf = fi < numFrames && confirmed[b * numFrames + fi];
-
-            if (isConf && !inRun) {
-                // Start of a run
-                inRun = true;
-                runStart = fi;
-                runLength = 1;
-
-                // Fill gap between previous run and this one
-                if (gapStart >= 0 && (fi - gapStart) <= GAP_FILL) {
-                    const freq = b * hzPerBin;
-                    for (let g = gapStart; g < fi; g++) {
-                        // Insert this freq if there's room in the tone list
-                        const nt = toneCounts[g];
-                        if (nt < MAX_TONES) {
-                            toneFreqs[g * MAX_TONES + nt] = freq;
-                            toneCounts[g] = nt + 1;
-                            totalDetections++;
-                        }
-                    }
-                }
-            } else if (isConf && inRun) {
-                runLength++;
-            } else if (!isConf && inRun) {
-                // End of a run — only set gap marker if run was long enough
-                if (runLength >= MIN_RUN) {
-                    gapStart = fi;
-                }
-                inRun = false;
-                runLength = 0;
-            }
+    for (const em of emitters) {
+        for (let fi = 0; fi < numFrames; fi++) {
+            const freq = em.slope * fi + em.intercept;
+            if (freq < minFreq || freq > maxFreq) continue;
+            const nt = toneCounts[fi];
+            if (nt >= MAX_TONES) continue;
+            toneFreqs[fi * MAX_TONES + nt] = freq;
+            toneCounts[fi] = nt + 1;
+            totalDetections++;
         }
     }
+    console.log(`🎛️ [ridge filter] EMIT: ${emitters.length} line(s) × ${numFrames} frames = ${totalDetections} tone frames`);
+
+    // (Old gap-fill pass removed — the ridge regressions already emit a tone
+    // for every frame in the fetch, no stitching required.)
 
     const elapsed = performance.now() - t0;
 
