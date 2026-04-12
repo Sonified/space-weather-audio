@@ -27,6 +27,7 @@ import { logGroup, logGroupEnd } from './logger.js';
 import { initializeAdvancedControls } from './advanced-controls.js';
 import { checkAppVersion } from './version-check.js';
 import { setupAudioDownloadHandlers } from './audio-download.js';
+import { initFeatureExport } from './feature-export.js';
 import { setupLifecycleHandlers } from './lifecycle-cleanup.js';
 import { loadRecentSearches, restoreRecentSearch, saveRecentSearch } from './recent-searches.js';
 import { setupResizeHandler } from './resize-handler.js';
@@ -651,6 +652,9 @@ async function initializeMainApp() {
     
     // Set up download, recording, and ZIP export handlers
     setupAudioDownloadHandlers();
+
+    // Set up feature export split buttons (metadata + per-feature audio)
+    initFeatureExport();
 
     // Close the event listeners group
     if (listenersGroupOpen) logGroupEnd();

@@ -39,7 +39,7 @@
             r.style.background = a.pageBg;
         })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20260412.022759">
+    <link rel="stylesheet" href="styles.css?v=20260412.025337">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         /* Segmented date/time input wrappers */
@@ -93,6 +93,21 @@
         }
 
         /* Settings drawer styles in styles.css */
+
+        /* Split button (main + chevron) for feature exports */
+        .split-btn > .audio-btn:first-of-type {
+            border-top-right-radius: 0;
+            border-bottom-right-radius: 0;
+            margin-right: 0 !important;
+        }
+        .split-btn > .audio-btn:nth-of-type(2) {
+            border-top-left-radius: 0;
+            border-bottom-left-radius: 0;
+            border-left: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        .split-btn-option:hover {
+            background: rgba(102, 126, 234, 0.3) !important;
+        }
 
         /* Instant tooltip pinned over just the de-tone checkbox */
         .denoise-tip-anchor { position: relative; display: inline-flex; }
@@ -482,6 +497,29 @@
             <button type="button" id="downloadAudioBtn" class="audio-btn audio-btn-download">
                 📥 Download This Component
             </button>
+
+            <!-- Feature exports: split buttons (main click + chevron to pick format) -->
+            <div class="split-btn" id="downloadFeaturesSplit" style="display: inline-flex; position: relative;">
+                <button type="button" id="downloadFeaturesBtn" class="audio-btn audio-btn-download" title="Download feature metadata">
+                    📋 Features: <span id="downloadFeaturesFormat">JSON</span>
+                </button>
+                <button type="button" id="downloadFeaturesChevron" class="audio-btn audio-btn-download" title="Choose format" style="padding-left: 6px; padding-right: 6px;">▾</button>
+                <div id="downloadFeaturesMenu" class="split-btn-menu" style="display: none; position: absolute; top: 100%; right: 0; margin-top: 4px; background: #1a1a2e; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 4px; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.5); white-space: nowrap;">
+                    <button type="button" data-format="json" class="split-btn-option" style="display: block; width: 100%; text-align: left; padding: 6px 14px; background: none; border: none; color: #fff; font-size: 13px; cursor: pointer; border-radius: 4px;">JSON</button>
+                    <button type="button" data-format="csv" class="split-btn-option" style="display: block; width: 100%; text-align: left; padding: 6px 14px; background: none; border: none; color: #fff; font-size: 13px; cursor: pointer; border-radius: 4px;">CSV</button>
+                </div>
+            </div>
+
+            <div class="split-btn" id="exportFeatureAudioSplit" style="display: inline-flex; position: relative;">
+                <button type="button" id="exportFeatureAudioBtn" class="audio-btn audio-btn-download" title="Export per-feature audio clips">
+                    🎚️ Audio: <span id="exportFeatureAudioMode">Isolated</span>
+                </button>
+                <button type="button" id="exportFeatureAudioChevron" class="audio-btn audio-btn-download" title="Choose export mode" style="padding-left: 6px; padding-right: 6px;">▾</button>
+                <div id="exportFeatureAudioMenu" class="split-btn-menu" style="display: none; position: absolute; top: 100%; right: 0; margin-top: 4px; background: #1a1a2e; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 4px; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.5); white-space: nowrap;">
+                    <button type="button" data-mode="isolated" class="split-btn-option" style="display: block; width: 100%; text-align: left; padding: 6px 14px; background: none; border: none; color: #fff; font-size: 13px; cursor: pointer; border-radius: 4px;">Isolated (band-passed)</button>
+                    <button type="button" data-mode="full" class="split-btn-option" style="display: block; width: 100%; text-align: left; padding: 6px 14px; background: none; border: none; color: #fff; font-size: 13px; cursor: pointer; border-radius: 4px;">Full spectrum</button>
+                </div>
+            </div>
         </div>
         
         <!-- Metrics Panel -->
@@ -634,7 +672,7 @@
     <!-- APPLICATION LAYER: Main app code (might break during beta) -->
     <!-- ═══════════════════════════════════════════════════════════ -->
     <script>window.__t0 = performance.now(); if (window.pm?.init) console.log('⏱️ module script tag reached at', window.__t0.toFixed(1), 'ms');</script>
-    <script type="module" src="js/main.js?v=20260412.022759"></script>
+    <script type="module" src="js/main.js?v=20260412.025337"></script>
 
     <!-- Responsive spectrogram height: fill viewport so bottom edge sits at window edge -->
     <script>
