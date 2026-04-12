@@ -959,7 +959,7 @@ button.play-active:hover:not(:disabled) {
         rgba(102, 126, 234, 0.4) 100%
     );
     background-size: 200% 100%;
-    animation: shimmer 1.5s ease-in-out infinite, pulseBackground 1s ease-in-out infinite;
+    animation: shimmer 1.5s ease-in-out infinite;
     border-color: rgba(80, 80, 80, 0.9) !important;
     color: #1a1a3e !important;
     font-weight: 700 !important;
@@ -993,7 +993,7 @@ button.play-active:hover:not(:disabled) {
         rgba(255, 255, 255, 0.15) 70%,
         transparent
     );
-    animation: shimmerSweep 1.5s ease-in-out infinite;
+    animation: shimmerSweep 1.5s ease-in-out infinite, pulseBrighten 1s ease-in-out infinite;
     z-index: 0;
     pointer-events: none;
 }
@@ -1013,7 +1013,7 @@ button.play-active:hover:not(:disabled) {
         rgba(102, 126, 234, 0.3) 20px
     );
     background-size: 28px 28px;
-    animation: stripeMove 1.2s linear infinite;
+    animation: stripeMove 1.2s linear infinite, pulseBrighten 1s ease-in-out infinite;
     pointer-events: none;
     z-index: 0;
 }
@@ -1033,6 +1033,15 @@ button.play-active:hover:not(:disabled) {
     }
     50% {
         opacity: 0.7;
+    }
+}
+
+@keyframes pulseBrighten {
+    0%, 100% {
+        filter: brightness(1);
+    }
+    50% {
+        filter: brightness(1.35);
     }
 }
 
