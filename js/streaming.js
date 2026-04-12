@@ -184,9 +184,12 @@ export async function startStreaming(event, config = null) {
 
         if (window.pm?.data) console.log(`🛰️ ${logTime()} Fetching: ${spacecraft} ${dataset} from ${startTimeISO} to ${endTimeISO}`);
 
-        // Check data source selection
+        // Check data source selection — Cloudflare only serves GOES data
         const dataSourceEl = document.getElementById('dataSource');
-        const dataSource = dataSourceEl ? dataSourceEl.value : 'cdaweb';
+        let dataSource = dataSourceEl ? dataSourceEl.value : 'cdaweb';
+        if (dataSource === 'cloudflare' && spacecraft !== 'GOES') {
+            dataSource = 'cdaweb';
+        }
 
         // Update status with animated loading indicator
         const statusDiv = document.getElementById('status');
