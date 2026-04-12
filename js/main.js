@@ -118,39 +118,6 @@ async function initializeMainApp() {
         _t('initializeAdvancedControls() done');
     }
 
-    // De-tone Q slider: restore saved value and wire live-update + re-run
-    {
-        const qSlider = document.getElementById('detoneQSlider');
-        const qValue = document.getElementById('detoneQValue');
-        if (qSlider && qValue) {
-            const saved = parseFloat(localStorage.getItem('detoneQ') || '100');
-            if (isFinite(saved)) {
-                qSlider.value = String(Math.max(2, Math.min(1000, saved)));
-                qValue.textContent = qSlider.value;
-            }
-            // Push initial value into the denoise module
-            import('./spin-tone-denoise.js').then(({ setDenoiseQ }) => {
-                setDenoiseQ(parseFloat(qSlider.value));
-            });
-            qSlider.addEventListener('input', () => {
-                qValue.textContent = qSlider.value;
-            });
-            qSlider.addEventListener('change', () => {
-                const q = parseFloat(qSlider.value);
-                localStorage.setItem('detoneQ', String(q));
-                import('./spin-tone-denoise.js').then(({ setDenoiseQ, isDenoiseActive, runDenoise }) => {
-                    setDenoiseQ(q);
-                    // Re-run detection + filter with the new Q if de-tone is currently active
-                    if (isDenoiseActive()) {
-                        const samples = State.getCompleteSamplesArray?.() || State.completeSamplesArray;
-                        const sr = State.audioContext?.sampleRate || 44100;
-                        if (samples && samples.length > 0) runDenoise(samples, sr);
-                    }
-                });
-            });
-        }
-    }
-
     if (!isLocalEnvironment()) {
         document.querySelectorAll('.dev-control').forEach(el => { el.style.display = 'none'; });
     }

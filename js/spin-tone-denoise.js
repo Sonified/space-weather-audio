@@ -21,12 +21,7 @@ let preprocessedSamples = null;  // DC removed + normalized
 let cleanedSamples = null;
 let denoiseActive = false;
 let processing = false;
-let currentQ = 100.0;  // WASM notch filter Q — adjustable via UI slider
-
-export function setDenoiseQ(q) {
-    currentQ = Math.max(1, q);
-}
-export function getDenoiseQ() { return currentQ; }
+const NOTCH_Q = 100.0;  // WASM notch filter Q — BW ≈ f0/Q, so ~44 Hz at 4428 Hz
 
 // ── Init ────────────────────────────────────────────────────────────────────
 
@@ -126,7 +121,7 @@ function _applyNotches(toneFreqs, toneCounts, numFrames) {
     const t0 = performance.now();
     const wasm = wasmInstance;
     const mem = wasmMemory;
-    wasm.init(sampleRate, currentQ);
+    wasm.init(sampleRate, NOTCH_Q);
 
     const tonePtr = wasm.get_tone_input_ptr();
     const audioPtr = wasm.get_audio_buf_ptr();
