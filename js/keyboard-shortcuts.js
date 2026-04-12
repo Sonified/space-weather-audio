@@ -38,7 +38,7 @@ export function initKeyboardShortcuts() {
     window.addEventListener('keyup', handleArrowKeyUp, true);
     keyboardShortcutsInitialized = true;
     // Only log in dev/personal modes, not study mode
-    if (!isStudyMode()) {
+    if (!isStudyMode() && window.pm?.init) {
         fetch('version.json?' + Date.now()).then(r => r.json()).then(v => console.log('⌨️ Keyboard shortcuts initialized (v' + v.version + ')')).catch(() => console.log('⌨️ Keyboard shortcuts initialized'));
     }
 }
@@ -228,6 +228,17 @@ function handleKeyboardShortcut(event) {
         return;
     }
 
+    // L key: toggle loop (only when not typing in a field)
+    if ((event.key === 'l' || event.key === 'L') && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        if (isTypingInField) return;
+        const loopBtn = document.getElementById('loopBtn');
+        if (loopBtn && !loopBtn.disabled) {
+            event.preventDefault();
+            loopBtn.click();
+        }
+        return;
+    }
+
     // Spacebar: toggle play/pause (but not when focused on interactive elements)
     if (event.code === 'Space') {
         const isSelect = event.target.tagName === 'SELECT';
@@ -282,7 +293,7 @@ function handleKeyboardShortcut(event) {
                 fetchBtn.style.display !== 'none' &&
                 window.getComputedStyle(fetchBtn).display !== 'none') {
                 event.preventDefault();
-                console.log('⌨️ Enter key pressed - triggering fetch data (first load)');
+                if (window.pm?.interaction) console.log('⌨️ Enter key pressed - triggering fetch data (first load)');
                 fetchBtn.click();
                 return;
             }
