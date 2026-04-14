@@ -340,6 +340,22 @@ export default {
 
     try {
       // =======================================================================
+      // Fast study config from R2: /api/study/:slug/r2-config
+      // Single blob read — no D1, no SQL. Written by config PUT on every save.
+      // =======================================================================
+      const r2ConfigMatch = path.match(/^\/api\/study\/([^/]+)\/r2-config$/);
+      if (r2ConfigMatch && request.method === 'GET') {
+        const studyId = r2ConfigMatch[1];
+        const obj = await env.BUCKET.get(`study-json-live/${studyId}.json`);
+        if (obj) {
+          return new Response(obj.body, {
+            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', ...CORS_HEADERS },
+          });
+        }
+        return json({ error: 'Config not found in R2' }, 404);
+      }
+
+      // =======================================================================
       // Thumbnail Route: /api/share/:shareId/thumbnail.jpg
       // Serves the captured spectrogram image for OG previews
       // =======================================================================
@@ -698,6 +714,10 @@ export default {
                ON CONFLICT(id) DO UPDATE SET name = excluded.name, config = excluded.config, updated_at = ?`
             ).bind(studyId, name, configStr, now, now).run();
           }
+          // Also write to R2 for fast static serving (study-flow.js reads this first)
+          await env.BUCKET.put(`study-json-live/${studyId}.json`, configStr, {
+            httpMetadata: { contentType: 'application/json' },
+          });
           return json({ success: true });
         }
 
