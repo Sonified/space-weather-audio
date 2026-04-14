@@ -1170,17 +1170,17 @@ async function init() {
 
     const titleEl = document.getElementById('studyTitle');
 
-    // Benchmark: race all three config sources
+    // Fetch config from R2 (primary), D1 as fallback
     if (window.pm?.study_flow) console.log(`%c[INIT] ① Fetching study config: ${studySlug}`, 'color: #58a6ff; font-weight: bold;');
-    let staticTime, r2Time, d1Time, staticResult, r2Result, d1Result;
+    const _apiBase = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'https://spaceweather.now.audio' : '';
+    let r2Time, d1Time, r2Result, d1Result;
     const _t1 = performance.now();
     await Promise.all([
-        fetch(`/study-json-live/${studySlug}.json`).then(r => r.ok ? r.json() : null).then(d => { staticTime = performance.now() - _t1; staticResult = d; }).catch(() => { staticTime = performance.now() - _t1; }),
-        fetch(`${(location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'https://spaceweather.now.audio' : ''}/api/study/${studySlug}/r2-config`).then(r => r.ok ? r.json() : null).then(d => { r2Time = performance.now() - _t1; r2Result = d; }).catch(() => { r2Time = performance.now() - _t1; }),
+        fetch(`${_apiBase}/api/study/${studySlug}/r2-config`).then(r => r.ok ? r.json() : null).then(d => { r2Time = performance.now() - _t1; r2Result = d; }).catch(() => { r2Time = performance.now() - _t1; }),
         fetchStudyConfig(studySlug).then(d => { d1Time = performance.now() - _t1; d1Result = d; }).catch(() => { d1Time = performance.now() - _t1; }),
     ]);
-    console.log(`⏱️ [INIT] Static: ${staticResult ? '✅' : '❌'} ${staticTime?.toFixed(0)}ms | R2: ${r2Result ? '✅' : '❌'} ${r2Time?.toFixed(0)}ms | D1: ${d1Result ? '✅' : '❌'} ${d1Time?.toFixed(0)}ms`);
-    studyConfig = staticResult || r2Result || d1Result;
+    console.log(`⏱️ [INIT] R2: ${r2Result ? '✅' : '❌'} ${r2Time?.toFixed(0)}ms | D1: ${d1Result ? '✅' : '❌'} ${d1Time?.toFixed(0)}ms`);
+    studyConfig = r2Result || d1Result;
 
     if (!studyConfig) {
         showError(`Study "${studySlug}" not found`);
