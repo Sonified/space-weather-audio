@@ -1344,10 +1344,9 @@ function showFeaturePopup(box) {
         playFeature(btn.dataset.start, btn.dataset.end);
     });
 
-    // Isolate button — crossfade to bandpass-filtered audio path
+    // Isolate button — crossfade to bandpass-filtered audio path (hidden in study mode)
     const isolateBtn = popup.querySelector('.feature-popup-isolate');
-    // Auto-restore isolation if this feature was previously isolated
-    if (lastIsolatedFeatureId &&
+    if (isolateBtn && lastIsolatedFeatureId &&
         lastIsolatedFeatureId.regionIndex === box.regionIndex &&
         lastIsolatedFeatureId.featureIndex === box.featureIndex &&
         !isolatedFeatureBox) {
@@ -1375,11 +1374,11 @@ function showFeaturePopup(box) {
             }
             redrawCanvasBoxes();
         }
-    } else if (isolatedFeatureBox && isolatedFeatureBox.regionIndex === box.regionIndex &&
+    } else if (isolateBtn && isolatedFeatureBox && isolatedFeatureBox.regionIndex === box.regionIndex &&
         isolatedFeatureBox.featureIndex === box.featureIndex) {
         isolateBtn.classList.add('active');
     }
-    isolateBtn.addEventListener('click', (e) => {
+    isolateBtn?.addEventListener('click', (e) => {
         e.stopPropagation();
         const btn = e.currentTarget;
         btn.blur();
