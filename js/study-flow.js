@@ -30,6 +30,7 @@ let flowActive = false;
 let analysisAbort = null;  // AbortController for current analysis step listeners
 let isReturningParticipant = false;  // True when resuming from a saved step
 let assignedCondition = null;  // Participant's assigned experimental condition
+let assignConditionPromise = null;  // Awaitable guard — runAnalysis blocks on this if needed
 
 // ── Complete Button Controller ──────────────────────────────────────────
 // Single owner of all #completeBtn DOM mutations (show, hide, enable, disable, fade).
@@ -1157,21 +1158,23 @@ async function init() {
 
     const titleEl = document.getElementById('studyTitle');
 
-    // Fetch config from D1
+    // Try local live config first (instant, same-origin static file)
     if (window.pm?.study_flow) console.log(`%c[INIT] ① Fetching study config: ${studySlug}`, 'color: #58a6ff; font-weight: bold;');
-    studyConfig = await fetchStudyConfig(studySlug);
-    _tLog('fetchStudyConfig');
+    try {
+        const localResp = await fetch(`/study-json-live/${studySlug}.json`);
+        if (localResp.ok) {
+            studyConfig = await localResp.json();
+            if (window.pm?.study_flow) console.log(`%c[INIT] ① ⚡ Loaded from local JSON (fast path)`, 'color: #22c55e; font-weight: bold;');
+        }
+    } catch (e) { /* local not available, fall through */ }
+    _tLog('localConfig');
 
+    // Fallback: fetch from D1 (cold start can be slow)
     if (!studyConfig) {
-        // Fallback: try loading from local JSON file
-        try {
-            const resp = await fetch(`/studies/${studySlug}.json`);
-            if (resp.ok) {
-                studyConfig = await resp.json();
-                if (window.pm?.study_flow) console.log(`📋 Study config loaded from local JSON fallback`);
-            }
-        } catch (e) { /* ignore */ }
+        studyConfig = await fetchStudyConfig(studySlug);
+        if (window.pm?.study_flow && studyConfig) console.log(`%c[INIT] ① 🌐 Loaded from D1 (fallback)`, 'color: #f59e0b; font-weight: bold;');
     }
+    _tLog('fetchStudyConfig');
 
     if (!studyConfig) {
         showError(`Study "${studySlug}" not found`);
@@ -1536,7 +1539,7 @@ async function init() {
         applyConditionOrder(assignedCondition);
         if (window.pm?.study_flow) console.log(`%c[INIT] ⑤ Condition #${assignedCondition.conditionIndex} (saved)`, 'color: #58a6ff; font-weight: bold;');
     } else if (pid) {
-        assignCondition().then(cond => {
+        assignConditionPromise = assignCondition().then(cond => {
             if (cond) {
                 assignedCondition = cond;
                 applyConditionOrder(cond);
@@ -2275,6 +2278,13 @@ function executePrompts(prompts) {
 }
 
 async function runAnalysis(step) {
+    // Guard: if server-side condition assignment is in flight, wait for it
+    // (only exists when a live/test session actually requested an assignment)
+    if (assignConditionPromise && !assignedCondition) {
+        if (window.pm?.study_flow) console.log(`%c[ANALYSIS] ⏳ Waiting for condition assignment...`, 'color: #f59e0b; font-weight: bold;');
+        await assignConditionPromise;
+    }
+
     // Abort any previous analysis step's listeners (prevents double-fire on admin skip-back)
     if (analysisAbort) analysisAbort.abort();
     analysisAbort = new AbortController();
