@@ -1170,28 +1170,17 @@ async function init() {
 
     const titleEl = document.getElementById('studyTitle');
 
-    // Try static file first (25ms, synced from R2 via GitHub Action)
+    // Benchmark: race all three config sources
     if (window.pm?.study_flow) console.log(`%c[INIT] ① Fetching study config: ${studySlug}`, 'color: #58a6ff; font-weight: bold;');
-    try {
-        const localResp = await fetch(`/study-json-live/${studySlug}.json`);
-        if (localResp.ok) studyConfig = await localResp.json();
-    } catch (e) { /* not available, fall through */ }
-    if (studyConfig) {
-        _tLog('✅ config loaded (static)');
-    } else {
-        // Fallback: R2 via Worker (covers gap between deploys)
-        try {
-            const r2Resp = await fetch(`/api/study/${studySlug}/r2-config`);
-            if (r2Resp.ok) studyConfig = await r2Resp.json();
-        } catch (e) { /* R2 unavailable, fall through */ }
-        if (studyConfig) {
-            _tLog('✅ config loaded (R2)');
-        } else {
-            // Last resort: D1
-            studyConfig = await fetchStudyConfig(studySlug);
-            _tLog(studyConfig ? '✅ config loaded (D1)' : '❌ config not found');
-        }
-    }
+    let staticTime, r2Time, d1Time, staticResult, r2Result, d1Result;
+    const _t1 = performance.now();
+    await Promise.all([
+        fetch(`/study-json-live/${studySlug}.json`).then(r => r.ok ? r.json() : null).then(d => { staticTime = performance.now() - _t1; staticResult = d; }).catch(() => { staticTime = performance.now() - _t1; }),
+        fetch(`/api/study/${studySlug}/r2-config`).then(r => r.ok ? r.json() : null).then(d => { r2Time = performance.now() - _t1; r2Result = d; }).catch(() => { r2Time = performance.now() - _t1; }),
+        fetchStudyConfig(studySlug).then(d => { d1Time = performance.now() - _t1; d1Result = d; }).catch(() => { d1Time = performance.now() - _t1; }),
+    ]);
+    console.log(`⏱️ [INIT] Static: ${staticResult ? '✅' : '❌'} ${staticTime?.toFixed(0)}ms | R2: ${r2Result ? '✅' : '❌'} ${r2Time?.toFixed(0)}ms | D1: ${d1Result ? '✅' : '❌'} ${d1Time?.toFixed(0)}ms`);
+    studyConfig = staticResult || r2Result || d1Result;
 
     if (!studyConfig) {
         showError(`Study "${studySlug}" not found`);
