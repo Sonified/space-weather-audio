@@ -16,14 +16,19 @@ import { styleBodyHtml } from './study-builder/utils.js';
 import { typeText, cancelTyping } from './status-text.js';
 import { buildDimensionStyle, buildTitleFontStyle, buildHeaderUnderlineStyle, renderInfoModal, renderRegistrationModal, renderQuestionModal } from './survey-question-renderer.js';
 
-// Heavy imports (Three.js) — start loading immediately but don't block init
-const _heavyModules = Promise.all([
-    import('./feature-tracker.js'),
-    import('./audio-player.js'),
-]);
+// Heavy imports (Three.js) — deferred until after first modal paints
+let _heavyModules = null;
 let _ft, _ap;
-_heavyModules.then(([ft, ap]) => { _ft = ft; _ap = ap; });
-const getHeavy = () => _heavyModules.then(([ft, ap]) => { _ft = ft; _ap = ap; return { ft, ap }; });
+function startHeavyImports() {
+    if (_heavyModules) return _heavyModules;
+    _heavyModules = Promise.all([
+        import('./feature-tracker.js'),
+        import('./audio-player.js'),
+    ]);
+    _heavyModules.then(([ft, ap]) => { _ft = ft; _ap = ap; });
+    return _heavyModules;
+}
+const getHeavy = () => startHeavyImports().then(([ft, ap]) => { _ft = ft; _ap = ap; return { ft, ap }; });
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // STATE
@@ -1529,6 +1534,9 @@ async function init() {
     runCurrentStep();
 
     // ── Everything below is background work — modal is already visible ──
+
+    // Start heavy imports (Three.js) after browser paints the modal
+    requestAnimationFrame(() => requestAnimationFrame(() => startHeavyImports()));
 
     // Server-side participant init (non-blocking)
     const pid = getParticipantId();
