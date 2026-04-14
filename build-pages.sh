@@ -29,7 +29,6 @@ rm -rf _site/_recovery \
   _site/backend \
   _site/harp \
   _site/homestretch \
-  _site/workers \
   _site/wavelet_processed_audio \
   _site/wavelets \
   _site/.git \

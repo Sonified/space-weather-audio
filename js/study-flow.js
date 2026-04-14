@@ -1170,19 +1170,10 @@ async function init() {
 
     const titleEl = document.getElementById('studyTitle');
 
-    // Benchmark R2 vs D1 — will remove after testing
+    // Fetch config from D1 (same Cloudflare edge — fast)
     if (window.pm?.study_flow) console.log(`%c[INIT] ① Fetching study config: ${studySlug}`, 'color: #58a6ff; font-weight: bold;');
-    let r2Time, d1Time, r2Result, d1Result;
-    const _t1 = performance.now();
-    await Promise.all([
-        fetch(`/api/study/${studySlug}/r2-config`).then(r => r.ok ? r.json() : null).then(d => { r2Time = performance.now() - _t1; r2Result = d; }).catch(() => { r2Time = performance.now() - _t1; }),
-        fetchStudyConfig(studySlug).then(d => { d1Time = performance.now() - _t1; d1Result = d; }).catch(() => { d1Time = performance.now() - _t1; }),
-    ]);
-    console.log(`⏱️ [INIT] R2: ${r2Result ? '✅' : '❌'} ${r2Time?.toFixed(0)}ms | D1: ${d1Result ? '✅' : '❌'} ${d1Time?.toFixed(0)}ms`);
-
-    // Use R2 result (primary), D1 as fallback
-    studyConfig = r2Result || d1Result;
-    _tLog('studyConfig loaded');
+    studyConfig = await fetchStudyConfig(studySlug);
+    _tLog(studyConfig ? '✅ config loaded' : '❌ config not found');
 
     if (!studyConfig) {
         showError(`Study "${studySlug}" not found`);
