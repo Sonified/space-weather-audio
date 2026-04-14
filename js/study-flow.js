@@ -1176,13 +1176,15 @@ async function init() {
         const localResp = await fetch(`/study-json-live/${studySlug}.json`);
         if (localResp.ok) {
             studyConfig = await localResp.json();
-            _tLog('localConfig ⚡ found, skipping D1 fetch');
+            _tLog('localConfig ⚡ found');
+            console.log('⏱️ [INIT] Skipping D1 fetch');
         }
     } catch (e) { /* local not available, fall through */ }
 
     // Fallback: fetch from D1 (cold start can be slow)
     if (!studyConfig) {
-        _tLog('localConfig not found, falling back to D1');
+        _tLog('localConfig not found');
+        console.log('⏱️ [INIT] Falling back to D1...');
         studyConfig = await fetchStudyConfig(studySlug);
         _tLog('D1 config ' + (studyConfig ? '✅ loaded' : '❌ not found'));
     }
