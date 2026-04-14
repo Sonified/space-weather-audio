@@ -1,12 +1,29 @@
 # Cloudflare Pages ignore — skip non-deployable files
+# NOTE: If this doesn't work, the build command in Pages settings
+# handles exclusion via rsync to _cf_pages_out/
 _recovery/
 stretch_test_tracks/
+stretch_test_audio/
+stretch_test_python_renders/
 emic_audio/
 tools/
 tests/
+test_interfaces/
 studies-backup/
 spaceweather_metadata/
 cloudflare-worker/
 docs/
+diagnostics/
+dashboards/
 .github/
 node_modules/
+NASA/
+Qualtrics/
+__pycache__/
+archive/
+backend/
+harp/
+homestretch/
+workers/
+wavelet_processed_audio/
+wavelets/
