@@ -344,8 +344,11 @@
 
     <!-- Study Flags Panel (floating, always on top — even above overlay) -->
 
-    <!-- CORE SYSTEM -->
+    <!-- Config-driven study flow controller (FIRST — shows modal before heavy modules load) -->
     <script>window.__tMark('pre-modules');</script>
+    <script type="module" src="./js/study-flow.js"></script>
+
+    <!-- CORE SYSTEM -->
     <script type="module">
         import { initFlameEngine } from './js/core/flame-engine.js';
         import { initErrorSystem } from './js/core/error-system.js';
@@ -387,9 +390,6 @@
             });
         })();
     </script>
-
-    <!-- Config-driven study flow controller -->
-    <script type="module" src="./js/study-flow.js"></script>
 
     <!-- Responsive spectrogram height: fill viewport so bottom panel sits at window edge -->
     <script>
