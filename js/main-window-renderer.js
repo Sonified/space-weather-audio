@@ -904,7 +904,8 @@ async function initThreeScene() {
     // ─── Detone mask overlay mesh ────────────────────────────────────
     // Subtractive layer that rides on top of the spectrogram. Same orthographic
     // camera, same frequency remap → zoom/pan handled automatically.
-    {
+    // Skip in study mode — detone visualization not used.
+    if (!window.__STUDY_MODE) {
         uDetoneMaskAlpha = uniform(0.0);  // 0 = invisible, 1 = full mask
 
         // Placeholder texture (replaced by setDetoneMaskData)
