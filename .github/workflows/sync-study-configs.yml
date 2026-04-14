@@ -1,0 +1,46 @@
+name: Sync study configs from R2 to repo
+
+on:
+  schedule:
+    # Every 5 minutes
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch study configs from R2
+        run: |
+          mkdir -p study-json-live
+
+          # Get list of all studies
+          STUDIES=$(curl -sf "https://spaceweather.now.audio/api/studies" | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          for s in d.get('studies', []):
+              print(s['id'])
+          ")
+
+          # Fetch each config from R2
+          for slug in $STUDIES; do
+            resp=$(curl -sf "https://spaceweather.now.audio/api/study/${slug}/r2-config" 2>/dev/null)
+            if [ $? -eq 0 ] && [ -n "$resp" ]; then
+              echo "$resp" | python3 -m json.tool > "study-json-live/${slug}.json"
+              echo "Updated: ${slug}"
+            fi
+          done
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add study-json-live/
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "auto: sync study configs from R2"
+            git push
+          fi

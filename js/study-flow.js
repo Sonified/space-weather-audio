@@ -1170,17 +1170,27 @@ async function init() {
 
     const titleEl = document.getElementById('studyTitle');
 
-    // Fetch config from R2 (fast, consistent ~100ms), D1 as fallback
+    // Try static file first (25ms, synced from R2 via GitHub Action)
     if (window.pm?.study_flow) console.log(`%c[INIT] ① Fetching study config: ${studySlug}`, 'color: #58a6ff; font-weight: bold;');
     try {
-        const r2Resp = await fetch(`/api/study/${studySlug}/r2-config`);
-        if (r2Resp.ok) studyConfig = await r2Resp.json();
-    } catch (e) { /* R2 unavailable, fall through */ }
+        const localResp = await fetch(`/study-json-live/${studySlug}.json`);
+        if (localResp.ok) studyConfig = await localResp.json();
+    } catch (e) { /* not available, fall through */ }
     if (studyConfig) {
-        _tLog('✅ config loaded (R2)');
+        _tLog('✅ config loaded (static)');
     } else {
-        studyConfig = await fetchStudyConfig(studySlug);
-        _tLog(studyConfig ? '✅ config loaded (D1 fallback)' : '❌ config not found');
+        // Fallback: R2 via Worker (covers gap between deploys)
+        try {
+            const r2Resp = await fetch(`/api/study/${studySlug}/r2-config`);
+            if (r2Resp.ok) studyConfig = await r2Resp.json();
+        } catch (e) { /* R2 unavailable, fall through */ }
+        if (studyConfig) {
+            _tLog('✅ config loaded (R2)');
+        } else {
+            // Last resort: D1
+            studyConfig = await fetchStudyConfig(studySlug);
+            _tLog(studyConfig ? '✅ config loaded (D1)' : '❌ config not found');
+        }
     }
 
     if (!studyConfig) {
