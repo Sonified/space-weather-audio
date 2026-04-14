@@ -1179,8 +1179,11 @@ async function init() {
         fetch(`${_apiBase}/api/study/${studySlug}/r2-config`).then(r => r.ok ? r.json() : null).then(d => { r2Time = performance.now() - _t1; r2Result = d; }).catch(() => { r2Time = performance.now() - _t1; }),
         fetchStudyConfig(studySlug).then(d => { d1Time = performance.now() - _t1; d1Result = d; }).catch(() => { d1Time = performance.now() - _t1; }),
     ]);
-    console.log(`⏱️ [INIT] R2: ${r2Result ? '✅' : '❌'} ${r2Time?.toFixed(0)}ms | D1: ${d1Result ? '✅' : '❌'} ${d1Time?.toFixed(0)}ms`);
-    studyConfig = r2Result || d1Result;
+    // Use whichever responded fastest
+    const r2Won = r2Result && (!d1Result || r2Time <= d1Time);
+    studyConfig = r2Won ? r2Result : (d1Result || r2Result);
+    const winner = studyConfig === r2Result ? 'R2' : 'D1';
+    console.log(`⏱️ [INIT] R2: ${r2Result ? '✅' : '❌'} ${r2Time?.toFixed(0)}ms | D1: ${d1Result ? '✅' : '❌'} ${d1Time?.toFixed(0)}ms → ${winner}`);
 
     if (!studyConfig) {
         showError(`Study "${studySlug}" not found`);
