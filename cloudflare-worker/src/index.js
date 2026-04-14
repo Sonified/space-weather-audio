@@ -616,11 +616,11 @@ export default {
       }
 
       // =======================================================================
-      // EMIC Data Routes: /emic/data/*
-      // Serves GOES magnetometer chunks from emic-data R2 bucket
+      // Data Routes: /data/*
+      // Serves satellite magnetometer chunks from R2 bucket
       // =======================================================================
-      if (path.startsWith('/api/data/') || path.startsWith('/emic/data/')) {
-        const r2Key = path.startsWith('/api/data/') ? path.slice('/api/'.length) : path.slice('/emic/'.length); // → data/2022/...
+      if (path.startsWith('/data/')) {
+        const r2Key = path.slice(1); // strip leading / → data/2022/...
         const obj = await env.EMIC_DATA.get(r2Key);
 
         if (!obj) {
@@ -1432,10 +1432,8 @@ export default {
         return json({ catalogs });
       }
 
-      // Pass through to Cloudflare Pages for static files
-      const pagesUrl = `https://space-weather-audio.pages.dev${path}${url.search}`;
-      const pagesResp = await fetch(pagesUrl, { method: request.method, headers: request.headers });
-      return new Response(pagesResp.body, { status: pagesResp.status, headers: pagesResp.headers });
+      // No matching route
+      return json({ error: 'Not found', path }, 404);
 
     } catch (error) {
       console.error('Worker error:', error);
