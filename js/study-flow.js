@@ -11,12 +11,19 @@
 
 import { fetchStudyConfig, setStudyId, initParticipant, saveSurveyAnswer, saveFeature, saveResponse, markComplete, getParticipantId as d1GetParticipantId, startHeartbeat, stopHeartbeat, getApiBase } from './d1-sync.js';
 import { modalManager } from './modal-manager.js';
-import { getStandaloneFeatures, setCurrentSection } from './feature-tracker.js';
 import { getParticipantId, storeParticipantId, clearParticipantId, generateParticipantId } from './participant-id.js';
 import { styleBodyHtml } from './study-builder/utils.js';
-import { pausePlayback } from './audio-player.js';
 import { typeText, cancelTyping } from './status-text.js';
 import { buildDimensionStyle, buildTitleFontStyle, buildHeaderUnderlineStyle, renderInfoModal, renderRegistrationModal, renderQuestionModal } from './survey-question-renderer.js';
+
+// Heavy imports (Three.js) — start loading immediately but don't block init
+const _heavyModules = Promise.all([
+    import('./feature-tracker.js'),
+    import('./audio-player.js'),
+]);
+let _ft, _ap;
+_heavyModules.then(([ft, ap]) => { _ft = ft; _ap = ap; });
+const getHeavy = () => _heavyModules.then(([ft, ap]) => { _ft = ft; _ap = ap; return { ft, ap }; });
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // STATE
@@ -2298,7 +2305,8 @@ async function runAnalysis(step) {
     if (window.pm?.study_flow) console.log(`📋 Analysis step: entering drawing phase (session ${analysisSession})`);
 
     // Tell feature tracker which section we're in — button uses per-section feature count
-    setCurrentSection(analysisSession);
+    await getHeavy();
+    _ft.setCurrentSection(analysisSession);
 
     // Apply this step's analysis config (spacecraft, dates, display settings)
     applyAnalysisConfig(step);
@@ -2533,12 +2541,12 @@ async function runAnalysis(step) {
                     const { closeFeaturePopup } = await import('./spectrogram-renderer.js');
                     closeFeaturePopup();
                 } catch (e) { /* not critical */ }
-                pausePlayback();
+                _ap.pausePlayback();
                 // Hide (i) button when leaving analysis
                 if (aboutBtn) aboutBtn.style.display = 'none';
 
                 // Save features to D1
-                const features = getStandaloneFeatures();
+                const features = _ft.getStandaloneFeatures();
 
                 // Enforce minimum features at click time
                 if (step.requireMinFeatures !== false && features.length < minFeatures) {
