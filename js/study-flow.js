@@ -1176,7 +1176,7 @@ async function init() {
     const _t1 = performance.now();
     await Promise.all([
         fetch(`/study-json-live/${studySlug}.json`).then(r => r.ok ? r.json() : null).then(d => { staticTime = performance.now() - _t1; staticResult = d; }).catch(() => { staticTime = performance.now() - _t1; }),
-        fetch(`/api/study/${studySlug}/r2-config`).then(r => r.ok ? r.json() : null).then(d => { r2Time = performance.now() - _t1; r2Result = d; }).catch(() => { r2Time = performance.now() - _t1; }),
+        fetch(`${(location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'https://spaceweather.now.audio' : ''}/api/study/${studySlug}/r2-config`).then(r => r.ok ? r.json() : null).then(d => { r2Time = performance.now() - _t1; r2Result = d; }).catch(() => { r2Time = performance.now() - _t1; }),
         fetchStudyConfig(studySlug).then(d => { d1Time = performance.now() - _t1; d1Result = d; }).catch(() => { d1Time = performance.now() - _t1; }),
     ]);
     console.log(`⏱️ [INIT] Static: ${staticResult ? '✅' : '❌'} ${staticTime?.toFixed(0)}ms | R2: ${r2Result ? '✅' : '❌'} ${r2Time?.toFixed(0)}ms | D1: ${d1Result ? '✅' : '❌'} ${d1Time?.toFixed(0)}ms`);
