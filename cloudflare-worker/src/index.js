@@ -619,8 +619,8 @@ export default {
       // EMIC Data Routes: /emic/data/*
       // Serves GOES magnetometer chunks from emic-data R2 bucket
       // =======================================================================
-      if (path.startsWith('/emic/data/')) {
-        const r2Key = path.slice('/emic/'.length); // Strip /emic/ prefix → data/2022/...
+      if (path.startsWith('/api/data/') || path.startsWith('/emic/data/')) {
+        const r2Key = path.startsWith('/api/data/') ? path.slice('/api/'.length) : path.slice('/emic/'.length); // → data/2022/...
         const obj = await env.EMIC_DATA.get(r2Key);
 
         if (!obj) {
@@ -1432,36 +1432,8 @@ export default {
         return json({ catalogs });
       }
 
-      // =======================================================================
-      // Proxy everything else to GitHub Pages
-      // =======================================================================
-      const githubPagesUrl = 'https://sonified.github.io/space-weather-audio';
-
-      // Build the proxied URL
-      let proxyPath = path;
-      if (proxyPath === '/' || proxyPath === '') {
-        proxyPath = '/index.html';
-      }
-
-      const proxyUrl = `${githubPagesUrl}${proxyPath}${url.search}`;
-
-      try {
-        const proxyResponse = await fetch(proxyUrl, {
-          method: request.method,
-          headers: request.headers,
-        });
-
-        // Return the GitHub Pages response with CORS headers
-        const response = new Response(proxyResponse.body, {
-          status: proxyResponse.status,
-          headers: proxyResponse.headers,
-        });
-
-        return response;
-      } catch (proxyError) {
-        console.error('Proxy error:', proxyError);
-        return json({ error: 'Failed to load page' }, 502);
-      }
+      // No matching route — Pages serves static files, Worker only handles API
+      return json({ error: 'Not found', path }, 404);
 
     } catch (error) {
       console.error('Worker error:', error);

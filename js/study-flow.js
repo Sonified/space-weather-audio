@@ -1170,10 +1170,18 @@ async function init() {
 
     const titleEl = document.getElementById('studyTitle');
 
-    // Fetch config from D1 (same Cloudflare edge — fast)
+    // Fetch config from R2 (fast, consistent ~100ms), D1 as fallback
     if (window.pm?.study_flow) console.log(`%c[INIT] ① Fetching study config: ${studySlug}`, 'color: #58a6ff; font-weight: bold;');
-    studyConfig = await fetchStudyConfig(studySlug);
-    _tLog(studyConfig ? '✅ config loaded' : '❌ config not found');
+    try {
+        const r2Resp = await fetch(`/api/study/${studySlug}/r2-config`);
+        if (r2Resp.ok) studyConfig = await r2Resp.json();
+    } catch (e) { /* R2 unavailable, fall through */ }
+    if (studyConfig) {
+        _tLog('✅ config loaded (R2)');
+    } else {
+        studyConfig = await fetchStudyConfig(studySlug);
+        _tLog(studyConfig ? '✅ config loaded (D1 fallback)' : '❌ config not found');
+    }
 
     if (!studyConfig) {
         showError(`Study "${studySlug}" not found`);
