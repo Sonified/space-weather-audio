@@ -1,0 +1,12 @@
+# Cloudflare Pages ignore — skip non-deployable files
+_recovery/
+stretch_test_tracks/
+emic_audio/
+tools/
+tests/
+studies-backup/
+spaceweather_metadata/
+cloudflare-worker/
+docs/
+.github/
+node_modules/
