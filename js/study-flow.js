@@ -1177,7 +1177,7 @@ async function init() {
         if (localResp.ok) {
             studyConfig = await localResp.json();
             _tLog('✅ localConfig found');
-            _tLog('⏩ skipping D1 fetch');
+            console.log('⏱️ [INIT] ⏩ skipping D1 fetch');
         }
     } catch (e) { /* local not available, fall through */ }
 
