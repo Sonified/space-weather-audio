@@ -202,6 +202,16 @@ export function setupAudioDownloadHandlers() {
 
                 console.log(`📦 Creating ZIP with ${allBlobs.length} components...`);
 
+                // Lazy-load JSZip if not already present
+                if (typeof window.JSZip !== 'function' && typeof JSZip !== 'function') {
+                    await new Promise((resolve, reject) => {
+                        const s = document.createElement('script');
+                        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+                        s.onload = resolve; s.onerror = reject;
+                        document.head.appendChild(s);
+                    });
+                }
+
                 // Create ZIP file
                 const zip = new JSZip();
 

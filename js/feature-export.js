@@ -327,9 +327,19 @@ async function exportFeatureAudio(mode /* 'isolated' | 'full' */) {
         return;
     }
     if (typeof window.JSZip !== 'function' && typeof JSZip !== 'function') {
-        // No zip — download them sequentially
-        for (const c of clips) triggerBlobDownload(c.blob, c.name);
-        return;
+        // Lazy-load JSZip on first use
+        try {
+            await new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+                s.onload = resolve; s.onerror = reject;
+                document.head.appendChild(s);
+            });
+        } catch (e) {
+            // Still no zip — download sequentially as fallback
+            for (const c of clips) triggerBlobDownload(c.blob, c.name);
+            return;
+        }
     }
     const zip = new JSZip();
     for (const c of clips) zip.file(c.name, c.blob);
