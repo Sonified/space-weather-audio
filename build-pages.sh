@@ -1,32 +1,38 @@
 #!/bin/bash
-# Build script for Cloudflare Pages — rsync everything EXCEPT non-deployable dirs
-rsync -a \
-  --exclude='_recovery' \
-  --exclude='stretch_test_tracks' \
-  --exclude='stretch_test_audio' \
-  --exclude='stretch_test_python_renders' \
-  --exclude='emic_audio' \
-  --exclude='tools' \
-  --exclude='tests' \
-  --exclude='test_interfaces' \
-  --exclude='studies-backup' \
-  --exclude='spaceweather_metadata' \
-  --exclude='cloudflare-worker' \
-  --exclude='docs' \
-  --exclude='diagnostics' \
-  --exclude='dashboards' \
-  --exclude='node_modules' \
-  --exclude='NASA' \
-  --exclude='Qualtrics' \
-  --exclude='__pycache__' \
-  --exclude='archive' \
-  --exclude='backend' \
-  --exclude='harp' \
-  --exclude='homestretch' \
-  --exclude='workers' \
-  --exclude='wavelet_processed_audio' \
-  --exclude='wavelets' \
-  --exclude='_site' \
-  --exclude='.git' \
-  . _site/
+# Build script for Cloudflare Pages — copy only deployable files
+# (their build env doesn't have rsync)
+mkdir -p _site
+
+# Copy everything first
+cp -r . _site/ 2>/dev/null
+
+# Remove non-deployable dirs
+rm -rf _site/_recovery \
+  _site/stretch_test_tracks \
+  _site/stretch_test_audio \
+  _site/stretch_test_python_renders \
+  _site/emic_audio \
+  _site/tools \
+  _site/tests \
+  _site/test_interfaces \
+  _site/studies-backup \
+  _site/spaceweather_metadata \
+  _site/cloudflare-worker \
+  _site/docs \
+  _site/diagnostics \
+  _site/dashboards \
+  _site/node_modules \
+  _site/NASA \
+  _site/Qualtrics \
+  _site/__pycache__ \
+  _site/archive \
+  _site/backend \
+  _site/harp \
+  _site/homestretch \
+  _site/workers \
+  _site/wavelet_processed_audio \
+  _site/wavelets \
+  _site/.git \
+  _site/_site
+
 echo "Pages build: $(find _site -type f | wc -l) files"
