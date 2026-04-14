@@ -22,7 +22,9 @@ import { zoomState } from './zoom-state.js';
 import { updateCompleteButtonState, loadRegionsAfterDataFetch } from './feature-tracker.js';
 import { storeChunk, getChunk } from './goes-data-cache.js';
 
-const WORKER_BASE = '';
+const WORKER_BASE = location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+    ? 'https://spaceweather.now.audio'
+    : '';
 const INSTRUMENT_SAMPLE_RATE = 10; // Hz — GOES mag high-res cadence
 
 // ── Gain curve helpers (matches spike_review.html applyGainCurve) ──
