@@ -1432,8 +1432,10 @@ export default {
         return json({ catalogs });
       }
 
-      // No matching route — Pages serves static files, Worker only handles API
-      return json({ error: 'Not found', path }, 404);
+      // Pass through to Cloudflare Pages for static files
+      const pagesUrl = `https://space-weather-audio.pages.dev${path}${url.search}`;
+      const pagesResp = await fetch(pagesUrl, { method: request.method, headers: request.headers });
+      return new Response(pagesResp.body, { status: pagesResp.status, headers: pagesResp.headers });
 
     } catch (error) {
       console.error('Worker error:', error);
