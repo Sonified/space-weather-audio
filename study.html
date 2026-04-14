@@ -6,6 +6,14 @@
     <title>Study — spaceweather.now.audio</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔬</text></svg>">
     <script>
+        // Page load profiler — measures key milestones
+        window.__t0 = performance.now();
+        window.__tMark = function(label) { console.log('⏱️ [LOAD] ' + label + ': ' + (performance.now() - window.__t0).toFixed(0) + 'ms'); };
+        window.__tMark('head script (inline)');
+        document.addEventListener('DOMContentLoaded', function() { window.__tMark('DOMContentLoaded'); });
+        window.addEventListener('load', function() { window.__tMark('window.load (all resources)'); });
+    </script>
+    <script>
         // Auto-refresh when a new version is deployed
         fetch('version.json?t=' + Date.now()).then(r => r.json()).then(d => {
             var key = '_app_version', prev = localStorage.getItem(key);
@@ -90,9 +98,12 @@
         #participantIdDisplay:not(.sf-pid-visible) { display: none !important; }
     </style>
     <link rel="stylesheet" href="styles.css">
+    <script>window.__tMark('styles.css link parsed');</script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>window.__tMark('jszip loaded');</script>
 </head>
 <body class="study-page">
+    <script>window.__tMark('body start');</script>
     <div class="container">
         <!-- Study Header — title is updated dynamically from config -->
         <div class="top-header-bar" style="display: flex; align-items: flex-end; margin-bottom: 6px; margin-top: 0px; position: relative; z-index: 1001; min-height: 2.2em;">
@@ -319,6 +330,7 @@
     </div>
 
     <!-- Permanent Modal Overlay -->
+    <script>window.__tMark('pre-overlay');</script>
     <div id="permanentOverlay" style="display: flex; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.65); z-index: 1000; align-items: center; justify-content: center;">
         <div id="studyLoadingSplash" style="color: rgba(255,255,255,0.8); font-family: system-ui, -apple-system, sans-serif; font-size: 22px; font-weight: 500; letter-spacing: 0.5px; display: flex; align-items: center; gap: 14px;">
             <svg width="28" height="28" viewBox="0 0 24 24" style="animation: studySpin 1s linear infinite;">
@@ -333,6 +345,7 @@
     <!-- Study Flags Panel (floating, always on top — even above overlay) -->
 
     <!-- CORE SYSTEM -->
+    <script>window.__tMark('pre-modules');</script>
     <script type="module">
         import { initFlameEngine } from './js/core/flame-engine.js';
         import { initErrorSystem } from './js/core/error-system.js';
