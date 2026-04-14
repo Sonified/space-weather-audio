@@ -1,0 +1,4 @@
+index,d1Id,startTime,endTime,lowFreqHz,highFreqHz,confidence,notes,componentIndex,componentName,spacecraft,dataset,fetchStart,fetchEnd
+1,d6fb2d58-67c9-4255-8883-f7fd0ec12860,2024-06-29T11:41:35.000Z,2024-06-29T11:44:28.000Z,6.648,12.086,confirmed,A falling tone!,0,br (Radial),PSP,PSP_FLD_L2_MAG_RTN,2024-06-29T11:00:00.000Z,2024-06-29T12:30:00.000Z
+2,92d9b500-9b9c-405a-a337-9b9f1d360777,2024-06-29T11:47:35.000Z,2024-06-29T12:09:22.000Z,1.619,7.345,confirmed,A long noisy region!,0,br (Radial),PSP,PSP_FLD_L2_MAG_RTN,2024-06-29T11:00:00.000Z,2024-06-29T12:30:00.000Z
+3,0e5ea9da-c355-4ac8-be61-37dec14993c8,2024-06-29T11:59:36.000Z,2024-06-29T12:08:33.000Z,9.212,18.498,confirmed,These are rising tones!,0,br (Radial),PSP,PSP_FLD_L2_MAG_RTN,2024-06-29T11:00:00.000Z,2024-06-29T12:30:00.000Z

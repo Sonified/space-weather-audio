@@ -1,0 +1,58 @@
+{
+  "exportedAt": "2026-04-12T03:40:09.049Z",
+  "spacecraft": "PSP",
+  "dataset": "PSP_FLD_L2_MAG_RTN",
+  "fetchStart": "2024-06-29T11:00:00.000Z",
+  "fetchEnd": "2024-06-29T12:30:00.000Z",
+  "featureCount": 3,
+  "features": [
+    {
+      "index": 1,
+      "d1Id": "d6fb2d58-67c9-4255-8883-f7fd0ec12860",
+      "startTime": "2024-06-29T11:41:35.000Z",
+      "endTime": "2024-06-29T11:44:28.000Z",
+      "lowFreqHz": 6.648,
+      "highFreqHz": 12.086,
+      "confidence": "confirmed",
+      "notes": "A falling tone!",
+      "componentIndex": "0",
+      "componentName": "br (Radial)",
+      "spacecraft": "PSP",
+      "dataset": "PSP_FLD_L2_MAG_RTN",
+      "fetchStart": "2024-06-29T11:00:00.000Z",
+      "fetchEnd": "2024-06-29T12:30:00.000Z"
+    },
+    {
+      "index": 2,
+      "d1Id": "92d9b500-9b9c-405a-a337-9b9f1d360777",
+      "startTime": "2024-06-29T11:47:35.000Z",
+      "endTime": "2024-06-29T12:09:22.000Z",
+      "lowFreqHz": 1.619,
+      "highFreqHz": 7.345,
+      "confidence": "confirmed",
+      "notes": "A long noisy region!",
+      "componentIndex": "0",
+      "componentName": "br (Radial)",
+      "spacecraft": "PSP",
+      "dataset": "PSP_FLD_L2_MAG_RTN",
+      "fetchStart": "2024-06-29T11:00:00.000Z",
+      "fetchEnd": "2024-06-29T12:30:00.000Z"
+    },
+    {
+      "index": 3,
+      "d1Id": "0e5ea9da-c355-4ac8-be61-37dec14993c8",
+      "startTime": "2024-06-29T11:59:36.000Z",
+      "endTime": "2024-06-29T12:08:33.000Z",
+      "lowFreqHz": 9.212,
+      "highFreqHz": 18.498,
+      "confidence": "confirmed",
+      "notes": "These are rising tones!",
+      "componentIndex": "0",
+      "componentName": "br (Radial)",
+      "spacecraft": "PSP",
+      "dataset": "PSP_FLD_L2_MAG_RTN",
+      "fetchStart": "2024-06-29T11:00:00.000Z",
+      "fetchEnd": "2024-06-29T12:30:00.000Z"
+    }
+  ]
+}
