@@ -10,8 +10,13 @@
         window.__t0 = performance.now();
         window.__tMark = function(label) { console.log('⏱️ [LOAD] ' + label + ': ' + (performance.now() - window.__t0).toFixed(0) + 'ms'); };
         window.__tMark('head script (inline)');
+        // Navigation timing — how long from Enter to first byte
+        window.addEventListener('load', function() {
+            window.__tMark('window.load (all resources)');
+            var t = performance.getEntriesByType('navigation')[0];
+            if (t) console.log('⏱️ [NAV] DNS: ' + t.domainLookupEnd.toFixed(0) + 'ms, TLS: ' + (t.connectEnd - t.connectStart).toFixed(0) + 'ms, TTFB: ' + t.responseStart.toFixed(0) + 'ms, HTML download: ' + (t.responseEnd - t.responseStart).toFixed(0) + 'ms, DOM interactive: ' + t.domInteractive.toFixed(0) + 'ms');
+        });
         document.addEventListener('DOMContentLoaded', function() { window.__tMark('DOMContentLoaded'); });
-        window.addEventListener('load', function() { window.__tMark('window.load (all resources)'); });
     </script>
     <script>
         // Auto-refresh when a new version is deployed
