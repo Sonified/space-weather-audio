@@ -3371,8 +3371,8 @@ export function getSpectrogramParams() {
         maxFreq: originalNyquist,
         minFreq,
         frequencyScale: freqScaleInt,
-        dbFloor: -100.0,
-        dbRange: 100.0
+        dbFloor: uDbFloor ? uDbFloor.value : -100.0,
+        dbRange: uDbRange ? uDbRange.value : 100.0
     };
 }
 
