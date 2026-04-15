@@ -4171,6 +4171,11 @@
               <option value="fast" ${p.speed==='fast'?'selected':''}>Fast</option>
             </select>
           </span>
+          <span style="font-size:11px; color:#ccd; white-space:nowrap; margin-left:12px;">Cancel if</span>
+          <select class="field-input prompt-cancel-if" style="width:auto;">
+            <option value="" ${!p.cancelIf?'selected':''}>None</option>
+            <option value="featureDrawn" ${p.cancelIf==='featureDrawn'?'selected':''}>Feature drawn</option>
+          </select>
         </div>
       </div>`;
   }
@@ -4303,8 +4308,10 @@
       const effect = entry.querySelector('.prompt-effect')?.value || 'typed';
       const speed = entry.querySelector('.prompt-speed')?.value || 'medium';
       const frequency = entry.querySelector('.prompt-frequency')?.value || 'first';
+      const cancelIf = entry.querySelector('.prompt-cancel-if')?.value || '';
       const prompt = { trigger, delay, text, effect, speed };
       if (trigger === 'onFeatureDraw') prompt.frequency = frequency;
+      if (cancelIf) prompt.cancelIf = cancelIf;
       if (text.trim()) prompts.push(prompt);
     });
     return prompts;

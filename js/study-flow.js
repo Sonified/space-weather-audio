@@ -2209,6 +2209,10 @@ function executePrompts(prompts) {
     let previousPromptDone = null; // resolves when the previous prompt finishes displaying
 
     function showPrompt(prompt) {
+        // cancelIf: skip this prompt if condition is met
+        if (prompt.cancelIf === 'featureDrawn' && _ft?.getStandaloneFeatures?.()?.length > 0) {
+            return Promise.resolve();
+        }
         return new Promise((resolve) => {
             const delayMs = (prompt.delay || 0) * 1000;
             const tryShow = () => {
