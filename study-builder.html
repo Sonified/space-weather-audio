@@ -730,7 +730,7 @@
     outline: none;
   }
   .field-input:focus { border-color: var(--accent); }
-  .prompt-controls-row .field-input { font-size: 13px; padding: 6px 10px; }
+  .prompt-controls-row .field-input { font-size: 15px; padding: 7px 10px; }
   textarea.field-input { resize: vertical; min-height: 60px; font-family: inherit; }
 
   .dim-input-wrap { display: flex; align-items: stretch; }
@@ -4150,7 +4150,7 @@
             ${triggers.map(t => `<option value="${t}" ${t===p.trigger?'selected':''}>${triggerLabels[t]}</option>`).join('')}
           </select>
           <span class="prompt-delay-group" style="display:${p.trigger === 'afterPrevious' ? 'contents' : 'none'};">
-            <span style="font-size:11px; color:#ccd; white-space:nowrap;">Delay</span>
+            <span style="font-size:11px; color:#ccd; white-space:nowrap; margin-left:10px;">Delay</span>
             <input class="field-input prompt-delay" type="number" min="0" value="${p.delay || 0}" style="width:60px;" />
           </span>
           <span class="prompt-frequency-group" style="display:${p.trigger === 'onFeatureDraw' ? 'contents' : 'none'};">
@@ -4159,18 +4159,18 @@
               <option value="always" ${p.frequency==='always'?'selected':''}>Every time</option>
             </select>
           </span>
-          <span style="font-size:11px; color:#ccd; white-space:nowrap; margin-left:4px;">Cancel if</span>
+          <span style="font-size:11px; color:#ccd; white-space:nowrap; margin-left:10px;">Cancel if</span>
           <select class="field-input prompt-cancel-if" style="width:auto;">
             <option value="" ${!p.cancelIf?'selected':''}>None</option>
             <option value="featureDrawn" ${p.cancelIf==='featureDrawn'?'selected':''}>Feature drawn</option>
           </select>
-          <span style="font-size:11px; color:#ccd; white-space:nowrap; margin-left:4px;">Effect</span>
+          <span style="font-size:11px; color:#ccd; white-space:nowrap; margin-left:10px;">Effect</span>
           <select class="field-input prompt-effect" onchange="onPromptEffectChange(this)" style="width:auto;">
             <option value="instant" ${p.effect==='instant'?'selected':''}>Instant</option>
             <option value="typed" ${p.effect==='typed'?'selected':''}>Typed</option>
           </select>
           <span class="prompt-speed-group" style="display:${p.effect === 'typed' ? 'contents' : 'none'};">
-            <span style="font-size:11px; color:#ccd; white-space:nowrap; margin-left:4px;">Speed</span>
+            <span style="font-size:11px; color:#ccd; white-space:nowrap; margin-left:10px;">Speed</span>
             <select class="field-input prompt-speed" style="width:auto;">
               <option value="slow" ${p.speed==='slow'?'selected':''}>Slow</option>
               <option value="medium" ${p.speed==='medium'?'selected':''}>Medium</option>
