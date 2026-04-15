@@ -4133,7 +4133,7 @@
   function buildPromptEntry(p, i) {
     p = Object.assign({ trigger: 'onLoad', delay: 0, text: '', effect: 'typed', speed: 'medium', frequency: 'first' }, p);
     const triggers = ['onLoad', 'onPlay', 'onFeatureDraw', 'afterPrevious'];
-    const triggerLabels = { onLoad: 'On load', onPlay: 'On play', onFeatureDraw: 'On feature draw', afterPrevious: 'After previous prompt' };
+    const triggerLabels = { onLoad: 'On load', onPlay: 'On play', onFeatureDraw: 'On feature draw', afterPrevious: 'After previous' };
     const showDelay = p.trigger === 'afterPrevious' ? '' : 'display:none;';
     const showSpeed = p.effect === 'typed' ? '' : 'display:none;';
     return `
@@ -4163,9 +4163,7 @@
             <option value="" ${!p.cancelIf?'selected':''}>None</option>
             <option value="featureDrawn" ${p.cancelIf==='featureDrawn'?'selected':''}>Feature drawn</option>
           </select>
-        </div>
-        <div style="display:flex; gap:4px; align-items:center; margin-top:2px;">
-          <span style="font-size:11px; color:#ccd; white-space:nowrap; width:44px; text-align:right; flex-shrink:0;">Effect</span>
+          <span style="font-size:11px; color:#ccd; white-space:nowrap; margin-left:4px;">Effect</span>
           <select class="field-input prompt-effect" onchange="onPromptEffectChange(this)" style="width:auto;">
             <option value="instant" ${p.effect==='instant'?'selected':''}>Instant</option>
             <option value="typed" ${p.effect==='typed'?'selected':''}>Typed</option>
