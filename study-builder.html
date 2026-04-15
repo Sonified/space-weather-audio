@@ -4143,10 +4143,15 @@
           <input class="field-input prompt-text" type="text" value="${escapeAttr(p.text || '')}" placeholder="Enter prompt text..." style="flex:1;" />
           <button type="button" onclick="confirmDeletePrompt(this, event)" style="background:none; border:1px solid #444; color:#888; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:13px; flex-shrink:0; transition: background 0.15s, color 0.15s, border-color 0.15s;" onmouseover="this.style.background='#c0392b'; this.style.color='#fff'; this.style.borderColor='#c0392b';" onmouseout="this.style.background='none'; this.style.color='#888'; this.style.borderColor='#444';" title="Delete prompt">🗑</button>
         </div>
-        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap;">
           <span style="font-size:11px; color:#ccd; white-space:nowrap; width:44px; text-align:right; flex-shrink:0;">Trigger</span>
           <select class="field-input prompt-trigger" onchange="onPromptTriggerChange(this)" style="width:auto;">
             ${triggers.map(t => `<option value="${t}" ${t===p.trigger?'selected':''}>${triggerLabels[t]}</option>`).join('')}
+          </select>
+          <span style="font-size:11px; color:#ccd; white-space:nowrap;">Cancel if</span>
+          <select class="field-input prompt-cancel-if" style="width:auto;">
+            <option value="" ${!p.cancelIf?'selected':''}>None</option>
+            <option value="featureDrawn" ${p.cancelIf==='featureDrawn'?'selected':''}>Feature drawn</option>
           </select>
           <span class="prompt-delay-group" style="display:${p.trigger === 'afterPrevious' ? 'contents' : 'none'};">
             <span style="font-size:11px; color:#ccd; white-space:nowrap;">Delay</span>
@@ -4158,24 +4163,19 @@
               <option value="always" ${p.frequency==='always'?'selected':''}>Every time</option>
             </select>
           </span>
-          <span style="font-size:11px; color:#ccd; white-space:nowrap; margin-left:12px;">Effect</span>
+          <span style="font-size:11px; color:#ccd; white-space:nowrap; margin-left:4px;">Effect</span>
           <select class="field-input prompt-effect" onchange="onPromptEffectChange(this)" style="width:auto;">
             <option value="instant" ${p.effect==='instant'?'selected':''}>Instant</option>
             <option value="typed" ${p.effect==='typed'?'selected':''}>Typed</option>
           </select>
           <span class="prompt-speed-group" style="display:${p.effect === 'typed' ? 'contents' : 'none'};">
-            <span style="font-size:11px; color:#ccd; white-space:nowrap; margin-left:12px;">Speed</span>
+            <span style="font-size:11px; color:#ccd; white-space:nowrap; margin-left:4px;">Speed</span>
             <select class="field-input prompt-speed" style="width:auto;">
               <option value="slow" ${p.speed==='slow'?'selected':''}>Slow</option>
               <option value="medium" ${p.speed==='medium'?'selected':''}>Medium</option>
               <option value="fast" ${p.speed==='fast'?'selected':''}>Fast</option>
             </select>
           </span>
-          <span style="font-size:11px; color:#ccd; white-space:nowrap; margin-left:12px;">Cancel if</span>
-          <select class="field-input prompt-cancel-if" style="width:auto;">
-            <option value="" ${!p.cancelIf?'selected':''}>None</option>
-            <option value="featureDrawn" ${p.cancelIf==='featureDrawn'?'selected':''}>Feature drawn</option>
-          </select>
         </div>
       </div>`;
   }
