@@ -730,6 +730,7 @@
     outline: none;
   }
   .field-input:focus { border-color: var(--accent); }
+  .prompt-controls-row .field-input { font-size: 11px; padding: 4px 6px; }
   textarea.field-input { resize: vertical; min-height: 60px; font-family: inherit; }
 
   .dim-input-wrap { display: flex; align-items: stretch; }
@@ -4143,7 +4144,7 @@
           <input class="field-input prompt-text" type="text" value="${escapeAttr(p.text || '')}" placeholder="Enter prompt text..." style="flex:1;" />
           <button type="button" onclick="confirmDeletePrompt(this, event)" style="background:none; border:1px solid #444; color:#888; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:13px; flex-shrink:0; transition: background 0.15s, color 0.15s, border-color 0.15s;" onmouseover="this.style.background='#c0392b'; this.style.color='#fff'; this.style.borderColor='#c0392b';" onmouseout="this.style.background='none'; this.style.color='#888'; this.style.borderColor='#444';" title="Delete prompt">🗑</button>
         </div>
-        <div style="display:flex; gap:4px; align-items:center;">
+        <div class="prompt-controls-row" style="display:flex; gap:4px; align-items:center;">
           <span style="font-size:11px; color:#ccd; white-space:nowrap; width:44px; text-align:right; flex-shrink:0;">Trigger</span>
           <select class="field-input prompt-trigger" onchange="onPromptTriggerChange(this)" style="width:auto;">
             ${triggers.map(t => `<option value="${t}" ${t===p.trigger?'selected':''}>${triggerLabels[t]}</option>`).join('')}
