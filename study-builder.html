@@ -1826,6 +1826,16 @@
     .rich-editable:focus { border-color: var(--accent); }
     .rich-editable a { color: var(--accent); }
 
+    /* Always-visible dark scrollbar for the activity log (no fade).
+       DO NOT set scrollbar-width or scrollbar-color — those opt into the
+       native scrollbar API, which on macOS honors the system "show on scroll"
+       fade behavior. Styling only ::-webkit-scrollbar forces classic mode. */
+    #dataStreamLog { overflow-y: scroll !important; }
+    #dataStreamLog::-webkit-scrollbar { width: 10px; -webkit-appearance: none; }
+    #dataStreamLog::-webkit-scrollbar-track { background: rgba(255,255,255,0.08); }
+    #dataStreamLog::-webkit-scrollbar-thumb { background: #000; border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
+    #dataStreamLog::-webkit-scrollbar-thumb:hover { background: #222; background-clip: padding-box; }
+
     </style>
 </head>
 <body>
@@ -8167,11 +8177,14 @@
     const LOG_EL = 'dataStreamLog';
     const COUNT_EL = 'streamCount';
     const POLL_MS = _ACTIVITY_POLL_MS;
+    const BULK_PAGE = 200; // page size for 24h / all modes; Show more appends another page
     let eventCount = 0;
     let featureCounts = {}; // participant_id → count (for feature numbering)
+    let oldestShown = null; // oldest event timestamp currently rendered (for "Show more" cursor)
 
     const pageLoadTime = new Date().toISOString();
     let lastSeen = pageLoadTime; // start from now — only show live events
+    let historyCutoff = null; // lower bound for historical fetch (24h/all), null = live
     let streamRange = 'live';
 
     // Exposed globally for the toggle buttons
@@ -8187,6 +8200,10 @@
       // Reset and refetch
       eventCount = 0;
       featureCounts = {};
+      oldestShown = null;
+      // Clear stale If-Modified-Since from prior range — otherwise server returns 304 and we'd render nothing
+      _activityLastModified = null;
+      _activityUnchangedCount = 0;
       const log = document.getElementById(LOG_EL);
       const count = document.getElementById(COUNT_EL);
       if (log) log.innerHTML = '<div style="color:#555; font-style:italic;">Loading...</div>';
@@ -8194,10 +8211,13 @@
 
       if (range === 'live') {
         lastSeen = pageLoadTime;
+        historyCutoff = null;
       } else if (range === '24h') {
-        lastSeen = new Date(Date.now() - 86400000).toISOString();
+        historyCutoff = new Date(Date.now() - 86400000).toISOString();
+        lastSeen = historyCutoff;
       } else {
-        lastSeen = '2000-01-01T00:00:00Z';
+        historyCutoff = '2000-01-01T00:00:00Z';
+        lastSeen = historyCutoff;
       }
       poll(range !== 'live');
     };
@@ -8210,7 +8230,12 @@
     function formatTime(raw) {
       // D1 returns 'YYYY-MM-DD HH:MM:SS' (UTC, no Z) — append Z so Date parses as UTC
       const d = new Date(raw.includes('Z') || raw.includes('+') ? raw : raw + 'Z');
-      return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const hms = d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const now = new Date();
+      const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+      if (sameDay) return hms;
+      const md = d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+      return `${md} ${hms}`;
     }
 
     function formatEntry(entry) {
@@ -8251,7 +8276,7 @@
       }
 
       return `<div style="border-bottom:1px solid rgba(255,255,255,0.05); padding:2px 0;">
-        <span style="color:#8b949e;">${time}</span>
+        <span style="color:#e6edf3;">${time}</span>
         <span style="color:#58a6ff;">${pid}</span>
         <span style="color:#d29922;">${type}</span>
         <span>${detail}</span>
@@ -8263,14 +8288,60 @@
     let _activityUnchangedCount = 0;
     let _activityErrorCount = 0;
 
+    function renderLoadMoreBtn(log) {
+      let btn = document.getElementById('streamLoadMoreBtn');
+      if (!btn) {
+        btn = document.createElement('button');
+        btn.id = 'streamLoadMoreBtn';
+        btn.textContent = `Show ${BULK_PAGE} more`;
+        btn.style.cssText = 'display:block; margin:8px auto; font-size:11px; padding:4px 12px; cursor:pointer; background:var(--card-bg); color:var(--text-muted); border:1px solid var(--border); border-radius:4px;';
+        btn.onclick = loadOlderActivity;
+      } else {
+        btn.textContent = `Show ${BULK_PAGE} more`;
+        btn.disabled = false;
+      }
+      log.appendChild(btn); // always ensure it's the last child
+    }
+
+    async function loadOlderActivity() {
+      if (!oldestShown) return;
+      const slug = getStudySlug();
+      if (!slug) return;
+      const btn = document.getElementById('streamLoadMoreBtn');
+      if (btn) { btn.textContent = 'Loading…'; btn.disabled = true; }
+      try {
+        const baseUrl = window.STUDY_API_BASE || 'https://spaceweather.now.audio';
+        const cutoff = historyCutoff || '2000-01-01T00:00:00Z';
+        const resp = await fetch(`${baseUrl}/api/study/${slug}/activity?since=${encodeURIComponent(cutoff)}&before=${encodeURIComponent(oldestShown)}&limit=${BULK_PAGE}`);
+        if (!resp.ok) { if (btn) { btn.textContent = 'Error — retry'; btn.disabled = false; } return; }
+        const data = await resp.json();
+        const events = data.events || [];
+        const log = document.getElementById(LOG_EL);
+        const count = document.getElementById(COUNT_EL);
+        if (events.length === 0) { if (btn) btn.remove(); return; }
+        const html = events.map(formatEntry).join('');
+        if (btn) btn.insertAdjacentHTML('beforebegin', html);
+        else if (log) log.insertAdjacentHTML('beforeend', html);
+        eventCount += events.length;
+        if (count) count.textContent = `${eventCount} event${eventCount !== 1 ? 's' : ''}`;
+        const oldest = events[events.length - 1];
+        const ots = oldest.timestamp || oldest.updated_at || oldest.created_at;
+        if (ots) oldestShown = ots.includes('T') ? ots : ots.replace(' ', 'T') + 'Z';
+        if (events.length < BULK_PAGE) { if (btn) btn.remove(); }
+        else if (btn) { btn.textContent = `Show ${BULK_PAGE} more`; btn.disabled = false; }
+      } catch (e) {
+        if (btn) { btn.textContent = 'Error — retry'; btn.disabled = false; }
+      }
+    }
+
     async function poll(bulk) {
       if (polling) return;
       polling = true;
       const slug = getStudySlug();
       if (!slug) { polling = false; return; }
 
-      // Bulk mode: grab up to 2000 in one shot. Live: small batches.
-      const batchSize = bulk ? 2000 : 50;
+      // Bulk mode: one page (200). Live incremental: small batches.
+      const batchSize = bulk ? BULK_PAGE : 50;
 
       try {
         const baseUrl = window.STUDY_API_BASE || 'https://spaceweather.now.audio';
@@ -8297,6 +8368,11 @@
         if (!data.events || data.events.length === 0) {
           _activityUnchangedCount++;
           _adaptiveActivityPoll();
+          // If this was a fresh bulk fetch, clear the "Loading..." placeholder
+          if (bulk && eventCount === 0) {
+            const log = document.getElementById(LOG_EL);
+            if (log) log.innerHTML = '<div style="color:#555; font-style:italic;">No activity in this range.</div>';
+          }
           polling = false;
           return;
         }
@@ -8319,10 +8395,22 @@
         eventCount += data.events.length;
         if (count) count.textContent = `${eventCount} event${eventCount !== 1 ? 's' : ''}`;
 
-        // Advance cursor to newest event
+        // Advance cursor to newest event (for live incremental polling)
         const newest = data.events[0];
         const ts = newest.timestamp || newest.updated_at || newest.created_at;
         if (ts) lastSeen = ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z';
+
+        // Track oldest event for pagination cursor
+        const oldest = data.events[data.events.length - 1];
+        const ots = oldest.timestamp || oldest.updated_at || oldest.created_at;
+        if (ots && !oldestShown) {
+          oldestShown = ots.includes('T') ? ots : ots.replace(' ', 'T') + 'Z';
+        }
+
+        // In historical modes, show "Show more" if this page was full (likely more older events exist)
+        if (streamRange !== 'live' && bulk && data.events.length >= BULK_PAGE) {
+          renderLoadMoreBtn(log);
+        }
       } catch (e) {
         _activityErrorCount++;
         const backoffSec = Math.min(60, _ACTIVITY_POLL_MS / 1000 * Math.pow(2, _activityErrorCount));
@@ -8396,6 +8484,15 @@
   let liveModeActive = false;
   let liveHeartbeatInterval = null;
   let liveSessionId = null;
+
+  // Poll backoff state — hoisted above restore-on-load (launchStudy/toggleTestMode)
+  // and the visibilitychange handler to avoid TDZ errors.
+  let _livePollLastJSON = '';
+  let _livePollUnchangedCount = 0;
+  let _livePollLastModified = null;
+  let _testPollLastJSON = '';
+  let _testPollUnchangedCount = 0;
+  let _testPollLastModified = null;
 
   // Pause dashboard + activity polling when tab is backgrounded to save D1 reads
   document.addEventListener('visibilitychange', () => {
@@ -8783,10 +8880,6 @@
     } catch {}
   })();
 
-  let _livePollLastJSON = '';
-  let _livePollUnchangedCount = 0;
-  let _livePollLastModified = null;
-
   async function pollLiveDashboard() {
     if (!liveModeActive) return;
     const hbLabel = document.getElementById('liveHeartbeatLabel');
@@ -9121,10 +9214,6 @@
       }
     } catch {}
   })();
-
-  let _testPollLastJSON = '';
-  let _testPollUnchangedCount = 0;
-  let _testPollLastModified = null;
 
   async function pollTestHeartbeat() {
     if (!testModeActive) return;

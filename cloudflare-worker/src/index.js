@@ -1281,8 +1281,10 @@ export default {
         const studyId = activityMatch[1];
 
         // If-Modified-Since: cheap 1-row check before expensive 2-query activity scan
+        // Skip 304 when ?before= is set — that's a paginated history query, not a recency check.
         const ims = request.headers.get('If-Modified-Since');
-        if (ims) {
+        const beforeParam = url.searchParams.get('before');
+        if (ims && !beforeParam) {
           const study = await env.DB.prepare('SELECT updated_at FROM studies WHERE id = ?').bind(studyId).first();
           if (study?.updated_at && new Date(study.updated_at) <= new Date(ims)) {
             console.log(`[304] /activity ${studyId} — not modified`);
@@ -1292,21 +1294,25 @@ export default {
 
         // Keep since in ISO format — nowISO() stores 'YYYY-MM-DDTHH:MM:SS.mmmZ' in D1
         const since = url.searchParams.get('since') || new Date(Date.now() - 3600000).toISOString();
+        const before = url.searchParams.get('before'); // optional — for loading older events
         const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10), 2000);
 
         // Direct column comparison — no functions on columns, so indexes can be used
+        const beforeClause = before ? ' AND {col} < ?' : '';
+        const pBinds = before ? [studyId, since, before, limit] : [studyId, since, limit];
+        const fBinds = before ? [studyId, since, before, limit] : [studyId, since, limit];
         const [participantRows, featureRows] = await Promise.all([
           env.DB.prepare(
             `SELECT participant_id, current_step, updated_at, registered_at, completed_at, last_event, 'participant' as source
-             FROM participants WHERE study_id = ? AND updated_at > ?
+             FROM participants WHERE study_id = ? AND updated_at > ?${beforeClause.replace('{col}', 'updated_at')}
              ORDER BY updated_at DESC LIMIT ?`
-          ).bind(studyId, since, limit).all(),
+          ).bind(...pBinds).all(),
           env.DB.prepare(
             `SELECT participant_id, id as feature_id, confidence, notes, start_time, end_time,
                     low_freq, high_freq, created_at as updated_at, 'feature' as source
-             FROM features WHERE study_id = ? AND created_at > ?
+             FROM features WHERE study_id = ? AND created_at > ?${beforeClause.replace('{col}', 'created_at')}
              ORDER BY created_at DESC LIMIT ?`
-          ).bind(studyId, since, limit).all(),
+          ).bind(...fBinds).all(),
         ]);
 
         // Merge and sort by timestamp descending
@@ -1394,31 +1400,80 @@ export default {
       // Gap Catalog: /api/gap-catalog/:datasetId
       // Serves pre-computed gap catalogs with millisecond-precise boundaries
       // Stored in R2 at gap_catalog/{datasetId}.json
+      //
+      // Query mode: ?start=ISO&end=ISO returns only intervals overlapping
+      // the requested range, with L2 precision when available, L1 fallback.
+      // Without query params, returns the full catalog (raw JSON).
       // =======================================================================
       const gapCatalogMatch = path.match(/^\/api\/gap-catalog\/([A-Za-z0-9_\-]+)$/);
       if (gapCatalogMatch && request.method === 'GET') {
         const datasetId = gapCatalogMatch[1];
-        const cacheKey = new Request(url.toString(), request);
-        const cache = caches.default;
+        const qStart = url.searchParams.get('start');
+        const qEnd = url.searchParams.get('end');
 
-        // Check edge cache first
-        let response = await cache.match(cacheKey);
-        if (response) return response;
+        // --- Full catalog mode (no query params) ---
+        if (!qStart || !qEnd) {
+          const cacheKey = new Request(url.toString(), request);
+          const cache = caches.default;
+          let response = await cache.match(cacheKey);
+          if (response) return response;
 
+          const obj = await env.BUCKET.get(`gap_catalog/${datasetId}.json`);
+          if (!obj) {
+            return json({ error: 'Gap catalog not found for dataset' }, 404);
+          }
+          response = new Response(obj.body, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'public, max-age=86400',
+              ...CORS_HEADERS,
+            },
+          });
+          ctx.waitUntil(cache.put(cacheKey, response.clone()));
+          return response;
+        }
+
+        // --- Query mode: find intervals overlapping [start, end] ---
         const obj = await env.BUCKET.get(`gap_catalog/${datasetId}.json`);
         if (!obj) {
           return json({ error: 'Gap catalog not found for dataset' }, 404);
         }
-        response = new Response(obj.body, {
+        const catalog = await obj.json();
+        const intervals = catalog.intervals || [];
+        const sharpened = catalog.summary?.boundaries_sharpened;
+
+        // Determine precision tier
+        const tier = sharpened === true ? 'L2' : (sharpened === 'L1' ? 'L1' : 'L1');
+
+        // Filter intervals that overlap [qStart, qEnd]
+        // Use precise boundaries (L2) when available, fall back to inventory (L1)
+        const matches = [];
+        for (const iv of intervals) {
+          const ivStart = iv.start_precise || iv.start_iso;
+          const ivEnd = iv.end_precise || iv.end_iso;
+          // Overlap test: interval starts before query ends AND interval ends after query starts
+          if (ivStart < qEnd && ivEnd > qStart) {
+            matches.push({
+              start: ivStart,
+              end: ivEnd,
+              precision: (iv.start_precise && iv.end_precise) ? 'L2' : 'L1',
+            });
+          }
+        }
+
+        return new Response(JSON.stringify({
+          dataset_id: datasetId,
+          query: { start: qStart, end: qEnd },
+          tier,
+          total_matches: matches.length,
+          intervals: matches,
+        }), {
           headers: {
             'Content-Type': 'application/json',
-            'Cache-Control': 'public, max-age=86400',
+            'Cache-Control': 'public, max-age=3600',
             ...CORS_HEADERS,
           },
         });
-        // Store in edge cache (non-blocking)
-        ctx.waitUntil(cache.put(cacheKey, response.clone()));
-        return response;
       }
 
       // List available gap catalogs: GET /api/gap-catalog
