@@ -534,11 +534,15 @@ export function initializeAdvancedControls() {
     if (gainSlider && contrastSlider) {
         const gainLabel = document.getElementById('spectrogramGainValue');
         const contrastLabel = document.getElementById('spectrogramContrastValue');
-        // Restore saved values (study mode only — portal always uses defaults)
+        // Priority: participant's saved localStorage > study config (researcher-set default) > hardcoded slider default
+        const cfgGain = window.__STUDY_CONFIG?.experimentalDesign?.spectrogramGain;
+        const cfgContrast = window.__STUDY_CONFIG?.experimentalDesign?.spectrogramContrast;
         const savedGain = isStudyMode() ? localStorage.getItem(`${settingsPrefix}spectrogram_gain`) : null;
         const savedContrast = isStudyMode() ? localStorage.getItem(`${settingsPrefix}spectrogram_contrast`) : null;
         if (savedGain !== null) gainSlider.value = savedGain;
+        else if (cfgGain != null) gainSlider.value = String(cfgGain);
         if (savedContrast !== null) contrastSlider.value = savedContrast;
+        else if (cfgContrast != null) contrastSlider.value = String(cfgContrast);
         const updateGainContrast = () => {
             const g = parseFloat(gainSlider.value);
             const c = parseFloat(contrastSlider.value);
@@ -569,8 +573,8 @@ export function initializeAdvancedControls() {
         contrastSlider.addEventListener('click', (e) => {
             if (e.altKey) { contrastSlider.value = 100; updateGainContrast(); }
         });
-        // Apply restored values on init
-        if (savedGain !== null || savedContrast !== null) updateGainContrast();
+        // Apply restored/config-provided values on init
+        if (savedGain !== null || savedContrast !== null || cfgGain != null || cfgContrast != null) updateGainContrast();
     }
 
     // --- Spectrogram normalization dropdown ---

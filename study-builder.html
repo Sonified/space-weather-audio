@@ -706,6 +706,7 @@
   }
   .step-card.active .step-detail {
     padding: 16px 16px;
+    overflow: visible; /* allow info-tip tooltips to escape */
   }
 
   .field-group {
@@ -1256,15 +1257,18 @@
     transform: translateX(-50%);
     background: #1c2028;
     color: #c9d1d9;
-    font-size: 11px;
-    padding: 3px 8px;
+    font-size: 13px;
+    line-height: 1.4;
+    padding: 6px 10px;
     border-radius: 4px;
-    white-space: nowrap;
+    white-space: normal;
+    width: max-content;
+    max-width: 320px;
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.1s;
     border: 1px solid var(--border);
-    z-index: 10;
+    z-index: 1000;
   }
   .info-tip[data-tip]:hover::after { opacity: 1; }
   .speed-tip-wrap[data-tip]::after {
@@ -1336,7 +1340,9 @@
   }
   .card-settings.open .card-settings-drawer {
     max-height: 2000px;
+    overflow: visible; /* allow info-tip tooltips to escape the drawer horizontally */
   }
+  .card-settings.open { overflow: visible; } /* outer card also needs to be non-clipping when open */
   .card-settings .settings-body {
     padding: 16px 20px;
     background: rgba(0,0,0,0.25);
@@ -2020,41 +2026,75 @@
           <button class="card-settings-trigger" type="button">🔊 Data Playback &amp; Presentation <span class="settings-chevron">&#9660;</span></button>
           <div class="card-settings-drawer">
             <div class="settings-body">
-              <div class="settings-row" style="margin-top:0;">
-                <span class="toggle-label">Enable Global Speed</span>
-                <div class="toggle" id="pb_useGlobal" onclick="this.classList.toggle('on'); toggleGlobalSpeed(this.classList.contains('on')); autoSave('playbackSpeed')"></div>
-                <div class="dim-input-wrap" style="width:70px; margin-left:4px;">
-                  <input class="field-input" id="pb_speed" type="text" value="1.00" disabled style="text-align:center; padding:5px 4px; font-size:13px; border-radius:var(--radius) 0 0 var(--radius); opacity:0.5;" oninput="if(document.getElementById('pb_useGlobal')?.classList.contains('on')) syncGlobalSpeedToCards(); autoSave('playbackSpeed')" onclick="event.stopPropagation()" />
-                  <div class="dim-arrows">
-                    <button class="dim-arrow" onclick="event.stopPropagation(); stepSpeed(0.05)">▲</button>
-                    <button class="dim-arrow" onclick="event.stopPropagation(); stepSpeed(-0.05)">▼</button>
-                  </div>
+
+              <!-- ── Spectrogram Settings ── -->
+              <div style="margin-top:0; padding:10px; background:rgba(255,255,255,0.03); border-radius:var(--radius); border:1px solid rgba(255,255,255,0.06);">
+                <div style="font-size:11px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">🌈 Spectrogram Settings</div>
+                <div class="settings-row" style="margin-top:0;">
+                  <span class="toggle-label" style="min-width:70px;">Gain</span>
+                  <input type="range" id="pb_spectGain" min="-30" max="30" value="-15" oninput="document.getElementById('pb_spectGainVal').textContent=this.value+' dB'; autoSave('playbackSpeed')" onclick="event.stopPropagation()" style="width:220px; flex:0 0 220px;" />
+                  <span id="pb_spectGainVal" style="font-size:11px; color:var(--text-muted); min-width:52px; text-align:right;">-15 dB</span>
                 </div>
-                <span style="font-size:11px; color:var(--text-muted);">×</span>
+                <div class="settings-row" style="margin-top:12px;">
+                  <span class="toggle-label" style="min-width:70px;">Contrast</span>
+                  <input type="range" id="pb_spectContrast" min="70" max="130" value="125" oninput="document.getElementById('pb_spectContrastVal').textContent=this.value+'%'; autoSave('playbackSpeed')" onclick="event.stopPropagation()" style="width:220px; flex:0 0 220px;" />
+                  <span id="pb_spectContrastVal" style="font-size:11px; color:var(--text-muted); min-width:52px; text-align:right;">125%</span>
+                </div>
+                <div class="settings-row" style="margin-top:12px;">
+                  <span class="toggle-label">Lock spectrogram to 1× view</span>
+                  <span class="info-tip" data-tip="Spectrogram stays at 1× regardless of playback speed"><div class="toggle" id="pb_lockSpectrogram" onclick="this.classList.toggle('on'); autoSave('playbackSpeed')"></div></span>
+                </div>
+                <div class="settings-row" style="margin-top:12px;">
+                  <span class="toggle-label">Auto-trigger GPU pyramid computation</span>
+                  <span class="info-tip" data-tip="Compute spectrogram tiles as data streams in — spectrogram appears instantly when analysis begins"><div class="toggle on" id="pb_preRenderPyramid" onclick="this.classList.toggle('on'); autoSave('playbackSpeed')"></div></span>
+                </div>
               </div>
-              <div class="settings-row" style="margin-top:12px;">
-                <span class="toggle-label">Lock spectrogram to 1× view</span>
-                <span class="info-tip" data-tip="Spectrogram stays at 1× regardless of playback speed"><div class="toggle" id="pb_lockSpectrogram" onclick="this.classList.toggle('on'); autoSave('playbackSpeed')"></div></span>
+
+              <!-- ── Audio Playback ── -->
+              <div style="margin-top:12px; padding:10px; background:rgba(255,255,255,0.03); border-radius:var(--radius); border:1px solid rgba(255,255,255,0.06);">
+                <div style="font-size:11px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">🔊 Audio Playback</div>
+                <div class="settings-row" style="margin-top:0;">
+                  <span class="toggle-label">Enable Global Speed</span>
+                  <span class="info-tip" data-tip="When on, this single playback speed overrides and drives every analysis card. Turn off to let each condition set its own speed."><div class="toggle" id="pb_useGlobal" onclick="this.classList.toggle('on'); toggleGlobalSpeed(this.classList.contains('on')); autoSave('playbackSpeed')"></div></span>
+                  <div class="dim-input-wrap" style="width:70px; margin-left:4px;">
+                    <input class="field-input" id="pb_speed" type="text" value="1.00" disabled style="text-align:center; padding:5px 4px; font-size:13px; border-radius:var(--radius) 0 0 var(--radius); opacity:0.5;" oninput="if(document.getElementById('pb_useGlobal')?.classList.contains('on')) syncGlobalSpeedToCards(); autoSave('playbackSpeed')" onclick="event.stopPropagation()" />
+                    <div class="dim-arrows">
+                      <button class="dim-arrow" onclick="event.stopPropagation(); stepSpeed(0.05)">▲</button>
+                      <button class="dim-arrow" onclick="event.stopPropagation(); stepSpeed(-0.05)">▼</button>
+                    </div>
+                  </div>
+                  <span style="font-size:11px; color:var(--text-muted);">×</span>
+                </div>
+                <div class="settings-row" style="margin-top:12px;">
+                  <span class="toggle-label" style="min-width:200px;">De-trend (remove DC offset)</span>
+                  <span class="info-tip" data-tip="Apply forward-backward EMA high-pass filter to remove slow trends from magnetometer data. When enabled, all data downloads before the spectrogram is shown (no progressive rendering)."><div class="toggle" id="pb_detrend" onclick="this.classList.toggle('on'); autoSave('playbackSpeed')"></div></span>
+                  <span style="display:block; font-size:11px; color:#888; margin-top:4px; line-height:1.3;">When enabled, data fully downloads before display. A loading indicator appears if the participant reaches analysis before download completes.</span>
+                </div>
+                <div class="settings-row" style="margin-top:12px;">
+                  <span class="toggle-label" style="min-width:200px;">Gain curve pre-normalization</span>
+                  <span class="info-tip" data-tip="Apply piecewise-linear gain envelope (from gain_curves.json) after de-trending and before peak normalization. Balances RMS levels across regions."><div class="toggle on" id="pb_gainCurve" onclick="this.classList.toggle('on'); const vizRow=document.getElementById('pb_vizGainCurveRow'); if(vizRow) vizRow.style.display=this.classList.contains('on')?'':'none'; autoSave('playbackSpeed')"></div></span>
+                </div>
+                <div class="settings-row" style="margin-top:12px;" id="pb_vizGainCurveRow">
+                  <span class="toggle-label" style="min-width:200px;">Visualize gain-curved spectrum</span>
+                  <span class="info-tip" data-tip="When enabled, the spectrogram/pyramid is computed from the gain-curved signal so participants see what they hear. When off, the spectrogram shows the original de-trended signal."><div class="toggle on" id="pb_vizGainCurve" onclick="this.classList.toggle('on'); autoSave('playbackSpeed')"></div></span>
+                </div>
+                <div class="settings-row" style="margin-top:12px;">
+                  <span class="toggle-label">Paul Stretch Window Size</span>
+                  <select id="pb_paulWindowSize" onchange="autoSave('playbackSpeed')" style="padding:4px 8px; font-size:12px; border-radius:var(--radius); border:1px solid var(--border); background:var(--bg); color:var(--text);">
+                    <option value="256">256</option>
+                    <option value="512">512</option>
+                    <option value="1024" selected>1024</option>
+                    <option value="2048">2048</option>
+                    <option value="4096">4096</option>
+                    <option value="8192">8192</option>
+                    <option value="16384">16384</option>
+                  </select>
+                </div>
               </div>
-              <div class="settings-row" style="margin-top:12px;">
-                <span class="toggle-label">Auto-trigger GPU pyramid computation</span>
-                <span class="info-tip" data-tip="Compute spectrogram tiles as data streams in — spectrogram appears instantly when analysis begins"><div class="toggle on" id="pb_preRenderPyramid" onclick="this.classList.toggle('on'); autoSave('playbackSpeed')"></div></span>
-              </div>
-              <div class="settings-row" style="margin-top:12px;">
-                <span class="toggle-label">De-trend (remove DC offset)</span>
-                <span class="info-tip" data-tip="Apply forward-backward EMA high-pass filter to remove slow trends from magnetometer data. When enabled, all data downloads before the spectrogram is shown (no progressive rendering)."><div class="toggle" id="pb_detrend" onclick="this.classList.toggle('on'); autoSave('playbackSpeed')"></div></span>
-                <span style="display:block; font-size:11px; color:#888; margin-top:4px; line-height:1.3;">When enabled, data fully downloads before display. A loading indicator appears if the participant reaches analysis before download completes.</span>
-              </div>
-              <div class="settings-row" style="margin-top:12px;">
-                <span class="toggle-label">Gain curve pre-normalization</span>
-                <span class="info-tip" data-tip="Apply piecewise-linear gain envelope (from gain_curves.json) after de-trending and before peak normalization. Balances RMS levels across regions."><div class="toggle on" id="pb_gainCurve" onclick="this.classList.toggle('on'); const vizRow=document.getElementById('pb_vizGainCurveRow'); if(vizRow) vizRow.style.display=this.classList.contains('on')?'':'none'; autoSave('playbackSpeed')"></div></span>
-              </div>
-              <div class="settings-row" style="margin-top:12px;" id="pb_vizGainCurveRow">
-                <span class="toggle-label">Visualize gain-curved spectrum</span>
-                <span class="info-tip" data-tip="When enabled, the spectrogram/pyramid is computed from the gain-curved signal so participants see what they hear. When off, the spectrogram shows the original de-trended signal."><div class="toggle on" id="pb_vizGainCurve" onclick="this.classList.toggle('on'); autoSave('playbackSpeed')"></div></span>
-              </div>
+
+              <!-- ── Pre-rendered Wavelet Audio ── -->
               <div id="pb_waveletAudioSection" style="margin-top:12px; padding:10px; background:rgba(255,255,255,0.03); border-radius:var(--radius); border:1px solid rgba(255,255,255,0.06);">
-                <div style="font-size:11px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Pre-rendered Wavelet Audio (R2)</div>
+                <div style="font-size:11px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">🌀 Pre-rendered Wavelet Audio (R2)</div>
                 <div class="settings-row" style="margin-top:0;">
                   <span class="toggle-label" style="min-width:80px;">Region 1</span>
                   <input class="field-input" id="pb_waveletFile1" type="text" value="GOES_REGION_1_speed_cwt_1.25x.wav" placeholder="filename.wav" style="flex:1; padding:4px 8px; font-size:12px;" oninput="autoSave('playbackSpeed')" onclick="event.stopPropagation()" />
@@ -2069,18 +2109,7 @@
                   <span style="font-size:11px; color:var(--text-muted);">× (baked into WAV)</span>
                 </div>
               </div>
-              <div class="settings-row" style="margin-top:12px;">
-                <span class="toggle-label">Paul Stretch Window Size</span>
-                <select id="pb_paulWindowSize" onchange="autoSave('playbackSpeed')" style="padding:4px 8px; font-size:12px; border-radius:var(--radius); border:1px solid var(--border); background:var(--bg); color:var(--text);">
-                  <option value="256">256</option>
-                  <option value="512">512</option>
-                  <option value="1024" selected>1024</option>
-                  <option value="2048">2048</option>
-                  <option value="4096">4096</option>
-                  <option value="8192">8192</option>
-                  <option value="16384">16384</option>
-                </select>
-              </div>
+
             </div>
           </div>
         </div>
@@ -2802,6 +2831,16 @@
           if (_s && _ed.useGlobalSpeed) { _s.disabled = false; _s.style.opacity = ''; }
           const _pw = document.getElementById('pb_paulWindowSize');
           if (_pw && _ed.paulWindowSize) _pw.value = String(_ed.paulWindowSize);
+          const _sg = document.getElementById('pb_spectGain');
+          if (_sg && _ed.spectrogramGain != null) {
+            _sg.value = String(_ed.spectrogramGain);
+            const lbl = document.getElementById('pb_spectGainVal'); if (lbl) lbl.textContent = _ed.spectrogramGain + ' dB';
+          }
+          const _sc = document.getElementById('pb_spectContrast');
+          if (_sc && _ed.spectrogramContrast != null) {
+            _sc.value = String(_ed.spectrogramContrast);
+            const lbl = document.getElementById('pb_spectContrastVal'); if (lbl) lbl.textContent = _ed.spectrogramContrast + '%';
+          }
           // Show/hide vizGainCurve row based on gainCurve toggle state
           const _vizRow = document.getElementById('pb_vizGainCurveRow');
           if (_vizRow) _vizRow.style.display = document.getElementById('pb_gainCurve')?.classList.contains('on') ? '' : 'none';
@@ -4618,6 +4657,8 @@
     const gainCurve = document.getElementById('pb_gainCurve')?.classList.contains('on') || false;
     const vizGainCurve = document.getElementById('pb_vizGainCurve')?.classList.contains('on') || false;
     const paulWindowSize = parseInt(document.getElementById('pb_paulWindowSize')?.value) || 1024;
+    const spectrogramGain = parseInt(document.getElementById('pb_spectGain')?.value ?? '-15', 10);
+    const spectrogramContrast = parseInt(document.getElementById('pb_spectContrast')?.value ?? '125', 10);
 
     // Pre-rendered wavelet audio config
     const waveletAudioMap = {};
@@ -4640,7 +4681,7 @@
       }
     });
 
-    return { conditions, returningParticipant, randomization, playbackSpeed, useGlobalSpeed, lockSpectrogramTo1x, preRenderPyramid, detrend, gainCurve, vizGainCurve, paulWindowSize, waveletAudioMap, waveletSpeed };
+    return { conditions, returningParticipant, randomization, playbackSpeed, useGlobalSpeed, lockSpectrogramTo1x, preRenderPyramid, detrend, gainCurve, vizGainCurve, paulWindowSize, spectrogramGain, spectrogramContrast, waveletAudioMap, waveletSpeed };
   }
 
   function loadExperimentalDesign(design) {
