@@ -55,12 +55,19 @@ const DATASET_VARIABLES = {
     'WI_H2_MFI': 'BGSE', // Wind uses component names
     'MMS1_FGM_SRVY_L2': 'mms1_fgm_b_gse_srvy_l2',
     'MMS1_FGM_BRST_L2': 'mms1_fgm_b_gse_brst_l2',
-    // THEMIS FGM - Fluxgate Magnetometer, low-res (~4 Hz) GSE coordinates
+    // THEMIS FGM - Fluxgate Magnetometer, low-res (~3s) GSE coordinates
     'THA_L2_FGM': 'tha_fgl_gse',
     'THB_L2_FGM': 'thb_fgl_gse',
     'THC_L2_FGM': 'thc_fgl_gse',
     'THD_L2_FGM': 'thd_fgl_gse',
     'THE_L2_FGM': 'the_fgl_gse',
+    // THEMIS FGM High-Res - burst mode (~0.25s / 4 Hz) GSE coordinates
+    // Same CDAWeb dataset (TH*_L2_FGM) but different variable (fgh vs fgl)
+    'THA_L2_FGM_FGH': 'tha_fgh_gse',
+    'THB_L2_FGM_FGH': 'thb_fgh_gse',
+    'THC_L2_FGM_FGH': 'thc_fgh_gse',
+    'THD_L2_FGM_FGH': 'thd_fgh_gse',
+    'THE_L2_FGM_FGH': 'the_fgh_gse',
     // THEMIS SCM - fast-survey GSE coordinates (X, Y, Z components)
     'THA_L2_SCM': 'tha_scf_gse',
     'THB_L2_SCM': 'thb_scf_gse',
@@ -114,8 +121,31 @@ const DATASET_VARIABLES = {
     // ACE - Magnetic Field Investigation, GSE coordinates (1 sec)
     'AC_H3_MFI': 'BGSEc',
     // Solar Orbiter RPW - Radio and Plasma Waves, LFR survey E-field
-    'SOLO_L2_RPW-LFR-SURV-CWF-E': 'EDC'
+    'SOLO_L2_RPW-LFR-SURV-CWF-E': 'EDC',
+    // RBSP/Van Allen Probes - EMFISIS Magnetometer, GSE coordinates
+    'RBSP-A_MAGNETOMETER_HIRES-GSE_EMFISIS-L3': 'Mag',
+    'RBSP-B_MAGNETOMETER_HIRES-GSE_EMFISIS-L3': 'Mag',
+    'RBSP-A_MAGNETOMETER_4SEC-GSE_EMFISIS-L3': 'Mag',
+    'RBSP-B_MAGNETOMETER_4SEC-GSE_EMFISIS-L3': 'Mag',
+    // RBSP/Van Allen Probes - EMFISIS WFR burst waveform (magnetic channel, UVW sensor coords)
+    'RBSP-A_WFR-WAVEFORM-CONTINUOUS-BURST_EMFISIS-L2': 'BuSamples',
+    'RBSP-B_WFR-WAVEFORM-CONTINUOUS-BURST_EMFISIS-L2': 'BuSamples'
 };
+
+// When an internal key differs from its CDAWeb dataset ID (e.g. FGH shares
+// the same CDAWeb dataset as FGL but uses a different variable), map it here.
+const DATASET_ID_OVERRIDES = {
+    'THA_L2_FGM_FGH': 'THA_L2_FGM',
+    'THB_L2_FGM_FGH': 'THB_L2_FGM',
+    'THC_L2_FGM_FGH': 'THC_L2_FGM',
+    'THD_L2_FGM_FGH': 'THD_L2_FGM',
+    'THE_L2_FGM_FGH': 'THE_L2_FGM',
+};
+
+/** Resolve an internal dataset key to its CDAWeb dataset ID. */
+function getCDAWebDatasetId(dataset) {
+    return DATASET_ID_OVERRIDES[dataset] || dataset;
+}
 
 /**
  * Check if this is the default PSP dataset that's pre-cached on Cloudflare.
@@ -269,12 +299,13 @@ export async function fetchCDAWebAudio(spacecraft, dataset, startTime, endTime, 
     const startTimeBasic = toBasicISO8601(startTime);
     const endTimeBasic = toBasicISO8601(endTime);
 
-    // Get variable name for dataset
+    // Get variable name and resolve CDAWeb dataset ID (may differ for shared datasets like THEMIS FGH)
     const variable = DATASET_VARIABLES[dataset] || dataset;
+    const cdawebDataset = getCDAWebDatasetId(dataset);
 
     // Build API URL with cache buster to force fresh temporary files from CDAWeb
     const cacheBuster = Date.now();
-    const apiUrl = `${CDASWS_BASE_URL}/dataviews/${DATAVIEW}/datasets/${dataset}/data/${startTimeBasic},${endTimeBasic}/${variable}?format=audio&_=${cacheBuster}`;
+    const apiUrl = `${CDASWS_BASE_URL}/dataviews/${DATAVIEW}/datasets/${cdawebDataset}/data/${startTimeBasic},${endTimeBasic}/${variable}?format=audio&_=${cacheBuster}`;
 
     console.log(`📡 CDAWeb API: ${apiUrl}`);
 

@@ -1914,6 +1914,7 @@
             <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
             <div class="dropdown-item" onclick="copyFullStudyJson()">📋 Copy Study JSON</div>
             <hr style="border:none; border-top:1px solid var(--border); margin:4px 0;">
+            <div class="dropdown-item" onclick="clearParticipants()" style="color:#c47070; transition:color 0.15s;" onmouseenter="this.style.color='#f85149'" onmouseleave="this.style.color='#c47070'">🧹 Clear Participants</div>
             <div class="dropdown-item" onclick="deleteCurrentStudy()" style="color:#c47070; transition:color 0.15s;" onmouseenter="this.style.color='#f85149'" onmouseleave="this.style.color='#c47070'">🗑️ Delete This Study</div>
           </div>
         </div>
@@ -7961,6 +7962,36 @@
     document.getElementById('adminKeyInput').value = '';
     saveDraft();
     refreshStudyPicker(clone);
+  }
+
+  async function clearParticipants() {
+    document.getElementById('fileMenu').classList.remove('show');
+    const slug = document.getElementById('slugValue')?.textContent?.trim();
+    if (!slug) return;
+    if (!confirm(`Clear ALL participants and features for "${slug}"?\n\nThis cannot be undone.`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/study/${slug}/participants`, { method: 'DELETE' });
+      if (!res.ok) {
+        alert(`Server returned ${res.status}. Deploy the worker first?`);
+        return;
+      }
+      const data = await res.json();
+      if (data.success) {
+        alert(`Cleared ${data.participantsDeleted} participant(s), ${data.featuresDeleted} feature(s), and ${data.sessionsDeleted} session(s).`);
+        const zeroed = { totalStarted: 0, activeParticipants: 0, completedCount: 0, dropouts: 0, currentBlock: 0, currentStage: '—', totalAssigned: 0, nextAssignment: '—' };
+        try { updateTestDashboard(zeroed); } catch {}
+        try { updateLiveDashboard(zeroed); } catch {}
+        localStorage.removeItem('sb_dashboardCache');
+        localStorage.removeItem('sb_liveDashboardCache');
+        _studyParticipantCounts[slug] = 0;
+        localStorage.setItem('sb_participantCounts', JSON.stringify(_studyParticipantCounts));
+        renderStudyPickerList();
+      } else {
+        alert('Failed to clear participants.');
+      }
+    } catch (e) {
+      alert('Error clearing participants: ' + e.message);
+    }
   }
 
   async function deleteCurrentStudy() {

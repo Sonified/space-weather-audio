@@ -1,27 +1,6 @@
-# Work Plan — Active Bugs
+# Work Plan — Active
 
-Ground rules this round:
-- No "fixed!" claims without a printed before/after from the browser.
-- One bug at a time, in order.
-- Robert runs the browser, Claude reads the logs Robert pastes.
-- Add diagnostic prints FIRST. Understand the data path, then fix.
-
----
-
-## ✅ Bug 1 — Waveform shows original (FIXED)
-
-Visual waveform now reads `window.rawWaveformData` in `drawWaveform()`; playback still goes through `window._playbackSamples` (DC-removed + normalized). See commit `e9e1ca1`.
-
----
-
-## ✅ Bug 2 — Component switch round-trip (FIXED)
-
-Three stacked bugs in `switchComponent`:
-1. WAV header not patched to 44.1 kHz → browser resampled, doubling sample count.
-2. Raw samples handed to State/worklet without `detrend+norm` → 16× louder on round-trip.
-3. `changeWaveformFilter()` fired a second `swap-buffer` with `normalize(raw)`, stomping the detrended buffer. Replaced with direct `drawWaveform()`.
-
-See commit `a4d885a`.
+Completed tasks move to `WORKPLAN_ARCHIVE.md`.
 
 ---
 
@@ -50,53 +29,28 @@ See commit `a4d885a`.
 
 ---
 
-## Task 4 — Clamp low/high frequency inputs so they can't cross
+## Task 7 — Gap-aware audio stitching
 
-**Symptom:** when the user types a new value into the low or high frequency input, nothing stops them from setting the low frequency *higher* than the high (or vice versa), producing an inverted range that breaks the display.
+**Symptom:** All datasets can have gaps (burst-mode frequently, survey-mode occasionally). Current pipeline assumes one contiguous audio buffer per request. Requesting a time range spanning gaps either fails or returns partial data.
 
 **What we want:**
-- On `change` / `blur` of the low-freq input, clamp its value to `≤ high - ε` (where ε is one step, or just "strictly less").
-- On `change` / `blur` of the high-freq input, clamp its value to `≥ low + ε`.
-- If the user types a crossing value, snap back to the boundary rather than silently rejecting — they should *see* what happened.
-- Consider also a min/max floor/ceiling from the instrument's actual Nyquist so they can't go negative or above the sample rate/2.
+1. Check gap catalog for data windows within the requested range
+2. Fetch each data segment separately from CDAWeb
+3. Stitch into one audio buffer with silence inserted for *interior* gaps (preserves time axis)
+4. **Edge intelligence:** if the request lands on a gap at either end, trim to actual data boundaries — don't pad silence at the edges. Show the user a message with the actual data range (e.g. "Data available 10:02–10:58 of your 10:00–11:00 request")
+5. Spectrogram renders interior gaps visually (distinct from "no signal" — maybe a subtle pattern or dimmed region)
+
+**Edge cases:**
+- Gap at start only → trim start, no leading silence, notify user
+- Gap at end only → trim end, no trailing silence, notify user
+- Gap in middle → insert silence, preserve time axis
+- Multiple interior gaps → multiple silence inserts
+- Entire range is a gap → "no data available" message
+- Single contiguous segment → current behavior, no change
+
+**Why it matters:** Applies to ALL datasets, not just burst-mode. Survey data has gaps too (instrument safemodes, downlink windows, calibration periods). Users shouldn't need to know exact data boundaries before requesting — the tool should be smart about it.
 
 **Implementation notes:**
-- First step: locate the actual DOM ids for the low/high freq inputs (not obvious from a quick grep — only `minFreqMultiplier` and `highpassFreq` turned up, which don't look like the pair Robert means). Could be inside a drawer/modal that loads lazily.
-- Wire two `input` / `change` listeners that mutually clamp.
-- Make sure the clamp fires on Enter, blur, and any programmatic set.
-
----
-
-## Task 5 — "Download all feature data" button
-
-**What:** Add a button at the bottom of the page that exports every tracked feature's data in one click.
-
-**Payload sketch:** one JSON (or ZIP of JSONs) containing, per feature:
-- Time range (startTime, endTime, UTC)
-- Frequency range (lowFreq, highFreq, Hz)
-- Component (Br/Bt/Bn/etc.) + dataset + spacecraft + fetch window
-- Confidence pill, notes, any other metadata from `getStandaloneFeatures()`
-- Optionally the raw sample slice covering the feature (or a pointer to the source)
-
-**Implementation notes:**
-- Hook into the existing standalone-features store (`feature-tracker.js`).
-- Button placement: bottom bar, next to "Download Audio" or wherever other exports live.
-- File naming: `features_<spacecraft>_<dataset>_<start>_<end>.json`.
-- Consider CSV side-output for spreadsheet users.
-
----
-
-## Task 6 — Export features as audio files
-
-**What:** For each tracked feature, produce a WAV clip containing *just that feature's audio* — time-sliced to the feature's window, optionally frequency-filtered to its band.
-
-**Modes to consider:**
-- **Time-only:** slice the detrended+normalized audio buffer to `[startTime, endTime]`. Simplest, good for playback in external DAWs.
-- **Time + band-pass:** apply a biquad bandpass matching `[lowFreq, highFreq]` before slicing. Isolates the feature from surrounding noise.
-- **Bundle mode:** ZIP of all feature clips at once, mirroring Task 5's naming convention.
-
-**Implementation notes:**
-- Audio source: `window._playbackSamples` (what the user actually heard) or `window.rawWaveformData` (what the instrument actually recorded) — likely offer both.
-- WAV encoding: we already have WAV-aware code in `data-fetcher.js` (header patch logic) and `audio-download.js` — reuse.
-- Hook from the feature popup's gear menu for per-feature export, plus a batch export from the bottom-bar button.
-- Think about sample rate: export at instrument rate (accurate timing) vs 44.1 kHz (broader compatibility).
+- Gap catalog is already served from R2 at `/api/gap-catalog/:datasetId`
+- Front end currently: one `fetch()` → one WAV → one buffer. Needs to become: catalog lookup → N fetches → N buffers → stitch with silence for interior gaps only.
+- ~20-30 min implementation. Ship when ready.

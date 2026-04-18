@@ -1,0 +1,44 @@
+{
+  "dataset_id": "RBSP-A_HFR-SPECTRA_EMFISIS-L2",
+  "label": "RBSP-A HFR Spectra",
+  "cataloged_at": "2026-04-17T09:31:18.471148",
+  "time_range": {
+    "start": "2012-09-01",
+    "end": "2019-10-20"
+  },
+  "summary": {
+    "total_intervals": 7,
+    "total_gaps": 6,
+    "boundaries_sharpened": "L1"
+  },
+  "intervals": [
+    {
+      "start_iso": "2012-09-01T00:00:02.000Z",
+      "end_iso": "2015-09-16T20:10:18.000Z"
+    },
+    {
+      "start_iso": "2015-09-17T18:03:20.000Z",
+      "end_iso": "2016-01-11T13:47:55.000Z"
+    },
+    {
+      "start_iso": "2016-01-12T01:39:53.000Z",
+      "end_iso": "2016-06-22T15:31:42.000Z"
+    },
+    {
+      "start_iso": "2016-06-23T10:09:16.000Z",
+      "end_iso": "2017-04-03T21:07:56.000Z"
+    },
+    {
+      "start_iso": "2017-04-04T00:00:01.000Z",
+      "end_iso": "2017-04-12T23:59:54.000Z"
+    },
+    {
+      "start_iso": "2017-04-14T00:00:02.000Z",
+      "end_iso": "2019-08-12T22:34:32.000Z"
+    },
+    {
+      "start_iso": "2019-08-13T00:00:03.000Z",
+      "end_iso": "2019-10-14T13:51:06.000Z"
+    }
+  ]
+}

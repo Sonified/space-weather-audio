@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """
-Gap Cataloger — Build nanosecond-precise gap metadata for ALL app datasets.
+Gap Cataloger — Build gap metadata for ALL app datasets.
 
-Two-step approach:
-  1. Hit CDAWeb inventory endpoint → get coarse (second-precision) map of
-     where data exists vs. gaps
-  2. Download CDFs ONLY at gap boundaries → read epoch arrays for nanosecond-
-     precise start/end times at each edge
+Two precision tiers:
+  L1: Hit CDAWeb inventory endpoint → second-precision map of data vs. gaps.
+      Fast (minutes for full mission). No CDF downloads.
+  L2: Download CDFs at gap boundaries → nanosecond-precise start/end times.
+      Slow (hours for burst datasets). Sub-second precision matters for short,
+      high-cadence bursts.
 
 Dataset list mirrors the app's SPACECRAFT_DATASETS (ui-controls.js) and
 DATASET_VARIABLES (data-fetcher.js) exactly.
 
 Usage:
-    python gap_cataloger.py                              # All datasets
+    python gap_cataloger.py --l1                         # L1 all datasets (fast)
+    python gap_cataloger.py                              # L2 all datasets
     python gap_cataloger.py --dataset PSP_FLD_L2_MAG_RTN # Single dataset
     python gap_cataloger.py --dry-run                    # Show inventory only
 
@@ -188,6 +190,12 @@ ALL_DATASETS = [
     {'id': 'THC_L2_FGM',                      'label': 'THEMIS-C FGM',                 'data_var': 'thc_fgl_gse',                          'start': '2007-02-01', 'end': '2025-12-31'},
     {'id': 'THD_L2_FGM',                      'label': 'THEMIS-D FGM',                 'data_var': 'thd_fgl_gse',                          'start': '2007-02-01', 'end': '2025-12-31'},
     {'id': 'THE_L2_FGM',                      'label': 'THEMIS-E FGM',                 'data_var': 'the_fgl_gse',                          'start': '2007-02-01', 'end': '2025-12-31'},
+    # === THEMIS FGM High-Res (burst, ~4 Hz) — same CDAWeb dataset, different variable ===
+    {'id': 'THA_L2_FGM_FGH',                  'label': 'THEMIS-A FGM High-Res',        'data_var': 'tha_fgh_gse',   'cdaweb_id': 'THA_L2_FGM',  'start': '2007-02-01', 'end': '2025-12-31'},
+    {'id': 'THB_L2_FGM_FGH',                  'label': 'THEMIS-B FGM High-Res',        'data_var': 'thb_fgh_gse',   'cdaweb_id': 'THB_L2_FGM',  'start': '2007-02-01', 'end': '2025-12-31'},
+    {'id': 'THC_L2_FGM_FGH',                  'label': 'THEMIS-C FGM High-Res',        'data_var': 'thc_fgh_gse',   'cdaweb_id': 'THC_L2_FGM',  'start': '2007-02-01', 'end': '2025-12-31'},
+    {'id': 'THD_L2_FGM_FGH',                  'label': 'THEMIS-D FGM High-Res',        'data_var': 'thd_fgh_gse',   'cdaweb_id': 'THD_L2_FGM',  'start': '2007-02-01', 'end': '2025-12-31'},
+    {'id': 'THE_L2_FGM_FGH',                  'label': 'THEMIS-E FGM High-Res',        'data_var': 'the_fgh_gse',   'cdaweb_id': 'THE_L2_FGM',  'start': '2007-02-01', 'end': '2025-12-31'},
     # === THEMIS SCM ===
     {'id': 'THA_L2_SCM',                      'label': 'THEMIS-A SCM',                 'data_var': 'tha_scf_gse',                          'start': '2007-02-01', 'end': '2025-12-31'},
     {'id': 'THB_L2_SCM',                      'label': 'THEMIS-B SCM',                 'data_var': 'thb_scf_gse',                          'start': '2007-02-01', 'end': '2025-12-31'},
@@ -230,6 +238,23 @@ ALL_DATASETS = [
     # === Voyager ===
     {'id': 'VOYAGER1_2S_MAG',                 'label': 'Voyager-1 MAG 1.92s',          'data_var': 'B1',                                   'start': '1977-09-01', 'end': '2025-12-31'},
     {'id': 'VOYAGER2_2S_MAG',                 'label': 'Voyager-2 MAG 1.92s',          'data_var': 'B1',                                   'start': '1977-08-01', 'end': '2025-12-31'},
+    # === Van Allen Probes (RBSP) EMFISIS ===
+    # Mission: 2012-08-30 to 2019-10-18 (RBSP-A) / 2019-07-16 (RBSP-B)
+    # WFR burst waveform (sporadic bursts, starts 2012-09)
+    {'id': 'RBSP-A_WFR-WAVEFORM-CONTINUOUS-BURST_EMFISIS-L2', 'label': 'RBSP-A WFR Burst Waveform',  'data_var': 'BuSamples',  'start': '2012-09-01', 'end': '2019-10-20'},
+    {'id': 'RBSP-B_WFR-WAVEFORM-CONTINUOUS-BURST_EMFISIS-L2', 'label': 'RBSP-B WFR Burst Waveform',  'data_var': 'BuSamples',  'start': '2012-09-01', 'end': '2019-10-20'},
+    # WFR spectral matrix (continuous 2012-2019)
+    {'id': 'RBSP-A_WFR-SPECTRAL-MATRIX_EMFISIS-L2',           'label': 'RBSP-A WFR Spectral Matrix', 'data_var': 'BuBu',       'start': '2012-09-01', 'end': '2019-10-20'},
+    {'id': 'RBSP-B_WFR-SPECTRAL-MATRIX_EMFISIS-L2',           'label': 'RBSP-B WFR Spectral Matrix', 'data_var': 'BuBu',       'start': '2012-09-01', 'end': '2019-10-20'},
+    # HFR spectra (continuous 2012-2019)
+    {'id': 'RBSP-A_HFR-SPECTRA_EMFISIS-L2',                   'label': 'RBSP-A HFR Spectra',         'data_var': 'HFR_Spectra', 'start': '2012-09-01', 'end': '2019-10-20'},
+    {'id': 'RBSP-B_HFR-SPECTRA_EMFISIS-L2',                   'label': 'RBSP-B HFR Spectra',         'data_var': 'HFR_Spectra', 'start': '2012-09-01', 'end': '2019-10-20'},
+    # Magnetometer 4-sec (GSE)
+    {'id': 'RBSP-A_MAGNETOMETER_4SEC-GSE_EMFISIS-L3',         'label': 'RBSP-A MAG 4s',              'data_var': 'Mag',        'start': '2012-09-01', 'end': '2019-10-20'},
+    {'id': 'RBSP-B_MAGNETOMETER_4SEC-GSE_EMFISIS-L3',         'label': 'RBSP-B MAG 4s',              'data_var': 'Mag',        'start': '2012-09-01', 'end': '2019-10-20'},
+    # Magnetometer Hi-Res (64 S/s, GSE)
+    {'id': 'RBSP-A_MAGNETOMETER_HIRES-GSE_EMFISIS-L3',        'label': 'RBSP-A MAG Hi-Res 64 S/s',   'data_var': 'Mag',        'start': '2012-09-01', 'end': '2019-10-20'},
+    {'id': 'RBSP-B_MAGNETOMETER_HIRES-GSE_EMFISIS-L3',        'label': 'RBSP-B MAG Hi-Res 64 S/s',   'data_var': 'Mag',        'start': '2012-09-01', 'end': '2019-10-20'},
 ]
 
 # Thread-safe progress logging
@@ -467,7 +492,78 @@ def epoch_to_iso(raw_epoch):
 
 
 # ============================================================================
-# Per-Dataset Cataloger
+# L1 Cataloger — inventory-only, second precision, no CDF downloads
+# ============================================================================
+
+def catalog_dataset_l1(ds, skip_existing=True):
+    """L1 catalog: save inventory intervals directly. Never overwrites L2 data."""
+    dataset_id = ds['id']
+    label = ds['label']
+    out_path = CATALOG_DIR / f'{dataset_id}.json'
+
+    # Skip logic: never downgrade L2 → L1
+    if skip_existing and out_path.exists():
+        try:
+            with open(out_path) as f:
+                existing = json.load(f)
+            ex_range = existing.get('time_range', {})
+            sharpened = existing['summary'].get('boundaries_sharpened', False)
+
+            if ex_range.get('start') == ds['start'] and ex_range.get('end') == ds['end']:
+                if sharpened is True:
+                    log(f'SKIP -- {label} (already L2, not downgrading)', dataset_id)
+                    return existing
+                if sharpened == 'in_progress':
+                    log(f'SKIP -- {label} (L2 in progress, not downgrading)', dataset_id)
+                    return existing
+                if sharpened == 'L1':
+                    n = existing['summary']['total_intervals']
+                    g = existing['summary']['total_gaps']
+                    log(f'SKIP -- {label} (already L1: {n} intervals, {g} gaps)', dataset_id)
+                    return existing
+        except (json.JSONDecodeError, KeyError):
+            log(f'RE-RUNNING -- {label} (existing catalog corrupt)', dataset_id)
+
+    log(f'L1 START -- {label}', dataset_id)
+
+    # Fetch inventory — use cdaweb_id if this dataset shares a CDAWeb ID with another (e.g. THEMIS FGH)
+    cdaweb_id = ds.get('cdaweb_id', dataset_id)
+    log(f'Fetching inventory ({ds["start"]} to {ds["end"]})...', dataset_id)
+    try:
+        intervals = fetch_inventory(cdaweb_id, ds['start'], ds['end'])
+    except Exception as e:
+        log(f'INVENTORY ERROR: {e}', dataset_id)
+        return None
+
+    n_intervals = len(intervals)
+    n_gaps = max(0, n_intervals - 1)
+    log(f'{n_intervals} data intervals, {n_gaps} gaps', dataset_id)
+
+    # Build and save catalog directly from inventory
+    catalog_intervals = [{'start_iso': iv['start'], 'end_iso': iv['end']} for iv in intervals]
+
+    catalog = {
+        'dataset_id': dataset_id,
+        'label': label,
+        'cataloged_at': datetime.now().isoformat(),
+        'time_range': {'start': ds['start'], 'end': ds['end']},
+        'summary': {
+            'total_intervals': n_intervals,
+            'total_gaps': n_gaps,
+            'boundaries_sharpened': 'L1',
+        },
+        'intervals': catalog_intervals,
+    }
+    CATALOG_DIR.mkdir(exist_ok=True)
+    with open(out_path, 'w') as f:
+        json.dump(catalog, f, indent=2)
+
+    log(f'L1 DONE -- {n_intervals} intervals, {n_gaps} gaps -> {out_path.name}', dataset_id)
+    return catalog
+
+
+# ============================================================================
+# Per-Dataset Cataloger (L2 — CDF boundary sharpening)
 # ============================================================================
 
 def catalog_dataset(ds, dry_run=False, sharpen=True, skip_existing=True, throttle_sec=0):
@@ -496,6 +592,15 @@ def catalog_dataset(ds, dry_run=False, sharpen=True, skip_existing=True, throttl
                     # Partial sharpening — resume from where we left off
                     existing_intervals = existing.get('intervals', [])
                     log(f'RESUMING -- {label} (partial catalog found)', dataset_id)
+                elif sharpened == 'L1':
+                    # L1 catalog — skip if we don't want sharpening, upgrade if we do
+                    if not sharpen:
+                        n = existing['summary']['total_intervals']
+                        g = existing['summary']['total_gaps']
+                        log(f'SKIP -- {label} (L1: {n} intervals, {g} gaps)', dataset_id)
+                        return existing
+                    existing_intervals = existing.get('intervals', [])
+                    log(f'UPGRADING L1→L2 -- {label} (adding CDF boundary sharpening)', dataset_id)
                 else:
                     # Inventory-only catalog (sharpened=False), skip if we don't want sharpening
                     if not sharpen:
@@ -754,6 +859,10 @@ def catalog_dataset_burst_parallel(ds, n_workers, dry_run=False, skip_existing=T
                     g = existing['summary']['total_gaps']
                     log(f'SKIP -- {label} (complete: {n} intervals, {g} gaps)', dataset_id)
                     return
+                elif sharpened == 'L1':
+                    # L1 exists — upgrade to L2
+                    existing_intervals = existing.get('intervals', [])
+                    log(f'UPGRADING L1→L2 -- {label} (adding CDF boundary sharpening)', dataset_id)
                 elif sharpened == 'in_progress' or sharpened is False:
                     existing_intervals = existing.get('intervals', [])
                     log(f'RESUMING -- {label} (partial catalog found)', dataset_id)
@@ -819,9 +928,19 @@ def catalog_dataset_burst_parallel(ds, n_workers, dry_run=False, skip_existing=T
                 log(f'FATAL ERROR in year {year}: {e}', dataset_id)
                 traceback.print_exc()
 
-    # Final save
+    # Final save — only mark True if every interval actually has both boundaries
+    # (first interval needs end_precise, last needs start_precise, middle need both)
+    all_sharp = all(
+        ('start_precise' in iv or i == 0) and ('end_precise' in iv or i == len(catalog_intervals) - 1)
+        for i, iv in enumerate(catalog_intervals)
+    )
+    final_flag = True if all_sharp else 'in_progress'
+    if not all_sharp:
+        unsharp = sum(1 for i, iv in enumerate(catalog_intervals)
+                      if not (('start_precise' in iv or i == 0) and ('end_precise' in iv or i == len(catalog_intervals) - 1)))
+        log(f'NOTE: {unsharp} intervals still missing precise boundaries, marking as in_progress', dataset_id)
     with _catalog_lock:
-        _save_burst_catalog(dataset_id, ds, catalog_intervals, intervals, gaps, True, out_path)
+        _save_burst_catalog(dataset_id, ds, catalog_intervals, intervals, gaps, final_flag, out_path)
     log(f'DONE -- {n_intervals} intervals, {n_gaps} gaps -> {out_path.name}', dataset_id)
 
 
@@ -838,6 +957,7 @@ def main():
     parser.add_argument('--start', type=str, help='Override start date (YYYY-MM-DD)')
     parser.add_argument('--end', type=str, help='Override end date (YYYY-MM-DD)')
     parser.add_argument('--no-sharpen', action='store_true', help='Skip CDF boundary sharpening')
+    parser.add_argument('--l1', action='store_true', help='L1 mode: inventory-only, second precision, no CDF downloads (fast)')
     parser.add_argument('--force', action='store_true', help='Re-catalog even if JSON already exists')
     args = parser.parse_args()
 
@@ -872,9 +992,12 @@ def main():
 
     sharpen = not args.no_sharpen
     skip_existing = not args.force
+    l1_mode = args.l1
 
+    mode_label = 'L1 (inventory only, second precision)' if l1_mode else (
+        'L2 (CDF reads at gap edges)' if sharpen else 'inventory only (no sharpening)')
     log(f'Cataloging {len(datasets)} dataset(s) with {args.workers} worker(s)')
-    log(f'Boundary sharpening: {"ON (CDF reads at gap edges)" if sharpen else "OFF (inventory precision only)"}')
+    log(f'Mode: {mode_label}')
     log(f'Skip existing: {"YES" if skip_existing else "NO (--force)"}')
     log(f'Progress: tail -f {PROGRESS_LOG}')
     log(f'Results:  {CATALOG_DIR}/')
@@ -883,41 +1006,57 @@ def main():
     CATALOG_DIR.mkdir(exist_ok=True)
     start_time = time.time()
 
-    # Sort: non-burst datasets first, burst datasets last (they have 90K+ gaps)
-    BURST_IDS = {f'MMS{n}_{inst}' for n in range(1, 5) for inst in ('FGM_BRST_L2', 'SCM_BRST_L2_SCB', 'EDP_BRST_L2_DCE')}
-    non_burst = [ds for ds in datasets if ds['id'] not in BURST_IDS]
-    burst = [ds for ds in datasets if ds['id'] in BURST_IDS]
-
-    if len(datasets) == 1:
-        catalog_dataset(datasets[0], dry_run=args.dry_run, sharpen=sharpen, skip_existing=skip_existing)
+    if l1_mode:
+        # --- L1: inventory-only, all datasets treated equally, full parallelism ---
+        with ThreadPoolExecutor(max_workers=args.workers) as pool:
+            futures = {
+                pool.submit(catalog_dataset_l1, ds, skip_existing): ds
+                for ds in datasets
+            }
+            for future in as_completed(futures):
+                ds = futures[future]
+                try:
+                    future.result()
+                except Exception as e:
+                    log(f'L1 ERROR: {e}', ds['id'])
+                    traceback.print_exc()
     else:
-        # --- Non-burst batch: full parallelism, no throttle ---
-        if non_burst:
-            with ThreadPoolExecutor(max_workers=args.workers) as pool:
-                futures = {
-                    pool.submit(catalog_dataset, ds, args.dry_run, sharpen, skip_existing, 0): ds
-                    for ds in non_burst
-                }
-                for future in as_completed(futures):
-                    ds = futures[future]
-                    try:
-                        future.result()
-                    except Exception as e:
-                        log(f'FATAL ERROR: {e}', ds['id'])
-                        traceback.print_exc()
+        # --- L2: full sharpening pipeline ---
+        # Sort: non-burst datasets first, burst datasets last (they have 90K+ gaps)
+        BURST_IDS = {f'MMS{n}_{inst}' for n in range(1, 5) for inst in ('FGM_BRST_L2', 'SCM_BRST_L2_SCB', 'EDP_BRST_L2_DCE')}
+        non_burst = [ds for ds in datasets if ds['id'] not in BURST_IDS]
+        burst = [ds for ds in datasets if ds['id'] in BURST_IDS]
 
-        # --- Burst batch: split by year, 1s throttle, all workers ---
-        # Order: FGM burst (all MMS), then SCM burst (all MMS), then EDP burst (all MMS)
-        burst_order = {'FGM': 0, 'SCM': 1, 'EDP': 2}
-        burst.sort(key=lambda ds: (burst_order.get(ds['id'].split('_')[1], 99), ds['id']))
-        if burst and sharpen:
-            log(f'\n--- Now processing {len(burst)} burst dataset(s) split by year, 1s throttle ---\n')
-            for ds in burst:
-                catalog_dataset_burst_parallel(ds, args.workers, dry_run=args.dry_run, skip_existing=skip_existing)
-        elif burst:
-            # No sharpening requested — just do inventory
-            for ds in burst:
-                catalog_dataset(ds, dry_run=args.dry_run, sharpen=False, skip_existing=skip_existing)
+        if len(datasets) == 1:
+            catalog_dataset(datasets[0], dry_run=args.dry_run, sharpen=sharpen, skip_existing=skip_existing)
+        else:
+            # --- Non-burst batch: full parallelism, no throttle ---
+            if non_burst:
+                with ThreadPoolExecutor(max_workers=args.workers) as pool:
+                    futures = {
+                        pool.submit(catalog_dataset, ds, args.dry_run, sharpen, skip_existing, 0): ds
+                        for ds in non_burst
+                    }
+                    for future in as_completed(futures):
+                        ds = futures[future]
+                        try:
+                            future.result()
+                        except Exception as e:
+                            log(f'FATAL ERROR: {e}', ds['id'])
+                            traceback.print_exc()
+
+            # --- Burst batch: split by year, 1s throttle, all workers ---
+            # Order: FGM burst (all MMS), then SCM burst (all MMS), then EDP burst (all MMS)
+            burst_order = {'FGM': 0, 'SCM': 1, 'EDP': 2}
+            burst.sort(key=lambda ds: (burst_order.get(ds['id'].split('_')[1], 99), ds['id']))
+            if burst and sharpen:
+                log(f'\n--- Now processing {len(burst)} burst dataset(s) split by year, 1s throttle ---\n')
+                for ds in burst:
+                    catalog_dataset_burst_parallel(ds, args.workers, dry_run=args.dry_run, skip_existing=skip_existing)
+            elif burst:
+                # No sharpening requested — just do inventory
+                for ds in burst:
+                    catalog_dataset(ds, dry_run=args.dry_run, sharpen=False, skip_existing=skip_existing)
 
     elapsed = time.time() - start_time
     log(f'\n{"="*60}')

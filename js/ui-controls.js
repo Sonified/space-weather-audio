@@ -704,6 +704,12 @@ const SPACECRAFT_DATASETS = {
         { value: 'THC_L2_FGM', label: 'THEMIS-C FGM' },
         { value: 'THD_L2_FGM', label: 'THEMIS-D FGM' },
         { value: 'THE_L2_FGM', label: 'THEMIS-E FGM' },
+        { group: 'Magnetic Field High-Res (FGM Burst, ~4 Hz)' },
+        { value: 'THA_L2_FGM_FGH', label: 'THEMIS-A FGM High-Res' },
+        { value: 'THB_L2_FGM_FGH', label: 'THEMIS-B FGM High-Res' },
+        { value: 'THC_L2_FGM_FGH', label: 'THEMIS-C FGM High-Res' },
+        { value: 'THD_L2_FGM_FGH', label: 'THEMIS-D FGM High-Res' },
+        { value: 'THE_L2_FGM_FGH', label: 'THEMIS-E FGM High-Res' },
         { group: 'Magnetic Field (Search Coil)' },
         { value: 'THA_L2_SCM', label: 'THEMIS-A SCM' },
         { value: 'THB_L2_SCM', label: 'THEMIS-B SCM' },
@@ -716,6 +722,16 @@ const SPACECRAFT_DATASETS = {
         { value: 'THC_L2_EFI', label: 'THEMIS-C EFI' },
         { value: 'THD_L2_EFI', label: 'THEMIS-D EFI' },
         { value: 'THE_L2_EFI', label: 'THEMIS-E EFI' }
+    ],
+    'RBSP': [
+        { group: 'Magnetic Field (EMFISIS)' },
+        { value: 'RBSP-A_MAGNETOMETER_HIRES-GSE_EMFISIS-L3', label: 'RBSP-A MAG Hi-Res (64 S/s)' },
+        { value: 'RBSP-B_MAGNETOMETER_HIRES-GSE_EMFISIS-L3', label: 'RBSP-B MAG Hi-Res (64 S/s)' },
+        { value: 'RBSP-A_MAGNETOMETER_4SEC-GSE_EMFISIS-L3', label: 'RBSP-A MAG Survey (4-sec)' },
+        { value: 'RBSP-B_MAGNETOMETER_4SEC-GSE_EMFISIS-L3', label: 'RBSP-B MAG Survey (4-sec)' },
+        { group: 'Waves (EMFISIS WFR, audio-band)' },
+        { value: 'RBSP-A_WFR-WAVEFORM-CONTINUOUS-BURST_EMFISIS-L2', label: 'RBSP-A WFR Burst Waveform (35 kHz)' },
+        { value: 'RBSP-B_WFR-WAVEFORM-CONTINUOUS-BURST_EMFISIS-L2', label: 'RBSP-B WFR Burst Waveform (35 kHz)' }
     ],
     'SolO': [
         { group: 'Magnetic Field' },

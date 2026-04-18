@@ -32,6 +32,7 @@ import { setupLifecycleHandlers } from './lifecycle-cleanup.js';
 import { loadRecentSearches, restoreRecentSearch, saveRecentSearch } from './recent-searches.js';
 import { setupResizeHandler } from './resize-handler.js';
 import { detectGPUCapability } from './gpu-detection.js';
+import { initCatalogBundle } from './gap-catalog-resolver.js';
 import { initializeApp, updateParticipantIdDisplay } from './mode-initializers.js';
 import { initScrollZoom } from './scroll-zoom.js';
 const upgradeAllSelects = window.__customSelect?.upgradeAllSelects || (() => new Map());
@@ -66,6 +67,9 @@ async function initializeMainApp() {
     // Result is only needed when spectrogram rendering starts (after data fetch).
     _t('detectGPUCapability() kicked off (non-blocking)');
     detectGPUCapability().then(() => _t('detectGPUCapability() resolved in background'));
+
+    _t('initCatalogBundle() kicked off (non-blocking)');
+    initCatalogBundle().then(() => _t('initCatalogBundle() resolved in background'));
 
     // Check for new version first (will reload page if update available)
     _t('checkAppVersion() start');

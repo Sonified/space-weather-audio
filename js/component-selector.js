@@ -402,16 +402,11 @@ export function setupComponentSelectorListener() {
     selector.addEventListener('change', (e) => {
         const newIndex = parseInt(e.target.value);
         switchComponent(newIndex);
-        // Blur so spacebar still works for play/pause
-        e.target.blur();
-    });
-
-    // Blur on spacebar so it doesn't capture play/pause
-    selector.addEventListener('keydown', (e) => {
-        if (e.code === 'Space') {
-            e.preventDefault();
-            e.target.blur();
-        }
+        // Blur the custom-select trigger (not the inert native select) so spacebar resumes play/pause
+        requestAnimationFrame(() => {
+            const trigger = e.target.closest('.csel')?.querySelector('.csel-trigger');
+            if (trigger) trigger.blur();
+        });
     });
 
     // Listen for background download completion

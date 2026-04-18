@@ -1225,6 +1225,19 @@ export default {
         return json({ success: true, deleted: featureId });
       }
 
+      // DELETE /api/study/:studyId/participants — clear ALL participants + features for a study
+      const clearParticipantsMatch = path.match(/^\/api\/study\/([^/]+)\/participants$/);
+      if (clearParticipantsMatch && request.method === 'DELETE') {
+        const studyId = clearParticipantsMatch[1];
+        const [pResult, fResult, sResult] = await Promise.all([
+          env.DB.prepare('DELETE FROM participants WHERE study_id = ?').bind(studyId).run(),
+          env.DB.prepare('DELETE FROM features WHERE study_id = ?').bind(studyId).run(),
+          env.DB.prepare('DELETE FROM assignment_sessions WHERE study_id = ?').bind(studyId).run(),
+        ]);
+        await touchStudy(studyId);
+        return json({ success: true, participantsDeleted: pResult.meta?.changes ?? 0, featuresDeleted: fResult.meta?.changes ?? 0, sessionsDeleted: sResult.meta?.changes ?? 0 });
+      }
+
       // GET /api/study/:studyId/participants — list all participants with feature counts
       const listParticipantsMatch = path.match(/^\/api\/study\/([^/]+)\/participants$/);
       if (listParticipantsMatch && request.method === 'GET') {
@@ -1397,6 +1410,81 @@ export default {
       }
 
       // =======================================================================
+      // Gap Catalog Bundle: /api/gap-catalog-bundle
+      // Serves all non-burst catalogs as a single JSON payload for client-side
+      // IndexedDB storage. Burst catalogs (too large) are excluded and served
+      // individually via the per-dataset endpoint below.
+      // =======================================================================
+      if (path === '/api/gap-catalog-bundle' && request.method === 'GET') {
+        const cacheKey = new Request(url.toString(), request);
+        const cache = caches.default;
+        let response = await cache.match(cacheKey);
+        if (response) return response;
+
+        const BUNDLE_EXCLUDE = new Set([
+          'MMS1_FGM_BRST_L2', 'MMS2_FGM_BRST_L2', 'MMS3_FGM_BRST_L2', 'MMS4_FGM_BRST_L2',
+          'MMS1_SCM_BRST_L2_SCB', 'MMS2_SCM_BRST_L2_SCB', 'MMS3_SCM_BRST_L2_SCB', 'MMS4_SCM_BRST_L2_SCB',
+          'MMS1_EDP_BRST_L2_DCE', 'MMS2_EDP_BRST_L2_DCE', 'MMS3_EDP_BRST_L2_DCE', 'MMS4_EDP_BRST_L2_DCE',
+          'SOLO_L2_MAG-RTN-BURST',
+        ]);
+
+        // Datasets to strip to L1 precision (remove start_precise/end_precise).
+        // Currently empty — all bundled datasets served at full L2 precision.
+        // To downgrade a dataset, add its ID here.
+        const BUNDLE_L1 = new Set([]);
+
+        const listed = await env.BUCKET.list({ prefix: 'gap_catalog/' });
+        const keys = listed.objects
+          .map(o => o.key)
+          .filter(k => k.endsWith('.json'))
+          .filter(k => {
+            const id = k.replace('gap_catalog/', '').replace('.json', '');
+            return !BUNDLE_EXCLUDE.has(id);
+          });
+
+        const entries = await Promise.all(keys.map(async (key) => {
+          const obj = await env.BUCKET.get(key);
+          if (!obj) return null;
+          const data = await obj.json();
+          const id = key.replace('gap_catalog/', '').replace('.json', '');
+          return [id, data];
+        }));
+
+        const catalogs = {};
+        const datasets = [];
+        for (const entry of entries) {
+          if (!entry) continue;
+          const [id, data] = entry;
+          datasets.push(id);
+
+          if (BUNDLE_L1.has(id) && data.intervals) {
+            data.intervals = data.intervals.map(iv => {
+              const stripped = { start_iso: iv.start_iso, end_iso: iv.end_iso };
+              if (iv.file_name) stripped.file_name = iv.file_name;
+              return stripped;
+            });
+            if (data.summary) data.summary.boundaries_sharpened = 'L1';
+          }
+
+          catalogs[id] = data;
+        }
+
+        response = new Response(JSON.stringify({
+          version: new Date().toISOString(),
+          datasets,
+          catalogs,
+        }), {
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'public, max-age=86400',
+            ...CORS_HEADERS,
+          },
+        });
+        ctx.waitUntil(cache.put(cacheKey, response.clone()));
+        return response;
+      }
+
+      // =======================================================================
       // Gap Catalog: /api/gap-catalog/:datasetId
       // Serves pre-computed gap catalogs with millisecond-precise boundaries
       // Stored in R2 at gap_catalog/{datasetId}.json
@@ -1434,11 +1522,26 @@ export default {
         }
 
         // --- Query mode: find intervals overlapping [start, end] ---
-        const obj = await env.BUCKET.get(`gap_catalog/${datasetId}.json`);
-        if (!obj) {
-          return json({ error: 'Gap catalog not found for dataset' }, 404);
+        // Read from edge-cached full catalog so all queries share one cache entry per dataset
+        const catalogUrl = new URL(`/api/gap-catalog/${datasetId}`, url.origin);
+        const catalogReq = new Request(catalogUrl.toString());
+        const cache = caches.default;
+        let catalogResp = await cache.match(catalogReq);
+        if (!catalogResp) {
+          const obj = await env.BUCKET.get(`gap_catalog/${datasetId}.json`);
+          if (!obj) {
+            return json({ error: 'Gap catalog not found for dataset' }, 404);
+          }
+          catalogResp = new Response(obj.body, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'public, max-age=86400',
+              ...CORS_HEADERS,
+            },
+          });
+          ctx.waitUntil(cache.put(catalogReq, catalogResp.clone()));
         }
-        const catalog = await obj.json();
+        const catalog = await catalogResp.json();
         const intervals = catalog.intervals || [];
         const sharpened = catalog.summary?.boundaries_sharpened;
 
