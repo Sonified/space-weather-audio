@@ -1433,8 +1433,8 @@ export function updateShareButtonState() {
         return;
     }
 
-    // Enable if we have loaded data
-    const hasData = State.completeSamplesArray && State.completeSamplesArray.length > 0;
+    // Enable if we have loaded data (may be compressed to Int16)
+    const hasData = State.getCompleteSamplesLength() > 0;
     // console.log('🔗 Share button state:', { hasData, length: State.completeSamplesArray?.length, disabled: !hasData });
     shareBtn.disabled = !hasData;
 }
