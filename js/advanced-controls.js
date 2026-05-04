@@ -322,14 +322,17 @@ export function initializeAdvancedControls() {
         if (questionnairesPanel) questionnairesPanel.style.display = isAdvanced ? '' : 'none';
         if (!isAdvanced) closeSettingsDrawer();
 
-        // Component selector + de-trend: advanced only.
+        // Component selector + de-trend: advanced-only in study mode,
+        // always visible in Space Weather Portal.
         // Must use 'flex' explicitly — '' would clear the inline style and fall
         // back to the element's default display (block for div), breaking the
         // inner flex row layout and shifting the selector horizontally.
-        const compContainer = document.getElementById('componentSelectorContainer');
-        if (compContainer) compContainer.style.display = isAdvanced ? 'flex' : 'none';
-        const detrendContainer = document.getElementById('detrendContainer');
-        if (detrendContainer) detrendContainer.style.display = isAdvanced ? 'flex' : 'none';
+        if (isStudyMode()) {
+            const compContainer = document.getElementById('componentSelectorContainer');
+            if (compContainer) compContainer.style.display = isAdvanced ? 'flex' : 'none';
+            const detrendContainer = document.getElementById('detrendContainer');
+            if (detrendContainer) detrendContainer.style.display = isAdvanced ? 'flex' : 'none';
+        }
 
         // Spectrogram controls (FFT, colormap, freq scale): advanced-only in EMIC, always visible in Space Weather Portal
         const spectrogramControls = document.querySelector('.spectrogram-controls');
@@ -889,10 +892,12 @@ export function initializeAdvancedControls() {
         const isWindowed = mode === 'static' || mode === 'scroll' || mode === 'pageTurn';
         const advanced = document.getElementById('advancedMode')?.checked;
         const hideControls = isWindowed && !advanced;
-        const comp = document.getElementById('componentSelectorContainer');
-        const detrend = document.getElementById('detrendContainer');
-        if (comp) comp.style.visibility = hideControls ? 'hidden' : '';
-        if (detrend) detrend.style.visibility = hideControls ? 'hidden' : '';
+        if (isStudyMode()) {
+            const comp = document.getElementById('componentSelectorContainer');
+            const detrend = document.getElementById('detrendContainer');
+            if (comp) comp.style.visibility = hideControls ? 'hidden' : '';
+            if (detrend) detrend.style.visibility = hideControls ? 'hidden' : '';
+        }
     }
 
     // When switching viewing mode, reset waveform to full view and re-render
