@@ -36,6 +36,7 @@ export let paulStretchGain = 2.0;      // Gain compensation for paul stretch pha
 export let playbackState = PlaybackState.STOPPED;
 export let isLooping = false;
 export let currentPlaybackRate = 1.0;
+export let baseSpeedOverride = null;      // Exact speed set programmatically, bypasses slider quantization
 export let spectrogramSpeedBypass = false; // When true, spectrogram renders as if speed is 1x
 
 // Timing
@@ -173,6 +174,8 @@ export function setPlaybackState(value) {
 }
 export function setIsLooping(value) { isLooping = value; }
 export function setCurrentPlaybackRate(value) { currentPlaybackRate = value; }
+export function setBaseSpeedOverride(value) { baseSpeedOverride = value; }
+export function getBaseSpeed() { return baseSpeedOverride || currentPlaybackRate; }
 export function setSpectrogramSpeedBypass(value) { spectrogramSpeedBypass = value; }
 /** Canonical playback rate accessor. Respects spectrogram speed bypass (returns 1.0 when locked). */
 export function getPlaybackRate() { return spectrogramSpeedBypass ? 1.0 : currentPlaybackRate; }

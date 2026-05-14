@@ -373,6 +373,7 @@ export function updatePlaybackSpeed() {
 }
 
 export function changePlaybackSpeed() {
+    State.setBaseSpeedOverride(null);
     updatePlaybackSpeed();
     updatePlaybackDuration();
 }
@@ -971,6 +972,7 @@ export function calculateSliderForSpeed(targetSpeed) {
 }
 
 export function resetSpeedTo1() {
+    State.setBaseSpeedOverride(null);
     const slider = document.getElementById('playbackSpeed');
     slider.value = 667;
     updatePlaybackSpeed();

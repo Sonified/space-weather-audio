@@ -2372,11 +2372,16 @@ async function runAnalysis(step) {
         }
     }
 
-    // Apply playback speed from step config — just set the slider position, don't call
-    // updatePlaybackSpeed() which would trigger engageStretch() with stale section 1 data.
+    // Apply playback speed from step config — set the override for exact speed,
+    // and sync the slider position for visual consistency. Don't call updatePlaybackSpeed()
+    // which would trigger engageStretch() with stale section 1 data.
     // The post-load updatePlaybackSpeed() will handle actual engagement after fresh data arrives.
     const rawSpeed = step.playbackSpeed;
     const targetSpeed = parseFloat(String(rawSpeed || '1').replace(/x$/i, '')) || 1.0;
+    {
+        const { setBaseSpeedOverride } = await import('./audio-state.js');
+        setBaseSpeedOverride(targetSpeed !== 1.0 ? targetSpeed : null);
+    }
     if (targetSpeed !== 1.0) {
         const { calculateSliderForSpeed } = await import('./audio-player.js');
         const slider = document.getElementById('playbackSpeed');

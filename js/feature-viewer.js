@@ -59,6 +59,9 @@ function applyAnalysisConfig(step) {
     // Apply playback speed from step config (global toggle syncs into per-step values at save time)
     const rawSpeed = step.playbackSpeed;
     const targetSpeed = parseFloat(String(rawSpeed || '1').replace(/x$/i, '')) || 1.0;
+    import('./audio-state.js').then(({ setBaseSpeedOverride }) => {
+        setBaseSpeedOverride(targetSpeed !== 1.0 ? targetSpeed : null);
+    });
     if (targetSpeed !== 1.0) {
         import('./audio-player.js').then(({ calculateSliderForSpeed, updatePlaybackSpeed }) => {
             const slider = document.getElementById('playbackSpeed');

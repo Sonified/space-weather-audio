@@ -92,22 +92,7 @@ function getCurrentSpacecraft() {
  * Returns null if speed cannot be determined
  */
 function getCurrentSpeedFactor() {
-    try {
-        const speedSlider = document.getElementById('playbackSpeed');
-        if (speedSlider) {
-            const value = parseFloat(speedSlider.value);
-            if (value <= 667) {
-                const normalized = value / 667;
-                return 0.1 * Math.pow(10, normalized);
-            } else {
-                const normalized = (value - 667) / 333;
-                return Math.pow(15, normalized);
-            }
-        }
-    } catch (error) {
-        console.warn('Could not get speed factor:', error);
-    }
-    return null;
+    return State.getBaseSpeed() || null;
 }
 
 // ── Standalone Features ──────────────────────────────────────────────────
