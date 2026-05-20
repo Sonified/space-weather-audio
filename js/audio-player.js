@@ -263,9 +263,11 @@ export function toggleLoop() {
     if (State.isLooping) {
         btn.classList.remove('secondary');
         btn.classList.add('loop-active');
+        btn.textContent = 'Loop: Enabled';
         console.log('🔁 Looping enabled');
     } else {
         btn.classList.remove('loop-active');
+        btn.textContent = 'Loop: Disabled';
         console.log('🔁 Looping disabled');
     }
     
@@ -306,6 +308,9 @@ export function updatePlaybackSpeed() {
         const normalized = (value - 667) / 333;
         baseSpeed = Math.pow(15, normalized);
     }
+
+    // Programmatic override takes precedence over slider quantization
+    if (State.baseSpeedOverride !== null) baseSpeed = State.baseSpeedOverride;
 
     // Display shows ONLY the slider value (not multiplied)
     document.getElementById('speedValue').textContent = baseSpeed.toFixed(2) + 'x';
