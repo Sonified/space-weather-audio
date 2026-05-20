@@ -384,23 +384,23 @@ async function assignCondition() {
     const conditions = studyConfig.experimentalDesign?.conditions;
     if (!conditions || conditions.length === 0) return null;
 
-    // Preview/test mode — use forced condition from URL param if provided
+    // Use forced condition from URL param if provided
+    const forcedIdx = parseInt(new URLSearchParams(window.location.search).get('condition'));
+    if (forcedIdx && conditions[forcedIdx - 1]) {
+        const picked = conditions[forcedIdx - 1];
+        const mode = window.__PREVIEW_MODE ? 'preview' : window.__TEST_MODE ? 'test' : 'forced';
+        const condition = {
+            conditionIndex: forcedIdx,
+            order: picked.order,
+            task1Processing: picked.task1Processing,
+            task2Processing: picked.task2Processing,
+            assignmentMode: mode
+        };
+        console.log(`%c[ASSIGN] ${mode} — forced condition #${forcedIdx}`, 'color: #aa77ff; font-weight: bold;', condition);
+        if (!window.__PREVIEW_MODE) saveCondition(studySlug, condition);
+        return condition;
+    }
     if (window.__PREVIEW_MODE || window.__TEST_MODE) {
-        const forcedIdx = parseInt(new URLSearchParams(window.location.search).get('condition'));
-        if (forcedIdx && conditions[forcedIdx - 1]) {
-            const picked = conditions[forcedIdx - 1];
-            const mode = window.__PREVIEW_MODE ? 'preview' : 'test';
-            const condition = {
-                conditionIndex: forcedIdx,
-                order: picked.order,
-                task1Processing: picked.task1Processing,
-                task2Processing: picked.task2Processing,
-                assignmentMode: mode
-            };
-            console.log(`%c[ASSIGN] ${mode} — forced condition #${forcedIdx}`, 'color: #aa77ff; font-weight: bold;', condition);
-            if (window.__TEST_MODE) saveCondition(studySlug, condition);
-            return condition;
-        }
         if (window.__PREVIEW_MODE) {
             if (window.pm?.study_flow) console.log('%c[ASSIGN] Preview mode — no condition forced, skipping', 'color: #aa77ff;');
             return null;
