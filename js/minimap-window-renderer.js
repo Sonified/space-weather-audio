@@ -20,7 +20,7 @@ import { restoreViewportState, updateSpectrogramViewportFromZoom, getFullMagnitu
 import { drawDayMarkers } from './day-markers.js';
 import { getColorLUT } from './colormaps.js';
 import { updateLiveAnnotations } from './spectrogram-live-annotations.js';
-import { updateCanvasAnnotations, isFeaturePopupOpen, isFeatureBoxReadyToShow } from './spectrogram-renderer.js';
+import { updateCanvasAnnotations, isFeaturePopupOpen, isFeatureBoxReadyToShow, isDrawingFeatureBox } from './spectrogram-renderer.js';
 import { getYPositionForFrequencyScaled } from './spectrogram-axis-renderer.js';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.webgpu.js';
 import { texture as tslTexture, vec2, vec4, uniform, float, select, uv, Fn, Loop, If, Break, min as tslMin, max as tslMax, floor as tslFloor, ceil as tslCeil, clamp as tslClamp, abs as tslAbs, log2 as tslLog2, pow as tslPow } from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.webgpu.js';
@@ -2147,6 +2147,8 @@ function checkPageTurnAdvance() {
     if (minimapDragging) return;
     // Don't advance while feature info popup is open — keep the page in view
     if (isFeaturePopupOpen()) return;
+    // Don't advance while user is drawing a feature box
+    if (isDrawingFeatureBox()) return;
 
     // Current playhead timestamp
     const playheadMs = State.dataStartTime.getTime() +

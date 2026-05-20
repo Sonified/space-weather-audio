@@ -981,6 +981,10 @@ export function isFeaturePopupOpen() {
     return popupFeatureBox !== null;
 }
 
+export function isDrawingFeatureBox() {
+    return spectrogramSelectionActive;
+}
+
 /** Returns "regionIndex-featureIndex" key of mouse-hovered box, or null */
 export function getHoveredBoxKey() {
     return hoveredBoxKey;
