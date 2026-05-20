@@ -809,6 +809,7 @@ export default {
       if (path === '/api/verify-admin' && request.method === 'POST') {
         const body = await request.json();
         const submitted = (body.key || '').trim();
+        const studySlug = (body.study || '').trim();
         if (!submitted) return json({ error: 'No key provided' }, 400);
 
         // Check global lockout (study with highest fails = rate-limit sentinel)
@@ -824,10 +825,14 @@ export default {
           }
         }
 
-        // Try to find study with this admin key
-        const row = await env.DB.prepare(
-          'SELECT id, name, config FROM studies WHERE admin_key = ?'
-        ).bind(submitted).first();
+        // Try to find study with this admin key, scoped to the requested study
+        const row = studySlug
+          ? await env.DB.prepare(
+              'SELECT id, name, config FROM studies WHERE admin_key = ? AND id = ?'
+            ).bind(submitted, studySlug).first()
+          : await env.DB.prepare(
+              'SELECT id, name, config FROM studies WHERE admin_key = ?'
+            ).bind(submitted).first();
 
         if (row) {
           // Success — reset all fail counters

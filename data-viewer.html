@@ -2043,29 +2043,12 @@
       const resp = await fetch(`${detectApiBase()}/api/verify-admin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key }),
+        body: JSON.stringify({ key, study: document.getElementById('studySelect').value || urlSlug }),
       });
       const data = await resp.json();
 
       if (data.success && data.study) {
         sessionStorage.setItem('dv_admin_authed', 'true');
-        // Set the study from the key
-        const slug = data.study.id;
-        const select = document.getElementById('studySelect');
-
-        // Ensure study is in dropdown
-        let found = false;
-        for (const opt of select.options) {
-          if (opt.value === slug) { opt.selected = true; found = true; break; }
-        }
-        if (!found) {
-          select.innerHTML += `<option value="${escHtml(slug)}" selected>${escHtml(data.study.name || slug)}</option>`;
-        }
-
-        // Update URL
-        const newUrl = new URL(window.location);
-        newUrl.searchParams.set('study', slug);
-        history.replaceState(null, '', newUrl);
 
         if (typeof updateStaticLabel === 'function') updateStaticLabel();
         dismissAdminGate();
