@@ -3,6 +3,7 @@
 *.wav
 !stretch_test_audio/*.wav
 !emic_audio/*.wav
+!EMIC_Study_Audio_Files/*.wav
 *.bin
 *.gz
 *.zst
